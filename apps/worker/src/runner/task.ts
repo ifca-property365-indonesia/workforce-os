@@ -1,0 +1,214 @@
+import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
+import { approvals, clients, db, employees, projects, tasks } from "@wfos/db";
+import { assertTransition, type TaskStatus } from "@wfos/shared";
+import { enqueueTask, miscQueue, publish } from "../lib/redis";
+import { recordStep } from "../lib/steps";
+import { getWorkspace } from "../lib/settings";
+import { log } from "../lib/logger";
+import { checkBudget, pauseForBudget } from "../guards/budget";
+import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
+import { buildSystemPrompt, recallMemories, workspaceDirectory } from "./prompt";
+import { MissingCredentialError, runAgent } from "./executor";
+import { onChildFinished, planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
+import { scriptedTaskRun } from "../simulation/demo";
+
+type Task = typeof tasks.$inferSelect;
+
+export async function setTaskStatus(task: Pick<Task, "id" | "workspaceId" | "status" | "assigneeId" | "title">, to: TaskStatus, extra: Partial<Task> = {}): Promise<void> {
+  assertTransition(task.status, to);
+  const now = new Date();
+  await db
+    .update(tasks)
+    .set({
+      status: to,
+      ...(to === "RUNNING" ? { startedAt: now } : {}),
+      ...(to === "DONE" || to === "FAILED" || to === "CANCELLED" ? { completedAt: now } : {}),
+      ...extra,
+    })
+    .where(eq(tasks.id, task.id));
+  await publish(task.workspaceId, { type: "task.updated", taskId: task.id, status: to, employeeId: task.assigneeId, title: task.title });
+}
+
+async function taskContext(task: Task): Promise<string> {
+  const parts: string[] = [];
+  if (task.clientId) {
+    const [c] = await db.select().from(clients).where(eq(clients.id, task.clientId));
+    if (c) parts.push(`Client: ${c.name} (id ${c.id}, email ${c.email || "n/a"}, contacts: ${c.contacts.map((x) => `${x.name} <${x.email}>`).join(", ") || "n/a"}). Notes: ${c.notes}`);
+  }
+  if (task.projectId) {
+    const [p] = await db.select().from(projects).where(eq(projects.id, task.projectId));
+    if (p) parts.push(`Project: ${p.name} (${p.status}) — ${p.description}`);
+  }
+  if (task.parentTaskId) {
+    const [p] = await db.select({ title: tasks.title, brief: tasks.brief }).from(tasks).where(eq(tasks.id, task.parentTaskId));
+    if (p) parts.push(`This is a subtask of "${p.title}". Overall goal:\n${p.brief.slice(0, 2000)}`);
+  }
+  return parts.join("\n");
+}
+
+export async function runTask(taskId: string, resumeNote?: string): Promise<void> {
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId));
+  if (!task) return;
+  // A team parent stays RUNNING while members work; it re-enters here for the lead's review phase.
+  const leadReview = task.status === "RUNNING" && task.phase === "review";
+  if (task.status !== "QUEUED" && !leadReview) {
+    log.info({ taskId, status: task.status }, "task not queued; skipping");
+    return;
+  }
+  if (task.phase === "hold") return;
+  const ws = await getWorkspace(task.workspaceId);
+  if (ws.killSwitch) {
+    await recordStep({ workspaceId: ws.id, taskId, kind: "system", name: "kill_switch_engaged", status: "blocked" });
+    return;
+  }
+
+  const { employeeId, team } = await resolveExecutor(task);
+  if (!employeeId) {
+    await setTaskStatus(task, "FAILED", { error: "Task has no assignee (and no team lead)." });
+    return;
+  }
+  const [emp] = await db.select().from(employees).where(eq(employees.id, employeeId));
+  if (!emp) {
+    await setTaskStatus(task, "FAILED", { error: "Assignee not found." });
+    return;
+  }
+  if (emp.status !== "ACTIVE") {
+    await recordStep({ workspaceId: ws.id, taskId, employeeId, kind: "system", name: "employee_not_active", status: "blocked", output: { status: emp.status } });
+    await db.update(tasks).set({ error: `Waiting: ${emp.name} is ${emp.status}` }).where(eq(tasks.id, taskId));
+    return;
+  }
+
+  if (ws.demoMode || task.source === "demo") {
+    await scriptedTaskRun(task, emp);
+    return;
+  }
+
+  const budget = await checkBudget(ws.id, emp.id);
+  if (!budget.ok) {
+    await pauseForBudget(ws.id, emp.id, budget.reason!, taskId);
+    await db.update(tasks).set({ error: `Paused: ${budget.reason}` }).where(eq(tasks.id, taskId));
+    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: `${emp.name} paused: budget cap`, text: budget.reason!, link: `/employees/${emp.id}` });
+    return;
+  }
+
+  await setTaskStatus(task, "RUNNING", { error: null });
+
+  const ctx: RunContext = {
+    runId: randomUUID(),
+    workspaceId: ws.id,
+    employee: { id: emp.id, name: emp.name, role: emp.role, autonomyLevel: emp.autonomyLevel, toolPermissions: emp.toolPermissions, allowList: emp.allowList },
+    taskId: task.id,
+    conversationId: null,
+    dryRun: task.dryRun,
+    sandboxed: false,
+    guard: { workspaceId: ws.id, taskId: task.id, conversationId: null, employeeId: emp.id, enabled: ws.guardsEnabled, tainted: false },
+    pendingApprovalIds: [],
+    deliverables: [],
+    createdTaskIds: [],
+    delegatedTaskIds: [],
+    revisionRequests: [],
+    team,
+  };
+
+  const [mem, directory, context, inbox] = await Promise.all([
+    recallMemories(emp.id, `${task.title}\n${task.brief}`),
+    workspaceDirectory(ws.id),
+    taskContext(task),
+    unreadMessagesFor(emp.id),
+  ]);
+
+  const promptParts = [`# Task: ${task.title}`, task.brief, context && `## Context\n${context}`];
+  if (inbox.length) promptParts.push(`## Messages from colleagues\n${inbox.map((m) => `- ${m.from ?? "system"} (${m.intent}): ${m.content}`).join("\n")}`);
+  if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(task, team));
+  if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
+  if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);
+  if (task.deliverables.length && !(team?.role === "lead" && team.phase === "review")) {
+    promptParts.push(`## Your previous deliverables on this task\n${task.deliverables.map((d) => `- ${d.title} (${d.kind})`).join("\n")}`);
+  }
+
+  const systemPrompt = buildSystemPrompt({
+    employee: emp,
+    workspaceName: ws.name,
+    memories: mem,
+    directory,
+    grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
+    dryRun: task.dryRun,
+    mode: "task",
+  });
+
+  let out;
+  try {
+    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget: budget.remaining });
+  } catch (e) {
+    const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${(e as Error).message}`;
+    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "runner_error", status: "error", output: msg });
+    await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: msg });
+    return;
+  }
+
+  const running = { ...task, status: "RUNNING" as TaskStatus };
+
+  if (out.stopped === "budget") {
+    await pauseForBudget(ws.id, emp.id, "Budget reached during the run", taskId);
+    await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." });
+    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: `${emp.name} paused mid-task: budget cap`, text: task.title, link: `/tasks/${task.id}` });
+    return;
+  }
+  if (out.stopped === "aborted") {
+    const fresh = await getWorkspace(ws.id);
+    await setTaskStatus(running, "CANCELLED", { error: fresh.killSwitch ? "Stopped by kill switch" : `Cancelled: ${out.error ?? ""}`, result: out.text || null });
+    return;
+  }
+  if (out.stopped === "error") {
+    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "run_failed", status: "error", output: out.error });
+    await setTaskStatus(running, "FAILED", { error: out.error ?? "Unknown error", result: out.text || null });
+    await notifyFinished(task, "FAILED", out.error ?? "");
+    if (task.parentTaskId) await onChildFinished(ws.id, task.parentTaskId);
+    return;
+  }
+
+  // Start tasks created from this run (chat → board, delegation).
+  for (const id of [...ctx.createdTaskIds, ...ctx.delegatedTaskIds]) {
+    const [t] = await db.select({ phase: tasks.phase }).from(tasks).where(eq(tasks.id, id));
+    if (t?.phase !== "hold") await enqueueTask(id, ws.id);
+  }
+
+  // Team lead: planning → wait for subtasks
+  if (team?.role === "lead" && team.phase === "plan" && ctx.delegatedTaskIds.length > 0) {
+    await db.update(tasks).set({ phase: "wait", result: out.text }).where(eq(tasks.id, task.id));
+    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "team_plan_delegated", output: { subtasks: ctx.delegatedTaskIds.length } });
+    return; // stays RUNNING while members work
+  }
+  if (team?.role === "lead" && team.phase === "review" && ctx.revisionRequests.length > 0) {
+    const n = await requestRevisions(ws.id, task.id, emp.id, ctx.revisionRequests);
+    if (n > 0) {
+      await db.update(tasks).set({ phase: "wait" }).where(eq(tasks.id, task.id));
+      return;
+    }
+  }
+
+  const pending = await db
+    .select({ id: approvals.id })
+    .from(approvals)
+    .where(and(eq(approvals.taskId, task.id), eq(approvals.status, "PENDING")));
+  if (pending.length > 0) {
+    await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: team?.role === "lead" ? "review" : task.phase });
+    return;
+  }
+
+  await setTaskStatus(running, "DONE", { result: out.text, phase: team ? "done" : task.phase });
+  await notifyFinished(task, "DONE", out.text);
+  if (task.parentTaskId) await onChildFinished(ws.id, task.parentTaskId);
+}
+
+export async function notifyFinished(task: Pick<Task, "workspaceId" | "id" | "title" | "parentTaskId" | "source">, status: TaskStatus, text: string): Promise<void> {
+  if (task.parentTaskId || task.source === "replay") return; // only top-level tasks notify humans
+  await miscQueue.add("notify", {
+    kind: "notify",
+    workspaceId: task.workspaceId,
+    subject: `Task ${status === "DONE" ? "finished" : "failed"}: ${task.title}`,
+    text: text.slice(0, 1500),
+    link: `/tasks/${task.id}`,
+  });
+}

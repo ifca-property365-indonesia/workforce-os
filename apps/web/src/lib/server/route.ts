@@ -1,0 +1,62 @@
+import "server-only";
+import { NextResponse, type NextRequest } from "next/server";
+import { ZodError, type z } from "zod";
+import type { Role } from "@wfos/shared";
+import { HttpError, requireSession, type Session } from "./auth";
+import { logger } from "./logger";
+
+type Ctx<P> = { session: Session; req: NextRequest; params: P };
+
+/** Route handler wrapper: auth + role check + JSON errors + structured logs. */
+export function route<P = Record<string, string>>(minRole: Role, fn: (ctx: Ctx<P>) => Promise<unknown>) {
+  return async (req: NextRequest, context: { params: Promise<P> }) => {
+    const started = Date.now();
+    try {
+      const session = await requireSession(minRole);
+      const params = (await context.params) as P;
+      const out = await fn({ session, req, params });
+      if (out instanceof Response) return out;
+      return NextResponse.json(out ?? { ok: true });
+    } catch (e) {
+      return errorResponse(e, req, started);
+    }
+  };
+}
+
+export function errorResponse(e: unknown, req: NextRequest, started = Date.now()) {
+  if (e instanceof HttpError) return NextResponse.json({ error: e.message }, { status: e.status });
+  if (e instanceof ZodError) return NextResponse.json({ error: "Validation failed", issues: e.issues }, { status: 400 });
+  logger.error({ err: (e as Error).message, stack: (e as Error).stack, path: req.nextUrl.pathname, ms: Date.now() - started }, "route error");
+  return NextResponse.json({ error: "Internal error" }, { status: 500 });
+}
+
+export async function body<S extends z.ZodType>(req: NextRequest, schema: S): Promise<z.infer<S>> {
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    throw new HttpError(400, "Invalid JSON body");
+  }
+  return schema.parse(json);
+}
+
+export function notFound(what = "Not found"): never {
+  throw new HttpError(404, what);
+}
+
+/**
+ * Parse a PATCH body: validate with the schema, then keep only keys the client actually sent,
+ * so Zod defaults never overwrite stored values.
+ */
+export async function patchBody<S extends z.ZodType>(req: NextRequest, schema: S): Promise<Partial<z.infer<S>>> {
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    throw new HttpError(400, "Invalid JSON body");
+  }
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new HttpError(400, "Body must be an object");
+  const parsed = schema.parse(json) as Record<string, unknown>;
+  const sent = new Set(Object.keys(json));
+  return Object.fromEntries(Object.entries(parsed).filter(([k]) => sent.has(k))) as Partial<z.infer<S>>;
+}
