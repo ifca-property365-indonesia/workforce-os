@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { approvals, audit, db } from "@wfos/db";
+import { approvals, audit, db, tasks } from "@wfos/db";
 import { approvalDecisionSchema, emailPayloadSchema, invoicePayloadSchema, webhookPayloadSchema } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
@@ -30,6 +30,19 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
     await publish(session.workspaceId, { type: "approval.updated", approvalId: a.id, status: "REJECTED" });
     await q.action({ kind: "rejected_approval", approvalId: a.id, workspaceId: session.workspaceId });
     return { ok: true };
+  }
+
+  // the task may have been cancelled or finished since the approval was requested
+  if (a.taskId) {
+    const [t] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, a.taskId));
+    if (t && t.status !== "AWAITING_APPROVAL") {
+      await db
+        .update(approvals)
+        .set({ status: "EXPIRED", executionResult: { ok: false, summary: `Task is ${t.status}; the action can no longer run.` } })
+        .where(and(eq(approvals.id, a.id), eq(approvals.status, "PENDING")));
+      await publish(session.workspaceId, { type: "approval.updated", approvalId: a.id, status: "EXPIRED" });
+      throw new HttpError(409, `The task is ${t.status.toLowerCase()}, so this action can no longer be approved.`);
+    }
   }
 
   let edited: Record<string, unknown> | null = null;

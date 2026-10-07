@@ -24,6 +24,8 @@ export async function executeApproval(approvalId: string): Promise<void> {
   let result: { ok: boolean; summary: string; details?: Record<string, unknown> };
   if (ws?.killSwitch) {
     result = { ok: false, summary: "Kill switch engaged: action not executed." };
+  } else if (task?.status === "CANCELLED") {
+    result = { ok: false, summary: "Task was cancelled: action not executed." };
   } else if (simulated) {
     result = { ok: true, summary: `DRY RUN: ${a.toolName} would have been executed now.`, details: { simulated: true } };
   } else {

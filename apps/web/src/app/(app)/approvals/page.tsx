@@ -181,7 +181,13 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
         <span
           className={cn(
             "rounded-full px-2 py-0.5 text-xs font-medium",
-            pending ? "bg-amber-500/15 text-amber-700" : a.status === "REJECTED" || a.status === "FAILED" ? "bg-destructive/15 text-destructive" : "bg-emerald-500/15 text-emerald-700",
+            pending
+              ? "bg-amber-500/15 text-amber-700"
+              : a.status === "REJECTED" || a.status === "FAILED"
+                ? "bg-destructive/15 text-destructive"
+                : a.status === "EXPIRED"
+                  ? "bg-muted text-muted-foreground"
+                  : "bg-emerald-500/15 text-emerald-700",
           )}
         >
           {a.status}
@@ -270,7 +276,7 @@ function Inbox() {
         <TabsList>
           <TabsTrigger value="PENDING">Pending</TabsTrigger>
           <TabsTrigger value="EXECUTED,APPROVED">Approved</TabsTrigger>
-          <TabsTrigger value="REJECTED">Rejected</TabsTrigger>
+          <TabsTrigger value="REJECTED,EXPIRED">Rejected & expired</TabsTrigger>
           <TabsTrigger value="ALL">All</TabsTrigger>
         </TabsList>
       </Tabs>

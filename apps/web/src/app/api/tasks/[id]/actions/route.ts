@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, tasks } from "@wfos/db";
+import { approvals, audit, db, tasks } from "@wfos/db";
 import { canTransition } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
@@ -14,10 +14,25 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
   if (!t) notFound();
   if (action === "cancel") {
     if (!canTransition(t.status, "CANCELLED")) throw new HttpError(409, `Cannot cancel a ${t.status} task`);
-    await db.update(tasks).set({ status: "CANCELLED", completedAt: new Date(), error: "Cancelled by user" }).where(eq(tasks.id, t.id));
-    await control({ type: "cancel_task", taskId: t.id });
-    await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "CANCELLED" });
-    await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.cancelled", targetType: "task", targetId: t.id });
+    // a team task takes its open subtasks with it
+    const children = await db.select().from(tasks).where(eq(tasks.parentTaskId, t.id));
+    const cancelled = [t, ...children.filter((c) => canTransition(c.status, "CANCELLED"))];
+    const ids = cancelled.map((c) => c.id);
+    const expired = await db.transaction(async (tx) => {
+      await tx.update(tasks).set({ status: "CANCELLED", completedAt: new Date(), error: "Cancelled by user" }).where(inArray(tasks.id, ids));
+      // pending actions of a cancelled task must never become executable
+      return tx
+        .update(approvals)
+        .set({ status: "EXPIRED", decidedBy: session.userId, decidedAt: new Date(), executionResult: { ok: false, summary: "Task was cancelled before a decision." } })
+        .where(and(inArray(approvals.taskId, ids), eq(approvals.status, "PENDING")))
+        .returning({ id: approvals.id });
+    });
+    for (const c of cancelled) {
+      await control({ type: "cancel_task", taskId: c.id });
+      await publish(session.workspaceId, { type: "task.updated", taskId: c.id, status: "CANCELLED" });
+    }
+    for (const x of expired) await publish(session.workspaceId, { type: "approval.updated", approvalId: x.id, status: "EXPIRED" });
+    await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.cancelled", targetType: "task", targetId: t.id, details: { subtasks: ids.length - 1, approvalsExpired: expired.length } });
     return { ok: true };
   }
   if (action === "start") {
