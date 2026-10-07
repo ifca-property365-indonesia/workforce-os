@@ -8,6 +8,7 @@ import { setSession } from "@/lib/server/auth";
 import { body, errorResponse } from "@/lib/server/route";
 import { HttpError } from "@/lib/server/auth";
 import { signupAllowed } from "@/lib/server/signup";
+import { clientIp, rateLimit } from "@/lib/server/ratelimit";
 
 const schema = signupSchema.extend({ sampleData: z.boolean().default(true) });
 
@@ -24,6 +25,7 @@ function slugify(s: string) {
 export async function POST(req: NextRequest) {
   try {
     if (!(await signupAllowed())) throw new HttpError(403, "Self-service signup is disabled on this server. Ask an admin to add you.");
+    await rateLimit(`signup:ip:${clientIp(req)}`, 5, 3600, "Too many signups from this address. Try again later.");
     const input = await body(req, schema);
     const email = input.email.toLowerCase();
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));

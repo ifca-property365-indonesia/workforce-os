@@ -5,6 +5,9 @@ import type { Role } from "@wfos/shared";
 import { HttpError, requireSession, type Session } from "./auth";
 import { logger } from "./logger";
 
+/** The only API routes usable while a temporary password is still in place. */
+const PASSWORD_CHANGE_ALLOWED = new Set(["/api/me", "/api/me/password"]);
+
 type Ctx<P> = { session: Session; req: NextRequest; params: P };
 
 /** Route handler wrapper: auth + role check + JSON errors + structured logs. */
@@ -13,6 +16,7 @@ export function route<P = Record<string, string>>(minRole: Role, fn: (ctx: Ctx<P
     const started = Date.now();
     try {
       const session = await requireSession(minRole);
+      if (session.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(req.nextUrl.pathname)) throw new HttpError(403, "Password change required");
       const params = (await context.params) as P;
       const out = await fn({ session, req, params });
       if (out instanceof Response) return out;

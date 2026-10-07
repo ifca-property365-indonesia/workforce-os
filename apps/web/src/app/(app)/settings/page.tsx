@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { KeyRound, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChangePasswordForm } from "@/components/account/change-password-form";
 import { PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { dateTime } from "@/lib/format";
@@ -334,7 +336,26 @@ function Pricing({ owner }: { owner: boolean }) {
   );
 }
 
-function Members({ owner }: { owner: boolean }) {
+function Account() {
+  const { data: me } = useMe();
+  if (!me) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Account</CardTitle>
+        <CardDescription>
+          Signed in as {me.user.name} ({me.user.email}). Changing your password signs out every other session.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!me.user.hasPassword && <p className="mb-3 text-sm text-muted-foreground">You sign in with Google. Set a password to also sign in with email.</p>}
+        <ChangePasswordForm hasPassword={me.user.hasPassword} submitLabel={me.user.hasPassword ? "Change password" : "Set password"} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function Members({ owner, admin, meId }: { owner: boolean; admin: boolean; meId?: string }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["members"], queryFn: () => api.get<{ members: { userId: string; email: string; name: string; role: string }[] }>("/api/members") });
   const [f, setF] = useState({ email: "", name: "", role: "MEMBER" });
@@ -349,6 +370,19 @@ function Members({ owner }: { owner: boolean }) {
     onError: (e) => toast.error((e as Error).message),
   });
   const role = useMutation({ mutationFn: (v: { userId: string; role: string }) => api.patch("/api/members", v), onSuccess: () => qc.invalidateQueries({ queryKey: ["members"] }), onError: (e) => toast.error((e as Error).message) });
+  const remove = useMutation({
+    mutationFn: (userId: string) => api.del(`/api/members?userId=${userId}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["members"] });
+      toast.success("Member removed");
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const reset = useMutation({
+    mutationFn: (userId: string) => api.post<{ tempPassword: string }>("/api/members/reset-password", { userId }),
+    onSuccess: (r) => prompt("New one-time password (they must change it at next sign-in). Share it securely:", r.tempPassword),
+    onError: (e) => toast.error((e as Error).message),
+  });
   return (
     <Card>
       <CardHeader>
@@ -366,8 +400,35 @@ function Members({ owner }: { owner: boolean }) {
                 <option key={r}>{r}</option>
               ))}
             </select>
+            {admin && m.userId !== meId && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2"
+                  disabled={(m.role === "OWNER" && !owner) || reset.isPending}
+                  onClick={() => confirm(`Reset the password for ${m.email}? Their current password and sessions stop working.`) && reset.mutate(m.userId)}
+                  aria-label={`Reset password for ${m.email}`}
+                  title="Reset password"
+                >
+                  <KeyRound className="size-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2 text-destructive hover:text-destructive"
+                  disabled={(m.role === "OWNER" && !owner) || remove.isPending}
+                  onClick={() => confirm(`Remove ${m.email} from this workspace?`) && remove.mutate(m.userId)}
+                  aria-label={`Remove ${m.email}`}
+                  title="Remove from workspace"
+                >
+                  <UserMinus className="size-4" />
+                </Button>
+              </>
+            )}
           </div>
         ))}
+        {admin && (
         <div className="grid gap-2 border-t pt-3 sm:grid-cols-[1fr_1fr_120px_auto]">
           <Input placeholder="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
           <Input placeholder="name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
@@ -380,6 +441,7 @@ function Members({ owner }: { owner: boolean }) {
             Add
           </Button>
         </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -427,6 +489,7 @@ export default function SettingsPage() {
       <Tabs defaultValue="general">
         <TabsList className="flex-wrap">
           <TabsTrigger value="general">General</TabsTrigger>
+          <TabsTrigger value="account">Account</TabsTrigger>
           {admin && <TabsTrigger value="email">Email</TabsTrigger>}
           {admin && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
           {admin && <TabsTrigger value="integrations">Integrations</TabsTrigger>}
@@ -436,6 +499,9 @@ export default function SettingsPage() {
         </TabsList>
         <TabsContent value="general" className="mt-4">
           <General s={data} />
+        </TabsContent>
+        <TabsContent value="account" className="mt-4">
+          <Account />
         </TabsContent>
         <TabsContent value="email" className="mt-4">
           <Email />
@@ -450,7 +516,7 @@ export default function SettingsPage() {
           <Pricing owner={owner} />
         </TabsContent>
         <TabsContent value="members" className="mt-4">
-          <Members owner={owner} />
+          <Members owner={owner} admin={admin} meId={me?.user.id} />
         </TabsContent>
         <TabsContent value="audit" className="mt-4">
           <Audit />

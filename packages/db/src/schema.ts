@@ -45,6 +45,10 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   passwordHash: text("password_hash"),
   googleSub: text("google_sub").unique(),
+  /** set for accounts created with a temporary password; cleared when the user picks their own */
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
+  /** sessions issued before this instant are rejected */
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
 

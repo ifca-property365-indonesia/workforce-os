@@ -26,8 +26,8 @@ function LoginForm() {
     const f = new FormData(e.currentTarget);
     setLoading(true);
     try {
-      await api.post("/api/auth/login", { email: f.get("email"), password: f.get("password") });
-      router.replace("/dashboard");
+      const r = await api.post<{ mustChangePassword?: boolean }>("/api/auth/login", { email: f.get("email"), password: f.get("password") });
+      router.replace(r.mustChangePassword ? "/change-password" : "/dashboard");
     } catch (err) {
       toast.error((err as Error).message);
     } finally {

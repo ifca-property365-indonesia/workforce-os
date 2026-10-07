@@ -6,7 +6,7 @@ import type { RoleTemplate } from "@wfos/templates";
 import { api } from "./api";
 
 export interface Me {
-  user: { id: string; email: string; name: string };
+  user: { id: string; email: string; name: string; mustChangePassword: boolean; hasPassword: boolean };
   workspace: { id: string; name: string; killSwitch: boolean; demoMode: boolean; guardsEnabled: boolean };
   role: Role;
   workspaces: { id: string; name: string; role: Role }[];

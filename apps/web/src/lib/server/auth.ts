@@ -37,6 +37,7 @@ export interface Session {
   workspaceId: string;
   workspaceName: string;
   role: Role;
+  mustChangePassword: boolean;
 }
 
 export async function getSession(): Promise<Session | null> {
@@ -44,14 +45,18 @@ export async function getSession(): Promise<Session | null> {
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   let userId: string;
+  let issuedAt: number;
   try {
     const { payload } = await jwtVerify(token, secret());
     userId = String(payload.sub);
+    issuedAt = Number(payload.iat ?? 0);
   } catch {
     return null;
   }
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) return null;
+  // a password change revokes every session issued before it
+  if (user.passwordChangedAt && issuedAt < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
   const preferred = jar.get(WS_COOKIE)?.value;
   const rows = await db
     .select({ workspaceId: members.workspaceId, role: members.role, name: workspaces.name })
@@ -60,7 +65,7 @@ export async function getSession(): Promise<Session | null> {
     .where(eq(members.userId, user.id));
   const m = rows.find((r) => r.workspaceId === preferred) ?? rows[0];
   if (!m) return null;
-  return { userId: user.id, email: user.email, name: user.name, workspaceId: m.workspaceId, workspaceName: m.name, role: m.role };
+  return { userId: user.id, email: user.email, name: user.name, workspaceId: m.workspaceId, workspaceName: m.name, role: m.role, mustChangePassword: user.mustChangePassword };
 }
 
 export class HttpError extends Error {

@@ -56,6 +56,27 @@ sudo cp nginx/ai.vardiv.id.conf /etc/nginx/sites-available/<domain> && sudo ln -
 
 The seed owner is `SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD` (defaults `owner@workforce.local` / `workforce-demo`). **Set your own values or change the password right away** on any server that is reachable from the internet.
 
+### Backups
+
+`deploy/backup.sh` writes a verified `pg_dump`, the uploaded files and a copy of `.env` to `/root/backups/workforce-os` and keeps 14 days. Keep the `.env` copy, because stored credentials can only be decrypted with its `ENCRYPTION_KEY`. Schedule it with cron:
+
+```
+30 2 * * * /root/apps/workforce-os/deploy/backup.sh >> /var/log/workforce-os-backup.log 2>&1
+```
+
+The backups sit on the same disk. Copy them off the server too (rclone, S3, or another VPS). Restore steps are in the script header.
+
+### Logs
+
+`pm2 install pm2-logrotate`, then `pm2 set pm2-logrotate:max_size 10M` and `pm2 set pm2-logrotate:retain 7`.
+
+## Accounts & sign-in security
+
+- Admins add people in **Settings → Members**. New accounts get a one-time temporary password, and the user has to pick their own at first sign-in (`/change-password`). Until they do, every other page and API is blocked.
+- **Settings → Account** changes your own password. A password change signs out every other session.
+- Admins can **reset** a member's password (new temporary password, old sessions revoked) and **remove** members. Only Owners can act on Owners, and a workspace always keeps at least one Owner. A password reset is refused when the user also belongs to another workspace.
+- Login is limited to 10 attempts per account and 30 per IP every 15 minutes, and signup to 5 per IP per hour. Behind Cloudflare, Nginx has to resolve the real visitor IP (`set_real_ip_from` + `real_ip_header CF-Connecting-IP`, see `nginx/ai.vardiv.id.conf`) and pass it as `X-Real-IP`. Without that, every visitor shares Cloudflare's IPs.
+
 ## Deploy with Docker Compose (fresh Ubuntu VPS)
 
 ```bash
