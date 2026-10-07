@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
-import { db, members, users, workspaces } from "@wfos/db";
-import { route } from "@/lib/server/route";
+import { z } from "zod";
+import { audit, db, members, users, workspaces } from "@wfos/db";
+import { body, route } from "@/lib/server/route";
 import { serverEnv } from "@/lib/server/env";
 
 export const GET = route("VIEWER", async ({ session }) => {
@@ -19,4 +20,14 @@ export const GET = route("VIEWER", async ({ session }) => {
     claude: { authMode: serverEnv.claudeAuthMode, credentialPresent: serverEnv.claudeCredentialPresent },
     googleEnabled: !!serverEnv.googleClientId,
   };
+});
+
+const profileSchema = z.object({ name: z.string().trim().min(1, "Name is required").max(120) });
+
+/** Update your own profile (display name). Email is the sign-in identity and stays fixed. */
+export const PATCH = route("VIEWER", async ({ session, req }) => {
+  const { name } = await body(req, profileSchema);
+  await db.update(users).set({ name }).where(eq(users.id, session.userId));
+  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "user.profile_updated", targetType: "user", targetId: session.userId, details: { name } });
+  return { ok: true };
 });

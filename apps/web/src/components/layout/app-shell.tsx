@@ -21,6 +21,7 @@ import {
   OctagonX,
   Settings,
   ShieldCheck,
+  UserRound,
   Sun,
   Users,
   UsersRound,
@@ -28,6 +29,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
@@ -207,9 +216,12 @@ function Shell({ children }: { children: ReactNode }) {
         <div className="flex items-center gap-1.5 font-medium">
           <Users className="size-3.5" /> {me?.workspace.name ?? "…"}
         </div>
-        <div className="text-muted-foreground">
-          {me?.user.email} · {me?.role}
-        </div>
+        <Link href="/account" onClick={() => setMobile(false)} className="block text-muted-foreground hover:text-foreground">
+          <span className="block truncate font-medium text-foreground">{me?.user.name}</span>
+          <span className="block truncate">
+            {me?.user.email} · {me?.role}
+          </span>
+        </Link>
         <div className="flex items-center gap-1.5 text-muted-foreground">
           <span className={cn("size-2 rounded-full", live ? "bg-emerald-500" : "bg-zinc-400")} /> {live ? "Live" : "Connecting…"}
         </div>
@@ -235,17 +247,41 @@ function Shell({ children }: { children: ReactNode }) {
           <KillSwitch />
           <Notifications />
           <ThemeToggle />
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label="Sign out"
-            onClick={async () => {
-              await api.post("/api/auth/logout");
-              router.replace("/login");
-            }}
-          >
-            <LogOut className="size-4" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="rounded-full" aria-label="Account menu">
+                <span className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                  {(me?.user.name ?? "?").trim().charAt(0).toUpperCase()}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal">
+                <div className="truncate text-sm font-medium">{me?.user.name}</div>
+                <div className="truncate text-xs text-muted-foreground">{me?.user.email}</div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/account">
+                  <UserRound className="size-4" /> Account
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings">
+                  <Settings className="size-4" /> Workspace settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={async () => {
+                  await api.post("/api/auth/logout");
+                  router.replace("/login");
+                }}
+              >
+                <LogOut className="size-4" /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
         {me?.workspace.killSwitch && (
           <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-medium text-white">

@@ -11,7 +11,6 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChangePasswordForm } from "@/components/account/change-password-form";
 import { PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { dateTime } from "@/lib/format";
@@ -336,25 +335,6 @@ function Pricing({ owner }: { owner: boolean }) {
   );
 }
 
-function Account() {
-  const { data: me } = useMe();
-  if (!me) return null;
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Account</CardTitle>
-        <CardDescription>
-          Signed in as {me.user.name} ({me.user.email}). Changing your password signs out every other session.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {!me.user.hasPassword && <p className="mb-3 text-sm text-muted-foreground">You sign in with Google. Set a password to also sign in with email.</p>}
-        <ChangePasswordForm hasPassword={me.user.hasPassword} submitLabel={me.user.hasPassword ? "Change password" : "Set password"} />
-      </CardContent>
-    </Card>
-  );
-}
-
 function Members({ owner, admin, meId }: { owner: boolean; admin: boolean; meId?: string }) {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["members"], queryFn: () => api.get<{ members: { userId: string; email: string; name: string; role: string }[] }>("/api/members") });
@@ -489,7 +469,6 @@ export default function SettingsPage() {
       <Tabs defaultValue="general">
         <TabsList className="flex-wrap">
           <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="account">Account</TabsTrigger>
           {admin && <TabsTrigger value="email">Email</TabsTrigger>}
           {admin && <TabsTrigger value="notifications">Notifications</TabsTrigger>}
           {admin && <TabsTrigger value="integrations">Integrations</TabsTrigger>}
@@ -499,9 +478,6 @@ export default function SettingsPage() {
         </TabsList>
         <TabsContent value="general" className="mt-4">
           <General s={data} />
-        </TabsContent>
-        <TabsContent value="account" className="mt-4">
-          <Account />
         </TabsContent>
         <TabsContent value="email" className="mt-4">
           <Email />
