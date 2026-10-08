@@ -59,6 +59,19 @@ export function employeeOutputLocale(setting: OutputLanguage | null | undefined,
   return isLocale(workspaceDefault) ? workspaceDefault : null;
 }
 
+export const EXECUTION_MODES = ["tool", "workspace"] as const;
+export type ExecutionMode = (typeof EXECUTION_MODES)[number];
+
+/** Claude Code built-ins enabled in Workspace mode (inside the sandbox; Bash is classified per call). */
+export const WORKSPACE_BUILTIN_TOOLS = ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "TodoWrite", "Task", "Skill", "NotebookEdit"] as const;
+
+/** Host names an employee may reach from its sandbox; registry-style hosts only, no IPs, no ports. */
+export const egressDomainSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^(\*\.)?([a-z0-9-]+\.)+[a-z]{2,}$/, "a host name like registry.npmjs.org or *.pypi.org");
+
 export const AUTONOMY_LEVELS = ["DRAFT", "QUEUE", "EXECUTE", "CLOSE"] as const;
 export type AutonomyLevel = (typeof AUTONOMY_LEVELS)[number];
 export const AUTONOMY_DESCRIPTIONS: Record<AutonomyLevel, string> = {
@@ -435,6 +448,8 @@ export const employeeInputSchema = z.object({
   toolPermissions: z.array(toolPermissionSchema).default([]),
   dailyBudget: z.number().nonnegative().max(1_000_000).default(200),
   outputLanguage: z.enum(OUTPUT_LANGUAGES).default("inherit"),
+  executionMode: z.enum(EXECUTION_MODES).default("tool"),
+  egressDomains: z.array(egressDomainSchema).max(50).default([]),
 });
 export type EmployeeInput = z.infer<typeof employeeInputSchema>;
 

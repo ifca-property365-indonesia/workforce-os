@@ -74,6 +74,14 @@ export interface RunContext {
   delegatedTaskIds: string[];
   revisionRequests: { taskId: string; feedback: string }[];
   team?: TeamContext;
+  /** Workspace mode: Claude Code runs in an isolated per-task sandbox (tasks only, never chat) */
+  workspace?: {
+    egressDomains: string[];
+    /** Claude session to resume (follow-up on the same task) */
+    resume?: string;
+    /** called with the session id of the run, so follow-ups can resume it */
+    onSession?: (sessionId: string) => Promise<void> | void;
+  };
 }
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };

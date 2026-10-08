@@ -1,4 +1,5 @@
-import { clients, db, workspaces } from "@wfos/db";
+import { clients, db, employees, workspaces } from "@wfos/db";
+import { runApprovedCommand } from "../runner/workspace/exec";
 import {
   emailPayloadSchema,
   invoicePayloadSchema,
@@ -89,6 +90,20 @@ async function doPostWebhook(workspaceId: string, p: { channel: string; text: st
   return { ok: res.ok, summary: res.ok ? "Published to webhook" : `Webhook responded ${res.status}` };
 }
 
+/** Workspace mode: run the exact approved command in the task's sandbox. A non-zero exit is a result, not a platform failure. */
+async function doRunApprovedCommand(workspaceId: string, command: string, context: { taskId?: string | null; employeeId?: string | null }): Promise<ActionResult> {
+  if (!command || !context.taskId || !context.employeeId) return { ok: false, summary: "Approved command has no task workspace" };
+  const [emp] = await db.select({ egress: employees.egressDomains, mode: employees.executionMode }).from(employees).where(eq(employees.id, context.employeeId));
+  if (emp?.mode !== "workspace") return { ok: false, summary: "The employee is no longer in Workspace mode" };
+  const r = await runApprovedCommand({ workspaceId, taskId: context.taskId, command, egressAllow: emp.egress });
+  const status = r.timedOut ? "timed out" : `exit code ${r.exitCode}`;
+  return {
+    ok: true,
+    summary: `Ran in the workspace (${status}), git hooks disabled`,
+    details: { exitCode: r.exitCode, timedOut: r.timedOut, truncated: r.truncated, output: r.output },
+  };
+}
+
 export async function callExternalMcpTool(workspaceId: string, server: string, tool: string, args: Record<string, unknown>): Promise<ActionResult> {
   const servers = await getExternalMcpServers(workspaceId);
   const s = servers.find((x) => x.name === server);
@@ -111,8 +126,15 @@ export async function callExternalMcpTool(workspaceId: string, server: string, t
  * Execute an irreversible action with its exact (possibly human-edited) payload.
  * Only called after the gate said "run" or a human approved.
  */
-export async function executeAction(workspaceId: string, toolName: string, payload: Record<string, unknown>): Promise<ActionResult> {
+export async function executeAction(
+  workspaceId: string,
+  toolName: string,
+  payload: Record<string, unknown>,
+  context: { taskId?: string | null; employeeId?: string | null } = {},
+): Promise<ActionResult> {
   switch (toolName) {
+    case "bash":
+      return doRunApprovedCommand(workspaceId, String(payload.command ?? ""), context);
     case "send_email":
       return doSendEmail(workspaceId, emailPayloadSchema.parse(payload));
     case "send_invoice":

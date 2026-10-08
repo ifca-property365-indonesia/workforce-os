@@ -56,6 +56,8 @@ export function buildSystemPrompt(opts: {
   mode: "task" | "chat";
   /** language for answers and deliverables; null = mirror the request */
   outputLocale?: Locale | null;
+  /** Workspace mode: Claude Code tools in an isolated sandbox */
+  workspace?: { egressDomains: string[]; hasRepository: boolean };
 }): string {
   const e = { ...opts.employee, ...Object.fromEntries(Object.entries(opts.overrides ?? {}).filter(([, v]) => v !== undefined)) } as PromptEmployee;
   const tools = BUILTIN_TOOLS.filter((t) => opts.grantedTools.includes(t.name))
@@ -82,6 +84,15 @@ export function buildSystemPrompt(opts: {
       ? `## Language\nWrite every answer, document, email and summary in ${LOCALE_NAMES[opts.outputLocale]}` +
         (opts.outputLocale === "id" ? " (formal Bahasa Indonesia, addressing people as \"Anda\"/\"Bapak/Ibu\")" : "") +
         ", unless the user explicitly asks for another language. Keep names, code and quoted material as they are."
+      : "",
+    opts.workspace
+      ? "## Your workspace\n" +
+        "You work in an isolated sandbox with Claude Code tools (Bash, Read, Write, Edit, Grep, Glob, subagents). Your working directory is your task workspace" +
+        (opts.workspace.hasRepository ? `, a git checkout on your own branch` : "") +
+        ".\n- Commit locally with git when a piece of work is done. Never push: use the git_push and create_pull_request tools; the platform pushes after a human approves.\n" +
+        "- Commands that are not provably local and reversible (network access, installs, publishing, writing outside the workspace, git config/hooks) are sent to a human for approval with the exact command. Do not try to work around a pending approval.\n" +
+        `- Network: the sandbox has no internet access except through a proxy that allows only: ${opts.workspace.egressDomains.length ? opts.workspace.egressDomains.join(", ") : "(no extra hosts)"}.\n` +
+        "- Run the tests before you finish, and end with a summary of what changed, the test result and anything pending."
       : "",
     opts.dryRun ? "## DRY RUN\nThis is a simulation. Irreversible tools are mocked and record what would have happened." : "",
   ]

@@ -36,6 +36,13 @@
       "when": 1791371379675,
       "tag": "0004_locale",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791371379676,
+      "tag": "0005_workspace_mode",
+      "breakpoints": true
     }
   ]
 }

@@ -12,3 +12,12 @@ export function agentQuery(params: Parameters<QueryFn>[0]): ReturnType<QueryFn> 
 export function setQueryImpl(fn: QueryFn | null): void {
   impl = fn ?? realQuery;
 }
+
+/** Tests can replace the Workspace-mode backend (systemd sandbox) with the scripted mock. */
+let workspaceImpl: ((cfg: unknown) => QueryFn) | null = null;
+export function setWorkspaceQueryFactory(fn: ((cfg: unknown) => QueryFn) | null): void {
+  workspaceImpl = fn;
+}
+export function workspaceQueryOverride(): ((cfg: unknown) => QueryFn) | null {
+  return workspaceImpl;
+}

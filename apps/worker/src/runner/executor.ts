@@ -1,7 +1,11 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import type { PermissionResult, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { agentQuery } from "./sdk";
+import type { CanUseTool, PermissionResult, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { agentQuery, workspaceQueryOverride } from "./sdk";
+import { createWorkspaceQuery, type WorkspaceRunConfig } from "./workspace/query";
+import { workspacePermissions } from "./workspace/permissions";
+import { defaultSandboxHost, runLayout } from "./workspace/layout";
+import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
 import { resolveClaudeCredential } from "@wfos/db";
 import { agentEnv, env } from "../lib/env";
@@ -38,6 +42,13 @@ export class MissingCredentialError extends Error {
     super(
       "No Claude credential for this workspace. An Owner can add one in Settings → Claude (subscription token from `claude setup-token`, or an API key), or enable Demo Mode.",
     );
+  }
+}
+
+/** All Workspace-mode slots on this host are taken; the task is retried shortly. */
+export class WorkspaceBusyError extends Error {
+  constructor() {
+    super("All Workspace-mode slots on this server are busy");
   }
 }
 
@@ -96,6 +107,8 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   // only this workspace's credential, only for this run
   const credential = await resolveClaudeCredential(ctx.workspaceId);
   if (!credential) throw new MissingCredentialError();
+  if (ctx.workspace && !ctx.taskId) throw new Error("Workspace mode runs only for tasks");
+  if (ctx.workspace && !(await acquireWorkspaceSlot(ctx.runId))) throw new WorkspaceBusyError();
   const controller = new AbortController();
   registerRun(ctx.runId, { workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, controller });
 
@@ -155,9 +168,42 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   };
 
   const allowed = new Set(grantedToolNames(ctx));
+  const toolModePermissions = async (toolName: string, toolInput: Record<string, unknown>): Promise<PermissionResult> => {
+    if (toolName.startsWith(`mcp__${WFOS_SERVER}__`)) {
+      return allowed.has(toolName) ? { behavior: "allow", updatedInput: toolInput } : { behavior: "deny", message: "Tool not granted to this employee." };
+    }
+    if (toolName.startsWith("mcp__")) return gateExternalTool(ctx, toolName, toolInput);
+    return { behavior: "deny", message: "Built-in tools are disabled for AI employees." };
+  };
+  let runQuery = agentQuery;
+  let canUseTool: CanUseTool = toolModePermissions;
+  if (ctx.workspace) {
+    const host = defaultSandboxHost();
+    const cfg: WorkspaceRunConfig = {
+      workspaceId: ctx.workspaceId,
+      taskId: ctx.taskId!,
+      credential,
+      egressAllow: ctx.workspace.egressDomains,
+      gitIdentity: { name: `${ctx.employee.name} (AI)`, email: `agent+${ctx.employee.id.slice(0, 8)}@workforce-os.local` },
+      host,
+      onGatewayEvent: (e) => {
+        if (e.kind === "egress_denied") {
+          void recordStep({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, kind: "guard", name: "egress_blocked", status: "blocked", output: e.detail });
+        }
+      },
+    };
+    const override = workspaceQueryOverride();
+    runQuery = override ? override(cfg) : createWorkspaceQuery(cfg);
+    canUseTool = workspacePermissions({
+      ctx,
+      allowedPlatformTools: allowed,
+      gateExternal: (n, i) => gateExternalTool(ctx, n, i),
+      workspaceDir: runLayout(host, { runId: ctx.runId, workspaceId: ctx.workspaceId, taskId: ctx.taskId! }).sandboxRepoDir,
+    });
+  }
 
   try {
-    const q = agentQuery({
+    const q = runQuery({
       prompt: input.prompt,
       options: {
         abortController: controller,
@@ -174,15 +220,8 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         includePartialMessages: true,
         maxTurns: input.maxTurns ?? 30,
         maxBudgetUsd: Math.max(0.01, input.creditBudget * CREDIT_USD),
-        canUseTool: async (toolName, toolInput) => {
-          if (toolName.startsWith(`mcp__${WFOS_SERVER}__`)) {
-            return allowed.has(toolName)
-              ? { behavior: "allow", updatedInput: toolInput }
-              : { behavior: "deny", message: "Tool not granted to this employee." };
-          }
-          if (toolName.startsWith("mcp__")) return gateExternalTool(ctx, toolName, toolInput);
-          return { behavior: "deny", message: "Built-in tools are disabled for AI employees." };
-        },
+        canUseTool: (toolName, toolInput, opts) => canUseTool(toolName, toolInput, opts),
+        ...(ctx.workspace?.resume ? { resume: ctx.workspace.resume } : {}),
         stderr: (d) => log.debug({ runId: ctx.runId, d: d.slice(0, 500) }, "sdk stderr"),
       },
     });
@@ -245,6 +284,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           break;
         }
         case "system": {
+          if (m.subtype === "init" && ctx.workspace?.onSession) await ctx.workspace.onSession(m.session_id);
           if (m.subtype === "compact_boundary") {
             await recordStep({
               workspaceId: ctx.workspaceId,
@@ -293,6 +333,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     }
   } finally {
     unregisterRun(ctx.runId);
+    if (ctx.workspace) await releaseWorkspaceSlot(ctx.runId);
     await rm(cwd, { recursive: true, force: true }).catch(() => {});
   }
 

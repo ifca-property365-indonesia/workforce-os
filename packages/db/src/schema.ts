@@ -25,6 +25,7 @@ import type {
   TaskStatus,
   Locale,
   OutputLanguage,
+  ExecutionMode,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -139,6 +140,10 @@ export const employees = pgTable(
     instructionsVersion: integer("instructions_version").notNull().default(1),
     /** language of answers and deliverables: inherit (workspace default) | id | en */
     outputLanguage: text("output_language").$type<OutputLanguage>().notNull().default("inherit"),
+    /** tool = platform tools only (default); workspace = Claude Code in an isolated per-task sandbox */
+    executionMode: text("execution_mode").$type<ExecutionMode>().notNull().default("tool"),
+    /** extra hosts the sandbox may reach through the egress proxy (e.g. registry.npmjs.org) */
+    egressDomains: jsonb("egress_domains").$type<string[]>().notNull().default([]),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -227,6 +232,12 @@ export const tasks = pgTable(
     result: text("result"),
     error: text("error"),
     costCredits: doublePrecision("cost_credits").notNull().default(0),
+    /** Claude session of the last Workspace-mode run, resumed by follow-ups */
+    agentSessionId: text("agent_session_id"),
+    /** repository checked out into the task workspace (Workspace mode) */
+    repositoryId: uuid("repository_id"),
+    /** null | active | archived (workspace files removed after retention; deliverables kept) */
+    workspaceStatus: text("workspace_status"),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -472,3 +483,21 @@ export const notifications = pgTable("notifications", {
   createdAt: createdAt(),
 });
 
+
+/** Git repositories connected to a workspace. The token stays with the platform; the agent never sees it. */
+export const repositories = pgTable(
+  "repositories",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    provider: text("provider").$type<"github" | "gitlab" | "git">().notNull(),
+    /** https clone URL (no credentials in it) */
+    url: text("url").notNull(),
+    defaultBranch: text("default_branch").notNull().default("main"),
+    tokenEnc: text("token_enc"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("repositories_ws_name").on(t.workspaceId, t.name)],
+);

@@ -11,3 +11,4 @@ apps/web/next-env.d.ts
 .env.local
 apps/*/.env
 apps/web/AGENTS.md
+packages/runner/dist/

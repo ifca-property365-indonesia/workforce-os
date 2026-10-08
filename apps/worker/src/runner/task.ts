@@ -11,7 +11,7 @@ import { log } from "../lib/logger";
 import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, recallMemories, workspaceDirectory } from "./prompt";
-import { MissingCredentialError, runAgent } from "./executor";
+import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
 import { onChildFinished, planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
 import { scriptedTaskRun } from "../simulation/demo";
 
@@ -111,6 +111,18 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     delegatedTaskIds: [],
     revisionRequests: [],
     team,
+    ...(emp.executionMode === "workspace" && !team
+      ? {
+          workspace: {
+            egressDomains: emp.egressDomains,
+            // follow-ups on the same task resume the same Claude session in the same workspace
+            resume: task.agentSessionId ?? undefined,
+            onSession: async (sessionId: string) => {
+              await db.update(tasks).set({ agentSessionId: sessionId, workspaceStatus: "active" }).where(eq(tasks.id, task.id));
+            },
+          },
+        }
+      : {}),
   };
 
   const [mem, directory, context, inbox] = await Promise.all([
@@ -137,6 +149,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
     dryRun: task.dryRun,
     mode: "task",
+    workspace: ctx.workspace ? { egressDomains: ctx.workspace.egressDomains, hasRepository: !!task.repositoryId } : undefined,
     outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
   });
 
@@ -144,6 +157,13 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   try {
     out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget: budget.remaining });
   } catch (e) {
+    if (e instanceof WorkspaceBusyError) {
+      // not a failure: wait for a free sandbox slot
+      await setTaskStatus({ ...task, status: "RUNNING" }, "QUEUED", { error: null });
+      await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "workspace_slot_busy", status: "waiting" });
+      await enqueueTask(task.id, ws.id, resumeNote, 15_000);
+      return;
+    }
     const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${(e as Error).message}`;
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "runner_error", status: "error", output: msg });
     await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: msg });

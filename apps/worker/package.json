@@ -7,7 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:system": "vitest run --config vitest.system.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.292",
@@ -28,7 +29,8 @@
     "pdf-parse": "^2.4.5",
     "pino": "^10.4.0",
     "tsx": "^4.23.15",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "@wfos/runner": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24",

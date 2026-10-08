@@ -700,7 +700,6 @@ export function classifyBash(command: string, context: BashContext = {}): BashCl
   });
   if (!command.trim()) return result("approval", "unknown", ["empty command"]);
   if (command.length > 20_000) return result("approval", "unknown", ["command too long to review automatically"]);
-  // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f‪-‮⁦-⁩]/.test(command)) {
     return result("approval", "unknown", ["contains control or bidirectional-override characters"]);
   }

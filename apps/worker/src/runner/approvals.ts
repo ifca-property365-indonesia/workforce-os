@@ -34,7 +34,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
     result = { ok: true, summary: `DRY RUN: ${a.toolName} would have been executed now.`, details: { simulated: true } };
   } else {
     try {
-      result = await executeAction(a.workspaceId, a.toolName, payload);
+      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId });
     } catch (e) {
       result = { ok: false, summary: (e as Error).message };
     }
@@ -101,11 +101,24 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
     const all = await tx.select().from(approvals).where(eq(approvals.taskId, taskId));
     if (all.some((x) => x.status === "PENDING" || x.status === "APPROVED" || x.status === "EXECUTING")) return null;
 
-    const needsRevision = all.filter((x) => x.status === "REJECTED" && x.feedback && !(x.executionResult as { consumed?: boolean } | null)?.consumed);
-    if (needsRevision.length) {
+    const consumed = (x: (typeof all)[number]) => !!(x.executionResult as { consumed?: boolean } | null)?.consumed;
+    const needsRevision = all.filter((x) => x.status === "REJECTED" && x.feedback && !consumed(x));
+    // Workspace mode: approved commands ran on the agent's behalf; it continues with their output
+    const commandResults = all.filter((x) => x.toolName === "bash" && (x.status === "EXECUTED" || x.status === "FAILED") && !consumed(x));
+    if (needsRevision.length || commandResults.length) {
       for (const r of needsRevision) await tx.update(approvals).set({ executionResult: { consumed: true } }).where(eq(approvals.id, r.id));
+      for (const r of commandResults) {
+        await tx.update(approvals).set({ executionResult: { ...(r.executionResult ?? {}), consumed: true } }).where(eq(approvals.id, r.id));
+      }
       await tx.update(tasks).set({ status: "QUEUED" }).where(eq(tasks.id, task.id));
-      const note = needsRevision.map((r) => `- Your proposed "${r.title}" was REJECTED. Feedback: ${r.feedback}`).join("\n");
+      const note = [
+        ...needsRevision.map((r) => `- Your proposed "${r.title}" was REJECTED. Feedback: ${r.feedback}`),
+        ...commandResults.map((r) => {
+          const d = (r.executionResult as { summary?: string; details?: { output?: string } } | null) ?? {};
+          const out = String(d.details?.output ?? "").slice(-8000);
+          return `- Approved command \`${String((r.editedPayload ?? r.payload).command ?? "")}\` ${d.summary ?? r.status}. Output:\n\`\`\`\n${out}\n\`\`\``;
+        }),
+      ].join("\n");
       return { kind: "revise" as const, task, note };
     }
     const summary = all
@@ -124,7 +137,7 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
   const { task } = outcome;
   if (outcome.kind === "revise") {
     await publish(task.workspaceId, { type: "task.updated", taskId: task.id, status: "QUEUED", employeeId: task.assigneeId, title: task.title });
-    await enqueueTask(task.id, task.workspaceId, `${outcome.note}\nRevise and propose again where appropriate.`);
+    await enqueueTask(task.id, task.workspaceId, `${outcome.note}\nContinue the task: revise and propose again where appropriate.`);
     return;
   }
   await publish(task.workspaceId, { type: "task.updated", taskId: task.id, status: outcome.status, employeeId: task.assigneeId, title: task.title });
