@@ -1,0 +1,19 @@
+{
+  "title": "Dashboard",
+  "description": "Delivery, cost and oversight across your AI workforce (1 credit = $0.01).",
+  "runDemo": "Run scripted demo",
+  "demoStarted": "Demo started — watch the task board and approvals.",
+  "delivered": "Tasks delivered",
+  "deliveredHint": "top-level, last 30 days",
+  "costPerTask": "Cost / completed task",
+  "approvalRate": "Approval rate",
+  "approvalHint": "{decided} decided · rejection {rejection}",
+  "spendThisMonth": "Spend this month",
+  "ofBudget": "of {budget} budget ({pct}%)",
+  "weeklySpend": "Spend per employee per week",
+  "weeklySpendHint": "Credits, last 8 weeks",
+  "wip": "Work in progress",
+  "reviewPending": "{count, plural, one {Review # pending approval} other {Review # pending approvals}}",
+  "yourEmployees": "Your AI employees",
+  "noEmployees": "No employees yet. <link>Hire your first one</link>."
+}

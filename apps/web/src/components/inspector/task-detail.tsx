@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -26,7 +27,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
-import { ago, credits, dateTime, ms, usd } from "@/lib/format";
+import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
 interface Deliverable {
@@ -125,26 +126,28 @@ function Json({ value }: { value: unknown }) {
 }
 
 export function StepTimeline({ steps, employees }: { steps: Step[]; employees: Map<string, { name: string; avatar: string }> }) {
+  const t = useTranslations("inspector");
+  const f = useFormat();
   const [open, setOpen] = useState<Set<string>>(new Set());
   const totals = steps.reduce(
     (a, s) => ({ in: a.in + s.inputTokens, out: a.out + s.outputTokens, credits: a.credits + s.credits, latency: a.latency + (s.kind === "llm" ? s.latencyMs : 0) }),
     { in: 0, out: 0, credits: 0, latency: 0 },
   );
-  if (!steps.length) return <p className="py-6 text-center text-sm text-muted-foreground">No activity yet.</p>;
+  if (!steps.length) return <p className="py-6 text-center text-sm text-muted-foreground">{t("activity.empty")}</p>;
   return (
     <div>
       <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <div className="rounded-md bg-muted/60 p-2">
-          Tokens in <div className="text-sm font-semibold tabular-nums">{totals.in.toLocaleString()}</div>
+          {t("activity.tokensIn")} <div className="text-sm font-semibold tabular-nums">{f.number(totals.in)}</div>
         </div>
         <div className="rounded-md bg-muted/60 p-2">
-          Tokens out <div className="text-sm font-semibold tabular-nums">{totals.out.toLocaleString()}</div>
+          {t("activity.tokensOut")} <div className="text-sm font-semibold tabular-nums">{f.number(totals.out)}</div>
         </div>
         <div className="rounded-md bg-muted/60 p-2">
-          Model time <div className="text-sm font-semibold tabular-nums">{ms(totals.latency)}</div>
+          {t("activity.modelTime")} <div className="text-sm font-semibold tabular-nums">{f.ms(totals.latency)}</div>
         </div>
         <div className="rounded-md bg-muted/60 p-2">
-          Cost <div className="text-sm font-semibold tabular-nums">{credits(totals.credits)} cr · {usd(totals.credits)}</div>
+          {t("activity.cost")} <div className="text-sm font-semibold tabular-nums">{t("activity.costValue", { credits: f.credits(totals.credits), usd: f.usd(totals.credits) })}</div>
         </div>
       </div>
       <ol className="relative space-y-1 border-l pl-4">
@@ -173,35 +176,33 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
                 <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} />
                 {emp && <span title={emp.name}>{emp.avatar}</span>}
                 <span className="font-medium">{s.name}</span>
-                <span className="rounded bg-muted px-1.5 text-[11px] uppercase text-muted-foreground">{s.kind}</span>
-                {s.status !== "ok" && <span className={cn("text-xs", bad ? "text-destructive" : "text-amber-600")}>{s.status}</span>}
+                <span className="rounded bg-muted px-1.5 text-[11px] uppercase text-muted-foreground">{t.has(`stepKind.${s.kind}`) ? t(`stepKind.${s.kind}`) : s.kind}</span>
+                {s.status !== "ok" && <span className={cn("text-xs", bad ? "text-destructive" : "text-amber-600")}>{t.has(`stepStatus.${s.status}`) ? t(`stepStatus.${s.status}`) : s.status}</span>}
                 <span className="ml-auto flex flex-wrap items-center gap-3 text-xs tabular-nums text-muted-foreground">
                   {s.model && <span>{s.model}</span>}
                   {(s.inputTokens > 0 || s.outputTokens > 0) && (
-                    <span>
-                      {s.inputTokens.toLocaleString()}→{s.outputTokens.toLocaleString()} tok
-                    </span>
+                    <span>{t("activity.tokens", { input: f.number(s.inputTokens), output: f.number(s.outputTokens) })}</span>
                   )}
-                  {s.latencyMs > 0 && <span>{ms(s.latencyMs)}</span>}
-                  <span className="w-16 text-right">{credits(s.credits)} cr</span>
+                  {s.latencyMs > 0 && <span>{f.ms(s.latencyMs)}</span>}
+                  <span className="w-16 text-right">{t("activity.credits", { amount: f.credits(s.credits) })}</span>
                 </span>
               </button>
               {isOpen && (
                 <div className="mb-2 ml-6 space-y-2 text-xs">
                   <div className="text-muted-foreground">
-                    {dateTime(s.createdAt)}
-                    {s.cacheReadTokens > 0 && ` · cache read ${s.cacheReadTokens.toLocaleString()}`}
-                    {s.cacheWriteTokens > 0 && ` · cache write ${s.cacheWriteTokens.toLocaleString()}`}
+                    {f.dateTime(s.createdAt)}
+                    {s.cacheReadTokens > 0 && ` · ${t("activity.cacheRead", { count: f.number(s.cacheReadTokens) })}`}
+                    {s.cacheWriteTokens > 0 && ` · ${t("activity.cacheWrite", { count: f.number(s.cacheWriteTokens) })}`}
                   </div>
                   {s.input != null && (
                     <div>
-                      <div className="mb-1 font-medium">Input / arguments</div>
+                      <div className="mb-1 font-medium">{t("activity.input")}</div>
                       <Json value={s.input} />
                     </div>
                   )}
                   {s.output != null && (
                     <div>
-                      <div className="mb-1 font-medium">Output / result</div>
+                      <div className="mb-1 font-medium">{t("activity.output")}</div>
                       <Json value={s.output} />
                     </div>
                   )}
@@ -216,8 +217,10 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
 }
 
 export function Deliverables({ items }: { items: Deliverable[] }) {
+  const t = useTranslations("inspector");
+  const f = useFormat();
   const [open, setOpen] = useState<string | null>(items[items.length - 1]?.id ?? null);
-  if (!items.length) return <p className="py-6 text-center text-sm text-muted-foreground">No deliverables yet.</p>;
+  if (!items.length) return <p className="py-6 text-center text-sm text-muted-foreground">{t("deliverables.empty")}</p>;
   return (
     <div className="space-y-2">
       {items.map((d) => (
@@ -225,22 +228,22 @@ export function Deliverables({ items }: { items: Deliverable[] }) {
           <button type="button" onClick={() => setOpen(open === d.id ? null : d.id)} className="flex w-full items-center gap-2 p-3 text-left text-sm">
             {d.kind === "simulated_action" ? <FlaskConical className="size-4 text-violet-600" /> : <FileText className="size-4 text-muted-foreground" />}
             <span className="flex-1 font-medium">{d.title}</span>
-            <span className="rounded bg-muted px-1.5 text-[11px] uppercase">{d.kind.replace("_", " ")}</span>
-            {d.diff && <span className="rounded bg-sky-500/15 px-1.5 text-[11px] text-sky-700 dark:text-sky-300">new version</span>}
-            <span className="text-xs text-muted-foreground">{ago(d.createdAt)}</span>
+            <span className="rounded bg-muted px-1.5 text-[11px] uppercase">{t.has(`deliverableKind.${d.kind}`) ? t(`deliverableKind.${d.kind}`) : d.kind.replaceAll("_", " ")}</span>
+            {d.diff && <span className="rounded bg-sky-500/15 px-1.5 text-[11px] text-sky-700 dark:text-sky-300">{t("deliverables.newVersion")}</span>}
+            <span className="text-xs text-muted-foreground">{f.ago(d.createdAt)}</span>
           </button>
           {open === d.id && (
             <div className="space-y-3 border-t p-3">
               {d.meta && (d.meta.to as string[] | undefined) && (
                 <div className="text-xs text-muted-foreground">
-                  To: {(d.meta.to as string[]).join(", ")}
+                  {t("deliverables.to", { recipients: (d.meta.to as string[]).join(", ") })}
                 </div>
               )}
               {d.diff ? (
                 <Tabs defaultValue="content">
                   <TabsList>
-                    <TabsTrigger value="content">Content</TabsTrigger>
-                    <TabsTrigger value="diff">Diff vs previous</TabsTrigger>
+                    <TabsTrigger value="content">{t("deliverables.content")}</TabsTrigger>
+                    <TabsTrigger value="diff">{t("deliverables.diff")}</TabsTrigger>
                   </TabsList>
                   <TabsContent value="content">
                     <pre className="whitespace-pre-wrap break-words text-sm">{d.content}</pre>
@@ -262,6 +265,10 @@ export function Deliverables({ items }: { items: Deliverable[] }) {
 }
 
 export function TaskDetail({ taskId, compact = false }: { taskId: string; compact?: boolean }) {
+  const t = useTranslations("inspector");
+  const tc = useTranslations("common");
+  const ts = useTranslations("status");
+  const f = useFormat();
   const { data, refetch } = useQuery({ queryKey: ["task", taskId], queryFn: () => api.get<Detail>(`/api/tasks/${taskId}`) });
   const { data: stepsData } = useQuery({
     queryKey: ["steps", taskId],
@@ -270,13 +277,13 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
   const action = useMutation({
     mutationFn: (a: "start" | "cancel" | "retry" | "dry_run") => api.post<{ taskId?: string }>(`/api/tasks/${taskId}/actions`, { action: a }),
     onSuccess: (r, a) => {
-      toast.success(a === "cancel" ? "Task cancelled" : a === "dry_run" ? "Dry run started" : "Task queued");
+      toast.success(a === "cancel" ? t("actions.cancelled") : a === "dry_run" ? t("actions.dryRunStarted") : t("actions.queued"));
       if (r.taskId && r.taskId !== taskId) location.href = `/tasks/${r.taskId}`;
       void refetch();
     },
     onError: (e) => toast.error((e as Error).message),
   });
-  if (!data) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (!data) return <p className="text-sm text-muted-foreground">{tc("loading")}</p>;
   const { task, children, approvals, messages, parent } = data;
   const emp = new Map(data.employees.map((e) => [e.id, e]));
   const assignee = task.assigneeId ? emp.get(task.assigneeId) : undefined;
@@ -287,44 +294,42 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
         <div className="min-w-0 flex-1">
           {parent && (
             <Link href={`/tasks/${parent.id}`} className="text-xs text-primary hover:underline">
-              ↑ Subtask of {parent.title}
+              {t("task.subtaskOf", { title: parent.title })}
             </Link>
           )}
           <h2 className={cn("font-semibold", compact ? "text-lg" : "text-xl")}>{task.title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge status={task.status} />
-            {task.dryRun && <span className="rounded-full bg-violet-500/15 px-2 py-0.5 font-medium text-violet-700 dark:text-violet-300">dry run</span>}
-            {task.phase && task.teamId && <span className="rounded-full bg-muted px-2 py-0.5">team: {task.phase}</span>}
+            {task.dryRun && <span className="rounded-full bg-violet-500/15 px-2 py-0.5 font-medium text-violet-700 dark:text-violet-300">{t("task.dryRun")}</span>}
+            {task.phase && task.teamId && <span className="rounded-full bg-muted px-2 py-0.5">{t("task.team", { phase: task.phase })}</span>}
             {assignee && (
               <span className="inline-flex items-center gap-1">
                 <Avatar emoji={assignee.avatar} size="sm" /> {assignee.name}
               </span>
             )}
-            <span>source: {task.source}</span>
-            <span>
-              cost {credits(task.costCredits)} cr ({usd(task.costCredits)})
-            </span>
-            <span>created {ago(task.createdAt)}</span>
+            <span>{t("task.source", { source: t.has(`source.${task.source}`) ? t(`source.${task.source}`) : task.source })}</span>
+            <span>{t("task.cost", { credits: f.credits(task.costCredits), usd: f.usd(task.costCredits) })}</span>
+            <span>{t("task.created", { when: f.ago(task.createdAt) })}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           {task.status === "QUEUED" && (
             <Button size="sm" variant="outline" onClick={() => action.mutate("start")} className="gap-1">
-              <Play className="size-3.5" /> Start
+              <Play className="size-3.5" /> {t("actions.start")}
             </Button>
           )}
           {["QUEUED", "RUNNING", "AWAITING_APPROVAL"].includes(task.status) && (
             <Button size="sm" variant="outline" onClick={() => action.mutate("cancel")} className="gap-1">
-              <Ban className="size-3.5" /> Cancel
+              <Ban className="size-3.5" /> {t("actions.cancel")}
             </Button>
           )}
           {["FAILED", "CANCELLED", "DONE"].includes(task.status) && (
             <Button size="sm" variant="outline" onClick={() => action.mutate("retry")} className="gap-1">
-              <RotateCcw className="size-3.5" /> {task.status === "DONE" ? "Run again" : "Retry"}
+              <RotateCcw className="size-3.5" /> {task.status === "DONE" ? t("actions.runAgain") : t("actions.retry")}
             </Button>
           )}
           <Button size="sm" variant="outline" onClick={() => action.mutate("dry_run")} className="gap-1">
-            <FlaskConical className="size-3.5" /> Dry run
+            <FlaskConical className="size-3.5" /> {t("actions.dryRun")}
           </Button>
         </div>
       </div>
@@ -335,7 +340,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
         <div className={cn("space-y-4", !compact && "lg:col-span-2")}>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Brief</CardTitle>
+              <CardTitle className="text-sm">{t("task.brief")}</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">{task.brief || "—"}</p>
@@ -344,7 +349,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           {task.result && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Result</CardTitle>
+                <CardTitle className="text-sm">{t("task.result")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="whitespace-pre-wrap text-sm">{task.result}</p>
@@ -354,14 +359,14 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           {approvals.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Approvals</CardTitle>
+                <CardTitle className="text-sm">{t("task.approvals")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-1">
                 {approvals.map((a) => (
                   <Link key={a.id} href={`/approvals?focus=${a.id}`} className="flex items-center justify-between rounded px-2 py-1 text-sm hover:bg-accent">
                     <span className="truncate">{a.title}</span>
                     <span className={cn("text-xs font-medium", a.status === "PENDING" ? "text-amber-600" : a.status === "REJECTED" || a.status === "FAILED" ? "text-destructive" : "text-emerald-600")}>
-                      {a.status}
+                      {ts(`approval.${a.status}`)}
                     </span>
                   </Link>
                 ))}
@@ -371,7 +376,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           {children.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Subtasks</CardTitle>
+                <CardTitle className="text-sm">{t("task.subtasks")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-1">
                 {children.map((c) => (
@@ -387,13 +392,13 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           {messages.length > 0 && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Inter-agent channel</CardTitle>
+                <CardTitle className="text-sm">{t("task.channel")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {messages.map((m) => (
                   <div key={m.id} className="rounded-md border p-2 text-xs">
                     <div className="mb-0.5 font-medium">
-                      {m.fromEmployeeId ? emp.get(m.fromEmployeeId)?.name : "system"} → {m.toEmployeeId ? emp.get(m.toEmployeeId)?.name : "—"}{" "}
+                      {m.fromEmployeeId ? emp.get(m.fromEmployeeId)?.name : t("task.system")} → {m.toEmployeeId ? emp.get(m.toEmployeeId)?.name : "—"}{" "}
                       <span className="rounded bg-muted px-1 uppercase text-muted-foreground">{m.intent}</span>
                     </div>
                     <div className="whitespace-pre-wrap text-muted-foreground">{m.content}</div>
@@ -406,8 +411,8 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
         <div className={cn(!compact && "lg:col-span-3")}>
           <Tabs defaultValue="activity">
             <TabsList>
-              <TabsTrigger value="activity">Activity ({stepsData?.steps.length ?? 0})</TabsTrigger>
-              <TabsTrigger value="deliverables">Deliverables ({task.deliverables.length + children.reduce((s, c) => s + c.deliverables.length, 0)})</TabsTrigger>
+              <TabsTrigger value="activity">{t("task.activityTab", { count: stepsData?.steps.length ?? 0 })}</TabsTrigger>
+              <TabsTrigger value="deliverables">{t("task.deliverablesTab", { count: task.deliverables.length + children.reduce((s, c) => s + c.deliverables.length, 0) })}</TabsTrigger>
             </TabsList>
             <TabsContent value="activity" className="mt-3">
               <StepTimeline steps={stepsData?.steps ?? []} employees={emp} />

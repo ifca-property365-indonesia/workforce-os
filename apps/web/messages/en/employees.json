@@ -1,0 +1,187 @@
+{
+  "list": {
+    "title": "AI employees",
+    "description": "Each employee has a role, memory, scoped tools and an explicit autonomy level.",
+    "hire": "Hire employee",
+    "emptyTitle": "No employees yet",
+    "emptyDescription": "Pick a role template from the marketplace below to hire your first AI employee.",
+    "toolsCount": "{count, plural, one {# tool} other {# tools}}",
+    "spentToday": "Today: {spent} / {budget} credits",
+    "marketplace": "Marketplace",
+    "defaultAutonomy": "Default autonomy: {level}",
+    "hireRole": "Hire {role}"
+  },
+  "detail": {
+    "chat": "Chat",
+    "pause": "Pause",
+    "resume": "Resume",
+    "archive": "Archive",
+    "archiveConfirm": "Archive {name}?",
+    "pausedBudget": "Paused because a budget cap was reached. Raise the daily budget under “Tools & autonomy” (or the workspace monthly budget), then Resume.",
+    "tabs": {
+      "overview": "Overview",
+      "instructions": "Instructions & replay",
+      "tools": "Tools & autonomy",
+      "memory": "Memory"
+    },
+    "spentToday": "Spent today",
+    "budgetOf": "/ {budget} cr",
+    "creditsShort": "{amount} cr",
+    "toolsGranted": "Tools granted",
+    "instructionsVersion": "Instructions version",
+    "version": "v{version}",
+    "recentTasks": "Recent tasks",
+    "noTasks": "No tasks yet."
+  },
+  "outputLanguage": {
+    "label": "Output language",
+    "help": "The language this employee writes answers, documents and emails in.",
+    "saved": "Output language saved"
+  },
+  "instructions": {
+    "persona": "Persona",
+    "instructions": "Instructions (v{version})",
+    "businessContext": "Business context",
+    "replayOnLast": "Replay on last",
+    "completedTasks": "completed tasks",
+    "preview": "Preview change on past tasks",
+    "saveWithoutReplay": "Save without replay",
+    "confirmSaveWithoutReplay": "Save without comparing against past tasks?",
+    "replayStarted": "Replay started on past tasks (dry run, no side effects)",
+    "promoted": "New instructions promoted",
+    "discarded": "Proposal discarded",
+    "savedWithoutReplay": "Saved without replay"
+  },
+  "replay": {
+    "status": {
+      "queued": "Replay in progress…",
+      "running": "Replay in progress…",
+      "done": "Replay finished",
+      "failed": "Replay failed"
+    },
+    "summary": "Old vs new output on {count, plural, one {# past task} other {# past tasks}} · {credits} credits · {when}",
+    "currentInstructions": "Current instructions",
+    "proposedInstructions": "Proposed instructions",
+    "unifiedDiff": "Unified diff",
+    "promote": "Promote new instructions",
+    "discard": "Discard"
+  },
+  "allowList": {
+    "title": "Owner allow-list",
+    "description": "Only applies at {level} autonomy. Matching irreversible actions run without per-action approval; anything outside the scope still stops at an approval.",
+    "ownerOnly": "Only Owners can edit.",
+    "recipientDomains": "recipient domains (comma-separated)",
+    "maxAmount": "max amount (invoices)",
+    "removeScope": "Remove scope",
+    "addScope": "Add scope",
+    "save": "Save allow-list",
+    "saved": "Allow-list saved (audited)"
+  },
+  "toolsTab": {
+    "dailyBudget": "Daily budget (credits)",
+    "save": "Save permissions",
+    "saved": "Permissions saved (audited)"
+  },
+  "memory": {
+    "placeholder": "Teach a fact, e.g. 'Kopi Nusantara prefers English'",
+    "meta": "from {source} · {when} · double-click to edit",
+    "delete": "Delete memory",
+    "empty": "No memories yet. Rejection feedback from the Approvals inbox lands here automatically.",
+    "kind": {
+      "fact": "fact",
+      "feedback": "feedback",
+      "preference": "preference"
+    }
+  },
+  "toolPermissions": {
+    "grant": "Grant {tool}",
+    "inherit": "Inherit ({level})",
+    "mcpServerLabel": "MCP server: {name}",
+    "mcpServerDescription": "All tools of this connected MCP server (classified by verb; unknown = irreversible)"
+  },
+  "toolClass": {
+    "reversible": "reversible",
+    "irreversible": "irreversible"
+  },
+  "toolCategories": {
+    "knowledge": "Knowledge",
+    "memory": "Memory",
+    "clients": "Clients",
+    "drafting": "Drafting",
+    "comms": "Communication",
+    "billing": "Billing",
+    "team": "Team",
+    "web": "Web",
+    "tasks": "Tasks"
+  },
+  "tools": {
+    "kb_search": {
+      "label": "Knowledge base search",
+      "description": "Search the workspace knowledge base with citations"
+    },
+    "memory_search": {
+      "label": "Recall memory",
+      "description": "Search the employee's long-term memory"
+    },
+    "memory_save": {
+      "label": "Save memory",
+      "description": "Store a fact in the employee's long-term memory"
+    },
+    "list_clients": {
+      "label": "List clients",
+      "description": "List clients and projects from master data"
+    },
+    "get_client": {
+      "label": "Get client",
+      "description": "Read one client with contacts and projects"
+    },
+    "list_tasks": {
+      "label": "List tasks",
+      "description": "Read recent tasks and deliverables in the workspace"
+    },
+    "web_fetch": {
+      "label": "Fetch web page",
+      "description": "Read a public web page (text only)"
+    },
+    "draft_document": {
+      "label": "Draft document",
+      "description": "Create a document or code deliverable (with diff vs previous version)"
+    },
+    "draft_email": {
+      "label": "Draft email",
+      "description": "Write an email draft without sending it"
+    },
+    "draft_invoice": {
+      "label": "Draft invoice",
+      "description": "Generate an invoice PDF draft for a client"
+    },
+    "create_task": {
+      "label": "Create task",
+      "description": "Create a task on the board (from chat)"
+    },
+    "delegate_subtask": {
+      "label": "Delegate subtask",
+      "description": "Team lead: assign a subtask to a team member"
+    },
+    "request_revision": {
+      "label": "Request revision",
+      "description": "Team lead: send a subtask back with feedback"
+    },
+    "message_teammate": {
+      "label": "Message teammate",
+      "description": "Send a structured message to another employee"
+    },
+    "send_email": {
+      "label": "Send email",
+      "description": "Send an email via workspace SMTP"
+    },
+    "send_invoice": {
+      "label": "Send invoice",
+      "description": "Email an invoice PDF to a client"
+    },
+    "post_webhook": {
+      "label": "Publish to webhook",
+      "description": "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)"
+    }
+  }
+}

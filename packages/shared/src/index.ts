@@ -11,6 +11,54 @@ export function hasRole(actual: Role, required: Role): boolean {
   return ROLE_RANK[actual] >= ROLE_RANK[required];
 }
 
+// ---------------------------------------------------------------------------
+// Languages
+// ---------------------------------------------------------------------------
+
+export const LOCALES = ["id", "en"] as const;
+export type Locale = (typeof LOCALES)[number];
+export const OUTPUT_LANGUAGES = ["inherit", "id", "en"] as const;
+export type OutputLanguage = (typeof OUTPUT_LANGUAGES)[number];
+/** last resort when neither the user, the workspace nor the browser says anything usable */
+export const FALLBACK_LOCALE: Locale = "en";
+export const LOCALE_NAMES: Record<Locale, string> = { id: "Bahasa Indonesia", en: "English" };
+
+export function isLocale(v: unknown): v is Locale {
+  return typeof v === "string" && (LOCALES as readonly string[]).includes(v);
+}
+
+/** Pick the best supported locale from an Accept-Language header (q-values respected). */
+export function localeFromAcceptLanguage(header: string | null | undefined): Locale | null {
+  if (!header) return null;
+  const ranked = header
+    .split(",")
+    .map((part, i) => {
+      const [tag, ...params] = part.trim().split(";");
+      const q = params.map((p) => p.trim()).find((p) => p.startsWith("q="));
+      return { base: (tag ?? "").toLowerCase().split("-")[0]!, q: q ? Number(q.slice(2)) : 1, i };
+    })
+    .filter((x) => x.base && !Number.isNaN(x.q) && x.q > 0)
+    .sort((a, b) => b.q - a.q || a.i - b.i);
+  for (const r of ranked) {
+    if (r.base === "in" || r.base === "ms") return "id"; // legacy code for Indonesian; Malay is close enough to prefer id over en
+    if (isLocale(r.base)) return r.base;
+  }
+  return null;
+}
+
+/** User preference → workspace default → browser → fallback. */
+export function resolveLocale(user: string | null | undefined, workspace: string | null | undefined, acceptLanguage: string | null | undefined): Locale {
+  if (isLocale(user)) return user;
+  if (isLocale(workspace)) return workspace;
+  return localeFromAcceptLanguage(acceptLanguage) ?? FALLBACK_LOCALE;
+}
+
+/** The language an employee writes in; null = no instruction (mirror the request). */
+export function employeeOutputLocale(setting: OutputLanguage | null | undefined, workspaceDefault: string | null | undefined): Locale | null {
+  if (setting === "id" || setting === "en") return setting;
+  return isLocale(workspaceDefault) ? workspaceDefault : null;
+}
+
 export const AUTONOMY_LEVELS = ["DRAFT", "QUEUE", "EXECUTE", "CLOSE"] as const;
 export type AutonomyLevel = (typeof AUTONOMY_LEVELS)[number];
 export const AUTONOMY_DESCRIPTIONS: Record<AutonomyLevel, string> = {
@@ -386,6 +434,7 @@ export const employeeInputSchema = z.object({
   autonomyLevel: z.enum(AUTONOMY_LEVELS).default("DRAFT"),
   toolPermissions: z.array(toolPermissionSchema).default([]),
   dailyBudget: z.number().nonnegative().max(1_000_000).default(200),
+  outputLanguage: z.enum(OUTPUT_LANGUAGES).default("inherit"),
 });
 export type EmployeeInput = z.infer<typeof employeeInputSchema>;
 

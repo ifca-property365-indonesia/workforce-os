@@ -9,7 +9,7 @@ import { notFound, route } from "@/lib/server/route";
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
   const [a] = await db.select().from(approvals).where(and(eq(approvals.id, params.id), eq(approvals.workspaceId, session.workspaceId)));
   if (!a) notFound();
-  if (a.toolName !== "send_invoice") throw new HttpError(400, "Not an invoice approval");
+  if (a.toolName !== "send_invoice") throw new HttpError(400, "Not an invoice approval", { code: "not_invoice_approval" });
   const inv = invoicePayloadSchema.parse(a.editedPayload ?? a.payload);
   const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, a.workspaceId));
   const [client] = await db.select().from(clients).where(eq(clients.id, inv.clientId));

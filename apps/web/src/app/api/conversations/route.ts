@@ -13,14 +13,14 @@ const schema = z.object({ employeeId: z.string().uuid().optional(), teamId: z.st
 
 export const POST = route("MEMBER", async ({ session, req }) => {
   const input = await body(req, schema);
-  if (!input.employeeId && !input.teamId) throw new HttpError(400, "Pick an employee or a team");
+  if (!input.employeeId && !input.teamId) throw new HttpError(400, "Pick an employee or a team", { code: "conversation_needs_target" });
   if (input.employeeId) {
     const [e] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, input.employeeId), eq(employees.workspaceId, session.workspaceId)));
-    if (!e) throw new HttpError(400, "Unknown employee");
+    if (!e) throw new HttpError(400, "Unknown employee", { code: "unknown_employee" });
   }
   if (input.teamId) {
     const [t] = await db.select({ id: teams.id }).from(teams).where(and(eq(teams.id, input.teamId), eq(teams.workspaceId, session.workspaceId)));
-    if (!t) throw new HttpError(400, "Unknown team");
+    if (!t) throw new HttpError(400, "Unknown team", { code: "unknown_team" });
   }
   const [c] = await db
     .insert(conversations)

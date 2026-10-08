@@ -1,0 +1,94 @@
+{
+  "activity": {
+    "empty": "No activity yet.",
+    "tokensIn": "Tokens in",
+    "tokensOut": "Tokens out",
+    "modelTime": "Model time",
+    "cost": "Cost",
+    "costValue": "{credits} cr · {usd}",
+    "tokens": "{input}→{output} tok",
+    "credits": "{amount} cr",
+    "cacheRead": "cache read {count}",
+    "cacheWrite": "cache write {count}",
+    "input": "Input / arguments",
+    "output": "Output / result"
+  },
+  "stepKind": {
+    "llm": "LLM",
+    "tool": "Tool",
+    "guard": "Guard",
+    "approval": "Approval",
+    "agent_message": "Agent message",
+    "compaction": "Compaction",
+    "budget": "Budget",
+    "system": "System",
+    "error": "Error"
+  },
+  "stepStatus": {
+    "error": "error",
+    "blocked": "blocked",
+    "denied": "denied",
+    "flagged": "flagged",
+    "pending": "pending",
+    "simulated": "simulated",
+    "drafted": "drafted"
+  },
+  "deliverables": {
+    "empty": "No deliverables yet.",
+    "newVersion": "new version",
+    "to": "To: {recipients}",
+    "content": "Content",
+    "diff": "Diff vs previous"
+  },
+  "deliverableKind": {
+    "document": "document",
+    "email_draft": "email draft",
+    "invoice": "invoice",
+    "code": "code",
+    "summary": "summary",
+    "simulated_action": "simulated action",
+    "review": "review"
+  },
+  "task": {
+    "subtaskOf": "↑ Subtask of {title}",
+    "dryRun": "dry run",
+    "team": "team: {phase}",
+    "source": "source: {source}",
+    "cost": "cost {credits} cr ({usd})",
+    "created": "created {when}",
+    "system": "system",
+    "brief": "Brief",
+    "result": "Result",
+    "approvals": "Approvals",
+    "subtasks": "Subtasks",
+    "channel": "Inter-agent channel",
+    "activityTab": "Activity ({count})",
+    "deliverablesTab": "Deliverables ({count})"
+  },
+  "source": {
+    "chat": "chat",
+    "board": "task board",
+    "routine": "routine",
+    "team": "team",
+    "replay": "replay",
+    "demo": "demo"
+  },
+  "actions": {
+    "start": "Start",
+    "cancel": "Cancel",
+    "runAgain": "Run again",
+    "retry": "Retry",
+    "dryRun": "Dry run",
+    "cancelled": "Task cancelled",
+    "dryRunStarted": "Dry run started",
+    "queued": "Task queued"
+  },
+  "weeklySpend": {
+    "empty": "No spend recorded in the last 8 weeks.",
+    "other": "Other",
+    "weekOf": "Week of {date}",
+    "total": "Total",
+    "tableView": "Table view",
+    "week": "Week"
+  }
+}

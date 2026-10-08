@@ -21,7 +21,7 @@ const addSchema = z.object({ email: z.email(), name: z.string().min(1).max(120),
 /** Add a member. New users get a one-time temporary password shown once to the admin. */
 export const POST = route("ADMIN", async ({ session, req }) => {
   const input = await body(req, addSchema);
-  if (input.role === "OWNER" && session.role !== "OWNER") throw new HttpError(403, "Only an Owner can add Owners");
+  if (input.role === "OWNER" && session.role !== "OWNER") throw new HttpError(403, "Only an Owner can add Owners", { code: "owner_only_add_owner" });
   const email = input.email.toLowerCase();
   let [u] = await db.select().from(users).where(eq(users.email, email));
   let tempPassword: string | null = null;
@@ -38,7 +38,7 @@ const roleSchema = z.object({ userId: z.string().uuid(), role: z.enum(ROLES) });
 
 export const PATCH = route("OWNER", async ({ session, req }) => {
   const input = await body(req, roleSchema);
-  if (input.userId === session.userId && input.role !== "OWNER") throw new HttpError(400, "You cannot demote yourself");
+  if (input.userId === session.userId && input.role !== "OWNER") throw new HttpError(400, "You cannot demote yourself", { code: "cannot_demote_self" });
   await db.update(members).set({ role: input.role }).where(and(eq(members.workspaceId, session.workspaceId), eq(members.userId, input.userId)));
   await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "member.role_changed", targetType: "user", targetId: input.userId, details: { role: input.role } });
   return { ok: true };
@@ -47,14 +47,14 @@ export const PATCH = route("OWNER", async ({ session, req }) => {
 /** Remove a member from this workspace. Their sessions stop working here at once (getSession checks membership). */
 export const DELETE = route("ADMIN", async ({ session, req }) => {
   const userId = req.nextUrl.searchParams.get("userId") ?? "";
-  if (!z.string().uuid().safeParse(userId).success) throw new HttpError(400, "userId is required");
-  if (userId === session.userId) throw new HttpError(400, "You cannot remove yourself");
+  if (!z.string().uuid().safeParse(userId).success) throw new HttpError(400, "userId is required", { code: "invalid_input" });
+  if (userId === session.userId) throw new HttpError(400, "You cannot remove yourself", { code: "cannot_remove_self" });
   const rows = await db.select().from(members).where(eq(members.workspaceId, session.workspaceId));
   const target = rows.find((m) => m.userId === userId);
-  if (!target) throw new HttpError(404, "Member not found");
+  if (!target) throw new HttpError(404, "Member not found", { code: "member_not_found" });
   if (target.role === "OWNER") {
-    if (session.role !== "OWNER") throw new HttpError(403, "Only an Owner can remove an Owner");
-    if (rows.filter((m) => m.role === "OWNER").length <= 1) throw new HttpError(400, "A workspace needs at least one Owner");
+    if (session.role !== "OWNER") throw new HttpError(403, "Only an Owner can remove an Owner", { code: "owner_only_remove_owner" });
+    if (rows.filter((m) => m.role === "OWNER").length <= 1) throw new HttpError(400, "A workspace needs at least one Owner", { code: "last_owner" });
   }
   const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
   await db.delete(members).where(and(eq(members.workspaceId, session.workspaceId), eq(members.userId, userId)));

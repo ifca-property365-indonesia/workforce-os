@@ -1,3 +1,4 @@
+import { employeeOutputLocale } from "@wfos/shared";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { createTwoFilesPatch } from "diff";
@@ -69,6 +70,7 @@ export async function runReplay(replayId: string): Promise<void> {
           grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
           dryRun: true,
           mode: "task",
+          outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
         });
         const out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: `# Task: ${t.title}\n${t.brief}`, creditBudget: budget.remaining, stepName: "replay", maxTurns: 15 });
         const drafts = ctx.deliverables.map((d) => `### ${d.title}\n${d.content}`).join("\n\n");

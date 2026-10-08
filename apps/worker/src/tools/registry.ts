@@ -38,6 +38,8 @@ import { recordStep } from "../lib/steps";
 import { publish, miscQueue } from "../lib/redis";
 import { guardOutput, guardToolResult, type GuardCtx } from "../guards/content";
 import { executeAction } from "./actions";
+import { msg } from "@wfos/shared/messages";
+import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
 
 export const WFOS_SERVER = "wfos";
@@ -203,11 +205,12 @@ export async function createApproval(
     output: payload,
   });
   await publish(ctx.workspaceId, { type: "approval.created", approvalId: a!.id, taskId: ctx.taskId, title });
+  const locale = await workspaceLocale(ctx.workspaceId);
   await miscQueue.add("notify", {
     kind: "notify",
     workspaceId: ctx.workspaceId,
-    subject: `Approval needed: ${title}`,
-    text: `${ctx.employee.name} (${ctx.employee.role}) wants to run ${toolName}.\nReason: ${reason}`,
+    subject: msg(locale, "notify.approvalNeeded", { title }),
+    text: msg(locale, "notify.approvalNeededText", { employee: ctx.employee.name, role: ctx.employee.role, tool: toolName, reason }),
     link: `/approvals?focus=${a!.id}`,
   });
   return a!.id;

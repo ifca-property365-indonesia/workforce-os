@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { LOCALES } from "@wfos/shared";
 import { audit, claudeCredentialStatus, db, workspaces } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import { body, route } from "@/lib/server/route";
@@ -19,6 +20,7 @@ export const GET = route("VIEWER", async ({ session }) => {
       notifyEmail: ws!.notifyEmail,
       webhookConfigured: !!ws!.webhookUrlEnc,
       require2faAdmins: ws!.require2faAdmins,
+      defaultLocale: ws!.defaultLocale,
     },
     claude: claudeSummary(await claudeCredentialStatus(session.workspaceId)),
   };
@@ -32,6 +34,8 @@ const schema = z.object({
   notifyEmail: z.email().or(z.literal("")).optional(),
   webhookUrl: z.url().or(z.literal("")).optional(),
   require2faAdmins: z.boolean().optional(),
+  /** workspace language for the UI default and employee output; null = follow each browser */
+  defaultLocale: z.enum(LOCALES).nullable().optional(),
 });
 
 export const PUT = route("ADMIN", async ({ session, req }) => {

@@ -1,0 +1,28 @@
+{
+  "title": "Teams",
+  "description": "Drag employees into a team and crown a Lead. The Lead plans, delegates subtasks and reviews deliverables.",
+  "employees": "Employees",
+  "newTeamPlaceholder": "New team name",
+  "createTeam": "Create team",
+  "briefTeam": "Brief team",
+  "deleteTeam": "Delete team",
+  "confirmDelete": "Delete {name}?",
+  "dropHere": "Drop employees here",
+  "lead": "Lead",
+  "makeLead": "Make Lead",
+  "removeMember": "Remove",
+  "chooseLead": "Click the crown to choose a Lead.",
+  "empty": {
+    "title": "No teams yet",
+    "description": "Create a team, then drag employees into it."
+  },
+  "brief": {
+    "title": "Brief the {team}",
+    "titleLabel": "Title",
+    "brief": "Brief",
+    "briefPlaceholder": "The Lead will plan, delegate subtasks to members and review their deliverables.",
+    "client": "Client (optional)",
+    "dryRun": "Dry run",
+    "send": "Send brief"
+  }
+}

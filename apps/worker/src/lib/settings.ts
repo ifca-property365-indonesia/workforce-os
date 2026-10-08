@@ -9,6 +9,12 @@ export async function getWorkspace(workspaceId: string) {
   return ws;
 }
 
+/** Workspace language for notifications and default emails (null = not set → English). */
+export async function workspaceLocale(workspaceId: string): Promise<string | null> {
+  const [ws] = await db.select({ l: workspaces.defaultLocale }).from(workspaces).where(eq(workspaces.id, workspaceId));
+  return ws?.l ?? null;
+}
+
 export async function getSmtp(workspaceId: string): Promise<SmtpConfig | null> {
   const [c] = await db
     .select()

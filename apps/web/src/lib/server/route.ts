@@ -4,6 +4,9 @@ import { ZodError, type z } from "zod";
 import type { Role } from "@wfos/shared";
 import { HttpError, requireSession, type Session } from "./auth";
 import { logger } from "./logger";
+import { serverT } from "./i18n";
+import { createFormatter } from "@/lib/format";
+import { APP_TIME_ZONE } from "@/i18n/locale";
 
 /** The only API routes usable while a temporary password is still in place. */
 const PASSWORD_CHANGE_ALLOWED = new Set(["/api/me", "/api/me/password"]);
@@ -34,11 +37,27 @@ export function route<P = Record<string, string>>(minRole: Role, fn: (ctx: Ctx<P
   };
 }
 
-export function errorResponse(e: unknown, req: NextRequest, started = Date.now()) {
-  if (e instanceof HttpError) return NextResponse.json({ ...e.extra, error: e.message }, { status: e.status });
-  if (e instanceof ZodError) return NextResponse.json({ error: "Validation failed", issues: e.issues }, { status: 400 });
+/** JSON error in the requesting user's language: errors.<code> from the catalog, with the extra fields as values. */
+export async function errorResponse(e: unknown, req: NextRequest, started = Date.now()) {
+  const { t, locale } = await serverT().catch(() => ({ t: null, locale: "en" as const }));
+  if (e instanceof HttpError) {
+    const { code, ...values } = e.extra;
+    let message = e.message;
+    if (t && code && t.has(`errors.${code}`)) {
+      const v: Record<string, string | number> = {};
+      for (const [k, x] of Object.entries(values)) if (typeof x === "string" || typeof x === "number") v[k] = x;
+      if (typeof values.lockedUntil === "string") v.time = createFormatter(locale, APP_TIME_ZONE).time(values.lockedUntil);
+      if (typeof values.status === "string" && t.has(`status.any.${values.status}`)) v.status = t(`status.any.${values.status}`);
+      message = t(`errors.${code}`, v);
+    }
+    return NextResponse.json({ ...e.extra, error: message }, { status: e.status });
+  }
+  if (e instanceof ZodError) {
+    const fields = [...new Set(e.issues.map((i) => i.path.join(".") || "body"))].join(", ");
+    return NextResponse.json({ error: t ? t("errors.validation", { fields }) : `Invalid input: ${fields}`, code: "validation", issues: e.issues }, { status: 400 });
+  }
   logger.error({ err: (e as Error).message, stack: (e as Error).stack, path: req.nextUrl.pathname, ms: Date.now() - started }, "route error");
-  return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  return NextResponse.json({ error: t ? t("errors.internal") : "Internal error", code: "internal" }, { status: 500 });
 }
 
 export async function body<S extends z.ZodType>(req: NextRequest, schema: S): Promise<z.infer<S>> {
@@ -46,13 +65,14 @@ export async function body<S extends z.ZodType>(req: NextRequest, schema: S): Pr
   try {
     json = await req.json();
   } catch {
-    throw new HttpError(400, "Invalid JSON body");
+    throw new HttpError(400, "Invalid JSON body", { code: "invalid_json" });
   }
   return schema.parse(json);
 }
 
-export function notFound(what = "Not found"): never {
-  throw new HttpError(404, what);
+export function notFound(code = "not_found"): never {
+  // i18n-ignore: codes are checked where notFound() is called
+  throw new HttpError(404, "Not found", { code });
 }
 
 /**
@@ -64,9 +84,9 @@ export async function patchBody<S extends z.ZodType>(req: NextRequest, schema: S
   try {
     json = await req.json();
   } catch {
-    throw new HttpError(400, "Invalid JSON body");
+    throw new HttpError(400, "Invalid JSON body", { code: "invalid_json" });
   }
-  if (!json || typeof json !== "object" || Array.isArray(json)) throw new HttpError(400, "Body must be an object");
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new HttpError(400, "Body must be an object", { code: "invalid_json" });
   const parsed = schema.parse(json) as Record<string, unknown>;
   const sent = new Set(Object.keys(json));
   return Object.fromEntries(Object.entries(parsed).filter(([k]) => sent.has(k))) as Partial<z.infer<S>>;

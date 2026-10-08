@@ -1,0 +1,66 @@
+{
+  "task": {
+    "QUEUED": "Dalam antrean",
+    "RUNNING": "Berjalan",
+    "AWAITING_APPROVAL": "Menunggu persetujuan",
+    "DONE": "Selesai",
+    "FAILED": "Gagal",
+    "CANCELLED": "Dibatalkan"
+  },
+  "approval": {
+    "PENDING": "Menunggu",
+    "APPROVED": "Disetujui",
+    "EXECUTING": "Sedang dijalankan",
+    "REJECTED": "Ditolak",
+    "EXECUTED": "Dijalankan",
+    "FAILED": "Gagal",
+    "EXPIRED": "Kedaluwarsa"
+  },
+  "employee": {
+    "ACTIVE": "Aktif",
+    "PAUSED": "Dijeda",
+    "PAUSED_BUDGET": "Dijeda (anggaran)",
+    "ARCHIVED": "Diarsipkan"
+  },
+  "any": {
+    "QUEUED": "Dalam antrean",
+    "RUNNING": "Berjalan",
+    "AWAITING_APPROVAL": "Menunggu persetujuan",
+    "DONE": "Selesai",
+    "FAILED": "Gagal",
+    "CANCELLED": "Dibatalkan",
+    "PENDING": "Menunggu",
+    "APPROVED": "Disetujui",
+    "EXECUTING": "Sedang dijalankan",
+    "REJECTED": "Ditolak",
+    "EXECUTED": "Dijalankan",
+    "EXPIRED": "Kedaluwarsa",
+    "ACTIVE": "Aktif",
+    "PAUSED": "Dijeda",
+    "PAUSED_BUDGET": "Dijeda (anggaran)",
+    "ARCHIVED": "Diarsipkan"
+  },
+  "autonomy": {
+    "DRAFT": "Draf",
+    "QUEUE": "Antrekan",
+    "EXECUTE": "Jalankan",
+    "CLOSE": "Tuntaskan"
+  },
+  "autonomyDescription": {
+    "DRAFT": "Hanya membuat draf. Tidak ada yang keluar dari sistem.",
+    "QUEUE": "Menyiapkan tindakan dan mengantrekannya untuk disetujui manusia.",
+    "EXECUTE": "Menjalankan tindakan yang bisa dibatalkan secara otomatis; yang tidak bisa dibatalkan perlu persetujuan.",
+    "CLOSE": "Menuntaskan tugas dari awal sampai akhir dalam cakupan yang diizinkan Pemilik."
+  },
+  "role": {
+    "OWNER": "Pemilik",
+    "ADMIN": "Admin",
+    "MEMBER": "Anggota",
+    "VIEWER": "Pengamat"
+  },
+  "outputLanguage": {
+    "inherit": "Ikuti workspace",
+    "id": "Bahasa Indonesia",
+    "en": "English"
+  }
+}

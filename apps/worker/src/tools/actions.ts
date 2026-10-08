@@ -10,6 +10,7 @@ import {
 import { withRetry } from "@wfos/shared/server";
 import { sendMail } from "@wfos/shared/mail";
 import { renderInvoicePdf, formatMoney } from "@wfos/shared/invoice";
+import { msg } from "@wfos/shared/messages";
 import { eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -44,19 +45,21 @@ export async function invoiceAttachment(workspaceId: string, p: InvoicePayload, 
     clientName: client?.name ?? "Client",
     clientEmail: client?.email,
     draft,
+    locale: ws?.defaultLocale,
   });
-  return { pdf: Buffer.from(pdf), client };
+  return { pdf: Buffer.from(pdf), client, locale: ws?.defaultLocale ?? null };
 }
 
 async function doSendInvoice(workspaceId: string, p: InvoicePayload): Promise<ActionResult> {
   const smtp = await getSmtp(workspaceId);
   if (!smtp) return { ok: false, summary: "SMTP is not configured for this workspace (Settings → Email)." };
-  const { pdf, client } = await invoiceAttachment(workspaceId, p, false);
+  const { pdf, client, locale } = await invoiceAttachment(workspaceId, p, false);
   const to = p.to.length ? p.to : client?.email ? [client.email] : [];
   if (!to.length) return { ok: false, summary: "No recipient for invoice" };
-  const total = formatMoney(invoiceTotal(p), p.currency);
-  const subject = p.subject || `Invoice ${p.invoiceNumber}`;
-  const body = p.body || `Dear ${client?.name ?? "client"},\n\nPlease find attached invoice ${p.invoiceNumber} for ${total}, due ${p.dueDate}.\n\nThank you.`;
+  const total = formatMoney(invoiceTotal(p), p.currency, locale === "en" ? "en-US" : "id-ID");
+  // defaults in the workspace language; an approved (possibly edited) subject/body is always used as-is
+  const subject = p.subject || msg(locale, "invoice.subject", { number: p.invoiceNumber });
+  const body = p.body || msg(locale, "invoice.body", { client: client?.name ?? msg(locale, "invoice.client"), number: p.invoiceNumber, total, due: p.dueDate });
   const r = await sendMail(smtp, {
     to,
     subject,

@@ -1,0 +1,187 @@
+{
+  "list": {
+    "title": "Karyawan AI",
+    "description": "Setiap karyawan memiliki peran, memori, akses tool yang terbatas, dan tingkat otonomi yang jelas.",
+    "hire": "Rekrut karyawan",
+    "emptyTitle": "Belum ada karyawan",
+    "emptyDescription": "Pilih templat peran dari marketplace di bawah untuk merekrut karyawan AI pertama Anda.",
+    "toolsCount": "{count, plural, other {# tool}}",
+    "spentToday": "Hari ini: {spent} / {budget} kredit",
+    "marketplace": "Marketplace",
+    "defaultAutonomy": "Otonomi bawaan: {level}",
+    "hireRole": "Rekrut {role}"
+  },
+  "detail": {
+    "chat": "Chat",
+    "pause": "Jeda",
+    "resume": "Lanjutkan",
+    "archive": "Arsipkan",
+    "archiveConfirm": "Arsipkan {name}?",
+    "pausedBudget": "Dijeda karena batas anggaran tercapai. Naikkan anggaran harian di “Tool & otonomi” (atau anggaran bulanan workspace), lalu klik Lanjutkan.",
+    "tabs": {
+      "overview": "Ringkasan",
+      "instructions": "Instruksi & replay",
+      "tools": "Tool & otonomi",
+      "memory": "Memori"
+    },
+    "spentToday": "Terpakai hari ini",
+    "budgetOf": "/ {budget} kredit",
+    "creditsShort": "{amount} kredit",
+    "toolsGranted": "Tool diizinkan",
+    "instructionsVersion": "Versi instruksi",
+    "version": "v{version}",
+    "recentTasks": "Tugas terbaru",
+    "noTasks": "Belum ada tugas."
+  },
+  "outputLanguage": {
+    "label": "Bahasa keluaran",
+    "help": "Bahasa yang digunakan karyawan ini untuk menulis jawaban, dokumen, dan email.",
+    "saved": "Bahasa keluaran disimpan"
+  },
+  "instructions": {
+    "persona": "Persona",
+    "instructions": "Instruksi (v{version})",
+    "businessContext": "Konteks bisnis",
+    "replayOnLast": "Replay pada",
+    "completedTasks": "tugas selesai terakhir",
+    "preview": "Pratinjau perubahan pada tugas sebelumnya",
+    "saveWithoutReplay": "Simpan tanpa replay",
+    "confirmSaveWithoutReplay": "Simpan tanpa membandingkan dengan tugas sebelumnya?",
+    "replayStarted": "Replay dimulai pada tugas sebelumnya (dry run, tanpa efek samping)",
+    "promoted": "Instruksi baru diterapkan",
+    "discarded": "Usulan dibuang",
+    "savedWithoutReplay": "Disimpan tanpa replay"
+  },
+  "replay": {
+    "status": {
+      "queued": "Replay sedang berjalan…",
+      "running": "Replay sedang berjalan…",
+      "done": "Replay selesai",
+      "failed": "Replay gagal"
+    },
+    "summary": "Keluaran lama vs baru pada {count, plural, other {# tugas sebelumnya}} · {credits} kredit · {when}",
+    "currentInstructions": "Instruksi saat ini",
+    "proposedInstructions": "Instruksi usulan",
+    "unifiedDiff": "Unified diff",
+    "promote": "Terapkan instruksi baru",
+    "discard": "Buang"
+  },
+  "allowList": {
+    "title": "Allow-list Pemilik",
+    "description": "Hanya berlaku pada otonomi {level}. Tindakan yang tidak bisa dibatalkan dan sesuai cakupan berjalan tanpa persetujuan per tindakan; tindakan di luar cakupan tetap menunggu persetujuan.",
+    "ownerOnly": "Hanya Pemilik yang dapat mengubah.",
+    "recipientDomains": "domain penerima (pisahkan dengan koma)",
+    "maxAmount": "jumlah maksimum (faktur)",
+    "removeScope": "Hapus cakupan",
+    "addScope": "Tambah cakupan",
+    "save": "Simpan allow-list",
+    "saved": "Allow-list disimpan (tercatat di audit)"
+  },
+  "toolsTab": {
+    "dailyBudget": "Anggaran harian (kredit)",
+    "save": "Simpan izin",
+    "saved": "Izin disimpan (tercatat di audit)"
+  },
+  "memory": {
+    "placeholder": "Ajarkan sebuah fakta, mis. 'Kopi Nusantara lebih suka bahasa Inggris'",
+    "meta": "dari {source} · {when} · klik dua kali untuk mengubah",
+    "delete": "Hapus memori",
+    "empty": "Belum ada memori. Masukan penolakan dari kotak Persetujuan otomatis tersimpan di sini.",
+    "kind": {
+      "fact": "fakta",
+      "feedback": "masukan",
+      "preference": "preferensi"
+    }
+  },
+  "toolPermissions": {
+    "grant": "Izinkan {tool}",
+    "inherit": "Ikuti bawaan ({level})",
+    "mcpServerLabel": "Server MCP: {name}",
+    "mcpServerDescription": "Semua tool dari server MCP yang terhubung ini (diklasifikasikan menurut kata kerja; yang tidak dikenal = tidak bisa dibatalkan)"
+  },
+  "toolClass": {
+    "reversible": "bisa dibatalkan",
+    "irreversible": "tidak bisa dibatalkan"
+  },
+  "toolCategories": {
+    "knowledge": "Pengetahuan",
+    "memory": "Memori",
+    "clients": "Klien",
+    "drafting": "Penyusunan draf",
+    "comms": "Komunikasi",
+    "billing": "Penagihan",
+    "team": "Tim",
+    "web": "Web",
+    "tasks": "Tugas"
+  },
+  "tools": {
+    "kb_search": {
+      "label": "Cari basis pengetahuan",
+      "description": "Mencari di basis pengetahuan workspace beserta kutipan sumbernya"
+    },
+    "memory_search": {
+      "label": "Ingat memori",
+      "description": "Mencari di memori jangka panjang karyawan"
+    },
+    "memory_save": {
+      "label": "Simpan memori",
+      "description": "Menyimpan fakta ke memori jangka panjang karyawan"
+    },
+    "list_clients": {
+      "label": "Daftar klien",
+      "description": "Menampilkan daftar klien dan proyek dari data master"
+    },
+    "get_client": {
+      "label": "Lihat klien",
+      "description": "Membaca satu klien beserta kontak dan proyeknya"
+    },
+    "list_tasks": {
+      "label": "Daftar tugas",
+      "description": "Membaca tugas dan hasil kerja terbaru di workspace"
+    },
+    "web_fetch": {
+      "label": "Ambil halaman web",
+      "description": "Membaca halaman web publik (teks saja)"
+    },
+    "draft_document": {
+      "label": "Susun draf dokumen",
+      "description": "Membuat dokumen atau hasil kerja berupa kode (dengan diff terhadap versi sebelumnya)"
+    },
+    "draft_email": {
+      "label": "Susun draf email",
+      "description": "Menulis draf email tanpa mengirimnya"
+    },
+    "draft_invoice": {
+      "label": "Susun draf faktur",
+      "description": "Membuat draf faktur PDF untuk klien"
+    },
+    "create_task": {
+      "label": "Buat tugas",
+      "description": "Membuat tugas di papan (dari chat)"
+    },
+    "delegate_subtask": {
+      "label": "Delegasikan subtugas",
+      "description": "Ketua tim: menugaskan subtugas kepada anggota tim"
+    },
+    "request_revision": {
+      "label": "Minta revisi",
+      "description": "Ketua tim: mengembalikan subtugas disertai masukan"
+    },
+    "message_teammate": {
+      "label": "Kirim pesan ke rekan tim",
+      "description": "Mengirim pesan terstruktur ke karyawan lain"
+    },
+    "send_email": {
+      "label": "Kirim email",
+      "description": "Mengirim email melalui SMTP workspace"
+    },
+    "send_invoice": {
+      "label": "Kirim faktur",
+      "description": "Mengirim faktur PDF ke klien melalui email"
+    },
+    "post_webhook": {
+      "label": "Publikasikan ke webhook",
+      "description": "Memublikasikan pesan ke webhook yang dikonfigurasi (gateway Slack/Telegram/WhatsApp)"
+    }
+  }
+}

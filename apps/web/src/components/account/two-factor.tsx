@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 
 interface Status {
@@ -17,20 +18,22 @@ interface Status {
 }
 
 export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void }) {
+  const t = useTranslations("account");
+  const tc = useTranslations("common");
   return (
     <div className="space-y-3">
-      <p className="text-sm">Save these recovery codes somewhere safe. Each one signs you in once if you lose your authenticator. They are shown only now.</p>
+      <p className="text-sm">{t("twoFactor.recoveryIntro")}</p>
       <ul className="grid grid-cols-2 gap-1 rounded-md bg-muted p-3 font-mono text-sm">
         {codes.map((c) => (
           <li key={c}>{c}</li>
         ))}
       </ul>
       <div className="flex gap-2">
-        <Button type="button" variant="outline" onClick={() => void navigator.clipboard?.writeText(codes.join("\n")).then(() => toast.success("Copied"))}>
-          Copy
+        <Button type="button" variant="outline" onClick={() => void navigator.clipboard?.writeText(codes.join("\n")).then(() => toast.success(tc("copied")))}>
+          {tc("copy")}
         </Button>
         <Button type="button" onClick={onDone}>
-          I saved them
+          {t("twoFactor.savedThem")}
         </Button>
       </div>
     </div>
@@ -39,6 +42,7 @@ export function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () =
 
 /** QR enrollment: start → scan → confirm with the first code → show recovery codes once. */
 export function EnrollTwoFactor({ onEnrolled }: { onEnrolled: () => void }) {
+  const t = useTranslations("account");
   const [setup, setSetup] = useState<{ secret: string; qrDataUrl: string } | null>(null);
   const [code, setCode] = useState("");
   const [codes, setCodes] = useState<string[] | null>(null);
@@ -57,7 +61,7 @@ export function EnrollTwoFactor({ onEnrolled }: { onEnrolled: () => void }) {
   if (!setup) {
     return (
       <Button type="button" onClick={() => start.mutate()} disabled={start.isPending}>
-        {start.isPending ? "Preparing…" : "Set up authenticator app"}
+        {start.isPending ? t("twoFactor.preparing") : t("twoFactor.setUp")}
       </Button>
     );
   }
@@ -69,22 +73,24 @@ export function EnrollTwoFactor({ onEnrolled }: { onEnrolled: () => void }) {
         enable.mutate();
       }}
     >
-      <p className="text-sm">Scan this QR code with an authenticator app (Google Authenticator, 1Password, Authy…), then enter the 6-digit code it shows.</p>
+      <p className="text-sm">{t("twoFactor.scan")}</p>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={setup.qrDataUrl} alt="QR code for your authenticator app" width={220} height={220} className="rounded-md border bg-white p-1" />
+      <img src={setup.qrDataUrl} alt={t("twoFactor.qrAlt")} width={220} height={220} className="rounded-md border bg-white p-1" />
       <p className="text-xs text-muted-foreground">
-        Can&apos;t scan? Enter this key manually: <code className="select-all break-all font-mono">{setup.secret}</code>
+        {t("twoFactor.manualKey")} <code className="select-all break-all font-mono">{setup.secret}</code>
       </p>
       <div className="max-w-40 space-y-1.5">
-        <Label htmlFor="totp-code">Code</Label>
+        <Label htmlFor="totp-code">{t("twoFactor.code")}</Label>
         <Input id="totp-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
       </div>
-      <Button disabled={code.length !== 6 || enable.isPending}>{enable.isPending ? "Checking…" : "Turn on"}</Button>
+      <Button disabled={code.length !== 6 || enable.isPending}>{enable.isPending ? t("twoFactor.checking") : t("twoFactor.turnOn")}</Button>
     </form>
   );
 }
 
 function ReauthForm({ hasPassword, submitLabel, onSubmit, pending }: { hasPassword: boolean; submitLabel: string; onSubmit: (v: { password?: string; code: string }) => void; pending: boolean }) {
+  const t = useTranslations("account");
+  const tc = useTranslations("common");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   return (
@@ -97,12 +103,12 @@ function ReauthForm({ hasPassword, submitLabel, onSubmit, pending }: { hasPasswo
     >
       {hasPassword && (
         <div className="space-y-1.5">
-          <Label htmlFor="reauth-password">Password</Label>
+          <Label htmlFor="reauth-password">{tc("password")}</Label>
           <Input id="reauth-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
       )}
       <div className="max-w-40 space-y-1.5">
-        <Label htmlFor="reauth-code">Authenticator code</Label>
+        <Label htmlFor="reauth-code">{t("twoFactor.authenticatorCode")}</Label>
         <Input id="reauth-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
       </div>
       <Button variant="outline" disabled={code.length !== 6 || pending}>
@@ -113,6 +119,7 @@ function ReauthForm({ hasPassword, submitLabel, onSubmit, pending }: { hasPasswo
 }
 
 export function TwoFactorCard() {
+  const t = useTranslations("account");
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["2fa"], queryFn: () => api.get<Status>("/api/me/2fa") });
   const [mode, setMode] = useState<"idle" | "disable" | "regenerate">("idle");
@@ -126,7 +133,7 @@ export function TwoFactorCard() {
     onSuccess: () => {
       setMode("idle");
       refresh();
-      toast.success("Two-factor authentication is off");
+      toast.success(t("twoFactor.turnedOff"));
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -143,12 +150,10 @@ export function TwoFactorCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Two-factor authentication</CardTitle>
+        <CardTitle className="text-base">{t("twoFactor.title")}</CardTitle>
         <CardDescription>
-          {data.enabled
-            ? `On. ${data.recoveryCodesLeft} recovery codes left.`
-            : "Off. Protect your account with a code from an authenticator app at every sign-in."}
-          {data.required && " Required for your role."}
+          {data.enabled ? t("twoFactor.statusOn", { count: data.recoveryCodesLeft }) : t("twoFactor.statusOff")}
+          {data.required && ` ${t("twoFactor.requiredForRole")}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -157,17 +162,17 @@ export function TwoFactorCard() {
         ) : !data.enabled ? (
           <EnrollTwoFactor onEnrolled={refresh} />
         ) : mode === "disable" ? (
-          <ReauthForm hasPassword={data.hasPassword} submitLabel="Turn off" pending={disable.isPending} onSubmit={(v) => disable.mutate(v)} />
+          <ReauthForm hasPassword={data.hasPassword} submitLabel={t("twoFactor.turnOff")} pending={disable.isPending} onSubmit={(v) => disable.mutate(v)} />
         ) : mode === "regenerate" ? (
-          <ReauthForm hasPassword={data.hasPassword} submitLabel="Create new codes" pending={regenerate.isPending} onSubmit={(v) => regenerate.mutate(v)} />
+          <ReauthForm hasPassword={data.hasPassword} submitLabel={t("twoFactor.createNewCodes")} pending={regenerate.isPending} onSubmit={(v) => regenerate.mutate(v)} />
         ) : (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setMode("regenerate")}>
-              New recovery codes
+              {t("twoFactor.newCodes")}
             </Button>
             {!data.required && (
               <Button variant="outline" onClick={() => setMode("disable")}>
-                Turn off
+                {t("twoFactor.turnOff")}
               </Button>
             )}
           </div>

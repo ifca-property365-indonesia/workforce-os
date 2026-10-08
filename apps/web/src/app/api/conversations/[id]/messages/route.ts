@@ -13,8 +13,8 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
   const form = await req.formData();
   const content = String(form.get("content") ?? "").trim();
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (!content && !files.length) throw new HttpError(400, "Message is empty");
-  if (content.length > 20000) throw new HttpError(400, "Message too long");
+  if (!content && !files.length) throw new HttpError(400, "Message is empty", { code: "message_empty" });
+  if (content.length > 20000) throw new HttpError(400, "Message too long", { code: "message_too_long", max: 20000 });
   const attachments = [];
   for (const f of files.slice(0, 5)) {
     const doc = await saveDocument(session.workspaceId, session.userId, f);

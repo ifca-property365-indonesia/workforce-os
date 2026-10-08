@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, FlaskConical, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
@@ -15,8 +16,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState, PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
-import { ago } from "@/lib/format";
 import { useClients } from "@/lib/hooks";
+import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
 interface Approval {
@@ -44,19 +45,20 @@ interface Email {
 }
 
 function EmailPreview({ p }: { p: Email }) {
+  const t = useTranslations("approvals");
   return (
     <div className="overflow-hidden rounded-lg border bg-background">
       <div className="space-y-0.5 border-b bg-muted/40 px-4 py-2 text-sm">
         <div>
-          <span className="text-muted-foreground">To:</span> {p.to.join(", ")}
+          <span className="text-muted-foreground">{t("email.to")}</span> {p.to.join(", ")}
         </div>
         {!!p.cc?.length && (
           <div>
-            <span className="text-muted-foreground">Cc:</span> {p.cc.join(", ")}
+            <span className="text-muted-foreground">{t("email.cc")}</span> {p.cc.join(", ")}
           </div>
         )}
         <div>
-          <span className="text-muted-foreground">Subject:</span> <span className="font-medium">{p.subject}</span>
+          <span className="text-muted-foreground">{t("email.subject")}</span> <span className="font-medium">{p.subject}</span>
         </div>
       </div>
       <div className="whitespace-pre-wrap px-4 py-3 text-sm leading-relaxed">{p.body}</div>
@@ -65,22 +67,23 @@ function EmailPreview({ p }: { p: Email }) {
 }
 
 function EmailEditor({ value, onChange }: { value: Email; onChange: (v: Email) => void }) {
+  const t = useTranslations("approvals");
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label className="text-xs">To (comma separated)</Label>
+        <Label className="text-xs">{t("editor.to")}</Label>
         <Input value={value.to.join(", ")} onChange={(e) => onChange({ ...value, to: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">Cc</Label>
+        <Label className="text-xs">{t("editor.cc")}</Label>
         <Input value={(value.cc ?? []).join(", ")} onChange={(e) => onChange({ ...value, cc: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">Subject</Label>
+        <Label className="text-xs">{t("editor.subject")}</Label>
         <Input value={value.subject} onChange={(e) => onChange({ ...value, subject: e.target.value })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">Body</Label>
+        <Label className="text-xs">{t("editor.body")}</Label>
         <Textarea rows={10} value={value.body} onChange={(e) => onChange({ ...value, body: e.target.value })} />
       </div>
     </div>
@@ -88,6 +91,8 @@ function EmailEditor({ value, onChange }: { value: Email; onChange: (v: Email) =
 }
 
 function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing: boolean; draft: Record<string, unknown>; setDraft: (v: Record<string, unknown>) => void }) {
+  const t = useTranslations("approvals");
+  const f = useFormat();
   const { data: clients } = useClients();
   const p = (editing ? draft : (a.editedPayload ?? a.payload)) as Record<string, unknown>;
   if (a.toolName === "send_email") {
@@ -97,20 +102,22 @@ function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing:
     const inv = p as unknown as InvoicePayload;
     const client = clients?.find((c) => c.id === inv.clientId);
     const to = inv.to?.length ? inv.to : client?.email ? [client.email] : [];
+    const total = f.money(invoiceTotal(inv), inv.currency);
+    const subject = inv.subject || t("invoice.subject", { number: inv.invoiceNumber });
     return (
       <div className="space-y-3">
         {editing ? (
           <EmailEditor
-            value={{ to, subject: inv.subject || `Invoice ${inv.invoiceNumber}`, body: inv.body || "" }}
+            value={{ to, subject, body: inv.body || "" }}
             onChange={(v) => setDraft({ ...inv, to: v.to, subject: v.subject, body: v.body })}
           />
         ) : (
-          <EmailPreview p={{ to, subject: inv.subject || `Invoice ${inv.invoiceNumber}`, body: inv.body || `(default invoice email) Invoice ${inv.invoiceNumber}, total ${inv.currency} ${invoiceTotal(inv)}` }} />
+          <EmailPreview p={{ to, subject, body: inv.body || t("invoice.defaultBody", { number: inv.invoiceNumber, total }) }} />
         )}
         <div className="text-xs text-muted-foreground">
-          Attachment: {inv.invoiceNumber}.pdf — {inv.lines.length} line(s), total {inv.currency} {invoiceTotal(inv).toLocaleString()} · due {inv.dueDate}
+          {t("invoice.attachment", { file: `${inv.invoiceNumber}.pdf`, lines: inv.lines.length, total, due: inv.dueDate ? f.date(inv.dueDate) : "—" })}
         </div>
-        <iframe title="Invoice PDF" src={`/api/approvals/${a.id}/invoice`} className="h-[480px] w-full rounded-lg border bg-white" />
+        <iframe title={t("invoice.pdfTitle")} src={`/api/approvals/${a.id}/invoice`} className="h-[480px] w-full rounded-lg border bg-white" />
       </div>
     );
   }
@@ -119,7 +126,7 @@ function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing:
       <Textarea rows={6} value={String(p.text ?? "")} onChange={(e) => setDraft({ ...p, text: e.target.value })} />
     ) : (
       <div className="rounded-lg border bg-background p-3 text-sm">
-        <div className="mb-1 text-xs text-muted-foreground">Channel: {String(p.channel ?? "default")}</div>
+        <div className="mb-1 text-xs text-muted-foreground">{t("webhook.channel", { channel: p.channel ? String(p.channel) : t("webhook.defaultChannel") })}</div>
         <div className="whitespace-pre-wrap">{String(p.text)}</div>
       </div>
     );
@@ -144,6 +151,10 @@ function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing:
 
 function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
   const qc = useQueryClient();
+  const t = useTranslations("approvals");
+  const tc = useTranslations("common");
+  const ts = useTranslations("status");
+  const f = useFormat();
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -151,13 +162,15 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
   const decide = useMutation({
     mutationFn: (body: { decision: "approve" | "edit_approve" | "reject"; editedPayload?: Record<string, unknown>; feedback?: string }) => api.post(`/api/approvals/${a.id}/decide`, body),
     onSuccess: (_r, v) => {
-      toast.success(v.decision === "reject" ? "Rejected — feedback saved to the employee's memory" : "Approved — executing now");
+      toast.success(v.decision === "reject" ? t("card.rejected") : t("card.approved"));
       void qc.invalidateQueries({ queryKey: ["approvals"] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
   const pending = a.status === "PENDING";
   const simulated = a.task?.dryRun || a.task?.source === "demo";
+  const toolLabel = t.has(`tools.${a.toolName}`) ? t(`tools.${a.toolName}`) : a.toolName;
+  const who = a.employee ? `${a.employee.name} (${a.employee.role})` : tc("unknown");
   return (
     <Card id={a.id} className={cn(focused && "ring-2 ring-primary")}>
       <CardHeader className="flex-row items-start gap-3 space-y-0 pb-3">
@@ -165,11 +178,11 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
         <div className="min-w-0 flex-1">
           <div className="font-medium">{a.title}</div>
           <div className="text-xs text-muted-foreground">
-            {a.employee?.name} ({a.employee?.role}) wants to run <code>{a.toolName}</code> · {ago(a.createdAt)}
+            {t.rich("card.wantsToRun", { employee: who, tool: toolLabel, code: (c) => <span className="font-medium text-foreground">{c}</span> })} · {f.ago(a.createdAt)}
             {a.task && (
               <>
                 {" "}
-                · task{" "}
+                · {t("card.task")}{" "}
                 <Link href={`/tasks/${a.task.id}`} className="text-primary hover:underline">
                   {a.task.title}
                 </Link>
@@ -187,22 +200,24 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
                 ? "bg-destructive/15 text-destructive"
                 : a.status === "EXPIRED"
                   ? "bg-muted text-muted-foreground"
-                  : "bg-emerald-500/15 text-emerald-700",
+                  : a.status === "EXECUTING"
+                    ? "bg-sky-500/15 text-sky-700"
+                    : "bg-emerald-500/15 text-emerald-700",
           )}
         >
-          {a.status}
+          {ts(`approval.${a.status}`)}
         </span>
       </CardHeader>
       <CardContent className="space-y-3">
         {simulated && (
           <div className="flex items-center gap-1.5 text-xs text-violet-700 dark:text-violet-300">
-            <FlaskConical className="size-3.5" /> Dry run: approving records what would happen; nothing is actually sent.
+            <FlaskConical className="size-3.5" /> {t("card.dryRunNotice")}
           </div>
         )}
         {!!a.guardFindings?.length && (
           <div className="rounded-md bg-destructive/10 p-2 text-xs text-destructive">
             <div className="flex items-center gap-1 font-medium">
-              <ShieldAlert className="size-3.5" /> Guard findings
+              <ShieldAlert className="size-3.5" /> {t("card.guardFindings")}
             </div>
             {a.guardFindings.map((g, i) => (
               <div key={i}>
@@ -212,42 +227,42 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
           </div>
         )}
         <PayloadPreview a={a} editing={editing} draft={draft} setDraft={setDraft} />
-        {a.editedPayload && !pending && <p className="text-xs text-muted-foreground">Edited by a human before approval.</p>}
-        {a.feedback && <p className="text-xs text-muted-foreground">Feedback: {a.feedback}</p>}
-        {a.executionResult?.summary && <p className="text-xs text-muted-foreground">Result: {a.executionResult.summary}</p>}
+        {a.editedPayload && !pending && <p className="text-xs text-muted-foreground">{t("card.editedByHuman")}</p>}
+        {a.feedback && <p className="text-xs text-muted-foreground">{t("card.feedback", { feedback: a.feedback })}</p>}
+        {a.executionResult?.summary && <p className="text-xs text-muted-foreground">{t("card.result", { summary: a.executionResult.summary })}</p>}
         {pending && (
           <div className="space-y-2 border-t pt-3">
             {rejecting ? (
               <div className="space-y-2">
-                <Textarea placeholder="What should change? This is written to the employee's memory." value={feedback} onChange={(e) => setFeedback(e.target.value)} />
+                <Textarea placeholder={t("card.rejectPlaceholder")} value={feedback} onChange={(e) => setFeedback(e.target.value)} />
                 <div className="flex gap-2">
                   <Button variant="destructive" size="sm" onClick={() => decide.mutate({ decision: "reject", feedback })} disabled={decide.isPending}>
-                    Reject with feedback
+                    {t("card.rejectWithFeedback")}
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setRejecting(false)}>
-                    Cancel
+                    {tc("cancel")}
                   </Button>
                 </div>
               </div>
             ) : editing ? (
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => decide.mutate({ decision: "edit_approve", editedPayload: draft })} disabled={decide.isPending} className="gap-1">
-                  <Check className="size-3.5" /> Save edits & approve
+                  <Check className="size-3.5" /> {t("card.saveAndApprove")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => (setEditing(false), setDraft(a.payload))}>
-                  Cancel
+                  {tc("cancel")}
                 </Button>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => decide.mutate({ decision: "approve" })} disabled={decide.isPending} className="gap-1">
-                  <ShieldCheck className="size-3.5" /> Approve
+                  <ShieldCheck className="size-3.5" /> {t("card.approve")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1">
-                  <Pencil className="size-3.5" /> Edit & approve
+                  <Pencil className="size-3.5" /> {t("card.editAndApprove")}
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setRejecting(true)} className="gap-1 text-destructive">
-                  <X className="size-3.5" /> Reject
+                  <X className="size-3.5" /> {t("card.reject")}
                 </Button>
               </div>
             )}
@@ -261,6 +276,7 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
 function Inbox() {
   const sp = useSearchParams();
   const focus = sp.get("focus");
+  const t = useTranslations("approvals");
   const [tab, setTab] = useState("PENDING");
   const { data } = useQuery({
     queryKey: ["approvals", tab],
@@ -271,16 +287,16 @@ function Inbox() {
   }, [focus, data]);
   return (
     <div>
-      <PageHeader title="Approvals inbox" description="Every irreversible action stops here, per action, with the exact payload that will be executed." />
+      <PageHeader title={t("title")} description={t("description")} />
       <Tabs value={tab} onValueChange={setTab} className="mb-4">
         <TabsList>
-          <TabsTrigger value="PENDING">Pending</TabsTrigger>
-          <TabsTrigger value="EXECUTED,EXECUTING,APPROVED">Approved</TabsTrigger>
-          <TabsTrigger value="REJECTED,EXPIRED">Rejected & expired</TabsTrigger>
-          <TabsTrigger value="ALL">All</TabsTrigger>
+          <TabsTrigger value="PENDING">{t("tabs.pending")}</TabsTrigger>
+          <TabsTrigger value="EXECUTED,EXECUTING,APPROVED">{t("tabs.approved")}</TabsTrigger>
+          <TabsTrigger value="REJECTED,EXPIRED">{t("tabs.rejected")}</TabsTrigger>
+          <TabsTrigger value="ALL">{t("tabs.all")}</TabsTrigger>
         </TabsList>
       </Tabs>
-      {!data?.length && <EmptyState icon={<ShieldCheck className="size-8" />} title={tab === "PENDING" ? "Nothing waiting" : "No approvals"} description="When an employee tries to send, publish, pay or delete, it will appear here." />}
+      {!data?.length && <EmptyState icon={<ShieldCheck className="size-8" />} title={tab === "PENDING" ? t("empty.pendingTitle") : t("empty.title")} description={t("empty.description")} />}
       <div className="space-y-4">
         {data?.map((a) => (
           <ApprovalCard key={a.id} a={a} focused={a.id === focus} />

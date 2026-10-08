@@ -1,0 +1,52 @@
+{
+  "items": {
+    "dashboard": "Dashboard",
+    "employees": "Employees",
+    "teams": "Teams",
+    "chat": "Chat",
+    "tasks": "Task board",
+    "routines": "Routines",
+    "approvals": "Approvals",
+    "clients": "Clients",
+    "knowledge": "Knowledge base",
+    "settings": "Settings"
+  },
+  "killSwitch": {
+    "button": "Kill switch",
+    "release": "Release kill switch",
+    "engagedToast": "Kill switch engaged: all employees stopped.",
+    "releasedToast": "Kill switch released.",
+    "releaseTitle": "Release the kill switch?",
+    "engageTitle": "Stop all employees now?",
+    "releaseDescription": "Queued tasks will start again. Running work that was stopped stays cancelled.",
+    "engageDescription": "Every running employee in this workspace is aborted immediately. Queued work is held and approvals cannot execute until you release the switch.",
+    "reasonPlaceholder": "Reason (written to the audit log)",
+    "releaseConfirm": "Release",
+    "engageConfirm": "Stop everything",
+    "banner": "Kill switch engaged — all employees are stopped and no actions can execute."
+  },
+  "live": {
+    "approvalNeeded": "Approval needed: {title}",
+    "open": "Open",
+    "taskFailed": "Task failed",
+    "taskFailedNamed": "Task failed: {title}",
+    "employeePausedBudget": "An employee was paused: budget cap reached.",
+    "connected": "Live",
+    "connecting": "Connecting…"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Nothing yet."
+  },
+  "toggleTheme": "Toggle theme",
+  "navigation": "Navigation",
+  "menu": "Menu",
+  "accountMenu": "Account menu",
+  "account": "Account",
+  "workspaceSettings": "Workspace settings",
+  "language": "Language",
+  "signOut": "Sign out",
+  "demoBanner": "Demo mode: runs are scripted, cost 0 credits and make no network calls.",
+  "turnOff": "Turn off",
+  "noCredentialBanner": "No Claude credential for this workspace. Employees cannot run until an Owner adds one in <link>Settings</link> — or turn on Demo Mode."
+}

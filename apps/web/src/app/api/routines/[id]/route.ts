@@ -30,7 +30,7 @@ export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   try {
     CronExpressionParser.parse(cron, { tz });
   } catch (e) {
-    throw new HttpError(400, `Invalid cron expression: ${(e as Error).message}`);
+    throw new HttpError(400, `Invalid cron expression: ${(e as Error).message}`, { code: "invalid_cron", detail: (e as Error).message });
   }
   const enabled = input.enabled ?? cur.enabled;
   const [r] = await db

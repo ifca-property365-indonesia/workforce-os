@@ -1,0 +1,54 @@
+{
+  "title": "Routines",
+  "description": "Scheduled task templates (cron). Each firing creates tasks that run unattended through the same safety gate.",
+  "newRoutine": "New routine",
+  "editRoutine": "Edit routine",
+  "saved": "Routine saved",
+  "dispatched": "Routine dispatched — see the task board",
+  "confirmDelete": "Delete {name}?",
+  "runNow": "Run now",
+  "toggleHistory": "Run history",
+  "enabledLabel": "Enabled",
+  "unassigned": "unassigned",
+  "nextRun": "next: {when}",
+  "lastRun": "last: {when}",
+  "badge": {
+    "perClient": "per client",
+    "dryRun": "dry run"
+  },
+  "empty": {
+    "title": "No routines",
+    "description": "Example: every Monday 09:00 send the weekly project status to each client."
+  },
+  "form": {
+    "cron": "Cron",
+    "timezone": "Timezone",
+    "assignTo": "Assign to",
+    "brief": "Brief template",
+    "briefPlaceholder": "Use {variable} with “One task per client”.",
+    "perClient": "One task per client",
+    "dryRun": "Dry run",
+    "enabled": "Enabled",
+    "gateNote": "Unattended runs obey the same gate: an irreversible action pauses at an approval and notifies the owner."
+  },
+  "presets": {
+    "weeklyMonday": "Every Monday 09:00",
+    "weekdays": "Weekdays 08:00",
+    "monthly": "1st of month 10:00",
+    "hourly": "Every hour"
+  },
+  "history": {
+    "nextRuns": "Next runs",
+    "runHistory": "Run history",
+    "neverRan": "Never ran.",
+    "taskLink": "task {n}",
+    "trigger": {
+      "schedule": "schedule",
+      "manual": "manual"
+    },
+    "status": {
+      "dispatched": "dispatched",
+      "failed": "failed"
+    }
+  }
+}

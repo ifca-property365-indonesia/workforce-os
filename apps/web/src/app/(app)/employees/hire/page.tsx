@@ -6,7 +6,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-import { DEFAULT_MODEL, type AutonomyLevel, type ToolPermission } from "@wfos/shared";
+import { useTranslations } from "next-intl";
+import { DEFAULT_MODEL, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
 import type { RoleTemplate } from "@wfos/templates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,9 +20,10 @@ import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/to
 import { TaskDetail } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
 import { useTemplates, type Employee } from "@/lib/hooks";
+import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
-const STEPS = ["Template", "Persona & context", "Tools & autonomy", "First task"];
+const STEPS = ["template", "persona", "tools", "firstTask"] as const;
 const EMOJIS = ["🤖", "👩‍💻", "🧭", "🧾", "🎧", "📣", "🔎", "🧪", "🦉", "🛠️", "📊", "✍️"];
 
 interface Draft {
@@ -36,6 +38,7 @@ interface Draft {
   autonomyLevel: AutonomyLevel;
   toolPermissions: ToolPermission[];
   dailyBudget: number;
+  outputLanguage: OutputLanguage;
 }
 
 const blank: Draft = {
@@ -50,6 +53,7 @@ const blank: Draft = {
   autonomyLevel: "DRAFT",
   toolPermissions: [],
   dailyBudget: 200,
+  outputLanguage: "inherit",
 };
 
 function fromTemplate(t: RoleTemplate): Draft {
@@ -67,6 +71,10 @@ function fromTemplate(t: RoleTemplate): Draft {
 }
 
 function Wizard() {
+  const t = useTranslations("hire");
+  const tc = useTranslations("common");
+  const ts = useTranslations("status");
+  const f = useFormat();
   const sp = useSearchParams();
   const qc = useQueryClient();
   const { data: tpl } = useTemplates();
@@ -80,16 +88,16 @@ function Wizard() {
 
   useEffect(() => {
     const key = sp.get("template");
-    const t = tpl?.templates.find((x) => x.key === key);
-    if (t && !d.templateKey) {
-      setD(fromTemplate(t));
+    const tp = tpl?.templates.find((x) => x.key === key);
+    if (tp && !d.templateKey) {
+      setD(fromTemplate(tp));
       setStep(1);
     }
   }, [tpl, sp, d.templateKey]);
 
   useEffect(() => {
-    const t = tpl?.templates.find((x) => x.key === d.templateKey);
-    if (t && !firstTask.title) setFirstTask((f) => ({ ...f, title: t.exampleTasks[0]!.slice(0, 120), brief: t.exampleTasks[0]! }));
+    const tp = tpl?.templates.find((x) => x.key === d.templateKey);
+    if (tp && !firstTask.title) setFirstTask((ft) => ({ ...ft, title: tp.exampleTasks[0]!.slice(0, 120), brief: tp.exampleTasks[0]! }));
   }, [d.templateKey, tpl, firstTask.title]);
 
   const hire = useMutation({
@@ -97,7 +105,7 @@ function Wizard() {
     onSuccess: (r) => {
       setEmployee(r.employee);
       void qc.invalidateQueries({ queryKey: ["employees"] });
-      toast.success(`${r.employee.name} joined the team`);
+      toast.success(t("joined", { name: r.employee.name }));
       setStep(3);
     },
     onError: (e) => toast.error((e as Error).message),
@@ -113,41 +121,41 @@ function Wizard() {
 
   return (
     <div>
-      <PageHeader title="Hire an AI employee" description="Four steps: role → persona & context → tools & autonomy → a first bounded task." />
+      <PageHeader title={t("title")} description={t("description")} />
       <ol className="mb-6 grid grid-cols-4 gap-2">
         {STEPS.map((s, i) => (
           <li key={s} className={cn("rounded-lg border px-3 py-2 text-xs sm:text-sm", i === step ? "border-primary bg-primary/5 font-medium" : i < step ? "text-muted-foreground" : "text-muted-foreground/70")}>
             <span className="mr-1.5 inline-flex size-5 items-center justify-center rounded-full bg-muted text-[11px]">{i < step ? <Check className="size-3" /> : i + 1}</span>
-            <span className="hidden sm:inline">{s}</span>
+            <span className="hidden sm:inline">{t(`steps.${s}`)}</span>
           </li>
         ))}
       </ol>
 
       {step === 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {tpl?.templates.map((t) => (
+          {tpl?.templates.map((tp) => (
             <button
-              key={t.key}
+              key={tp.key}
               type="button"
               onClick={() => {
-                setD(fromTemplate(t));
+                setD(fromTemplate(tp));
                 setStep(1);
               }}
               className="rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-sm"
             >
               <div className="flex items-center gap-2">
-                <Avatar emoji={t.avatar} />
-                <span className="font-semibold">{t.role}</span>
+                <Avatar emoji={tp.avatar} />
+                <span className="font-semibold">{tp.role}</span>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">{t.tagline}</p>
-              <p className="mt-2 text-xs text-muted-foreground">{t.suggestedTools.length} suggested tools · {t.autonomyLevel}</p>
+              <p className="mt-2 text-sm text-muted-foreground">{tp.tagline}</p>
+              <p className="mt-2 text-xs text-muted-foreground">{t("template.suggested", { count: tp.suggestedTools.length, level: ts(`autonomy.${tp.autonomyLevel}`) })}</p>
             </button>
           ))}
           <button type="button" onClick={() => (setD(blank), setStep(1))} className="rounded-xl border border-dashed p-4 text-left hover:border-primary">
             <div className="flex items-center gap-2 font-semibold">
-              <Sparkles className="size-5" /> Start blank
+              <Sparkles className="size-5" /> {t("template.startBlank")}
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">Define a custom role from scratch.</p>
+            <p className="mt-2 text-sm text-muted-foreground">{t("template.startBlankDescription")}</p>
           </button>
         </div>
       )}
@@ -158,7 +166,7 @@ function Wizard() {
             <div className="space-y-4">
               <div className="flex gap-3">
                 <div className="space-y-1.5">
-                  <Label>Avatar</Label>
+                  <Label>{t("persona.avatar")}</Label>
                   <Select value={d.avatar} onValueChange={(v) => set("avatar", v)}>
                     <SelectTrigger className="w-20">
                       <SelectValue />
@@ -173,48 +181,65 @@ function Wizard() {
                   </Select>
                 </div>
                 <div className="flex-1 space-y-1.5">
-                  <Label htmlFor="name">Name</Label>
+                  <Label htmlFor="name">{tc("name")}</Label>
                   <Input id="name" value={d.name} onChange={(e) => set("name", e.target.value)} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="role">Role</Label>
+                <Label htmlFor="role">{tc("role")}</Label>
                 <Input id="role" value={d.role} onChange={(e) => set("role", e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="persona">Persona</Label>
+                <Label htmlFor="persona">{t("persona.persona")}</Label>
                 <Textarea id="persona" rows={3} value={d.persona} onChange={(e) => set("persona", e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Model</Label>
+                  <Label>{t("persona.model")}</Label>
                   <Select value={d.model} onValueChange={(v) => set("model", v)}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      {/* i18n-ignore: model name */}
                       {(pricing?.models ?? [{ model: DEFAULT_MODEL, label: "Claude Opus 5.5", inputPer1k: 0, outputPer1k: 0 }]).map((m) => (
                         <SelectItem key={m.model} value={m.model}>
-                          {m.label} · {m.inputPer1k}/{m.outputPer1k} cr per 1K
+                          {t("persona.modelOption", { label: m.label, input: f.number(m.inputPer1k, 4), output: f.number(m.outputPer1k, 4) })}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="budget">Daily budget (credits)</Label>
+                  <Label htmlFor="budget">{t("persona.dailyBudget")}</Label>
                   <Input id="budget" type="number" min={0} value={d.dailyBudget} onChange={(e) => set("dailyBudget", Number(e.target.value))} />
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="output-language">{t("persona.outputLanguage")}</Label>
+                <Select value={d.outputLanguage} onValueChange={(v) => set("outputLanguage", v as OutputLanguage)}>
+                  <SelectTrigger id="output-language">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OUTPUT_LANGUAGES.map((l) => (
+                      <SelectItem key={l} value={l}>
+                        {ts(`outputLanguage.${l}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{t("persona.outputLanguageHelp")}</p>
               </div>
             </div>
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="instructions">Instructions</Label>
+                <Label htmlFor="instructions">{t("persona.instructions")}</Label>
                 <Textarea id="instructions" rows={8} value={d.instructions} onChange={(e) => set("instructions", e.target.value)} className="font-mono text-xs" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ctx">Business context</Label>
-                <Textarea id="ctx" rows={5} placeholder="Who you are, your clients, tone, constraints…" value={d.businessContext} onChange={(e) => set("businessContext", e.target.value)} />
+                <Label htmlFor="ctx">{t("persona.businessContext")}</Label>
+                <Textarea id="ctx" rows={5} placeholder={t("persona.businessContextPlaceholder")} value={d.businessContext} onChange={(e) => set("businessContext", e.target.value)} />
               </div>
             </div>
           </CardContent>
@@ -224,14 +249,14 @@ function Wizard() {
       {step === 2 && tpl && (
         <div className="space-y-5">
           <div>
-            <h3 className="mb-2 font-medium">Default autonomy</h3>
+            <h3 className="mb-2 font-medium">{t("tools.defaultAutonomy")}</h3>
             <AutonomyPicker value={d.autonomyLevel} onChange={(v) => set("autonomyLevel", v)} />
             <p className="mt-2 text-xs text-muted-foreground">
-              Irreversible actions (send, publish, pay, delete, merge, deploy) always need per-action approval unless an Owner allow-lists them for a CLOSE employee. This is enforced in the tool layer.
+              {t("tools.irreversibleNote", { level: ts("autonomy.CLOSE") })}
             </p>
           </div>
           <div>
-            <h3 className="mb-2 font-medium">Tool permissions</h3>
+            <h3 className="mb-2 font-medium">{t("tools.toolPermissions")}</h3>
             <ToolPermissionsEditor tools={tpl.tools} value={d.toolPermissions} onChange={(v) => set("toolPermissions", v)} defaultAutonomy={d.autonomyLevel} extraServers={mcp?.servers.map((s) => s.name)} />
           </div>
         </div>
@@ -245,28 +270,28 @@ function Wizard() {
                 <div className="flex items-center gap-2">
                   <Avatar emoji={employee.avatar} />
                   <div>
-                    <div className="font-medium">Give {employee.name} a first bounded task</div>
-                    <div className="text-xs text-muted-foreground">Review the output and every step before trusting them with more.</div>
+                    <div className="font-medium">{t("firstTask.heading", { name: employee.name })}</div>
+                    <div className="text-xs text-muted-foreground">{t("firstTask.hint")}</div>
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Title</Label>
+                  <Label>{t("firstTask.title")}</Label>
                   <Input value={firstTask.title} onChange={(e) => setFirstTask({ ...firstTask, title: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Brief</Label>
+                  <Label>{t("firstTask.brief")}</Label>
                   <Textarea rows={4} value={firstTask.brief} onChange={(e) => setFirstTask({ ...firstTask, brief: e.target.value })} />
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={firstTask.dryRun} onChange={(e) => setFirstTask({ ...firstTask, dryRun: e.target.checked })} />
-                  Dry run (irreversible tools are mocked)
+                  {t("firstTask.dryRun")}
                 </label>
                 <div className="flex gap-2">
                   <Button onClick={() => runTask.mutate()} disabled={!firstTask.title || runTask.isPending}>
-                    Run first task
+                    {t("firstTask.run")}
                   </Button>
                   <Button variant="ghost" asChild>
-                    <Link href={`/employees/${employee.id}`}>Skip</Link>
+                    <Link href={`/employees/${employee.id}`}>{t("firstTask.skip")}</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -276,10 +301,10 @@ function Wizard() {
               <TaskDetail taskId={taskId} compact />
               <div className="flex gap-2">
                 <Button asChild>
-                  <Link href={`/employees/${employee.id}`}>Open {employee.name}&apos;s profile</Link>
+                  <Link href={`/employees/${employee.id}`}>{t("firstTask.openProfile", { name: employee.name })}</Link>
                 </Button>
                 <Button variant="outline" asChild>
-                  <Link href={`/chat?employee=${employee.id}`}>Chat with {employee.name}</Link>
+                  <Link href={`/chat?employee=${employee.id}`}>{t("firstTask.chatWith", { name: employee.name })}</Link>
                 </Button>
               </div>
             </>
@@ -290,15 +315,15 @@ function Wizard() {
       {step > 0 && step < 3 && (
         <div className="mt-6 flex justify-between">
           <Button variant="ghost" onClick={() => setStep(step - 1)} className="gap-1">
-            <ChevronLeft className="size-4" /> Back
+            <ChevronLeft className="size-4" /> {tc("back")}
           </Button>
           {step < 2 ? (
             <Button disabled={!canNext} onClick={() => setStep(step + 1)} className="gap-1">
-              Next <ChevronRight className="size-4" />
+              {tc("next")} <ChevronRight className="size-4" />
             </Button>
           ) : (
             <Button onClick={() => hire.mutate()} disabled={hire.isPending}>
-              Hire {d.name || "employee"}
+              {d.name ? t("hire", { name: d.name }) : t("hireFallback")}
             </Button>
           )}
         </div>

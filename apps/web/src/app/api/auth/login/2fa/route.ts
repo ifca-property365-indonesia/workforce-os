@@ -20,7 +20,7 @@ const schema = z.union([z.object({ code: z.string().min(6).max(10) }), z.object(
 /** Second login step: the password was accepted, now the TOTP or a recovery code completes the sign-in. */
 export async function POST(req: NextRequest) {
   try {
-    await rateLimit(`login2fa:ip:${clientIp(req)}`, 30, 900, "Too many attempts. Try again in 15 minutes.");
+    await rateLimit(`login2fa:ip:${clientIp(req)}`, 30, 900);
     const userId = await readTwoFactorChallenge();
     if (!userId) throw new HttpError(401, "Sign-in expired. Enter your password again.", { code: "two_factor_challenge_expired" });
     const input = await body(req, schema);

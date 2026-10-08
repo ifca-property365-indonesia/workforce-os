@@ -10,14 +10,25 @@ export class ApiError extends Error {
   }
 }
 
+/** Only for responses without a JSON error body (proxy errors, network failures). */
+function fallbackMessage(status: number): string {
+  const lang = typeof document !== "undefined" ? document.documentElement.lang : "en";
+  // i18n-ignore: rendered before any catalog is available for this response
+  return lang === "id" ? `Permintaan gagal (${status}).` : `Request failed (${status}).`;
+}
+
 async function handle<T>(res: Response): Promise<T> {
   const text = await res.text();
-  const data = text ? JSON.parse(text) : {};
+  let data: unknown = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
   if (!res.ok) {
     if (res.status === 401 && typeof window !== "undefined" && !location.pathname.startsWith("/login")) location.href = "/login";
-    const issues = (data as { issues?: { path: (string | number)[]; message: string }[] }).issues;
-    const msg = issues?.length ? issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") : (data as { error?: string }).error;
-    throw new ApiError(res.status, msg ?? `Request failed (${res.status})`, data);
+    // the server sends `error` already translated into the user's language
+    throw new ApiError(res.status, (data as { error?: string }).error ?? fallbackMessage(res.status), data);
   }
   return data as T;
 }

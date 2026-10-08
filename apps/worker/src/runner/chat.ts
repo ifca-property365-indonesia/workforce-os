@@ -1,3 +1,4 @@
+import { employeeOutputLocale } from "@wfos/shared";
 import { randomUUID } from "node:crypto";
 import { asc, desc, eq } from "drizzle-orm";
 import { conversations, db, employees, messages, teams } from "@wfos/db";
@@ -107,6 +108,7 @@ export async function runChat(conversationId: string, userMessageId: string): Pr
     grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
     dryRun: false,
     mode: "chat",
+    outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
   });
 
   let buffer = "";

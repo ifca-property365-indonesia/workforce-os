@@ -1,0 +1,58 @@
+{
+  "title": "Approvals inbox",
+  "description": "Every irreversible action stops here, per action, with the exact payload that will be executed.",
+  "tabs": {
+    "pending": "Pending",
+    "approved": "Approved",
+    "rejected": "Rejected & expired",
+    "all": "All"
+  },
+  "empty": {
+    "pendingTitle": "Nothing waiting",
+    "title": "No approvals",
+    "description": "When an employee tries to send, publish, pay or delete, it will appear here."
+  },
+  "tools": {
+    "send_email": "Send email",
+    "send_invoice": "Send invoice",
+    "post_webhook": "Post webhook"
+  },
+  "email": {
+    "to": "To:",
+    "cc": "Cc:",
+    "subject": "Subject:"
+  },
+  "editor": {
+    "to": "To (comma separated)",
+    "cc": "Cc",
+    "subject": "Subject",
+    "body": "Body"
+  },
+  "invoice": {
+    "subject": "Invoice {number}",
+    "defaultBody": "(default invoice email) Invoice {number}, total {total}",
+    "attachment": "Attachment: {file} — {lines, plural, one {# line} other {# lines}}, total {total} · due {due}",
+    "pdfTitle": "Invoice PDF"
+  },
+  "webhook": {
+    "channel": "Channel: {channel}",
+    "defaultChannel": "default"
+  },
+  "card": {
+    "wantsToRun": "{employee} wants to run <code>{tool}</code>",
+    "task": "task",
+    "dryRunNotice": "Dry run: approving records what would happen; nothing is actually sent.",
+    "guardFindings": "Guard findings",
+    "editedByHuman": "Edited by a human before approval.",
+    "feedback": "Feedback: {feedback}",
+    "result": "Result: {summary}",
+    "rejectPlaceholder": "What should change? This is written to the employee’s memory.",
+    "rejectWithFeedback": "Reject with feedback",
+    "saveAndApprove": "Save edits & approve",
+    "approve": "Approve",
+    "editAndApprove": "Edit & approve",
+    "reject": "Reject",
+    "rejected": "Rejected — feedback saved to the employee’s memory",
+    "approved": "Approved — executing now"
+  }
+}

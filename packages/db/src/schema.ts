@@ -23,6 +23,8 @@ import type {
   StepKind,
   TaskSource,
   TaskStatus,
+  Locale,
+  OutputLanguage,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -60,6 +62,8 @@ export const users = pgTable("users", {
   recoveryCodes: jsonb("recovery_codes").$type<string[]>().notNull().default([]),
   failedLoginCount: integer("failed_login_count").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  /** UI language preference (id | en); null = workspace default, then the browser */
+  locale: text("locale").$type<Locale>(),
   createdAt: createdAt(),
 });
 
@@ -71,6 +75,8 @@ export const workspaces = pgTable("workspaces", {
   killSwitch: boolean("kill_switch").notNull().default(false),
   /** OWNER and ADMIN members must enroll in TOTP 2FA before using the workspace */
   require2faAdmins: boolean("require_2fa_admins").notNull().default(true),
+  /** default UI and output language (id | en); null = follow each browser */
+  defaultLocale: text("default_locale").$type<Locale>(),
   guardsEnabled: boolean("guards_enabled").notNull().default(true),
   demoMode: boolean("demo_mode").notNull().default(false),
   notifyEmail: text("notify_email"),
@@ -131,6 +137,8 @@ export const employees = pgTable(
     dailyBudget: doublePrecision("daily_budget").notNull().default(200),
     status: text("status").$type<EmployeeStatus>().notNull().default("ACTIVE"),
     instructionsVersion: integer("instructions_version").notNull().default(1),
+    /** language of answers and deliverables: inherit (workspace default) | id | en */
+    outputLanguage: text("output_language").$type<OutputLanguage>().notNull().default("inherit"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

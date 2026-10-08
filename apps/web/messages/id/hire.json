@@ -1,0 +1,46 @@
+{
+  "title": "Rekrut karyawan AI",
+  "description": "Empat langkah: peran → persona & konteks → tool & otonomi → tugas pertama yang terbatas.",
+  "steps": {
+    "template": "Templat",
+    "persona": "Persona & konteks",
+    "tools": "Tool & otonomi",
+    "firstTask": "Tugas pertama"
+  },
+  "template": {
+    "suggested": "{count, plural, other {# tool yang disarankan}} · {level}",
+    "startBlank": "Mulai dari kosong",
+    "startBlankDescription": "Tentukan peran khusus dari awal."
+  },
+  "persona": {
+    "avatar": "Avatar",
+    "persona": "Persona",
+    "model": "Model",
+    "modelOption": "{label} · {input}/{output} kredit per 1K",
+    "dailyBudget": "Anggaran harian (kredit)",
+    "instructions": "Instruksi",
+    "businessContext": "Konteks bisnis",
+    "businessContextPlaceholder": "Siapa Anda, klien Anda, gaya bahasa, batasan…",
+    "outputLanguage": "Bahasa keluaran",
+    "outputLanguageHelp": "Bahasa yang digunakan karyawan ini untuk menulis jawaban, dokumen, dan email."
+  },
+  "tools": {
+    "defaultAutonomy": "Otonomi bawaan",
+    "irreversibleNote": "Tindakan yang tidak bisa dibatalkan (kirim, publikasikan, bayar, hapus, merge, deploy) selalu memerlukan persetujuan per tindakan, kecuali Pemilik memasukkannya ke allow-list untuk karyawan dengan otonomi {level}. Aturan ini ditegakkan di lapisan tool.",
+    "toolPermissions": "Izin tool"
+  },
+  "firstTask": {
+    "heading": "Beri {name} tugas pertama yang terbatas",
+    "hint": "Tinjau hasil dan setiap langkahnya sebelum memercayakan tugas yang lebih besar.",
+    "title": "Judul",
+    "brief": "Arahan",
+    "dryRun": "Dry run (tool yang tidak bisa dibatalkan hanya disimulasikan)",
+    "run": "Jalankan tugas pertama",
+    "skip": "Lewati",
+    "openProfile": "Buka profil {name}",
+    "chatWith": "Chat dengan {name}"
+  },
+  "hire": "Rekrut {name}",
+  "hireFallback": "Rekrut karyawan",
+  "joined": "{name} telah bergabung dengan tim"
+}

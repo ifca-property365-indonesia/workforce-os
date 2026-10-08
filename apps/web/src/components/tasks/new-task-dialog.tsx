@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,8 @@ const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
 export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const qc = useQueryClient();
+  const t = useTranslations("tasks");
+  const tc = useTranslations("common");
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
   const { data: clients } = useClients();
@@ -35,7 +38,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
       });
     },
     onSuccess: () => {
-      toast.success("Task created");
+      toast.success(t("newTask.created"));
       onOpenChange(false);
       setF({ title: "", brief: "", assignee: "", clientId: "", projectId: "", dryRun: false, start: true });
       void qc.invalidateQueries({ queryKey: ["tasks"] });
@@ -46,22 +49,22 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New task</DialogTitle>
+          <DialogTitle>{t("newTask.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Title</Label>
+            <Label>{t("newTask.fieldTitle")}</Label>
             <Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>Brief</Label>
+            <Label>{t("newTask.brief")}</Label>
             <Textarea rows={5} value={f.brief} onChange={(e) => setF({ ...f, brief: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>Assign to</Label>
+            <Label>{t("newTask.assignTo")}</Label>
             <select className={sel} value={f.assignee} onChange={(e) => setF({ ...f, assignee: e.target.value })}>
-              <option value="">Choose…</option>
-              <optgroup label="Employees">
+              <option value="">{tc("selectPlaceholder")}</option>
+              <optgroup label={t("newTask.employees")}>
                 {emps
                   ?.filter((e) => e.status !== "ARCHIVED")
                   .map((e) => (
@@ -70,12 +73,12 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                     </option>
                   ))}
               </optgroup>
-              <optgroup label="Teams (Lead plans & delegates)">
+              <optgroup label={t("newTask.teams")}>
                 {teams
-                  ?.filter((t) => t.leadId)
-                  .map((t) => (
-                    <option key={t.id} value={`t:${t.id}`}>
-                      👥 {t.name}
+                  ?.filter((team) => team.leadId)
+                  .map((team) => (
+                    <option key={team.id} value={`t:${team.id}`}>
+                      👥 {team.name}
                     </option>
                   ))}
               </optgroup>
@@ -83,7 +86,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Client</Label>
+              <Label>{t("newTask.client")}</Label>
               <select className={sel} value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value, projectId: "" })}>
                 <option value="">—</option>
                 {clients?.map((c) => (
@@ -94,7 +97,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Project</Label>
+              <Label>{t("newTask.project")}</Label>
               <select className={sel} value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })} disabled={!projects.length}>
                 <option value="">—</option>
                 {projects.map((p) => (
@@ -107,16 +110,16 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={f.dryRun} onChange={(e) => setF({ ...f, dryRun: e.target.checked })} /> Dry run
+              <input type="checkbox" checked={f.dryRun} onChange={(e) => setF({ ...f, dryRun: e.target.checked })} /> {t("newTask.dryRun")}
             </label>
             <label className="flex items-center gap-2">
-              <input type="checkbox" checked={f.start} onChange={(e) => setF({ ...f, start: e.target.checked })} /> Start immediately
+              <input type="checkbox" checked={f.start} onChange={(e) => setF({ ...f, start: e.target.checked })} /> {t("newTask.startImmediately")}
             </label>
           </div>
         </div>
         <DialogFooter>
           <Button onClick={() => m.mutate()} disabled={!f.title || !f.assignee || m.isPending}>
-            Create task
+            {t("newTask.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>

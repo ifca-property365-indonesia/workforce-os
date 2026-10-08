@@ -1,0 +1,46 @@
+{
+  "title": "Hire an AI employee",
+  "description": "Four steps: role → persona & context → tools & autonomy → a first bounded task.",
+  "steps": {
+    "template": "Template",
+    "persona": "Persona & context",
+    "tools": "Tools & autonomy",
+    "firstTask": "First task"
+  },
+  "template": {
+    "suggested": "{count, plural, one {# suggested tool} other {# suggested tools}} · {level}",
+    "startBlank": "Start blank",
+    "startBlankDescription": "Define a custom role from scratch."
+  },
+  "persona": {
+    "avatar": "Avatar",
+    "persona": "Persona",
+    "model": "Model",
+    "modelOption": "{label} · {input}/{output} cr per 1K",
+    "dailyBudget": "Daily budget (credits)",
+    "instructions": "Instructions",
+    "businessContext": "Business context",
+    "businessContextPlaceholder": "Who you are, your clients, tone, constraints…",
+    "outputLanguage": "Output language",
+    "outputLanguageHelp": "The language this employee writes answers, documents and emails in."
+  },
+  "tools": {
+    "defaultAutonomy": "Default autonomy",
+    "irreversibleNote": "Irreversible actions (send, publish, pay, delete, merge, deploy) always need per-action approval unless an Owner allow-lists them for a {level} employee. This is enforced in the tool layer.",
+    "toolPermissions": "Tool permissions"
+  },
+  "firstTask": {
+    "heading": "Give {name} a first bounded task",
+    "hint": "Review the output and every step before trusting them with more.",
+    "title": "Title",
+    "brief": "Brief",
+    "dryRun": "Dry run (irreversible tools are mocked)",
+    "run": "Run first task",
+    "skip": "Skip",
+    "openProfile": "Open {name}'s profile",
+    "chatWith": "Chat with {name}"
+  },
+  "hire": "Hire {name}",
+  "hireFallback": "Hire employee",
+  "joined": "{name} joined the team"
+}

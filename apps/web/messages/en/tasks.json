@@ -1,0 +1,31 @@
+{
+  "board": {
+    "title": "Task board",
+    "description": "Live Kanban by status. Subtasks from team leads show their parent.",
+    "newTask": "New task",
+    "allEmployees": "All employees",
+    "allClients": "All clients",
+    "allProjects": "All projects",
+    "dryRun": "dry run",
+    "subtask": "sub",
+    "waitingOnSubtasks": "waiting on subtasks",
+    "credits": "{amount} cr"
+  },
+  "page": {
+    "back": "Task board"
+  },
+  "newTask": {
+    "title": "New task",
+    "fieldTitle": "Title",
+    "brief": "Brief",
+    "assignTo": "Assign to",
+    "employees": "Employees",
+    "teams": "Teams (lead plans & delegates)",
+    "client": "Client",
+    "project": "Project",
+    "dryRun": "Dry run",
+    "startImmediately": "Start immediately",
+    "submit": "Create task",
+    "created": "Task created"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "newChat": "New chat",
+  "team": "Team",
+  "deleteChat": "Delete chat",
+  "fallbackTitle": "Chat",
+  "teamSubtitle": "Team chat (answered by the Lead)",
+  "emptyThread": "Say hello, ask a question, or describe work to turn into a task.",
+  "taskCreatedLink": "task created",
+  "createTask": "Create task",
+  "makeTask": "Make task",
+  "removeFile": "Remove file",
+  "attachFiles": "Attach files",
+  "send": "Send",
+  "placeholder": "Message (Enter to send, Shift+Enter for newline)",
+  "placeholderBusy": "Waiting for the reply…",
+  "empty": {
+    "title": "Pick a conversation",
+    "description": "Start a new chat with any employee or team on the left."
+  },
+  "taskDialog": {
+    "title": "Create task from chat",
+    "titleLabel": "Title",
+    "brief": "Brief",
+    "submit": "Create & start",
+    "created": "Task created",
+    "open": "Open"
+  }
+}

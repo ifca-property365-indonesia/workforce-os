@@ -17,7 +17,7 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
   const input = await body(req, approvalDecisionSchema);
   const [a] = await db.select().from(approvals).where(and(eq(approvals.id, params.id), eq(approvals.workspaceId, session.workspaceId)));
   if (!a) notFound();
-  if (a.status !== "PENDING") throw new HttpError(409, `Approval already ${a.status}`);
+  if (a.status !== "PENDING") throw new HttpError(409, `Approval already ${a.status}`, { code: "approval_already_decided", status: a.status });
 
   if (input.decision === "reject") {
     const r = await db
@@ -25,7 +25,7 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
       .set({ status: "REJECTED", decidedBy: session.userId, decidedAt: new Date(), feedback: input.feedback ?? null })
       .where(and(eq(approvals.id, a.id), eq(approvals.status, "PENDING")))
       .returning({ id: approvals.id });
-    if (!r.length) throw new HttpError(409, "Approval was decided concurrently");
+    if (!r.length) throw new HttpError(409, "Approval was decided concurrently", { code: "approval_decided_concurrently" });
     await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "approval.rejected", targetType: "approval", targetId: a.id, details: { toolName: a.toolName, title: a.title, feedback: input.feedback ?? null } });
     await publish(session.workspaceId, { type: "approval.updated", approvalId: a.id, status: "REJECTED" });
     await q.action({ kind: "rejected_approval", approvalId: a.id, workspaceId: session.workspaceId });
@@ -41,13 +41,13 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
         .set({ status: "EXPIRED", executionResult: { ok: false, summary: `Task is ${t.status}; the action can no longer run.` } })
         .where(and(eq(approvals.id, a.id), eq(approvals.status, "PENDING")));
       await publish(session.workspaceId, { type: "approval.updated", approvalId: a.id, status: "EXPIRED" });
-      throw new HttpError(409, `The task is ${t.status.toLowerCase()}, so this action can no longer be approved.`);
+      throw new HttpError(409, `The task is ${t.status.toLowerCase()}, so this action can no longer be approved.`, { code: "approval_task_closed", status: t.status });
     }
   }
 
   let edited: Record<string, unknown> | null = null;
   if (input.decision === "edit_approve") {
-    if (!input.editedPayload) throw new HttpError(400, "editedPayload is required for Edit & Approve");
+    if (!input.editedPayload) throw new HttpError(400, "editedPayload is required for Edit & Approve", { code: "edited_payload_required" });
     edited = validatePayload(a.toolName, input.editedPayload) as Record<string, unknown>;
   }
   const r = await db
@@ -55,7 +55,7 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
     .set({ status: "APPROVED", decidedBy: session.userId, decidedAt: new Date(), editedPayload: edited, feedback: input.feedback ?? null })
     .where(and(eq(approvals.id, a.id), eq(approvals.status, "PENDING")))
     .returning({ id: approvals.id });
-  if (!r.length) throw new HttpError(409, "Approval was decided concurrently");
+  if (!r.length) throw new HttpError(409, "Approval was decided concurrently", { code: "approval_decided_concurrently" });
   await audit({
     workspaceId: session.workspaceId,
     actorUserId: session.userId,

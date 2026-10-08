@@ -16,7 +16,7 @@ export const GET = route("VIEWER", async ({ session }) => {
 export const POST = route("MEMBER", async ({ session, req }) => {
   const form = await req.formData();
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
-  if (!files.length) throw new HttpError(400, "No files");
+  if (!files.length) throw new HttpError(400, "No files", { code: "no_files" });
   const out = [];
   for (const f of files.slice(0, 10)) out.push(await saveDocument(session.workspaceId, session.userId, f));
   return { documents: out.map((d) => ({ id: d.id, name: d.name, status: d.status })) };

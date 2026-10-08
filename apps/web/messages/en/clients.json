@@ -1,0 +1,38 @@
+{
+  "title": "Clients",
+  "description": "Master data shared by every employee for status emails and invoices. Employees reference clients by id.",
+  "newClient": "New client",
+  "editClient": "Edit client",
+  "empty": "No clients yet",
+  "noEmail": "no email",
+  "idLabel": "id",
+  "confirmDelete": "Delete {name} and its projects?",
+  "form": {
+    "currency": "Currency",
+    "email": "Billing / main email",
+    "contacts": "Contacts",
+    "contactName": "Name",
+    "contactEmail": "Email",
+    "contactRole": "Role",
+    "removeContact": "Remove contact",
+    "addContact": "Add contact",
+    "notes": "Notes (visible to employees)"
+  },
+  "project": {
+    "rate": "Rate: {rate}/h",
+    "tasks": "tasks",
+    "delete": "Delete project",
+    "confirmDelete": "Delete {name}?",
+    "add": "Project",
+    "namePlaceholder": "Project name",
+    "descriptionPlaceholder": "Description / current status",
+    "hourlyRatePlaceholder": "Hourly rate",
+    "addProject": "Add project",
+    "status": {
+      "active": "active",
+      "paused": "paused",
+      "done": "done",
+      "archived": "archived"
+    }
+  }
+}

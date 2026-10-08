@@ -15,12 +15,12 @@ const schema = z.object({
 export const POST = route("VIEWER", async ({ session, req }) => {
   const input = await body(req, schema);
   const [user] = await db.select().from(users).where(eq(users.id, session.userId));
-  if (!user) throw new HttpError(404, "User not found");
+  if (!user) throw new HttpError(404, "User not found", { code: "user_not_found" });
   // Google-only accounts have no password yet and may set one without a current password
   if (user.passwordHash) {
-    await rateLimit(`pwchange:${user.id}`, 10, 900, "Too many attempts. Try again in 15 minutes.");
-    if (!input.currentPassword || !(await bcrypt.compare(input.currentPassword, user.passwordHash))) throw new HttpError(400, "Current password is incorrect");
-    if (await bcrypt.compare(input.newPassword, user.passwordHash)) throw new HttpError(400, "The new password must be different from the current one");
+    await rateLimit(`pwchange:${user.id}`, 10, 900);
+    if (!input.currentPassword || !(await bcrypt.compare(input.currentPassword, user.passwordHash))) throw new HttpError(400, "Current password is incorrect", { code: "current_password_incorrect" });
+    if (await bcrypt.compare(input.newPassword, user.passwordHash)) throw new HttpError(400, "The new password must be different from the current one", { code: "password_unchanged" });
   }
   await db
     .update(users)

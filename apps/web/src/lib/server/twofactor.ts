@@ -91,14 +91,15 @@ export async function verifySecondFactor(user: User, input: { code?: string; rec
 /** Password (when the account has one) + second factor; failures count toward the lockout. */
 export async function reauthenticate(userId: string, input: { password?: string; code?: string; recoveryCode?: string }): Promise<User> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
-  if (!user) throw new HttpError(401, "Not signed in");
+  if (!user) throw new HttpError(401, "Not signed in", { code: "not_signed_in" });
   assertNotLocked(user);
   const passwordOk = !user.passwordHash || (!!input.password && (await bcrypt.compare(input.password, user.passwordHash)));
   const factorOk = passwordOk && (await verifySecondFactor(user, input)) !== null;
   if (!passwordOk || !factorOk) {
     const locked = await recordLoginFailure(user.id);
     if (locked) throw lockedError(locked);
-    throw new HttpError(400, passwordOk ? "The code is not valid" : "Password is incorrect", { code: passwordOk ? "invalid_code" : "invalid_password" });
+    if (!passwordOk) throw new HttpError(400, "Password is incorrect", { code: "invalid_password" });
+    throw new HttpError(400, "The code is not valid", { code: "invalid_code" });
   }
   await clearLoginFailures(user.id);
   return user;

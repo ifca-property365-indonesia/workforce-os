@@ -24,12 +24,12 @@ function slugify(s: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!(await signupAllowed())) throw new HttpError(403, "Self-service signup is disabled on this server. Ask an admin to add you.");
-    await rateLimit(`signup:ip:${clientIp(req)}`, 5, 3600, "Too many signups from this address. Try again later.");
+    if (!(await signupAllowed())) throw new HttpError(403, "Self-service signup is disabled on this server.", { code: "signup_disabled" });
+    await rateLimit(`signup:ip:${clientIp(req)}`, 5, 3600, "too_many_signups");
     const input = await body(req, schema);
     const email = input.email.toLowerCase();
     const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
-    if (existing) throw new HttpError(409, "An account with this email already exists");
+    if (existing) throw new HttpError(409, "An account with this email already exists", { code: "email_taken" });
     const [user] = await db.insert(users).values({ email, name: input.name, passwordHash: await bcrypt.hash(input.password, 11) }).returning();
     const [ws] = await db
       .insert(workspaces)

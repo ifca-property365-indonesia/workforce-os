@@ -220,3 +220,32 @@ describe("web_fetch SSRF protection", () => {
     },
   );
 });
+
+describe("employee output language", () => {
+  it("adds a language instruction that follows the employee setting, then the workspace", async () => {
+    const { buildSystemPrompt } = await import("../src/runner/prompt");
+    const { employeeOutputLocale } = await import("@wfos/shared");
+    const base = {
+      employee: { id: "e", name: "Sari", role: "Finance", persona: "", instructions: "", businessContext: "", autonomyLevel: "DRAFT" as const },
+      workspaceName: "WS",
+      memories: [],
+      directory: "",
+      grantedTools: [],
+      dryRun: false,
+      mode: "task" as const,
+    };
+    expect(buildSystemPrompt({ ...base, outputLocale: employeeOutputLocale("inherit", "id") })).toMatch(/in Bahasa Indonesia/);
+    expect(buildSystemPrompt({ ...base, outputLocale: employeeOutputLocale("en", "id") })).toMatch(/in English/);
+    expect(buildSystemPrompt({ ...base, outputLocale: employeeOutputLocale("inherit", null) })).not.toMatch(/## Language/);
+  });
+
+  it("writes notifications in the workspace language", async () => {
+    const ws = await makeWorkspace({ defaultLocale: "id" });
+    const emp = await makeEmployee(ws.id);
+    const task = await makeTask(ws.id, emp.id);
+    setQueryImpl(mockRunner([{ result: "Selesai." }]).query);
+    await runTask(task.id);
+    const n = transport.queued.find((q) => q.name === "notify");
+    expect((n!.data as { subject: string }).subject).toBe("Tugas selesai: Test task");
+  });
+});

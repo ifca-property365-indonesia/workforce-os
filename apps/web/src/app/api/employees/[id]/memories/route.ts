@@ -7,7 +7,7 @@ type P = { id: string };
 
 async function check(workspaceId: string, id: string) {
   const [e] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, id), eq(employees.workspaceId, workspaceId)));
-  if (!e) notFound("Employee not found");
+  if (!e) notFound("employee_not_found");
 }
 
 export const GET = route<P>("VIEWER", async ({ session, params }) => {

@@ -1,0 +1,28 @@
+{
+  "title": "Tim",
+  "description": "Seret karyawan ke dalam tim dan tetapkan Ketua. Ketua menyusun rencana, mendelegasikan subtugas, dan meninjau hasil kerja.",
+  "employees": "Karyawan",
+  "newTeamPlaceholder": "Nama tim baru",
+  "createTeam": "Buat tim",
+  "briefTeam": "Kirim brief",
+  "deleteTeam": "Hapus tim",
+  "confirmDelete": "Hapus {name}?",
+  "dropHere": "Letakkan karyawan di sini",
+  "lead": "Ketua",
+  "makeLead": "Jadikan Ketua",
+  "removeMember": "Keluarkan",
+  "chooseLead": "Klik ikon mahkota untuk memilih Ketua.",
+  "empty": {
+    "title": "Belum ada tim",
+    "description": "Buat tim, lalu seret karyawan ke dalamnya."
+  },
+  "brief": {
+    "title": "Kirim brief ke {team}",
+    "titleLabel": "Judul",
+    "brief": "Brief",
+    "briefPlaceholder": "Ketua akan menyusun rencana, mendelegasikan subtugas ke anggota, dan meninjau hasil kerja mereka.",
+    "client": "Klien (opsional)",
+    "dryRun": "Dry run",
+    "send": "Kirim brief"
+  }
+}

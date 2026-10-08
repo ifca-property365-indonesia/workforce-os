@@ -1,0 +1,125 @@
+{
+  "title": "Settings",
+  "tabs": {
+    "general": "General",
+    "email": "Email",
+    "notifications": "Notifications",
+    "integrations": "Integrations",
+    "pricing": "Pricing",
+    "members": "Members",
+    "audit": "Audit log"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "monthlyBudget": "Monthly budget (credits; 1 credit = $0.01)",
+    "language": "Workspace language",
+    "languageFollowBrowser": "Follow each browser",
+    "languageDescription": "The default interface language for members who have not chosen their own, and the language employees write in when their output language is set to “Workspace default”."
+  },
+  "safety": {
+    "title": "Safety",
+    "description": "Guards are on by default: prompt-injection screening on tool results and secret/PII leakage checks on outputs.",
+    "guards": "Input & output guards",
+    "guardsHint": "Turning this off is audited.",
+    "guardsDisableConfirm": "Disable guards? This is not recommended.",
+    "demoMode": "Demo mode",
+    "demoModeHint": "Scripted runs with zero tokens and no network calls; same SSE events.",
+    "require2fa": "Require two-factor authentication for Owners and Admins",
+    "require2faHint": "They must set up an authenticator app before they can use the workspace. Only an Owner can change this.",
+    "require2faDisableConfirm": "Stop requiring two-factor authentication for Owners and Admins?"
+  },
+  "claude": {
+    "title": "Claude credential",
+    "description": "Each workspace uses its own credential. A run receives only this workspace's credential, only while it runs. Subscription tokens come from <code>claude setup-token</code>.",
+    "savedToast": "Claude credential saved (encrypted)",
+    "removedToast": "Claude credential removed",
+    "type": {
+      "oauth": "Claude subscription token",
+      "api_key": "Anthropic API key"
+    },
+    "thisWorkspace": "This workspace:",
+    "workspaceSet": "{label} · ending in <code>{last4}</code> · set {when}",
+    "notSet": "not set",
+    "serverFallback": "Server fallback:",
+    "fallbackDisabled": "disabled by the server owner",
+    "fallbackSet": "{label} (set in the server .env)",
+    "inUse": "In use:",
+    "inUseWorkspace": "this workspace's credential",
+    "inUseFallback": "the server fallback",
+    "inUseNone": "none — employees cannot run",
+    "typeLabel": "Type",
+    "replaceWith": "Replace with",
+    "credential": "Credential",
+    "removeConfirm": "Remove this workspace's Claude credential?"
+  },
+  "email": {
+    "savedToast": "SMTP saved (password encrypted with AES-256-GCM)",
+    "testSent": "Test email sent ({messageId})",
+    "description": "Used for send_email / send_invoice and notifications. The password never leaves the server.",
+    "host": "Host",
+    "port": "Port",
+    "tls": "TLS (465)",
+    "user": "User",
+    "passwordSet": "(set — leave blank to keep)",
+    "fromAddress": "From address",
+    "testRecipient": "test recipient",
+    "sending": "Sending…",
+    "sendTest": "Send test email"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "When approvals are waiting or a task finishes.",
+    "notifyEmail": "Notify email",
+    "webhookUrl": "Webhook URL (WhatsApp / Telegram / Slack gateway)",
+    "configured": "configured",
+    "webhookPlaceholder": "https://… (stored encrypted)",
+    "webhookHelp": "The webhook receives JSON <code>{payload}</code>. It is also the target of the irreversible <code>post_webhook</code> tool."
+  },
+  "integrations": {
+    "title": "MCP servers",
+    "description": "Connect remote (Streamable HTTP) MCP servers. Tokens are encrypted and never sent to the browser or the model. Grant a server per employee as <code>{grant}</code>; its tools are classified by verb (read/list/search = reversible, anything else = irreversible → approval).",
+    "tokenSet": "token set",
+    "namePlaceholder": "name (e.g. github)",
+    "tokenPlaceholder": "Bearer token (optional)",
+    "connect": "Connect"
+  },
+  "pricing": {
+    "updatedToast": "Price updated",
+    "title": "Published price table",
+    "description": "1 credit = {usd}. Every LLM step is charged from this table, so you can forecast cost before running.",
+    "model": "Model",
+    "inputPer1k": "Input / 1K tok",
+    "outputPer1k": "Output / 1K tok",
+    "cacheReadPer1k": "Cache read / 1K",
+    "cacheWritePer1k": "Cache write / 1K",
+    "forecast": "Forecast*",
+    "creditsShort": "{value} cr",
+    "forecastPrefix": "*Forecast for a task of",
+    "forecastInput": "input tokens,",
+    "forecastOutput": "output tokens and",
+    "forecastCalls": "tool calls ({avg} cr avg).",
+    "perToolCall": "Per tool call",
+    "toolClass": {
+      "reversible": "reversible",
+      "irreversible": "irreversible"
+    }
+  },
+  "members": {
+    "title": "Members",
+    "description": "Owner: everything incl. allow-lists & pricing · Admin: employees, approvals, settings · Member: tasks, chat, clients · Viewer: read-only.",
+    "createdPrompt": "User created. Share this one-time password securely:",
+    "addedToast": "Member added",
+    "removedToast": "Member removed",
+    "resetPrompt": "New one-time password (they must change it at next sign-in). Share it securely:",
+    "resetConfirm": "Reset the password for {email}? Their current password and sessions stop working.",
+    "resetAria": "Reset password for {email}",
+    "resetPassword": "Reset password",
+    "removeConfirm": "Remove {email} from this workspace?",
+    "removeAria": "Remove {email}",
+    "removeFromWorkspace": "Remove from workspace"
+  },
+  "audit": {
+    "title": "Audit log",
+    "description": "Immutable (append-only, enforced by a database trigger): approvals, permission changes, credential changes, kill-switch use."
+  }
+}

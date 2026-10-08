@@ -1,0 +1,50 @@
+{
+  "title": "Akun",
+  "description": "Profil dan pengaturan masuk Anda.",
+  "profile": {
+    "title": "Profil",
+    "description": "Nama Anda ditampilkan ke rekan kerja, di persetujuan, dan di log audit.",
+    "emailFixed": "Email untuk masuk tidak bisa diubah di sini.",
+    "roleIn": "Peran di {workspace}: <b>{role}</b>",
+    "saved": "Profil tersimpan"
+  },
+  "password": {
+    "title": "Kata sandi",
+    "description": "Mengubah kata sandi akan mengeluarkan semua sesi lain.",
+    "googleOnly": "Anda masuk dengan Google. Atur kata sandi agar bisa masuk juga dengan email.",
+    "change": "Ubah kata sandi",
+    "set": "Atur kata sandi",
+    "changed": "Kata sandi diubah. Sesi lain telah dikeluarkan.",
+    "current": "Kata sandi saat ini",
+    "new": "Kata sandi baru",
+    "minLength": "Minimal {min} karakter.",
+    "confirm": "Konfirmasi kata sandi baru",
+    "mismatch": "Kata sandi tidak sama."
+  },
+  "twoFactor": {
+    "title": "Autentikasi dua faktor",
+    "statusOn": "{count, plural, other {Aktif. Tersisa # kode pemulihan.}}",
+    "statusOff": "Nonaktif. Lindungi akun Anda dengan kode dari aplikasi autentikator setiap kali masuk.",
+    "requiredForRole": "Wajib untuk peran Anda.",
+    "setUp": "Atur aplikasi autentikator",
+    "preparing": "Menyiapkan…",
+    "scan": "Pindai kode QR ini dengan aplikasi autentikator (Google Authenticator, 1Password, Authy…), lalu masukkan kode 6 digit yang muncul.",
+    "qrAlt": "Kode QR untuk aplikasi autentikator Anda",
+    "manualKey": "Tidak bisa memindai? Masukkan kunci ini secara manual:",
+    "code": "Kode",
+    "checking": "Memeriksa…",
+    "turnOn": "Aktifkan",
+    "turnOff": "Nonaktifkan",
+    "turnedOff": "Autentikasi dua faktor dinonaktifkan",
+    "newCodes": "Kode pemulihan baru",
+    "createNewCodes": "Buat kode baru",
+    "authenticatorCode": "Kode autentikator",
+    "recoveryIntro": "Simpan kode pemulihan ini di tempat yang aman. Masing-masing bisa dipakai sekali untuk masuk jika autentikator Anda hilang. Kode ini hanya ditampilkan sekarang.",
+    "savedThem": "Sudah saya simpan"
+  },
+  "language": {
+    "title": "Bahasa",
+    "description": "Bahasa tampilan untuk Anda. Jika tidak dipilih, digunakan bahasa default workspace (atau browser Anda).",
+    "followWorkspace": "Ikuti workspace"
+  }
+}

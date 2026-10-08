@@ -1,0 +1,66 @@
+{
+  "task": {
+    "QUEUED": "Queued",
+    "RUNNING": "Running",
+    "AWAITING_APPROVAL": "Awaiting approval",
+    "DONE": "Done",
+    "FAILED": "Failed",
+    "CANCELLED": "Cancelled"
+  },
+  "approval": {
+    "PENDING": "Pending",
+    "APPROVED": "Approved",
+    "EXECUTING": "Executing",
+    "REJECTED": "Rejected",
+    "EXECUTED": "Executed",
+    "FAILED": "Failed",
+    "EXPIRED": "Expired"
+  },
+  "employee": {
+    "ACTIVE": "Active",
+    "PAUSED": "Paused",
+    "PAUSED_BUDGET": "Paused (budget)",
+    "ARCHIVED": "Archived"
+  },
+  "any": {
+    "QUEUED": "Queued",
+    "RUNNING": "Running",
+    "AWAITING_APPROVAL": "Awaiting approval",
+    "DONE": "Done",
+    "FAILED": "Failed",
+    "CANCELLED": "Cancelled",
+    "PENDING": "Pending",
+    "APPROVED": "Approved",
+    "EXECUTING": "Executing",
+    "REJECTED": "Rejected",
+    "EXECUTED": "Executed",
+    "EXPIRED": "Expired",
+    "ACTIVE": "Active",
+    "PAUSED": "Paused",
+    "PAUSED_BUDGET": "Paused (budget)",
+    "ARCHIVED": "Archived"
+  },
+  "autonomy": {
+    "DRAFT": "Draft",
+    "QUEUE": "Queue",
+    "EXECUTE": "Execute",
+    "CLOSE": "Close"
+  },
+  "autonomyDescription": {
+    "DRAFT": "Produces drafts only. Nothing leaves the system.",
+    "QUEUE": "Prepares actions and queues them for human approval.",
+    "EXECUTE": "Runs reversible actions automatically; irreversible ones need approval.",
+    "CLOSE": "Completes tasks end-to-end within an Owner allow-listed scope."
+  },
+  "role": {
+    "OWNER": "Owner",
+    "ADMIN": "Admin",
+    "MEMBER": "Member",
+    "VIEWER": "Viewer"
+  },
+  "outputLanguage": {
+    "inherit": "Workspace default",
+    "id": "Bahasa Indonesia",
+    "en": "English"
+  }
+}

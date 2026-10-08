@@ -1,0 +1,52 @@
+{
+  "items": {
+    "dashboard": "Dashboard",
+    "employees": "Karyawan",
+    "teams": "Tim",
+    "chat": "Obrolan",
+    "tasks": "Papan tugas",
+    "routines": "Rutinitas",
+    "approvals": "Persetujuan",
+    "clients": "Klien",
+    "knowledge": "Basis pengetahuan",
+    "settings": "Pengaturan"
+  },
+  "killSwitch": {
+    "button": "Kill switch",
+    "release": "Lepas kill switch",
+    "engagedToast": "Kill switch aktif: semua karyawan dihentikan.",
+    "releasedToast": "Kill switch dilepas.",
+    "releaseTitle": "Lepas kill switch?",
+    "engageTitle": "Hentikan semua karyawan sekarang?",
+    "releaseDescription": "Tugas dalam antrean akan berjalan lagi. Pekerjaan yang sempat dihentikan tetap dibatalkan.",
+    "engageDescription": "Setiap karyawan yang sedang bekerja di workspace ini langsung dihentikan. Pekerjaan dalam antrean ditahan dan persetujuan tidak bisa dijalankan sampai Anda melepasnya.",
+    "reasonPlaceholder": "Alasan (dicatat di log audit)",
+    "releaseConfirm": "Lepas",
+    "engageConfirm": "Hentikan semua",
+    "banner": "Kill switch aktif — semua karyawan dihentikan dan tidak ada tindakan yang bisa dijalankan."
+  },
+  "live": {
+    "approvalNeeded": "Perlu persetujuan: {title}",
+    "open": "Buka",
+    "taskFailed": "Tugas gagal",
+    "taskFailedNamed": "Tugas gagal: {title}",
+    "employeePausedBudget": "Seorang karyawan dijeda: batas anggaran tercapai.",
+    "connected": "Terhubung",
+    "connecting": "Menghubungkan…"
+  },
+  "notifications": {
+    "title": "Notifikasi",
+    "empty": "Belum ada apa-apa."
+  },
+  "toggleTheme": "Ganti tema",
+  "navigation": "Navigasi",
+  "menu": "Menu",
+  "accountMenu": "Menu akun",
+  "account": "Akun",
+  "workspaceSettings": "Pengaturan workspace",
+  "language": "Bahasa",
+  "signOut": "Keluar",
+  "demoBanner": "Mode demo: proses berjalan sesuai skrip, tanpa biaya kredit dan tanpa koneksi jaringan.",
+  "turnOff": "Matikan",
+  "noCredentialBanner": "Workspace ini belum punya kredensial Claude. Karyawan tidak bisa bekerja sampai Pemilik menambahkannya di <link>Pengaturan</link> — atau aktifkan Mode Demo."
+}

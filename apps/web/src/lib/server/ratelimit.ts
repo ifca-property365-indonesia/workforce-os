@@ -12,11 +12,12 @@ export function clientIp(req: NextRequest): string {
 }
 
 /** Fixed-window counter. Throws 429 once `max` hits land inside `windowSec`. */
-export async function rateLimit(key: string, max: number, windowSec: number, message = "Too many attempts. Try again later.") {
+export async function rateLimit(key: string, max: number, windowSec: number, code: "too_many_attempts" | "too_many_signups" = "too_many_attempts") {
   const k = `wfos:rl:${key}`;
   const n = await redis().incr(k);
   if (n === 1) await redis().expire(k, windowSec);
-  if (n > max) throw new HttpError(429, message);
+  // i18n-ignore: code is one of the literal union members above
+  if (n > max) throw new HttpError(429, "Too many attempts", { code, minutes: Math.ceil(windowSec / 60) });
 }
 
 export async function resetRateLimit(key: string) {

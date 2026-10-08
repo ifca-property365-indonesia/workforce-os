@@ -11,7 +11,7 @@ const schema = z.object({ code: z.string().min(6).max(10) });
 
 /** Confirm enrollment with the first code. Recovery codes are returned once and only their hashes are stored. */
 export const POST = route("VIEWER", async ({ session, req }) => {
-  await rateLimit(`2fa-enable:${session.userId}`, 10, 900, "Too many attempts. Try again in 15 minutes.");
+  await rateLimit(`2fa-enable:${session.userId}`, 10, 900);
   const { code } = await body(req, schema);
   const [u] = await db.select().from(users).where(eq(users.id, session.userId));
   if (!u?.totpPendingEnc) throw new HttpError(400, "Start the setup first", { code: "two_factor_setup_missing" });

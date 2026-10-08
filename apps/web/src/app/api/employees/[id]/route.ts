@@ -9,7 +9,7 @@ type P = { id: string };
 
 async function load(workspaceId: string, id: string) {
   const [e] = await db.select().from(employees).where(and(eq(employees.id, id), eq(employees.workspaceId, workspaceId)));
-  return e ?? notFound("Employee not found");
+  return e ?? notFound("employee_not_found");
 }
 
 export const GET = route<P>("VIEWER", async ({ session, params }) => {
@@ -25,7 +25,7 @@ const patchSchema = employeeInputSchema.partial().extend({ allowList: z.array(al
 export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   const before = await load(session.workspaceId, params.id);
   const input = await patchBody(req, patchSchema);
-  if (input.allowList && !hasRole(session.role, "OWNER")) throw new HttpError(403, "Only an Owner can change the irreversible-action allow-list");
+  if (input.allowList && !hasRole(session.role, "OWNER")) throw new HttpError(403, "Only an Owner can change the irreversible-action allow-list", { code: "owner_only_allow_list" });
   const instructionsChanged =
     (input.instructions !== undefined && input.instructions !== before.instructions) ||
     (input.persona !== undefined && input.persona !== before.persona) ||

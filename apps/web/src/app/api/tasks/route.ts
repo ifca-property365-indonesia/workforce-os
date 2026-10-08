@@ -41,15 +41,15 @@ export const GET = route("VIEWER", async ({ session, req }) => {
 
 export const POST = route("MEMBER", async ({ session, req }) => {
   const input = await body(req, taskInputSchema);
-  if (!input.assigneeId && !input.teamId) throw new HttpError(400, "Assign the task to an employee or a team");
+  if (!input.assigneeId && !input.teamId) throw new HttpError(400, "Assign the task to an employee or a team", { code: "task_needs_assignee" });
   if (input.assigneeId) {
     const [e] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, input.assigneeId), eq(employees.workspaceId, session.workspaceId)));
-    if (!e) throw new HttpError(400, "Unknown employee");
+    if (!e) throw new HttpError(400, "Unknown employee", { code: "unknown_employee" });
   }
   if (input.teamId) {
     const [t] = await db.select({ id: teams.id, leadId: teams.leadId }).from(teams).where(and(eq(teams.id, input.teamId), eq(teams.workspaceId, session.workspaceId)));
-    if (!t) throw new HttpError(400, "Unknown team");
-    if (!t.leadId) throw new HttpError(400, "This team has no Lead");
+    if (!t) throw new HttpError(400, "Unknown team", { code: "unknown_team" });
+    if (!t.leadId) throw new HttpError(400, "This team has no Lead", { code: "team_has_no_lead" });
   }
   const [t] = await db
     .insert(tasks)

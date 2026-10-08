@@ -1,0 +1,18 @@
+{
+  "title": "Knowledge base",
+  "description": "Workspace-wide documents. Chunked and embedded locally (pgvector); employees cite them via kb_search.",
+  "upload": "Upload PDF / DOCX / MD",
+  "uploaded": "Uploaded — indexing (chunk + embed) in the background",
+  "meta": "{size} KB · {count, plural, one {# chunk} other {# chunks}} · {when}",
+  "reindex": "Re-index",
+  "confirmDelete": "Delete {name}?",
+  "empty": {
+    "title": "No documents",
+    "description": "Drop files here or use Upload. Handbooks, policies, price lists, FAQs…"
+  },
+  "status": {
+    "pending": "pending",
+    "indexed": "indexed",
+    "failed": "failed"
+  }
+}

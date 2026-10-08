@@ -1,0 +1,19 @@
+{
+  "title": "Dashboard",
+  "description": "Hasil kerja, biaya, dan pengawasan seluruh tenaga kerja AI Anda (1 kredit = $0,01).",
+  "runDemo": "Jalankan demo",
+  "demoStarted": "Demo dimulai — pantau papan tugas dan persetujuan.",
+  "delivered": "Tugas selesai",
+  "deliveredHint": "tugas utama, 30 hari terakhir",
+  "costPerTask": "Biaya / tugas selesai",
+  "approvalRate": "Tingkat persetujuan",
+  "approvalHint": "{decided} diputuskan · ditolak {rejection}",
+  "spendThisMonth": "Pengeluaran bulan ini",
+  "ofBudget": "dari anggaran {budget} ({pct}%)",
+  "weeklySpend": "Pengeluaran per karyawan per minggu",
+  "weeklySpendHint": "Kredit, 8 minggu terakhir",
+  "wip": "Pekerjaan berjalan",
+  "reviewPending": "{count, plural, other {Tinjau # persetujuan yang menunggu}}",
+  "yourEmployees": "Karyawan AI Anda",
+  "noEmployees": "Belum ada karyawan. <link>Rekrut yang pertama</link>."
+}

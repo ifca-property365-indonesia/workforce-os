@@ -1,0 +1,28 @@
+{
+  "newChat": "Chat baru",
+  "team": "Tim",
+  "deleteChat": "Hapus chat",
+  "fallbackTitle": "Chat",
+  "teamSubtitle": "Chat tim (dijawab oleh Ketua)",
+  "emptyThread": "Sapa, ajukan pertanyaan, atau jelaskan pekerjaan yang ingin dijadikan tugas.",
+  "taskCreatedLink": "tugas dibuat",
+  "createTask": "Buat tugas",
+  "makeTask": "Jadikan tugas",
+  "removeFile": "Hapus file",
+  "attachFiles": "Lampirkan file",
+  "send": "Kirim",
+  "placeholder": "Pesan (Enter untuk mengirim, Shift+Enter untuk baris baru)",
+  "placeholderBusy": "Menunggu balasan…",
+  "empty": {
+    "title": "Pilih percakapan",
+    "description": "Mulai chat baru dengan karyawan atau tim mana pun di sebelah kiri."
+  },
+  "taskDialog": {
+    "title": "Buat tugas dari chat",
+    "titleLabel": "Judul",
+    "brief": "Brief",
+    "submit": "Buat & mulai",
+    "created": "Tugas dibuat",
+    "open": "Buka"
+  }
+}

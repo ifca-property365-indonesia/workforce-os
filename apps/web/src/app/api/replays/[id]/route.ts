@@ -22,7 +22,7 @@ export const POST = route<P>("ADMIN", async ({ session, req, params }) => {
     await db.update(replays).set({ status: "discarded" }).where(eq(replays.id, r.id));
     return { ok: true };
   }
-  if (r.status !== "done") throw new HttpError(409, "Replay must finish before promoting");
+  if (r.status !== "done") throw new HttpError(409, "Replay must finish before promoting", { code: "replay_not_finished" });
   const [e] = await db.select().from(employees).where(eq(employees.id, r.employeeId));
   await db
     .update(employees)

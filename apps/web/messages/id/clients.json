@@ -1,0 +1,38 @@
+{
+  "title": "Klien",
+  "description": "Data induk yang dipakai bersama oleh semua karyawan untuk email status dan invoice. Karyawan merujuk klien berdasarkan id.",
+  "newClient": "Klien baru",
+  "editClient": "Ubah klien",
+  "empty": "Belum ada klien",
+  "noEmail": "tanpa email",
+  "idLabel": "id",
+  "confirmDelete": "Hapus {name} beserta proyek-proyeknya?",
+  "form": {
+    "currency": "Mata uang",
+    "email": "Email penagihan / utama",
+    "contacts": "Kontak",
+    "contactName": "Nama",
+    "contactEmail": "Email",
+    "contactRole": "Jabatan",
+    "removeContact": "Hapus kontak",
+    "addContact": "Tambah kontak",
+    "notes": "Catatan (terlihat oleh karyawan)"
+  },
+  "project": {
+    "rate": "Tarif: {rate}/jam",
+    "tasks": "tugas",
+    "delete": "Hapus proyek",
+    "confirmDelete": "Hapus {name}?",
+    "add": "Proyek",
+    "namePlaceholder": "Nama proyek",
+    "descriptionPlaceholder": "Deskripsi / status saat ini",
+    "hourlyRatePlaceholder": "Tarif per jam",
+    "addProject": "Tambah proyek",
+    "status": {
+      "active": "aktif",
+      "paused": "dijeda",
+      "done": "selesai",
+      "archived": "diarsipkan"
+    }
+  }
+}

@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Languages,
   MessageSquare,
   Moon,
   OctagonX,
@@ -42,23 +43,26 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { EventsProvider, useRealtime, useRealtimeStatus } from "@/lib/events";
 import { useMe } from "@/lib/hooks";
-import { ago } from "@/lib/format";
+import { useFormat } from "@/lib/use-format";
+import { useTranslations } from "next-intl";
+import { LOCALES, LOCALE_NAMES } from "@wfos/shared";
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/employees", label: "Employees", icon: Bot },
-  { href: "/teams", label: "Teams", icon: UsersRound },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/tasks", label: "Task board", icon: KanbanSquare },
-  { href: "/routines", label: "Routines", icon: CalendarClock },
-  { href: "/approvals", label: "Approvals", icon: ShieldCheck, badge: "approvals" as const },
-  { href: "/clients", label: "Clients", icon: Building2 },
-  { href: "/knowledge", label: "Knowledge base", icon: BookOpen },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
+  { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
+  { href: "/employees", key: "employees", icon: Bot },
+  { href: "/teams", key: "teams", icon: UsersRound },
+  { href: "/chat", key: "chat", icon: MessageSquare },
+  { href: "/tasks", key: "tasks", icon: KanbanSquare },
+  { href: "/routines", key: "routines", icon: CalendarClock },
+  { href: "/approvals", key: "approvals", icon: ShieldCheck, badge: "approvals" as const },
+  { href: "/clients", key: "clients", icon: Building2 },
+  { href: "/knowledge", key: "knowledge", icon: BookOpen },
+  { href: "/settings", key: "settings", icon: Settings },
+] as const;
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
+  const t = useTranslations("nav");
   const path = usePathname();
   const { data } = useQuery({
     queryKey: ["approvals", "pending-count"],
@@ -79,8 +83,8 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
             )}
           >
             <n.icon className="size-4" />
-            <span className="flex-1">{n.label}</span>
-            {n.badge && !!data && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{data}</span>}
+            <span className="flex-1">{t(`items.${n.key}`)}</span>
+            {"badge" in n && !!data && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{data}</span>}
           </Link>
         );
       })}
@@ -89,6 +93,8 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function KillSwitch() {
+  const t = useTranslations("nav");
+  const tc = useTranslations("common");
   const qc = useQueryClient();
   const { data: me } = useMe();
   const [open, setOpen] = useState(false);
@@ -97,7 +103,7 @@ function KillSwitch() {
   const m = useMutation({
     mutationFn: (v: boolean) => api.post("/api/killswitch", { engaged: v, reason }),
     onSuccess: (_d, v) => {
-      toast[v ? "error" : "success"](v ? "Kill switch engaged: all employees stopped." : "Kill switch released.");
+      toast[v ? "error" : "success"](v ? t("killSwitch.engagedToast") : t("killSwitch.releasedToast"));
       setOpen(false);
       setReason("");
       void qc.invalidateQueries({ queryKey: ["me"] });
@@ -109,25 +115,23 @@ function KillSwitch() {
     <>
       <Button size="sm" variant={engaged ? "default" : "destructive"} onClick={() => setOpen(true)} className="gap-1.5">
         <OctagonX className="size-4" />
-        <span className="hidden sm:inline">{engaged ? "Release kill switch" : "Kill switch"}</span>
+        <span className="hidden sm:inline">{engaged ? t("killSwitch.release") : t("killSwitch.button")}</span>
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{engaged ? "Release the kill switch?" : "Stop all employees now?"}</DialogTitle>
+            <DialogTitle>{engaged ? t("killSwitch.releaseTitle") : t("killSwitch.engageTitle")}</DialogTitle>
             <DialogDescription>
-              {engaged
-                ? "Queued tasks will start again. Running work that was stopped stays cancelled."
-                : "Every running employee in this workspace is aborted immediately. Queued work is held and approvals cannot execute until you release the switch."}
+              {engaged ? t("killSwitch.releaseDescription") : t("killSwitch.engageDescription")}
             </DialogDescription>
           </DialogHeader>
-          {!engaged && <Textarea placeholder="Reason (written to the audit log)" value={reason} onChange={(e) => setReason(e.target.value)} />}
+          {!engaged && <Textarea placeholder={t("killSwitch.reasonPlaceholder")} value={reason} onChange={(e) => setReason(e.target.value)} />}
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
-              Cancel
+              {tc("cancel")}
             </Button>
             <Button variant={engaged ? "default" : "destructive"} disabled={m.isPending} onClick={() => m.mutate(!engaged)}>
-              {engaged ? "Release" : "Stop everything"}
+              {engaged ? t("killSwitch.releaseConfirm") : t("killSwitch.engageConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -137,6 +141,8 @@ function KillSwitch() {
 }
 
 function Notifications() {
+  const t = useTranslations("nav");
+  const f = useFormat();
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["notifications"],
@@ -144,30 +150,30 @@ function Notifications() {
     refetchInterval: 60_000,
   });
   useRealtime((ev) => {
-    if (ev.type === "approval.created") toast.warning(`Approval needed: ${ev.title}`, { action: { label: "Open", onClick: () => (location.href = "/approvals") } });
-    if (ev.type === "task.updated" && ev.status === "FAILED") toast.error(`Task failed${ev.title ? `: ${ev.title}` : ""}`);
+    if (ev.type === "approval.created") toast.warning(t("live.approvalNeeded", { title: ev.title }), { action: { label: t("live.open"), onClick: () => (location.href = "/approvals") } });
+    if (ev.type === "task.updated" && ev.status === "FAILED") toast.error(ev.title ? t("live.taskFailedNamed", { title: ev.title }) : t("live.taskFailed"));
     if (ev.type === "demo.stage") toast.info(ev.detail);
-    if (ev.type === "employee.updated" && ev.status === "PAUSED_BUDGET") toast.warning("An employee was paused: budget cap reached.");
+    if (ev.type === "employee.updated" && ev.status === "PAUSED_BUDGET") toast.warning(t("live.employeePausedBudget"));
     if (ev.type === "approval.created" || ev.type === "task.updated") void qc.invalidateQueries({ queryKey: ["notifications"] });
   });
   const markRead = useMutation({ mutationFn: () => api.post("/api/notifications"), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
   return (
     <Popover onOpenChange={(o) => !o && data?.unread && markRead.mutate()}>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost" className="relative" aria-label="Notifications">
+        <Button size="icon" variant="ghost" className="relative" aria-label={t("notifications.title")}>
           <Bell className="size-4" />
           {!!data?.unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-destructive" />}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
-        <div className="border-b px-3 py-2 text-sm font-medium">Notifications</div>
+        <div className="border-b px-3 py-2 text-sm font-medium">{t("notifications.title")}</div>
         <div className="max-h-96 overflow-y-auto">
-          {!data?.notifications.length && <p className="p-4 text-sm text-muted-foreground">Nothing yet.</p>}
+          {!data?.notifications.length && <p className="p-4 text-sm text-muted-foreground">{t("notifications.empty")}</p>}
           {data?.notifications.map((n) => (
             <Link key={n.id} href={n.link ?? "#"} className={cn("block border-b px-3 py-2 text-sm hover:bg-accent", !n.readAt && "bg-primary/5")}>
               <div className="font-medium">{n.title}</div>
               <div className="line-clamp-2 text-xs text-muted-foreground">{n.body}</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">{ago(n.createdAt)}</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">{f.ago(n.createdAt)}</div>
             </Link>
           ))}
         </div>
@@ -177,11 +183,12 @@ function Notifications() {
 }
 
 function ThemeToggle() {
+  const t = useTranslations("nav");
   return (
     <Button
       size="icon"
       variant="ghost"
-      aria-label="Toggle theme"
+      aria-label={t("toggleTheme")}
       onClick={() => {
         const dark = document.documentElement.classList.toggle("dark");
         try {
@@ -198,6 +205,8 @@ function ThemeToggle() {
 }
 
 function Shell({ children }: { children: ReactNode }) {
+  const t = useTranslations("nav");
+  const ts = useTranslations("status");
   const router = useRouter();
   const { data: me } = useMe();
   const live = useRealtimeStatus();
@@ -219,11 +228,11 @@ function Shell({ children }: { children: ReactNode }) {
         <Link href="/account" onClick={() => setMobile(false)} className="block text-muted-foreground hover:text-foreground">
           <span className="block truncate font-medium text-foreground">{me?.user.name}</span>
           <span className="block truncate">
-            {me?.user.email} · {me?.role}
+            {me?.user.email} · {me ? ts(`role.${me.role}`) : ""}
           </span>
         </Link>
         <div className="flex items-center gap-1.5 text-muted-foreground">
-          <span className={cn("size-2 rounded-full", live ? "bg-emerald-500" : "bg-zinc-400")} /> {live ? "Live" : "Connecting…"}
+          <span className={cn("size-2 rounded-full", live ? "bg-emerald-500" : "bg-zinc-400")} /> {live ? t("live.connected") : t("live.connecting")}
         </div>
       </div>
     </div>
@@ -234,13 +243,13 @@ function Shell({ children }: { children: ReactNode }) {
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r bg-sidebar lg:block">{sidebar}</aside>
       <Sheet open={mobile} onOpenChange={setMobile}>
         <SheetContent side="left" className="w-64 bg-sidebar p-0">
-          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SheetTitle className="sr-only">{t("navigation")}</SheetTitle>
           {sidebar}
         </SheetContent>
       </Sheet>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-4 backdrop-blur">
-          <Button size="icon" variant="ghost" className="lg:hidden" onClick={() => setMobile(true)} aria-label="Menu">
+          <Button size="icon" variant="ghost" className="lg:hidden" onClick={() => setMobile(true)} aria-label={t("menu")}>
             <Menu className="size-5" />
           </Button>
           <div className="flex-1" />
@@ -249,7 +258,7 @@ function Shell({ children }: { children: ReactNode }) {
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="rounded-full" aria-label="Account menu">
+              <Button size="icon" variant="ghost" className="rounded-full" aria-label={t("accountMenu")}>
                 <span className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
                   {(me?.user.name ?? "?").trim().charAt(0).toUpperCase()}
                 </span>
@@ -263,14 +272,28 @@ function Shell({ children }: { children: ReactNode }) {
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/account">
-                  <UserRound className="size-4" /> Account
+                  <UserRound className="size-4" /> {t("account")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings">
-                  <Settings className="size-4" /> Workspace settings
+                  <Settings className="size-4" /> {t("workspaceSettings")}
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("language")}</DropdownMenuLabel>
+              {LOCALES.map((l) => (
+                <DropdownMenuItem
+                  key={l}
+                  onSelect={async () => {
+                    await api.patch("/api/me", { locale: l });
+                    window.location.reload();
+                  }}
+                >
+                  <Languages className="size-4" /> {LOCALE_NAMES[l]}
+                  {me?.user.locale === l && <CheckCircle2 className="ml-auto size-3.5" />}
+                </DropdownMenuItem>
+              ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={async () => {
@@ -278,31 +301,33 @@ function Shell({ children }: { children: ReactNode }) {
                   router.replace("/login");
                 }}
               >
-                <LogOut className="size-4" /> Sign out
+                <LogOut className="size-4" /> {t("signOut")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
         {me?.workspace.killSwitch && (
           <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-medium text-white">
-            <OctagonX className="size-4" /> Kill switch engaged — all employees are stopped and no actions can execute.
+            <OctagonX className="size-4" /> {t("killSwitch.banner")}
           </div>
         )}
         {me?.workspace.demoMode && (
           <div className="flex flex-wrap items-center gap-2 bg-violet-600 px-4 py-1.5 text-sm text-white">
-            <CheckCircle2 className="size-4" /> Demo mode: runs are scripted, cost 0 credits and make no network calls.
+            <CheckCircle2 className="size-4" /> {t("demoBanner")}
             <Link href="/settings" className="underline underline-offset-2">
-              Turn off
+              {t("turnOff")}
             </Link>
           </div>
         )}
         {me && !me.claude.credentialPresent && !me.workspace.demoMode && (
           <div className="bg-amber-500/15 px-4 py-1.5 text-sm text-amber-800 dark:text-amber-200">
-            No Claude credential for this workspace. Employees cannot run until an Owner adds one in{" "}
-            <Link href="/settings" className="underline underline-offset-2">
-              Settings
-            </Link>{" "}
-            — or turn on Demo Mode.
+            {t.rich("noCredentialBanner", {
+              link: (c) => (
+                <Link href="/settings" className="underline underline-offset-2">
+                  {c}
+                </Link>
+              ),
+            })}
           </div>
         )}
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">{children}</main>

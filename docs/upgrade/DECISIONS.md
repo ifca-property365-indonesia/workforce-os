@@ -88,3 +88,22 @@ action. Owners should set it to `false` once every workspace has its own credent
 Only Owners can set/remove a credential (billing + access), Admins can see the status. Setting it is audited with
 type and last 4 characters only.
 Rejected: requiring a step-up re-auth to change the credential (not asked for; Owner role + audit suffice for now).
+
+## D12. i18n: next-intl without locale routing; per-namespace catalogs; a test instead of a lint plugin
+URLs stay the same (`/settings`, not `/id/settings`). The locale is resolved per request in `src/i18n/locale.ts`: the
+user preference (`users.locale`), then the workspace default (`workspaces.default_locale`), then the `wfos_locale`
+cookie (language switch on signed-out pages) or `Accept-Language`, then English. Catalogs are split by namespace
+(`messages/<locale>/<ns>.json`) so several people (or agents) can work on different screens without conflicts.
+The "untranslated strings" rule is `apps/web/test/i18n.test.ts`, a TypeScript-AST scan run by `pnpm test`. It
+understands namespaced translators, so it can also prove that every literal key exists, that id/en have the same
+keys and ICU placeholders, and that every `HttpError` carries a translated `code`. Server errors are translated on the
+server (the client shows `error`), so toasts are localised without a client-side error map.
+Rejected: locale-prefixed routes (breaks existing links and the PM2/Nginx setup for no gain in a logged-in app);
+`eslint-plugin-i18next` (can't verify key existence or id/en parity); one big catalog file (merge conflicts).
+
+## D13. Employee output language: inherit → workspace default; unset workspace → mirror the request
+`employees.output_language` is `inherit | id | en`. With `inherit` and no workspace default, no language
+instruction is added and the employee answers in the language of the request (the previous behaviour). Worker-side
+text that people read (notifications, default invoice email, invoice PDF) uses the workspace default language
+(`packages/shared/src/messages.ts`). An approved payload, including a human-edited subject/body, is always sent
+exactly as approved.

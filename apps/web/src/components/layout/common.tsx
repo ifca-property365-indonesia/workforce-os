@@ -3,7 +3,8 @@
 import type { ReactNode } from "react";
 import type { TaskStatus } from "@wfos/shared";
 import { cn } from "@/lib/utils";
-import { STATUS_LABEL, STATUS_TONE } from "@/lib/format";
+import { useTranslations } from "next-intl";
+import { STATUS_TONE } from "@/lib/format";
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
@@ -18,10 +19,11 @@ export function PageHeader({ title, description, actions }: { title: string; des
 }
 
 export function StatusBadge({ status, className }: { status: TaskStatus; className?: string }) {
+  const t = useTranslations("status");
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium", STATUS_TONE[status], className)}>
       {status === "RUNNING" && <span className="size-1.5 animate-pulse rounded-full bg-current" />}
-      {STATUS_LABEL[status]}
+      {t(`task.${status}`)}
     </span>
   );
 }
@@ -56,11 +58,12 @@ export function Stat({ label, value, hint, icon }: { label: string; value: React
 }
 
 export function AutonomyBadge({ level }: { level: string }) {
+  const t = useTranslations("status");
   const tone: Record<string, string> = {
     DRAFT: "bg-slate-500/15 text-slate-700 dark:text-slate-300",
     QUEUE: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
     EXECUTE: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
     CLOSE: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   };
-  return <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", tone[level] ?? "bg-muted")}>{level}</span>;
+  return <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", tone[level] ?? "bg-muted")}>{t.has(`autonomy.${level}`) ? t(`autonomy.${level}`) : level}</span>;
 }

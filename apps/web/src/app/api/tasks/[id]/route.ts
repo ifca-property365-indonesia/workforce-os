@@ -4,7 +4,7 @@ import { notFound, route } from "@/lib/server/route";
 
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
   const [t] = await db.select().from(tasks).where(and(eq(tasks.id, params.id), eq(tasks.workspaceId, session.workspaceId)));
-  if (!t) notFound("Task not found");
+  if (!t) notFound("task_not_found");
   const children = await db.select().from(tasks).where(eq(tasks.parentTaskId, t.id)).orderBy(asc(tasks.createdAt));
   const parent = t.parentTaskId ? (await db.select({ id: tasks.id, title: tasks.title }).from(tasks).where(eq(tasks.id, t.parentTaskId)))[0] : null;
   const appr = await db.select().from(approvals).where(eq(approvals.taskId, t.id)).orderBy(asc(approvals.createdAt));

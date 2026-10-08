@@ -1,0 +1,125 @@
+{
+  "title": "Pengaturan",
+  "tabs": {
+    "general": "Umum",
+    "email": "Email",
+    "notifications": "Notifikasi",
+    "integrations": "Integrasi",
+    "pricing": "Harga",
+    "members": "Anggota",
+    "audit": "Log audit"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "monthlyBudget": "Anggaran bulanan (kredit; 1 kredit = $0,01)",
+    "language": "Bahasa workspace",
+    "languageFollowBrowser": "Ikuti browser masing-masing",
+    "languageDescription": "Bahasa antarmuka default bagi anggota yang belum memilih bahasa sendiri, sekaligus bahasa yang digunakan karyawan saat bahasa output mereka diatur ke “Ikuti workspace”."
+  },
+  "safety": {
+    "title": "Keamanan",
+    "description": "Pengaman aktif secara default: penyaringan prompt injection pada hasil tool dan pemeriksaan kebocoran rahasia/data pribadi (PII) pada output.",
+    "guards": "Pengaman input & output",
+    "guardsHint": "Menonaktifkan opsi ini akan tercatat di log audit.",
+    "guardsDisableConfirm": "Nonaktifkan pengaman? Tindakan ini tidak disarankan.",
+    "demoMode": "Mode demo",
+    "demoModeHint": "Eksekusi berskrip tanpa token dan tanpa panggilan jaringan; event SSE tetap sama.",
+    "require2fa": "Wajibkan autentikasi dua faktor untuk Pemilik dan Admin",
+    "require2faHint": "Mereka harus menyiapkan aplikasi autentikator sebelum dapat menggunakan workspace. Hanya Pemilik yang dapat mengubah pengaturan ini.",
+    "require2faDisableConfirm": "Berhenti mewajibkan autentikasi dua faktor untuk Pemilik dan Admin?"
+  },
+  "claude": {
+    "title": "Kredensial Claude",
+    "description": "Setiap workspace menggunakan kredensialnya sendiri. Sebuah eksekusi hanya menerima kredensial workspace ini, dan hanya selama eksekusi berlangsung. Token langganan diperoleh dari <code>claude setup-token</code>.",
+    "savedToast": "Kredensial Claude disimpan (terenkripsi)",
+    "removedToast": "Kredensial Claude dihapus",
+    "type": {
+      "oauth": "Token langganan Claude",
+      "api_key": "API key Anthropic"
+    },
+    "thisWorkspace": "Workspace ini:",
+    "workspaceSet": "{label} · berakhiran <code>{last4}</code> · diatur {when}",
+    "notSet": "belum diatur",
+    "serverFallback": "Cadangan server:",
+    "fallbackDisabled": "dinonaktifkan oleh pemilik server",
+    "fallbackSet": "{label} (diatur di .env server)",
+    "inUse": "Digunakan:",
+    "inUseWorkspace": "kredensial workspace ini",
+    "inUseFallback": "cadangan server",
+    "inUseNone": "tidak ada — karyawan tidak dapat berjalan",
+    "typeLabel": "Jenis",
+    "replaceWith": "Ganti dengan",
+    "credential": "Kredensial",
+    "removeConfirm": "Hapus kredensial Claude workspace ini?"
+  },
+  "email": {
+    "savedToast": "SMTP disimpan (kata sandi dienkripsi dengan AES-256-GCM)",
+    "testSent": "Email uji coba terkirim ({messageId})",
+    "description": "Digunakan untuk send_email / send_invoice dan notifikasi. Kata sandi tidak pernah keluar dari server.",
+    "host": "Host",
+    "port": "Port",
+    "tls": "TLS (465)",
+    "user": "Pengguna",
+    "passwordSet": "(sudah diatur — kosongkan untuk mempertahankan)",
+    "fromAddress": "Alamat pengirim",
+    "testRecipient": "penerima uji coba",
+    "sending": "Mengirim…",
+    "sendTest": "Kirim email uji coba"
+  },
+  "notifications": {
+    "title": "Notifikasi",
+    "description": "Saat ada persetujuan yang menunggu atau tugas selesai.",
+    "notifyEmail": "Email notifikasi",
+    "webhookUrl": "URL webhook (gateway WhatsApp / Telegram / Slack)",
+    "configured": "terkonfigurasi",
+    "webhookPlaceholder": "https://… (disimpan terenkripsi)",
+    "webhookHelp": "Webhook menerima JSON <code>{payload}</code>. Webhook ini juga menjadi tujuan tool <code>post_webhook</code> yang tidak dapat dibatalkan."
+  },
+  "integrations": {
+    "title": "Server MCP",
+    "description": "Hubungkan server MCP jarak jauh (Streamable HTTP). Token dienkripsi dan tidak pernah dikirim ke browser maupun model. Berikan akses server per karyawan sebagai <code>{grant}</code>; tool-nya diklasifikasikan berdasarkan kata kerja (read/list/search = dapat dibatalkan, selain itu = tidak dapat dibatalkan → perlu persetujuan).",
+    "tokenSet": "token diatur",
+    "namePlaceholder": "nama (mis. github)",
+    "tokenPlaceholder": "Bearer token (opsional)",
+    "connect": "Hubungkan"
+  },
+  "pricing": {
+    "updatedToast": "Harga diperbarui",
+    "title": "Tabel harga yang dipublikasikan",
+    "description": "1 kredit = {usd}. Setiap langkah LLM dikenai biaya berdasarkan tabel ini, sehingga Anda dapat memperkirakan biaya sebelum menjalankan.",
+    "model": "Model",
+    "inputPer1k": "Input / 1K token",
+    "outputPer1k": "Output / 1K token",
+    "cacheReadPer1k": "Baca cache / 1K",
+    "cacheWritePer1k": "Tulis cache / 1K",
+    "forecast": "Perkiraan*",
+    "creditsShort": "{value} kr",
+    "forecastPrefix": "*Perkiraan untuk tugas dengan",
+    "forecastInput": "token input,",
+    "forecastOutput": "token output, dan",
+    "forecastCalls": "panggilan tool (rata-rata {avg} kr).",
+    "perToolCall": "Per panggilan tool",
+    "toolClass": {
+      "reversible": "dapat dibatalkan",
+      "irreversible": "tidak dapat dibatalkan"
+    }
+  },
+  "members": {
+    "title": "Anggota",
+    "description": "Pemilik: semua akses, termasuk allow-list & harga · Admin: karyawan, persetujuan, pengaturan · Anggota: tugas, chat, klien · Pengamat: hanya baca.",
+    "createdPrompt": "Pengguna dibuat. Bagikan kata sandi sekali pakai ini dengan aman:",
+    "addedToast": "Anggota ditambahkan",
+    "removedToast": "Anggota dihapus",
+    "resetPrompt": "Kata sandi sekali pakai baru (wajib diganti saat masuk berikutnya). Bagikan dengan aman:",
+    "resetConfirm": "Atur ulang kata sandi untuk {email}? Kata sandi dan sesi mereka saat ini tidak akan berlaku lagi.",
+    "resetAria": "Atur ulang kata sandi untuk {email}",
+    "resetPassword": "Atur ulang kata sandi",
+    "removeConfirm": "Hapus {email} dari workspace ini?",
+    "removeAria": "Hapus {email}",
+    "removeFromWorkspace": "Hapus dari workspace"
+  },
+  "audit": {
+    "title": "Log audit",
+    "description": "Tidak dapat diubah (hanya bisa ditambah, dijamin oleh trigger database): persetujuan, perubahan izin, perubahan kredensial, penggunaan kill switch."
+  }
+}

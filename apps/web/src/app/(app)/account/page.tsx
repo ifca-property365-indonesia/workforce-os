@@ -12,8 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useMe } from "@/lib/hooks";
+import { useTranslations } from "next-intl";
+import { LOCALES, LOCALE_NAMES } from "@wfos/shared";
 
 function Profile() {
+  const t = useTranslations("account");
+  const tc = useTranslations("common");
+  const ts = useTranslations("status");
   const qc = useQueryClient();
   const { data: me } = useMe();
   const [name, setName] = useState("");
@@ -25,7 +30,7 @@ function Profile() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["me"] });
       void qc.invalidateQueries({ queryKey: ["members"] });
-      toast.success("Profile saved");
+      toast.success(t("profile.saved"));
     },
     onError: (e) => toast.error((e as Error).message),
   });
@@ -34,8 +39,8 @@ function Profile() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Profile</CardTitle>
-        <CardDescription>Your name is shown to teammates, in approvals and in the audit log.</CardDescription>
+        <CardTitle className="text-base">{t("profile.title")}</CardTitle>
+        <CardDescription>{t("profile.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -46,18 +51,22 @@ function Profile() {
           }}
         >
           <div className="space-y-1.5">
-            <Label htmlFor="profile-name">Name</Label>
+            <Label htmlFor="profile-name">{tc("name")}</Label>
             <Input id="profile-name" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="profile-email">Email</Label>
+            <Label htmlFor="profile-email">{tc("email")}</Label>
             <Input id="profile-email" value={me.user.email} disabled />
-            <p className="text-xs text-muted-foreground">Your sign-in email cannot be changed here.</p>
+            <p className="text-xs text-muted-foreground">{t("profile.emailFixed")}</p>
           </div>
           <div className="text-xs text-muted-foreground">
-            Role in {me.workspace.name}: <span className="font-medium text-foreground">{me.role}</span>
+            {t.rich("profile.roleIn", {
+              workspace: me.workspace.name,
+              role: ts(`role.${me.role}`),
+              b: (c) => <span className="font-medium text-foreground">{c}</span>,
+            })}
           </div>
-          <Button disabled={!dirty || save.isPending}>{save.isPending ? "Saving…" : "Save"}</Button>
+          <Button disabled={!dirty || save.isPending}>{save.isPending ? tc("saving") : tc("save")}</Button>
         </form>
       </CardContent>
     </Card>
@@ -65,30 +74,71 @@ function Profile() {
 }
 
 function Password() {
+  const t = useTranslations("account");
   const { data: me } = useMe();
   if (!me) return null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Password</CardTitle>
-        <CardDescription>Changing your password signs out every other session.</CardDescription>
+        <CardTitle className="text-base">{t("password.title")}</CardTitle>
+        <CardDescription>{t("password.description")}</CardDescription>
       </CardHeader>
       <CardContent>
-        {!me.user.hasPassword && <p className="mb-3 text-sm text-muted-foreground">You sign in with Google. Set a password to also sign in with email.</p>}
-        <ChangePasswordForm hasPassword={me.user.hasPassword} submitLabel={me.user.hasPassword ? "Change password" : "Set password"} />
+        {!me.user.hasPassword && <p className="mb-3 text-sm text-muted-foreground">{t("password.googleOnly")}</p>}
+        <ChangePasswordForm hasPassword={me.user.hasPassword} submitLabel={me.user.hasPassword ? t("password.change") : t("password.set")} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function Language() {
+  const t = useTranslations("account");
+  const { data: me } = useMe();
+  const save = useMutation({
+    mutationFn: (locale: string | null) => api.patch("/api/me", { locale }),
+    onSuccess: () => window.location.reload(),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  if (!me) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("language.title")}</CardTitle>
+        <CardDescription>{t("language.description")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Label htmlFor="ui-language" className="sr-only">
+          {t("language.title")}
+        </Label>
+        <select
+          id="ui-language"
+          className="h-9 rounded-md border bg-background px-2 text-sm"
+          value={me.user.locale ?? ""}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate(e.target.value || null)}
+        >
+          <option value="">{t("language.followWorkspace")}</option>
+          {LOCALES.map((l) => (
+            <option key={l} value={l}>
+              {LOCALE_NAMES[l]}
+            </option>
+          ))}
+        </select>
       </CardContent>
     </Card>
   );
 }
 
 export default function AccountPage() {
+  const t = useTranslations("account");
   return (
     <div>
-      <PageHeader title="Account" description="Your profile and sign-in settings." />
+      <PageHeader title={t("title")} description={t("description")} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Profile />
         <Password />
         <TwoFactorCard />
+        <Language />
       </div>
     </div>
   );

@@ -1,0 +1,50 @@
+{
+  "title": "Account",
+  "description": "Your profile and sign-in settings.",
+  "profile": {
+    "title": "Profile",
+    "description": "Your name is shown to teammates, in approvals and in the audit log.",
+    "emailFixed": "Your sign-in email cannot be changed here.",
+    "roleIn": "Role in {workspace}: <b>{role}</b>",
+    "saved": "Profile saved"
+  },
+  "password": {
+    "title": "Password",
+    "description": "Changing your password signs out every other session.",
+    "googleOnly": "You sign in with Google. Set a password to also sign in with email.",
+    "change": "Change password",
+    "set": "Set password",
+    "changed": "Password changed. Other sessions were signed out.",
+    "current": "Current password",
+    "new": "New password",
+    "minLength": "At least {min} characters.",
+    "confirm": "Confirm new password",
+    "mismatch": "Passwords do not match."
+  },
+  "twoFactor": {
+    "title": "Two-factor authentication",
+    "statusOn": "{count, plural, one {On. # recovery code left.} other {On. # recovery codes left.}}",
+    "statusOff": "Off. Protect your account with a code from an authenticator app at every sign-in.",
+    "requiredForRole": "Required for your role.",
+    "setUp": "Set up authenticator app",
+    "preparing": "Preparing…",
+    "scan": "Scan this QR code with an authenticator app (Google Authenticator, 1Password, Authy…), then enter the 6-digit code it shows.",
+    "qrAlt": "QR code for your authenticator app",
+    "manualKey": "Can't scan? Enter this key manually:",
+    "code": "Code",
+    "checking": "Checking…",
+    "turnOn": "Turn on",
+    "turnOff": "Turn off",
+    "turnedOff": "Two-factor authentication is off",
+    "newCodes": "New recovery codes",
+    "createNewCodes": "Create new codes",
+    "authenticatorCode": "Authenticator code",
+    "recoveryIntro": "Save these recovery codes somewhere safe. Each one signs you in once if you lose your authenticator. They are shown only now.",
+    "savedThem": "I saved them"
+  },
+  "language": {
+    "title": "Language",
+    "description": "The language of the interface for you. Without a choice, the workspace default (or your browser) is used.",
+    "followWorkspace": "Workspace default"
+  }
+}

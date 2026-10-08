@@ -15,12 +15,12 @@ const schema = z.object({ userId: z.string().uuid() });
  */
 export const POST = route("ADMIN", async ({ session, req }) => {
   const { userId } = await body(req, schema);
-  if (userId === session.userId) throw new HttpError(400, "Use Account → Change password for your own account");
+  if (userId === session.userId) throw new HttpError(400, "Use Account → Change password for your own account", { code: "reset_own_password" });
   const [target] = await db.select().from(members).where(and(eq(members.workspaceId, session.workspaceId), eq(members.userId, userId)));
-  if (!target) notFound("Member not found");
-  if (target.role === "OWNER" && session.role !== "OWNER") throw new HttpError(403, "Only an Owner can reset an Owner's password");
+  if (!target) notFound("member_not_found");
+  if (target.role === "OWNER" && session.role !== "OWNER") throw new HttpError(403, "Only an Owner can reset an Owner's password", { code: "owner_only_reset_owner" });
   const all = await db.select({ workspaceId: members.workspaceId }).from(members).where(eq(members.userId, userId));
-  if (all.some((m) => m.workspaceId !== session.workspaceId)) throw new HttpError(403, "This user also belongs to another workspace, so only they can change their password");
+  if (all.some((m) => m.workspaceId !== session.workspaceId)) throw new HttpError(403, "This user also belongs to another workspace", { code: "reset_multi_workspace_user" });
   const tempPassword = randomBytes(9).toString("base64url");
   const [u] = await db
     .update(users)

@@ -1,0 +1,31 @@
+{
+  "board": {
+    "title": "Papan tugas",
+    "description": "Kanban langsung per status. Subtugas dari ketua tim menampilkan tugas induknya.",
+    "newTask": "Tugas baru",
+    "allEmployees": "Semua karyawan",
+    "allClients": "Semua klien",
+    "allProjects": "Semua proyek",
+    "dryRun": "dry run",
+    "subtask": "subtugas",
+    "waitingOnSubtasks": "menunggu subtugas",
+    "credits": "{amount} kredit"
+  },
+  "page": {
+    "back": "Papan tugas"
+  },
+  "newTask": {
+    "title": "Tugas baru",
+    "fieldTitle": "Judul",
+    "brief": "Arahan",
+    "assignTo": "Tugaskan ke",
+    "employees": "Karyawan",
+    "teams": "Tim (ketua tim merencanakan & mendelegasikan)",
+    "client": "Klien",
+    "project": "Proyek",
+    "dryRun": "Dry run",
+    "startImmediately": "Langsung mulai",
+    "submit": "Buat tugas",
+    "created": "Tugas berhasil dibuat"
+  }
+}

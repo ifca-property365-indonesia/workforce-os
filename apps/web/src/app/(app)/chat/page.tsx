@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { KanbanSquare, Loader2, Paperclip, Plus, Send, Trash2, X } from "lucide-react";
 import type { ChatMessageDTO } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { useRealtime } from "@/lib/events";
-import { ago } from "@/lib/format";
+import { useFormat } from "@/lib/use-format";
 import { useEmployees, useTeams } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
@@ -31,12 +32,13 @@ interface Msg extends ChatMessageDTO {
 }
 
 function TaskFromChat({ text, employeeId, onClose }: { text: string; employeeId: string | null; onClose: () => void }) {
+  const t = useTranslations("chat");
   const [title, setTitle] = useState(text.split("\n")[0]!.slice(0, 100));
   const [brief, setBrief] = useState(text);
   const m = useMutation({
     mutationFn: () => api.post<{ task: { id: string } }>("/api/tasks", { title, brief, assigneeId: employeeId, start: true }),
     onSuccess: (r) => {
-      toast.success("Task created", { action: { label: "Open", onClick: () => (location.href = `/tasks/${r.task.id}`) } });
+      toast.success(t("taskDialog.created"), { action: { label: t("taskDialog.open"), onClick: () => (location.href = `/tasks/${r.task.id}`) } });
       onClose();
     },
     onError: (e) => toast.error((e as Error).message),
@@ -45,21 +47,21 @@ function TaskFromChat({ text, employeeId, onClose }: { text: string; employeeId:
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create task from chat</DialogTitle>
+          <DialogTitle>{t("taskDialog.title")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>Title</Label>
+            <Label>{t("taskDialog.titleLabel")}</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>Brief</Label>
+            <Label>{t("taskDialog.brief")}</Label>
             <Textarea rows={6} value={brief} onChange={(e) => setBrief(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
           <Button onClick={() => m.mutate()} disabled={!title || !employeeId || m.isPending}>
-            Create & start
+            {t("taskDialog.submit")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -68,6 +70,9 @@ function TaskFromChat({ text, employeeId, onClose }: { text: string; employeeId:
 }
 
 function ChatView({ conv }: { conv: Conv }) {
+  const t = useTranslations("chat");
+  const ts = useTranslations("status");
+  const fmt = useFormat();
   const qc = useQueryClient();
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
@@ -128,12 +133,12 @@ function ChatView({ conv }: { conv: Conv }) {
       <div className="flex items-center gap-2 border-b px-4 py-3">
         <Avatar emoji={emp?.avatar ?? "👥"} />
         <div className="min-w-0">
-          <div className="truncate font-medium">{emp?.name ?? team?.name ?? "Chat"}</div>
-          <div className="truncate text-xs text-muted-foreground">{emp ? `${emp.role} · ${emp.autonomyLevel}` : "Team chat (answered by the Lead)"}</div>
+          <div className="truncate font-medium">{emp?.name ?? team?.name ?? t("fallbackTitle")}</div>
+          <div className="truncate text-xs text-muted-foreground">{emp ? `${emp.role} · ${ts(`autonomy.${emp.autonomyLevel}`)}` : t("teamSubtitle")}</div>
         </div>
       </div>
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {!messages.length && <p className="pt-10 text-center text-sm text-muted-foreground">Say hello, ask a question, or describe work to turn into a task.</p>}
+        {!messages.length && <p className="pt-10 text-center text-sm text-muted-foreground">{t("emptyThread")}</p>}
         {messages.map((m) => {
           const mine = m.role === "user";
           const author = m.employeeId ? emps?.find((e) => e.id === m.employeeId) : undefined;
@@ -154,20 +159,20 @@ function ChatView({ conv }: { conv: Conv }) {
                   </div>
                 )}
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  {ago(m.createdAt)}
+                  {fmt.ago(m.createdAt)}
                   {m.taskId && (
                     <Link href={`/tasks/${m.taskId}`} className="text-primary hover:underline">
-                      task created
+                      {t("taskCreatedLink")}
                     </Link>
                   )}
                   {!mine && m.content && (
                     <button type="button" className="inline-flex items-center gap-0.5 hover:text-foreground" onClick={() => setTaskFrom(m.content)}>
-                      <KanbanSquare className="size-3" /> Create task
+                      <KanbanSquare className="size-3" /> {t("createTask")}
                     </button>
                   )}
                   {mine && (
                     <button type="button" className="inline-flex items-center gap-0.5 hover:text-foreground" onClick={() => setTaskFrom(m.content)}>
-                      <KanbanSquare className="size-3" /> Make task
+                      <KanbanSquare className="size-3" /> {t("makeTask")}
                     </button>
                   )}
                 </div>
@@ -189,7 +194,7 @@ function ChatView({ conv }: { conv: Conv }) {
             {files.map((f) => (
               <span key={f.name} className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs">
                 {f.name}
-                <button type="button" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label="Remove file">
+                <button type="button" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={t("removeFile")}>
                   <X className="size-3" />
                 </button>
               </span>
@@ -198,7 +203,7 @@ function ChatView({ conv }: { conv: Conv }) {
         )}
         <div className="flex items-end gap-2">
           <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.md,.txt,.csv,.json" onChange={(e) => setFiles([...files, ...Array.from(e.target.files ?? [])])} />
-          <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} aria-label="Attach files">
+          <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} aria-label={t("attachFiles")}>
             <Paperclip className="size-4" />
           </Button>
           <Textarea
@@ -211,10 +216,10 @@ function ChatView({ conv }: { conv: Conv }) {
                 if (text.trim() || files.length) send.mutate();
               }
             }}
-            placeholder={busy ? "Waiting for the reply…" : "Message (Enter to send, Shift+Enter for newline)"}
+            placeholder={busy ? t("placeholderBusy") : t("placeholder")}
             className="max-h-40 min-h-10 resize-none"
           />
-          <Button type="submit" size="icon" disabled={send.isPending || (!text.trim() && !files.length)} aria-label="Send">
+          <Button type="submit" size="icon" disabled={send.isPending || (!text.trim() && !files.length)} aria-label={t("send")}>
             <Send className="size-4" />
           </Button>
         </div>
@@ -225,6 +230,8 @@ function ChatView({ conv }: { conv: Conv }) {
 }
 
 function ChatPage() {
+  const t = useTranslations("chat");
+  const fmt = useFormat();
   const sp = useSearchParams();
   const router = useRouter();
   const qc = useQueryClient();
@@ -266,7 +273,7 @@ function ChatPage() {
       <div className="space-y-3">
         <div className="rounded-xl border bg-card p-3">
           <div className="mb-2 flex items-center gap-1 text-sm font-medium">
-            <Plus className="size-4" /> New chat
+            <Plus className="size-4" /> {t("newChat")}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {emps
@@ -294,10 +301,10 @@ function ChatPage() {
                   <span>{e?.avatar ?? "👥"}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{c.title}</span>
-                    <span className="block text-[11px] text-muted-foreground">{e?.name ?? "Team"} · {ago(c.updatedAt)}</span>
+                    <span className="block text-[11px] text-muted-foreground">{e?.name ?? t("team")} · {fmt.ago(c.updatedAt)}</span>
                   </span>
                 </Link>
-                <button type="button" className="opacity-0 group-hover:opacity-100" onClick={() => del.mutate(c.id)} aria-label="Delete chat">
+                <button type="button" className="opacity-0 group-hover:opacity-100" onClick={() => del.mutate(c.id)} aria-label={t("deleteChat")}>
                   <Trash2 className="size-3.5 text-muted-foreground" />
                 </button>
               </div>
@@ -305,7 +312,7 @@ function ChatPage() {
           })}
         </div>
       </div>
-      {conv ? <ChatView key={conv.id} conv={conv} /> : <EmptyState title="Pick a conversation" description="Start a new chat with any employee or team on the left." />}
+      {conv ? <ChatView key={conv.id} conv={conv} /> : <EmptyState title={t("empty.title")} description={t("empty.description")} />}
     </div>
   );
 }

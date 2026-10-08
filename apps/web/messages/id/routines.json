@@ -1,0 +1,54 @@
+{
+  "title": "Rutinitas",
+  "description": "Template tugas terjadwal (cron). Setiap kali dijalankan, rutinitas membuat tugas yang berjalan otomatis melalui gerbang keamanan yang sama.",
+  "newRoutine": "Rutinitas baru",
+  "editRoutine": "Ubah rutinitas",
+  "saved": "Rutinitas tersimpan",
+  "dispatched": "Rutinitas dijalankan — lihat papan tugas",
+  "confirmDelete": "Hapus {name}?",
+  "runNow": "Jalankan sekarang",
+  "toggleHistory": "Riwayat eksekusi",
+  "enabledLabel": "Aktif",
+  "unassigned": "belum ditugaskan",
+  "nextRun": "berikutnya: {when}",
+  "lastRun": "terakhir: {when}",
+  "badge": {
+    "perClient": "per klien",
+    "dryRun": "dry run"
+  },
+  "empty": {
+    "title": "Belum ada rutinitas",
+    "description": "Contoh: setiap Senin pukul 09.00 kirim status proyek mingguan ke setiap klien."
+  },
+  "form": {
+    "cron": "Cron",
+    "timezone": "Zona waktu",
+    "assignTo": "Tugaskan ke",
+    "brief": "Template brief",
+    "briefPlaceholder": "Gunakan {variable} bersama opsi “Satu tugas per klien”.",
+    "perClient": "Satu tugas per klien",
+    "dryRun": "Dry run",
+    "enabled": "Aktif",
+    "gateNote": "Eksekusi otomatis mematuhi gerbang yang sama: tindakan yang tidak dapat dibatalkan akan dijeda untuk persetujuan dan pemilik akan diberi tahu."
+  },
+  "presets": {
+    "weeklyMonday": "Setiap Senin 09.00",
+    "weekdays": "Hari kerja 08.00",
+    "monthly": "Tanggal 1 setiap bulan 10.00",
+    "hourly": "Setiap jam"
+  },
+  "history": {
+    "nextRuns": "Jadwal berikutnya",
+    "runHistory": "Riwayat eksekusi",
+    "neverRan": "Belum pernah dijalankan.",
+    "taskLink": "tugas {n}",
+    "trigger": {
+      "schedule": "terjadwal",
+      "manual": "manual"
+    },
+    "status": {
+      "dispatched": "dijalankan",
+      "failed": "gagal"
+    }
+  }
+}

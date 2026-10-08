@@ -9,7 +9,7 @@ function validateCron(cron: string, tz: string) {
   try {
     CronExpressionParser.parse(cron, { tz });
   } catch (e) {
-    throw new HttpError(400, `Invalid cron expression: ${(e as Error).message}`);
+    throw new HttpError(400, `Invalid cron expression: ${(e as Error).message}`, { code: "invalid_cron", detail: (e as Error).message });
   }
 }
 
@@ -20,7 +20,7 @@ export const GET = route("VIEWER", async ({ session }) => {
 
 export const POST = route("ADMIN", async ({ session, req }) => {
   const input = await body(req, routineInputSchema);
-  if (!input.assigneeId && !input.teamId) throw new HttpError(400, "Assign the routine to an employee or a team");
+  if (!input.assigneeId && !input.teamId) throw new HttpError(400, "Assign the routine to an employee or a team", { code: "routine_needs_assignee" });
   validateCron(input.cron, input.timezone);
   const [r] = await db
     .insert(routines)

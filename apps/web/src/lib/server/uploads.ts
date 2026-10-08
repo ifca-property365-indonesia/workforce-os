@@ -13,8 +13,8 @@ const MAX = 20 * 1024 * 1024;
 /** Store an uploaded file and queue it for chunking + embedding. */
 export async function saveDocument(workspaceId: string, userId: string, file: File) {
   const ext = path.extname(file.name).toLowerCase();
-  if (!ALLOWED.includes(ext)) throw new HttpError(400, `Unsupported file type ${ext}. Allowed: ${ALLOWED.join(", ")}`);
-  if (file.size > MAX) throw new HttpError(413, "File too large (max 20 MB)");
+  if (!ALLOWED.includes(ext)) throw new HttpError(400, `Unsupported file type ${ext}`, { code: "unsupported_file_type", ext, allowed: ALLOWED.join(", ") });
+  if (file.size > MAX) throw new HttpError(413, "File too large (max 20 MB)", { code: "file_too_large", max: 20 });
   const dir = path.resolve(serverEnv.storageDir, "uploads", workspaceId);
   await mkdir(dir, { recursive: true });
   const storagePath = path.join(dir, `${randomUUID()}${ext}`);

@@ -3,12 +3,13 @@
 import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { BookOpen, RefreshCw, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState, PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
-import { ago } from "@/lib/format";
+import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
 interface Doc {
@@ -22,6 +23,9 @@ interface Doc {
 }
 
 export default function KnowledgePage() {
+  const t = useTranslations("knowledge");
+  const tc = useTranslations("common");
+  const fmt = useFormat();
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
   const { data } = useQuery({
@@ -36,7 +40,7 @@ export default function KnowledgePage() {
       return api.form("/api/documents", f);
     },
     onSuccess: () => {
-      toast.success("Uploaded — indexing (chunk + embed) in the background");
+      toast.success(t("uploaded"));
       void qc.invalidateQueries({ queryKey: ["documents"] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -47,13 +51,13 @@ export default function KnowledgePage() {
   return (
     <div>
       <PageHeader
-        title="Knowledge base"
-        description="Workspace-wide documents. Chunked and embedded locally (pgvector); employees cite them via kb_search."
+        title={t("title")}
+        description={t("description")}
         actions={
           <>
             <input ref={input} type="file" multiple hidden accept=".pdf,.docx,.md,.markdown,.txt,.csv,.json" onChange={(e) => e.target.files?.length && upload.mutate(Array.from(e.target.files))} />
             <Button onClick={() => input.current?.click()} disabled={upload.isPending} className="gap-1.5">
-              <Upload className="size-4" /> Upload PDF / DOCX / MD
+              <Upload className="size-4" /> {t("upload")}
             </Button>
           </>
         }
@@ -66,7 +70,7 @@ export default function KnowledgePage() {
         }}
       >
         {!data?.length ? (
-          <EmptyState icon={<BookOpen className="size-8" />} title="No documents" description="Drop files here or use Upload. Handbooks, policies, price lists, FAQs…" />
+          <EmptyState icon={<BookOpen className="size-8" />} title={t("empty.title")} description={t("empty.description")} />
         ) : (
           <Card>
             <CardContent className="divide-y p-0">
@@ -76,15 +80,15 @@ export default function KnowledgePage() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{d.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {(d.size / 1024).toFixed(0)} KB · {d.chunkCount} chunks · {ago(d.createdAt)}
+                      {t("meta", { size: fmt.number(d.size / 1024, 0), count: d.chunkCount, when: fmt.ago(d.createdAt) })}
                       {d.error && <span className="text-destructive"> · {d.error}</span>}
                     </div>
                   </div>
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs", d.status === "indexed" ? "bg-emerald-500/15 text-emerald-700" : d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-amber-500/15 text-amber-700")}>{d.status}</span>
-                  <Button size="icon" variant="ghost" onClick={() => reindex.mutate(d.id)} aria-label="Re-index">
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs", d.status === "indexed" ? "bg-emerald-500/15 text-emerald-700" : d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-amber-500/15 text-amber-700")}>{t.has(`status.${d.status}`) ? t(`status.${d.status}`) : d.status}</span>
+                  <Button size="icon" variant="ghost" onClick={() => reindex.mutate(d.id)} aria-label={t("reindex")}>
                     <RefreshCw className="size-4" />
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => confirm(`Delete ${d.name}?`) && del.mutate(d.id)} aria-label="Delete">
+                  <Button size="icon" variant="ghost" onClick={() => confirm(t("confirmDelete", { name: d.name })) && del.mutate(d.id)} aria-label={tc("delete")}>
                     <Trash2 className="size-4" />
                   </Button>
                 </div>

@@ -13,7 +13,7 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
   const [t] = await db.select().from(tasks).where(and(eq(tasks.id, params.id), eq(tasks.workspaceId, session.workspaceId)));
   if (!t) notFound();
   if (action === "cancel") {
-    if (!canTransition(t.status, "CANCELLED")) throw new HttpError(409, `Cannot cancel a ${t.status} task`);
+    if (!canTransition(t.status, "CANCELLED")) throw new HttpError(409, `Cannot cancel a ${t.status} task`, { code: "task_cannot_cancel", status: t.status });
     // a team task takes its open subtasks with it
     const children = await db.select().from(tasks).where(eq(tasks.parentTaskId, t.id));
     const cancelled = [t, ...children.filter((c) => canTransition(c.status, "CANCELLED"))];
@@ -36,13 +36,13 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
     return { ok: true };
   }
   if (action === "start") {
-    if (t.status !== "QUEUED") throw new HttpError(409, "Only queued tasks can be started");
+    if (t.status !== "QUEUED") throw new HttpError(409, "Only queued tasks can be started", { code: "task_not_queued" });
     await db.update(tasks).set({ phase: t.phase === "hold" ? null : t.phase }).where(eq(tasks.id, t.id));
     await q.task(t.id, session.workspaceId);
     return { ok: true };
   }
   if (action === "retry" || action === "dry_run") {
-    if (!["FAILED", "CANCELLED", "DONE", "QUEUED"].includes(t.status)) throw new HttpError(409, `Cannot rerun a ${t.status} task`);
+    if (!["FAILED", "CANCELLED", "DONE", "QUEUED"].includes(t.status)) throw new HttpError(409, `Cannot rerun a ${t.status} task`, { code: "task_cannot_rerun", status: t.status });
     if (action === "dry_run" || t.status === "DONE") {
       // reruns of finished work create a fresh copy so history stays intact
       const [copy] = await db

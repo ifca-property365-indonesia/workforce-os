@@ -95,8 +95,8 @@ export class HttpError extends Error {
 
 export async function requireSession(minRole: Role = "VIEWER"): Promise<Session> {
   const s = await getSession();
-  if (!s) throw new HttpError(401, "Not signed in");
-  if (!hasRole(s.role, minRole)) throw new HttpError(403, `Requires ${minRole} role`);
+  if (!s) throw new HttpError(401, "Not signed in", { code: "not_signed_in" });
+  if (!hasRole(s.role, minRole)) throw new HttpError(403, `Requires ${minRole} role`, { code: "role_required", role: minRole });
   return s;
 }
 

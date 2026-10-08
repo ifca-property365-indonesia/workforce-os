@@ -1,0 +1,94 @@
+{
+  "activity": {
+    "empty": "Belum ada aktivitas.",
+    "tokensIn": "Token masuk",
+    "tokensOut": "Token keluar",
+    "modelTime": "Waktu model",
+    "cost": "Biaya",
+    "costValue": "{credits} kredit · {usd}",
+    "tokens": "{input}→{output} token",
+    "credits": "{amount} kredit",
+    "cacheRead": "cache dibaca {count}",
+    "cacheWrite": "cache ditulis {count}",
+    "input": "Input / argumen",
+    "output": "Output / hasil"
+  },
+  "stepKind": {
+    "llm": "LLM",
+    "tool": "Tool",
+    "guard": "Pengaman",
+    "approval": "Persetujuan",
+    "agent_message": "Pesan agen",
+    "compaction": "Pemadatan",
+    "budget": "Anggaran",
+    "system": "Sistem",
+    "error": "Kesalahan"
+  },
+  "stepStatus": {
+    "error": "kesalahan",
+    "blocked": "diblokir",
+    "denied": "ditolak",
+    "flagged": "ditandai",
+    "pending": "menunggu",
+    "simulated": "disimulasikan",
+    "drafted": "draf dibuat"
+  },
+  "deliverables": {
+    "empty": "Belum ada hasil kerja.",
+    "newVersion": "versi baru",
+    "to": "Kepada: {recipients}",
+    "content": "Konten",
+    "diff": "Diff dengan versi sebelumnya"
+  },
+  "deliverableKind": {
+    "document": "dokumen",
+    "email_draft": "draf email",
+    "invoice": "faktur",
+    "code": "kode",
+    "summary": "ringkasan",
+    "simulated_action": "tindakan simulasi",
+    "review": "tinjauan"
+  },
+  "task": {
+    "subtaskOf": "↑ Subtugas dari {title}",
+    "dryRun": "dry run",
+    "team": "tim: {phase}",
+    "source": "sumber: {source}",
+    "cost": "biaya {credits} kredit ({usd})",
+    "created": "dibuat {when}",
+    "system": "sistem",
+    "brief": "Arahan",
+    "result": "Hasil",
+    "approvals": "Persetujuan",
+    "subtasks": "Subtugas",
+    "channel": "Kanal antaragen",
+    "activityTab": "Aktivitas ({count})",
+    "deliverablesTab": "Hasil kerja ({count})"
+  },
+  "source": {
+    "chat": "obrolan",
+    "board": "papan tugas",
+    "routine": "rutinitas",
+    "team": "tim",
+    "replay": "replay",
+    "demo": "demo"
+  },
+  "actions": {
+    "start": "Mulai",
+    "cancel": "Batalkan",
+    "runAgain": "Jalankan lagi",
+    "retry": "Coba lagi",
+    "dryRun": "Dry run",
+    "cancelled": "Tugas dibatalkan",
+    "dryRunStarted": "Dry run dimulai",
+    "queued": "Tugas masuk antrean"
+  },
+  "weeklySpend": {
+    "empty": "Belum ada pengeluaran tercatat dalam 8 minggu terakhir.",
+    "other": "Lainnya",
+    "weekOf": "Minggu mulai {date}",
+    "total": "Total",
+    "tableView": "Tampilan tabel",
+    "week": "Minggu"
+  }
+}

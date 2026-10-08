@@ -1,0 +1,18 @@
+{
+  "title": "Basis pengetahuan",
+  "description": "Dokumen untuk seluruh workspace. Dipecah dan di-embed secara lokal (pgvector); karyawan mengutipnya melalui kb_search.",
+  "upload": "Unggah PDF / DOCX / MD",
+  "uploaded": "Terunggah — pengindeksan (chunk + embed) berjalan di latar belakang",
+  "meta": "{size} KB · {count, plural, other {# chunk}} · {when}",
+  "reindex": "Indeks ulang",
+  "confirmDelete": "Hapus {name}?",
+  "empty": {
+    "title": "Belum ada dokumen",
+    "description": "Letakkan file di sini atau gunakan tombol Unggah. Buku panduan, kebijakan, daftar harga, FAQ…"
+  },
+  "status": {
+    "pending": "menunggu",
+    "indexed": "terindeks",
+    "failed": "gagal"
+  }
+}

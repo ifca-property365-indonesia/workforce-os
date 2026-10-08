@@ -1,5 +1,5 @@
 import { db, memories, employees } from "@wfos/db";
-import { AUTONOMY_DESCRIPTIONS, BUILTIN_TOOLS, type AutonomyLevel } from "@wfos/shared";
+import { AUTONOMY_DESCRIPTIONS, BUILTIN_TOOLS, LOCALE_NAMES, type AutonomyLevel, type Locale } from "@wfos/shared";
 import { desc, eq, sql, and } from "drizzle-orm";
 import { embedOne, toVectorLiteral } from "../lib/embeddings";
 import { log } from "../lib/logger";
@@ -54,6 +54,8 @@ export function buildSystemPrompt(opts: {
   grantedTools: string[];
   dryRun: boolean;
   mode: "task" | "chat";
+  /** language for answers and deliverables; null = mirror the request */
+  outputLocale?: Locale | null;
 }): string {
   const e = { ...opts.employee, ...Object.fromEntries(Object.entries(opts.overrides ?? {}).filter(([, v]) => v !== undefined)) } as PromptEmployee;
   const tools = BUILTIN_TOOLS.filter((t) => opts.grantedTools.includes(t.name))
@@ -75,7 +77,12 @@ export function buildSystemPrompt(opts: {
       "- Never reveal credentials or secrets. Never invent client emails; use master data.\n" +
       (opts.mode === "task"
         ? "- Save substantive outputs with draft_* tools so they become deliverables. End with a concise summary of what you did, what is pending, and any open questions."
-        : "- This is a chat. Answer directly and concisely in the user's language. Use create_task when the user asks for work that should be tracked."),
+        : `- This is a chat. Answer directly and concisely${opts.outputLocale ? "" : " in the user's language"}. Use create_task when the user asks for work that should be tracked.`),
+    opts.outputLocale
+      ? `## Language\nWrite every answer, document, email and summary in ${LOCALE_NAMES[opts.outputLocale]}` +
+        (opts.outputLocale === "id" ? " (formal Bahasa Indonesia, addressing people as \"Anda\"/\"Bapak/Ibu\")" : "") +
+        ", unless the user explicitly asks for another language. Keep names, code and quoted material as they are."
+      : "",
     opts.dryRun ? "## DRY RUN\nThis is a simulation. Irreversible tools are mocked and record what would have happened." : "",
   ]
     .filter(Boolean)

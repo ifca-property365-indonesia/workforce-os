@@ -4,7 +4,9 @@ import { approvals, clients, db, employees, projects, tasks } from "@wfos/db";
 import { assertTransition, type TaskStatus } from "@wfos/shared";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
-import { getWorkspace } from "../lib/settings";
+import { getWorkspace, workspaceLocale } from "../lib/settings";
+import { employeeOutputLocale } from "@wfos/shared";
+import { msg } from "@wfos/shared/messages";
 import { log } from "../lib/logger";
 import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
@@ -88,7 +90,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   if (!budget.ok) {
     await pauseForBudget(ws.id, emp.id, budget.reason!, taskId);
     await db.update(tasks).set({ error: `Paused: ${budget.reason}` }).where(eq(tasks.id, taskId));
-    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: `${emp.name} paused: budget cap`, text: budget.reason!, link: `/employees/${emp.id}` });
+    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedBudget", { name: emp.name }), text: budget.reason!, link: `/employees/${emp.id}` });
     return;
   }
 
@@ -135,6 +137,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
     dryRun: task.dryRun,
     mode: "task",
+    outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
   });
 
   let out;
@@ -152,7 +155,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   if (out.stopped === "budget") {
     await pauseForBudget(ws.id, emp.id, "Budget reached during the run", taskId);
     await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." });
-    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: `${emp.name} paused mid-task: budget cap`, text: task.title, link: `/tasks/${task.id}` });
+    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedMidTask", { name: emp.name }), text: task.title, link: `/tasks/${task.id}` });
     return;
   }
   if (out.stopped === "aborted") {
@@ -204,10 +207,11 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
 
 export async function notifyFinished(task: Pick<Task, "workspaceId" | "id" | "title" | "parentTaskId" | "source">, status: TaskStatus, text: string): Promise<void> {
   if (task.parentTaskId || task.source === "replay") return; // only top-level tasks notify humans
+  const locale = await workspaceLocale(task.workspaceId);
   await miscQueue.add("notify", {
     kind: "notify",
     workspaceId: task.workspaceId,
-    subject: `Task ${status === "DONE" ? "finished" : "failed"}: ${task.title}`,
+    subject: msg(locale, status === "DONE" ? "notify.taskFinished" : "notify.taskFailed", { title: task.title }),
     text: text.slice(0, 1500),
     link: `/tasks/${task.id}`,
   });

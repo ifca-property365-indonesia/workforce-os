@@ -1,0 +1,58 @@
+{
+  "title": "Kotak masuk persetujuan",
+  "description": "Setiap tindakan yang tidak dapat dibatalkan berhenti di sini, satu per satu, beserta payload persis yang akan dijalankan.",
+  "tabs": {
+    "pending": "Menunggu",
+    "approved": "Disetujui",
+    "rejected": "Ditolak & kedaluwarsa",
+    "all": "Semua"
+  },
+  "empty": {
+    "pendingTitle": "Tidak ada yang menunggu",
+    "title": "Belum ada persetujuan",
+    "description": "Saat karyawan mencoba mengirim, menerbitkan, membayar, atau menghapus sesuatu, permintaannya akan muncul di sini."
+  },
+  "tools": {
+    "send_email": "Kirim email",
+    "send_invoice": "Kirim faktur",
+    "post_webhook": "Kirim webhook"
+  },
+  "email": {
+    "to": "Kepada:",
+    "cc": "Cc:",
+    "subject": "Subjek:"
+  },
+  "editor": {
+    "to": "Kepada (pisahkan dengan koma)",
+    "cc": "Cc",
+    "subject": "Subjek",
+    "body": "Isi"
+  },
+  "invoice": {
+    "subject": "Faktur {number}",
+    "defaultBody": "(email faktur bawaan) Faktur {number}, total {total}",
+    "attachment": "Lampiran: {file} — {lines, plural, other {# baris}}, total {total} · jatuh tempo {due}",
+    "pdfTitle": "PDF faktur"
+  },
+  "webhook": {
+    "channel": "Kanal: {channel}",
+    "defaultChannel": "bawaan"
+  },
+  "card": {
+    "wantsToRun": "{employee} ingin menjalankan <code>{tool}</code>",
+    "task": "tugas",
+    "dryRunNotice": "Dry run: menyetujui hanya mencatat apa yang akan terjadi; tidak ada yang benar-benar dikirim.",
+    "guardFindings": "Temuan pengaman",
+    "editedByHuman": "Diedit oleh manusia sebelum disetujui.",
+    "feedback": "Masukan: {feedback}",
+    "result": "Hasil: {summary}",
+    "rejectPlaceholder": "Apa yang perlu diubah? Masukan ini akan ditulis ke memori karyawan.",
+    "rejectWithFeedback": "Tolak dengan masukan",
+    "saveAndApprove": "Simpan perubahan & setujui",
+    "approve": "Setujui",
+    "editAndApprove": "Edit & setujui",
+    "reject": "Tolak",
+    "rejected": "Ditolak — masukan disimpan ke memori karyawan",
+    "approved": "Disetujui — sedang dijalankan"
+  }
+}
