@@ -10,6 +10,7 @@ import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, recallMemories, workspaceDirectory } from "./prompt";
 import { MissingCredentialError, runAgent } from "./executor";
+import { activeQuotaPause } from "../lib/limits";
 import { enqueueTask } from "../lib/redis";
 import { scriptedChatReply } from "../simulation/demo";
 
@@ -139,11 +140,15 @@ export async function runChat(conversationId: string, userMessageId: string): Pr
     for (const id of ctx.createdTaskIds) await enqueueTask(id, ws.id);
     if (out.stopped === "budget") await pauseForBudget(ws.id, emp.id, "Budget reached during chat");
     let content = out.text || (out.error ? `⚠️ ${out.error}` : "(no reply)");
+    if (out.stopped === "quota") {
+      const pause = await activeQuotaPause(ws.id);
+      content = `${out.text ? `${out.text}\n\n` : ""}⏸️ ${pause?.reason ?? "The Claude subscription limit was reached."}`;
+    }
     if (ctx.pendingApprovalIds.length) content += `\n\n🔒 ${ctx.pendingApprovalIds.length} action(s) are waiting in the Approvals inbox.`;
     if (ctx.createdTaskIds.length && ctx.createdTaskIds[0]) {
       await db.update(messages).set({ taskId: ctx.createdTaskIds[0] }).where(eq(messages.id, assistant!.id));
     }
-    await finish(content, out.stopped === "error" ? "error" : "done");
+    await finish(content, out.stopped === "error" || out.stopped === "quota" ? "error" : "done");
   } catch (e) {
     if (timer) clearTimeout(timer);
     const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${(e as Error).message}`;

@@ -362,7 +362,11 @@ export type RealtimeEvent =
   | { type: "employee.updated"; employeeId: string; status: EmployeeStatus }
   | { type: "killswitch"; engaged: boolean }
   | { type: "replay.updated"; replayId: string; status: string }
-  | { type: "demo.stage"; stage: string; detail: string };
+  | { type: "demo.stage"; stage: string; detail: string }
+  | { type: "limits.updated"; windows: { type: string; status: string; utilization: number | null; resetsAt: string | null }[] }
+  | { type: "limits.warning"; window: string; threshold: number; resetsAt: string | null }
+  | { type: "quota.paused"; until: string | null; reason: string }
+  | { type: "quota.resumed" };
 
 export interface StepDTO {
   id: string;

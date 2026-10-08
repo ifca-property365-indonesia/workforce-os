@@ -15,5 +15,22 @@
   "wip": "Work in progress",
   "reviewPending": "{count, plural, one {Review # pending approval} other {Review # pending approvals}}",
   "yourEmployees": "Your AI employees",
-  "noEmployees": "No employees yet. <link>Hire your first one</link>."
+  "noEmployees": "No employees yet. <link>Hire your first one</link>.",
+  "limits": {
+    "title": "Claude subscription",
+    "description": "Usage of this workspace's Claude subscription. Updated live after every request.",
+    "sharedFallback": "Usage of the server's shared Claude subscription (this workspace has no credential of its own).",
+    "noData": "No usage reported yet. It appears after the first run.",
+    "used": "{pct}% used",
+    "rejected": "Limit reached.",
+    "resetsAt": "Resets {time}",
+    "resetUnknown": "Reset time not reported",
+    "usd": "API-equivalent cost this month: {usd}",
+    "window": {
+      "five_hour": "5-hour window",
+      "seven_day": "Weekly",
+      "seven_day_opus": "Weekly · Opus",
+      "seven_day_sonnet": "Weekly · Sonnet"
+    }
+  }
 }

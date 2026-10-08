@@ -14,7 +14,8 @@
     "./netguard": "./src/netguard.ts",
     "./totp": "./src/totp.ts",
     "./messages": "./src/messages.ts",
-    "./bash-classifier": "./src/bash-classifier.ts"
+    "./bash-classifier": "./src/bash-classifier.ts",
+    "./limits": "./src/limits.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

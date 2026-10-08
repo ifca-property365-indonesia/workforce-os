@@ -1,0 +1,10 @@
+{
+  "_comment": "Shape of the Agent SDK's rate_limit_event (SDKRateLimitEvent in sdk.d.ts, SDK 0.3.292). resetsAt values are epoch seconds and are replaced by the test with times relative to now.",
+  "allowed_five_hour": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000001", "session_id": "fixture", "rate_limit_info": { "status": "allowed", "rateLimitType": "five_hour", "utilization": 0.42, "resetsAt": 0 } },
+  "allowed_weekly": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000002", "session_id": "fixture", "rate_limit_info": { "status": "allowed", "rateLimitType": "seven_day", "utilization": 0.1, "resetsAt": 0 } },
+  "weekly_opus": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000003", "session_id": "fixture", "rate_limit_info": { "status": "allowed", "rateLimitType": "seven_day_opus", "utilization": 0.33, "resetsAt": 0 } },
+  "warning_72": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000004", "session_id": "fixture", "rate_limit_info": { "status": "allowed_warning", "rateLimitType": "five_hour", "utilization": 0.72, "resetsAt": 0, "surpassedThreshold": 0.7 } },
+  "warning_75": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000005", "session_id": "fixture", "rate_limit_info": { "status": "allowed_warning", "rateLimitType": "five_hour", "utilization": 0.75, "resetsAt": 0 } },
+  "warning_91": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000006", "session_id": "fixture", "rate_limit_info": { "status": "allowed_warning", "rateLimitType": "five_hour", "utilization": 0.91, "resetsAt": 0, "surpassedThreshold": 0.9 } },
+  "rejected": { "type": "rate_limit_event", "uuid": "00000000-0000-4000-8000-000000000007", "session_id": "fixture", "rate_limit_info": { "status": "rejected", "rateLimitType": "five_hour", "utilization": 1, "resetsAt": 0, "overageStatus": "rejected", "overageDisabledReason": "overage_not_provisioned" } }
+}

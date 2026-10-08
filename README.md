@@ -95,6 +95,10 @@ docker compose up -d --build
 
 Compose runs `postgres` (pgvector), `redis`, `migrate` (migrations + seed, runs once), `web`, `worker`, `nginx` (SSE-safe proxy) and `certbot` (renews every 12 hours). Uploaded files and the local embedding model live in the `storage` volume.
 
+## Claude subscription meter
+
+For workspaces running on a Claude subscription (`oauth` credential), the dashboard shows the 5-hour and weekly windows (plus per-model weekly windows when reported) with % used and the local reset time. It updates live from the Agent SDK's `rate_limit_event`. Warnings go out at 70% and 90% (in-app and as notifications). When the subscription **rejects** a request, the run stops, the workspace queue is paused (**PAUSED_QUOTA**, with the reason in a banner), and tasks resume automatically after the reset. Admins can also resume by hand. API-key workspaces keep the credit/USD meter, and the USD-equivalent cost is always shown as a secondary number.
+
 ## Workspace mode (Claude Code in a sandbox)
 
 An employee runs in **Tool mode** (platform tools only, the default) or **Workspace mode**: Claude Code with Bash, files, git, subagents and skills, inside an isolated sandbox per task. Switching to Workspace mode (or widening its network allow-list) needs an Owner/Admin and a fresh password + 2FA confirmation. The Developer template defaults to it.

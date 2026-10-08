@@ -44,6 +44,7 @@ import { api } from "@/lib/api";
 import { EventsProvider, useRealtime, useRealtimeStatus } from "@/lib/events";
 import { useMe } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
+import { QuotaBanner } from "@/components/inspector/limits-card";
 import { useTranslations } from "next-intl";
 import { LOCALES, LOCALE_NAMES } from "@wfos/shared";
 import { cn } from "@/lib/utils";
@@ -154,6 +155,8 @@ function Notifications() {
     if (ev.type === "task.updated" && ev.status === "FAILED") toast.error(ev.title ? t("live.taskFailedNamed", { title: ev.title }) : t("live.taskFailed"));
     if (ev.type === "demo.stage") toast.info(ev.detail);
     if (ev.type === "employee.updated" && ev.status === "PAUSED_BUDGET") toast.warning(t("live.employeePausedBudget"));
+    if (ev.type === "limits.warning") toast.warning(t("live.limitWarning", { pct: ev.threshold }));
+    if (ev.type === "quota.paused") toast.error(t("live.quotaPaused"));
     if (ev.type === "approval.created" || ev.type === "task.updated") void qc.invalidateQueries({ queryKey: ["notifications"] });
   });
   const markRead = useMutation({ mutationFn: () => api.post("/api/notifications"), onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }) });
@@ -306,6 +309,7 @@ function Shell({ children }: { children: ReactNode }) {
             </DropdownMenuContent>
           </DropdownMenu>
         </header>
+        <QuotaBanner />
         {me?.workspace.killSwitch && (
           <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-medium text-white">
             <OctagonX className="size-4" /> {t("killSwitch.banner")}

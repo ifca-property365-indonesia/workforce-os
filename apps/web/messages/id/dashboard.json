@@ -15,5 +15,22 @@
   "wip": "Pekerjaan berjalan",
   "reviewPending": "{count, plural, other {Tinjau # persetujuan yang menunggu}}",
   "yourEmployees": "Karyawan AI Anda",
-  "noEmployees": "Belum ada karyawan. <link>Rekrut yang pertama</link>."
+  "noEmployees": "Belum ada karyawan. <link>Rekrut yang pertama</link>.",
+  "limits": {
+    "title": "Langganan Claude",
+    "description": "Pemakaian langganan Claude workspace ini. Diperbarui langsung setelah setiap permintaan.",
+    "sharedFallback": "Pemakaian langganan Claude bersama milik server (workspace ini belum punya kredensial sendiri).",
+    "noData": "Belum ada data pemakaian. Akan muncul setelah run pertama.",
+    "used": "terpakai {pct}%",
+    "rejected": "Batas tercapai.",
+    "resetsAt": "Direset {time}",
+    "resetUnknown": "Waktu reset tidak dilaporkan",
+    "usd": "Biaya setara API bulan ini: {usd}",
+    "window": {
+      "five_hour": "Jendela 5 jam",
+      "seven_day": "Mingguan",
+      "seven_day_opus": "Mingguan · Opus",
+      "seven_day_sonnet": "Mingguan · Sonnet"
+    }
+  }
 }

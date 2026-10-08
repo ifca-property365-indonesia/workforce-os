@@ -11,7 +11,9 @@ export type MockStep =
   | { llm: { input: number; output: number; text?: string; model?: string } }
   | { tool: string; input: Record<string, unknown> }
   | { wait: number }
-  | { result: string };
+  | { result: string }
+  /** emit a raw SDK message (e.g. a recorded rate_limit_event) */
+  | { event: Record<string, unknown> };
 
 export interface MockToolCall {
   name: string;
@@ -87,6 +89,8 @@ export function mockRunner(script: MockStep[]): MockRunner {
             }
           }
           yield { type: "user", parent_tool_use_id: null, session_id: "mock-session", message: { role: "user", content: [] } } as unknown as SDKMessage;
+        } else if ("event" in step) {
+          yield step.event as unknown as SDKMessage;
         } else if ("wait" in step) {
           await sleep(step.wait, signal);
         } else {

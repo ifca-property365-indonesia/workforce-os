@@ -7,6 +7,7 @@ import { workspacePermissions } from "./workspace/permissions";
 import { defaultSandboxHost, runLayout } from "./workspace/layout";
 import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
 import { sandboxAvailable } from "./workspace/gc";
+import { recordRateLimit } from "../lib/limits";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
 import { resolveClaudeCredential } from "@wfos/db";
 import { agentEnv, env } from "../lib/env";
@@ -35,8 +36,10 @@ export interface AgentRunInput {
 export interface AgentRunOutput {
   text: string;
   credits: number;
-  stopped: "completed" | "budget" | "aborted" | "error" | "max_turns";
+  stopped: "completed" | "budget" | "aborted" | "error" | "max_turns" | "quota";
   error?: string;
+  /** subscription limit hit: when it resets */
+  quotaResetsAt?: Date | null;
 }
 
 export class MissingCredentialError extends Error {
@@ -154,6 +157,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   let stopped: AgentRunOutput["stopped"] = "completed";
   let error: string | undefined;
   let finalText = "";
+  let quotaResetsAt: Date | null | undefined;
   let lastAssistantText = "";
   const recordedMessageIds = new Set<string>();
   let turn: OpenTurn | null = null;
@@ -312,6 +316,19 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           if (ctx.workspace && !m.parent_tool_use_id) await recordBashOutputs(ctx, bashCalls, m.message.content);
           break;
         }
+        case "rate_limit_event": {
+          const r = await recordRateLimit(
+            { workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, credentialSource: credential.source, credentialType: credential.type },
+            m.rate_limit_info,
+          );
+          if (r?.rejected) {
+            // the subscription refuses more work: stop now, pause the queue, resume after the reset
+            stopped = "quota";
+            quotaResetsAt = r.resetsAt;
+            controller.abort(new Error("quota"));
+          }
+          break;
+        }
         case "system": {
           if (m.subtype === "init" && ctx.workspace?.onSession) await ctx.workspace.onSession(m.session_id);
           if (m.subtype === "compact_boundary") {
@@ -352,7 +369,8 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   } catch (e) {
     await closeTurn().catch(() => {});
     const reason = controller.signal.reason as Error | undefined;
-    if (stopped === "budget" || reason?.message === "budget") stopped = "budget";
+    if (stopped === "quota" || reason?.message === "quota") stopped = "quota";
+    else if (stopped === "budget" || reason?.message === "budget") stopped = "budget";
     else if (controller.signal.aborted) {
       stopped = "aborted";
       error = reason?.message ?? "aborted";
@@ -369,5 +387,5 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   const raw = finalText || lastAssistantText;
   const { text } = await guardOutput(ctx.guard, "final answer", raw);
   if (error && stopped === "completed" && !raw) stopped = "error";
-  return { text, credits, stopped, error };
+  return { text, credits, stopped, error, quotaResetsAt };
 }

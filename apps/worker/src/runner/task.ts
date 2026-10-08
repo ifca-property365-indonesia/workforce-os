@@ -7,6 +7,7 @@ import { assertTransition, type TaskStatus } from "@wfos/shared";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { getWorkspace, workspaceLocale } from "../lib/settings";
+import { activeQuotaPause } from "../lib/limits";
 import { employeeOutputLocale } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
 import { log } from "../lib/logger";
@@ -80,6 +81,14 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   if (emp.status !== "ACTIVE") {
     await recordStep({ workspaceId: ws.id, taskId, employeeId, kind: "system", name: "employee_not_active", status: "blocked", output: { status: emp.status } });
     await db.update(tasks).set({ error: `Waiting: ${emp.name} is ${emp.status}` }).where(eq(tasks.id, taskId));
+    return;
+  }
+
+  // subscription limit reached: hold the queue until it resets (resumes automatically)
+  const quota = await activeQuotaPause(ws.id);
+  if (quota && !(ws.demoMode || task.source === "demo")) {
+    await db.update(tasks).set({ error: `Paused: ${quota.reason}` }).where(eq(tasks.id, taskId));
+    await enqueueTask(task.id, ws.id, resumeNote, Math.max(1000, quota.until.getTime() - Date.now() + 5000));
     return;
   }
 
@@ -200,6 +209,13 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     await pauseForBudget(ws.id, emp.id, "Budget reached during the run", taskId);
     await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." });
     await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedMidTask", { name: emp.name }), text: task.title, link: `/tasks/${task.id}` });
+    return;
+  }
+  if (out.stopped === "quota") {
+    // interrupted by the subscription limit: resumable (same session in Workspace mode), resumes after the reset
+    const until = out.quotaResetsAt ?? new Date(Date.now() + 3_600_000);
+    await setTaskStatus(running, "QUEUED", { error: `Interrupted by the Claude subscription limit; resumes automatically at ${until.toISOString()}.` });
+    await enqueueTask(task.id, ws.id, resumeNote ?? "You were interrupted by a usage limit. Continue where you left off.", Math.max(1000, until.getTime() - Date.now() + 5000));
     return;
   }
   if (out.stopped === "aborted") {

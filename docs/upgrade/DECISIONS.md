@@ -168,3 +168,19 @@ Rejected for now: privileged nested systemd in a container (weakens the boundary
 ## D21. Chat stays in Tool mode
 Workspace mode runs for tasks only. A chat with a Workspace-mode employee uses platform tools and can create a
 task, so every shell session has a task, a workspace, a session id and a deliverable view.
+
+## D22. Subscription meter: only the SDK's typed `rate_limit_event`, normalised defensively
+The shape was verified against the installed SDK (0.3.292, `SDKRateLimitEvent`/`SDKRateLimitInfo` in `sdk.d.ts`). No
+experimental API and no header parsing is used. Every field except `status` is optional, and the units of
+`resetsAt`/`utilization` are not documented, so `normalizeRateLimit()` accepts epoch seconds or milliseconds and a
+fraction or a percentage (tested). Values are stored per workspace × credential source (`workspace` / `instance`) ×
+window. Warnings at 70% and 90% go out once per window (a new `resetsAt` starts a new window).
+Rejected: parsing `anthropic-ratelimit-unified-*` response headers in the gateway (undocumented, and Tool mode
+runs never pass through the gateway).
+
+## D23. `rejected` pauses the workspace queue (PAUSED_QUOTA), not the employee
+The subscription belongs to the workspace credential, so a rejection holds every task of that workspace until
+`resetsAt` (an hour when it is not reported). The interrupted task goes back to QUEUED with a delayed job; Workspace-mode
+tasks keep their Claude session and resume it. Held tasks are re-queued for the reset, and an Admin can resume by
+hand (after upgrading the plan, for example). Known limit: workspaces running on the shared instance fallback are
+paused one by one, as each of them hits the limit.

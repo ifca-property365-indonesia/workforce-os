@@ -43,6 +43,13 @@
       "when": 1791371379676,
       "tag": "0005_workspace_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791371379677,
+      "tag": "0006_claude_limits",
+      "breakpoints": true
     }
   ]
 }

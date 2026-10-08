@@ -32,7 +32,9 @@
     "taskFailedNamed": "Task failed: {title}",
     "employeePausedBudget": "An employee was paused: budget cap reached.",
     "connected": "Live",
-    "connecting": "Connecting…"
+    "connecting": "Connecting…",
+    "limitWarning": "Claude subscription at {pct}% of a limit",
+    "quotaPaused": "Claude subscription limit reached: work is paused"
   },
   "notifications": {
     "title": "Notifications",
@@ -48,5 +50,11 @@
   "signOut": "Sign out",
   "demoBanner": "Demo mode: runs are scripted, cost 0 credits and make no network calls.",
   "turnOff": "Turn off",
-  "noCredentialBanner": "No Claude credential for this workspace. Employees cannot run until an Owner adds one in <link>Settings</link> — or turn on Demo Mode."
+  "noCredentialBanner": "No Claude credential for this workspace. Employees cannot run until an Owner adds one in <link>Settings</link> — or turn on Demo Mode.",
+  "quota": {
+    "badge": "PAUSED_QUOTA",
+    "until": "Claude subscription limit reached: the work queue is paused until {time}.",
+    "resumeNow": "Resume now",
+    "resumed": "{count, plural, =0 {Queue resumed} one {Queue resumed: # task restarted} other {Queue resumed: # tasks restarted}}"
+  }
 }

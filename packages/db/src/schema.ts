@@ -76,6 +76,9 @@ export const workspaces = pgTable("workspaces", {
   killSwitch: boolean("kill_switch").notNull().default(false),
   /** OWNER and ADMIN members must enroll in TOTP 2FA before using the workspace */
   require2faAdmins: boolean("require_2fa_admins").notNull().default(true),
+  /** subscription limit reached: the queue is held until this instant (status PAUSED_QUOTA in the UI) */
+  quotaPausedUntil: timestamp("quota_paused_until", { withTimezone: true }),
+  quotaPauseReason: text("quota_pause_reason"),
   /** default UI and output language (id | en); null = follow each browser */
   defaultLocale: text("default_locale").$type<Locale>(),
   guardsEnabled: boolean("guards_enabled").notNull().default(true),
@@ -500,4 +503,24 @@ export const repositories = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("repositories_ws_name").on(t.workspaceId, t.name)],
+);
+
+/** Latest Claude subscription limit per workspace credential and window (from the SDK's rate_limit_event). */
+export const claudeLimits = pgTable(
+  "claude_limits",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** workspace | instance: whose subscription this window belongs to */
+    credentialSource: text("credential_source").$type<"workspace" | "instance">().notNull(),
+    /** five_hour | seven_day | seven_day_opus | seven_day_sonnet | … */
+    rateLimitType: text("rate_limit_type").notNull(),
+    status: text("status").$type<"allowed" | "allowed_warning" | "rejected">().notNull(),
+    /** 0..1 */
+    utilization: doublePrecision("utilization"),
+    resetsAt: timestamp("resets_at", { withTimezone: true }),
+    /** highest warning (70/90) already sent for the current window, so it is sent once */
+    warnedThreshold: integer("warned_threshold").notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.credentialSource, t.rateLimitType] })],
 );
