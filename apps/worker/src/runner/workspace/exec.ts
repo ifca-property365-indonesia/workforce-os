@@ -72,7 +72,7 @@ export async function runInSandbox(o: SandboxCommand): Promise<SandboxCommandRes
       host,
       layout,
       limits: { ...DEFAULT_LIMITS, runtimeMaxSec: timeout },
-      env: { HOME: layout.sandboxHomeDir, PATH: `${SANDBOX.nodeDir}/bin:/usr/local/bin:/usr/bin:/bin`, WFOS_EXEC_COMMAND: o.command },
+      env: { HOME: layout.sandboxHomeDir, PATH: `${SANDBOX.nodeDir}/bin:/opt/wfos-tools/venv/bin:/usr/local/bin:/usr/bin:/bin`, WFOS_EXEC_COMMAND: o.command },
       command: [...SANDBOX.startCommand],
       extraBinds: o.extraBinds,
     });

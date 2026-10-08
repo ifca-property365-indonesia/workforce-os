@@ -118,3 +118,53 @@ Rejected: (a) a `wfos-runner` UID alone. The probe showed it can talk to the pas
 (`+PONG`), and bwrap would need host-wide AppArmor/sysctl changes on Ubuntu 24.04. (c) podman/gVisor: too heavy for a
 2 GB host and rootless podman hits the same userns restriction. (d) a separate VM: strongest, but needs a second host;
 it stays the recommended upgrade path when the budget allows.
+
+## D14 status: approved by the owner (2026-10-08), "with conditions proven by tests in Phase 1"
+The conditions are the claims of the spike report. Each is now a test on real units (`pnpm test:system`, see PHASE-1).
+
+## D15. Bash classifier: parse with mvdan/sh; workspace scripts run, inline interpreter code does not
+`packages/shared/src/bash-classifier.ts` uses mvdan/sh (the shfmt parser, GopherJS build `mvdan-sh`) and walks every
+command, including those inside `$()`, backticks, process substitution, subshells, functions, heredocs, `bash -c` /
+`sh -c` / `eval` strings (recursively), `env`/`nice`/`timeout`/`xargs`/`find -exec` wrappers and redirections.
+**Write-then-run:** running a script that lives in the workspace (`./x.sh`, `node build.js`, `pnpm test`) is
+allowed in a clean run, because the sandbox decides what any code can do (no host access, egress allow-list).
+**Inline code** (`python -c`, `node -e`, `perl -e`, scripts piped into a shell) always needs approval, because it is the
+usual way to hide intent and cannot be reviewed as a file. Once a run is tainted, only read-only commands run
+without approval.
+Rejected: `sh-syntax` (its AST only carries positions); regex classification (the brief forbids it, and it fails on
+quoting tricks — 124 red-team commands prove the parser-based approach).
+
+## D16. The runner holds no credential, not even its own workspace's
+The CLI honours `ANTHROPIC_BASE_URL`; the gateway on the run's `api.sock` accepts only the run's random token and
+substitutes the workspace credential. The E2E test shows the real token upstream, never inside the sandbox.
+Claude Code does not pass its token to Bash commands at all, so commands cannot even see the dummy.
+
+## D17. Git: the root worker never runs git in the agent's repository
+Repo-local config (`core.fsmonitor`, `core.sshCommand`, filters) and hooks would run as root. Clone/refresh happen
+in the sandbox (mirror mounted read-only, trusted via a read-only global gitconfig, since git 2.43 ignores
+`safe.directory` from `GIT_CONFIG_*`). Commits leave as a bundle on stdout, are imported into the platform mirror,
+and only the exact approved commit is pushed, from the mirror, with the platform token in `GIT_CONFIG_*` env (never on
+disk or argv). A push approval cannot be edited. The approved head is re-checked at execution.
+Rejected: running `git push` from the workspace with hooks disabled via `-c core.hooksPath` (fsmonitor/filters/
+sshCommand would still run); giving the agent a token scoped to one repo (the brief: the agent never holds it).
+
+## D18. Root never writes into an existing workspace
+Found while adding skill seeding: `prepareWorkspaceDirs` used to `mkdir` inside the task state dir on every run. After
+the first run that directory belongs to the sandbox UID, and a planted symlink (home → /etc) would have redirected
+root's write. Now root populates a workspace only when it does not exist yet; tested with a planted symlink.
+
+## D19. Platform mount points live on a unit-private tmpfs under /mnt
+systemd creates missing bind-mount destinations on the host (the spike left an empty `/opt/node`, since removed).
+All platform mounts are now under `TemporaryFileSystem=/mnt` (`/mnt/wfos/{node,runner,claude,run,upstream.git}`),
+and ExecStart goes through `/bin/sh` because systemd resolves the executable on the host.
+
+## D20. Workspace mode is native-only for now; the Docker path keeps Tool mode
+Transient systemd units need root and a host systemd. Inside the Compose `worker` container neither exists, so
+Workspace mode fails closed there with a clear message (`sandboxAvailable()`), and Tool mode works as before.
+A Compose `runner` service would need its own isolation design (one container per run through the Docker API,
+which means giving the worker the Docker socket = root on the host). It is deferred, and Phase 4 will document it.
+Rejected for now: privileged nested systemd in a container (weakens the boundary we just proved).
+
+## D21. Chat stays in Tool mode
+Workspace mode runs for tasks only. A chat with a Workspace-mode employee uses platform tools and can create a
+task, so every shell session has a task, a workspace, a session id and a deliverable view.

@@ -1,7 +1,7 @@
 // Bundles the in-sandbox runner (entry + Agent SDK + zod) into one file. The native Claude Code binary is
 // not bundled: the worker bind-mounts its package directory read-only and passes its path.
 import { build } from "esbuild";
-import { writeFileSync } from "node:fs";
+import { cpSync, writeFileSync } from "node:fs";
 
 await build({
   entryPoints: ["src/entry.ts"],
@@ -22,4 +22,6 @@ writeFileSync(
   "dist/gitconfig",
   ["[safe]", "\tdirectory = /mnt/wfos/upstream.git", "[core]", "\thooksPath = /dev/null", "\tfsmonitor = false", ""].join("\n"),
 );
-console.log("built dist/runner.mjs and dist/gitconfig");
+// built-in skills, seeded into every new workspace's ~/.claude/skills
+cpSync("skills", "dist/skills", { recursive: true });
+console.log("built dist/runner.mjs, dist/gitconfig and dist/skills");

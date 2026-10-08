@@ -95,6 +95,17 @@ docker compose up -d --build
 
 Compose runs `postgres` (pgvector), `redis`, `migrate` (migrations + seed, runs once), `web`, `worker`, `nginx` (SSE-safe proxy) and `certbot` (renews every 12 hours). Uploaded files and the local embedding model live in the `storage` volume.
 
+## Workspace mode (Claude Code in a sandbox)
+
+An employee runs in **Tool mode** (platform tools only, the default) or **Workspace mode**: Claude Code with Bash, files, git, subagents and skills, inside an isolated sandbox per task. Switching to Workspace mode (or widening its network allow-list) needs an Owner/Admin and a fresh password + 2FA confirmation. The Developer template defaults to it.
+
+- **Isolation** (native install only): every run is a transient systemd unit with its own dynamic UID, its own network namespace, a read-only system, no `/root`/`/home`, a private `/tmp`, an invisible `/proc` and memory/CPU/task/time limits. Postgres, Redis, the web app and the internet are unreachable. The only ways out are Unix sockets to the platform: the Anthropic API gateway, the egress proxy (per-employee host allow-list, HTTPS only) and the control channel. The sandbox never holds platform secrets or the Claude credential (the gateway injects it). Proof: `pnpm test:system` (root + systemd) and `docs/upgrade/SPIKE-sandbox.md`.
+- **Bash**: every command is parsed and classified. Local, reversible work (read, build, test, lint, local git) runs. Network, installs, publishing, writes outside the workspace, git config/hooks, inline interpreter code, secret reads and anything unknown become an approval card with the exact command. When approved, the platform runs exactly that command in the same sandbox and the employee continues with its output. After untrusted content was read, only read-only commands run unattended.
+- **Code delivery**: connect repositories in **Settings → Repositories** (the token stays with the platform). A task gets a checkout on `agent/<task-id>`. The employee commits locally, and `git_push` / `create_pull_request` are approvals. The task's **Code** tab shows the diff and the last test run, with **Approve & push**, **Request changes** (resumes the same session) and **Discard**.
+- **Resources**: `WORKSPACE_CONCURRENCY` (default 1), `WORKSPACE_MEMORY_MAX_MB` (700), `WORKSPACE_RUNTIME_MAX_SEC`, `WORKSPACE_RETENTION_DAYS` (14; deliverables are kept). One Claude Code process needs about 300 MB at start (measured).
+- **Toolchain** for documents and code (LibreOffice, pandoc, poppler, qpdf, tesseract eng+ind, Python document libraries): `deploy/setup-ubuntu.sh --toolchain`. Built-in skills for docx/xlsx/pptx/pdf are seeded into each new workspace.
+- Workspace mode is not available in the Docker Compose deployment yet (it fails closed there; Tool mode works).
+
 ## Languages
 
 The UI is available in **Bahasa Indonesia** and **English**. Each user picks a language (account menu or Account page), the workspace has a default (Settings → General), and otherwise the browser language is used. Dates, numbers and money follow the language (`Rp 1.234.567` in Indonesian) in `APP_TIME_ZONE` (default `Asia/Jakarta`). Each employee has an **output language** (workspace default / Bahasa Indonesia / English) for answers, documents and emails. Notifications, default invoice emails and invoice PDFs use the workspace language. Conventions for contributors: `docs/upgrade/I18N.md`.
@@ -104,6 +115,7 @@ The UI is available in **Bahasa Indonesia** and **English**. Each user picks a l
 ```bash
 pnpm -r typecheck
 pnpm test        # shared + web + worker; never calls Claude, sends mail or touches the network
+pnpm test:system # as root on a host with systemd: real sandbox units + the real Claude Code CLI against a local stub API
 pnpm lint
 ```
 

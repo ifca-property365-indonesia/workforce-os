@@ -118,7 +118,7 @@ async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?:
     host,
     layout,
     limits: cfg.limits ?? DEFAULT_LIMITS,
-    env: { WFOS_RUN_TOKEN: runToken, HOME: layout.sandboxHomeDir, PATH: `${SANDBOX.nodeDir}/bin:/usr/local/bin:/usr/bin:/bin` },
+    env: { WFOS_RUN_TOKEN: runToken, HOME: layout.sandboxHomeDir, PATH: `${SANDBOX.nodeDir}/bin:/opt/wfos-tools/venv/bin:/usr/local/bin:/usr/bin:/bin` },
     command: [...SANDBOX.startCommand],
   });
   child.stderr?.on("data", (d: Buffer) => (stderr = (stderr + d.toString()).slice(-4000)));

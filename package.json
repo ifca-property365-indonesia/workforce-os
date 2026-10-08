@@ -5,13 +5,15 @@
   "scripts": {
     "dev:web": "pnpm --filter @wfos/web dev",
     "dev:worker": "pnpm --filter @wfos/worker dev",
-    "build": "pnpm --filter @wfos/web build",
+    "build": "pnpm --filter @wfos/runner build && pnpm --filter @wfos/web build",
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @wfos/db generate",
     "db:migrate": "pnpm --filter @wfos/db migrate",
     "db:seed": "pnpm --filter @wfos/db seed",
     "test": "pnpm -r --workspace-concurrency=1 --if-present test",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "build:runner": "pnpm --filter @wfos/runner build",
+    "test:system": "pnpm --filter @wfos/runner build && pnpm --filter @wfos/worker test:system"
   },
   "devDependencies": {
     "eslint": "^10.12.0",
