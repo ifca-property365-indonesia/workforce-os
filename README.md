@@ -46,6 +46,8 @@ Check a credential end to end:
 
 ## Deploy natively with PM2 (this is how ai.vardiv.id runs)
 
+**Step by step from a fresh VPS, including backups, upgrades and key rotation: [docs/DEPLOY.md](docs/DEPLOY.md).**
+
 Requires Ubuntu 24.04, Node 24, pnpm 10, PostgreSQL 16 with `postgresql-16-pgvector`, Redis 7 (set `maxmemory-policy noeviction`), and Nginx.
 
 ```bash
@@ -61,13 +63,13 @@ The first account is created by signing up (always allowed for the first user). 
 
 ### Backups
 
-`deploy/backup.sh` writes a verified `pg_dump`, the uploaded files and a copy of `.env` to `/root/backups/workforce-os` and keeps 14 days. Keep the `.env` copy, because stored credentials can only be decrypted with its `ENCRYPTION_KEY`. Schedule it with cron:
+`deploy/backup.sh` writes a verified `pg_dump`, the uploaded files, the git mirrors, a copy of `.env` and a checksum manifest to `/root/backups/workforce-os` and keeps 14 days. Keep the `.env` copy, because stored credentials can only be decrypted with its `ENCRYPTION_KEY`. Schedule it with cron:
 
 ```
 30 2 * * * /root/apps/workforce-os/deploy/backup.sh >> /var/log/workforce-os-backup.log 2>&1
 ```
 
-The backups sit on the same disk. Copy them off the server too (rclone, S3, or another VPS). Restore steps are in the script header.
+The backups sit on the same disk. Copy them off the server too (rclone, S3, or another VPS). Restore with `deploy/restore.sh` (docs/DEPLOY.md → Backups); `pnpm test:deploy` proves the round trip. Upgrade with `deploy/upgrade.sh` (backup, migrations, build, reload, health check, automatic rollback).
 
 ### Logs
 
@@ -88,7 +90,7 @@ The backups sit on the same disk. Copy them off the server too (rclone, S3, or a
 ```bash
 curl -fsSL https://get.docker.com | sh
 git clone <repo> workforce-os && cd workforce-os
-cp .env.example .env   # set DOMAIN, POSTGRES_PASSWORD, ENCRYPTION_KEY, AUTH_SECRET, APP_URL=https://$DOMAIN, SEED_OWNER_PASSWORD, Claude credential
+cp .env.example .env   # set DOMAIN, POSTGRES_PASSWORD, ENCRYPTION_KEY, AUTH_SECRET, APP_URL=https://$DOMAIN
 ./deploy/init-letsencrypt.sh you@example.com   # issues the Let's Encrypt cert (DNS A record must point here)
 docker compose up -d --build
 ```
@@ -163,6 +165,7 @@ pnpm -r typecheck
 pnpm test        # shared + web + worker; never calls Claude, sends mail or touches the network
 pnpm test:system # as root on a host with systemd: real sandbox units + the real Claude Code CLI against a local stub API
 pnpm lint
+pnpm test:deploy # upgrade.sh scenarios (stubs) + backup/restore round trip (throwaway databases)
 ```
 
 The web and worker suites run against a **throwaway PostgreSQL database** that the test setup creates and drops. They need a role with `CREATEDB` that owns a template database with pgvector (one-time setup, as the postgres superuser):
