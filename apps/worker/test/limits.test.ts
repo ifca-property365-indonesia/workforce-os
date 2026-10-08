@@ -10,9 +10,11 @@ import fixtures from "./fixtures/rate-limit-events.json";
 
 type Fx = Exclude<keyof typeof fixtures, "_comment">;
 /** A recorded event with resetsAt replaced by a time relative to now (epoch seconds, as the SDK sends it). */
+// one base time for the file: real events carry a fixed reset time per window, so two runs must not straddle a second
+const BASE = Math.floor(Date.now() / 1000);
 function ev(name: Fx, resetsInSec = 3600) {
   const e = structuredClone(fixtures[name]) as { rate_limit_info: { resetsAt: number } };
-  e.rate_limit_info.resetsAt = Math.floor(Date.now() / 1000) + resetsInSec;
+  e.rate_limit_info.resetsAt = BASE + resetsInSec;
   return { event: e } as MockStep;
 }
 
