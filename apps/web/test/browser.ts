@@ -13,8 +13,16 @@ export const jar = {
 };
 
 const counters = new Map<string, number>();
+export const kv = new Map<string, string>();
+export const redisState = { down: false };
 export const queueModule = {
   redis: () => ({
+    ping: async () => {
+      if (redisState.down) throw new Error("connect ECONNREFUSED 10.0.0.5:6379");
+      return "PONG";
+    },
+    get: async (k: string) => kv.get(k) ?? null,
+    set: async (k: string, v: string) => (kv.set(k, v), "OK"),
     incr: async (k: string) => {
       const n = (counters.get(k) ?? 0) + 1;
       counters.set(k, n);
@@ -32,6 +40,8 @@ export const queueModule = {
 export function resetBrowser() {
   store.clear();
   counters.clear();
+  kv.clear();
+  redisState.down = false;
 }
 
 type Handler = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;

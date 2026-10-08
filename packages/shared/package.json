@@ -19,7 +19,8 @@
     "./health": "./src/health.ts",
     "./telegram": "./src/telegram.ts",
     "./push": "./src/push.ts",
-    "./office": "./src/office.ts"
+    "./office": "./src/office.ts",
+    "./ops": "./src/ops.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
