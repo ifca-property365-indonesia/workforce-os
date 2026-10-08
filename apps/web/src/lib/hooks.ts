@@ -10,7 +10,7 @@ export interface Me {
   workspace: { id: string; name: string; killSwitch: boolean; demoMode: boolean; guardsEnabled: boolean };
   role: Role;
   workspaces: { id: string; name: string; role: Role }[];
-  claude: { authMode: string; credentialPresent: boolean };
+  claude: { credentialPresent: boolean; source: "workspace" | "instance" | null; type: "oauth" | "api_key" | null };
   googleEnabled: boolean;
 }
 

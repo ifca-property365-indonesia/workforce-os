@@ -74,3 +74,17 @@ The Google callback now only proves the first factor. Lockout and the TOTP step 
 ## D10. Step-up re-auth cookie for sensitive changes
 `POST /api/me/reauth` (password + TOTP) sets a 10-minute signed `wfos_stepup` cookie that `requireStepUp()` checks.
 Phase 1.1 uses it for switching an employee to Workspace mode.
+
+## D11. Claude credentials: one per workspace, resolved per run, instance env as an optional fallback
+`credentials` rows with `kind='claude'` hold `{type, last4}` in `config` and the AES-256-GCM-encrypted secret.
+`resolveClaudeCredential(workspaceId)` (`packages/db/src/claude.ts`) is called by `runAgent` for every run and returns
+the workspace's credential, else the instance env credential while `CLAUDE_INSTANCE_FALLBACK` is not `false`, else
+nothing (the run fails with a clear message and the SDK is never started). The agent env is an explicit allow-list
+(PATH, HOME, LANG, three SDK flags, one credential). A test asserts the exact key set and that no platform secret or
+other tenant's token appears. The agent HOME is now per workspace (`storage/agent-home/<workspaceId>`), because
+Claude Code writes session transcripts there.
+The fallback defaults to `true` so the current production instance keeps working after the upgrade without any
+action. Owners should set it to `false` once every workspace has its own credential.
+Only Owners can set/remove a credential (billing + access), Admins can see the status. Setting it is audited with
+type and last 4 characters only.
+Rejected: requiring a step-up re-auth to change the credential (not asked for; Owner role + audit suffice for now).

@@ -298,7 +298,11 @@ function Shell({ children }: { children: ReactNode }) {
         )}
         {me && !me.claude.credentialPresent && !me.workspace.demoMode && (
           <div className="bg-amber-500/15 px-4 py-1.5 text-sm text-amber-800 dark:text-amber-200">
-            No Claude credential configured on the server ({me.claude.authMode === "api_key" ? "ANTHROPIC_API_KEY" : "CLAUDE_CODE_OAUTH_TOKEN"}). Employees cannot run until it is set — or turn on Demo Mode in Settings.
+            No Claude credential for this workspace. Employees cannot run until an Owner adds one in{" "}
+            <Link href="/settings" className="underline underline-offset-2">
+              Settings
+            </Link>{" "}
+            — or turn on Demo Mode.
           </div>
         )}
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">{children}</main>

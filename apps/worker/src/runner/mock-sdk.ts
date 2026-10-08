@@ -24,6 +24,8 @@ export interface MockRunner {
   query: QueryFn;
   calls: MockToolCall[];
   started: number;
+  /** options of the most recent query() call (env, cwd, tools…) */
+  lastOptions?: NonNullable<Parameters<QueryFn>[0]["options"]>;
 }
 
 function aborted(signal?: AbortSignal): void {
@@ -45,6 +47,7 @@ export function mockRunner(script: MockStep[]): MockRunner {
   runner.query = ((params: Parameters<QueryFn>[0]) => {
     runner.started++;
     const options = params.options ?? {};
+    runner.lastOptions = options;
     const signal = options.abortController?.signal;
     const canUseTool = options.canUseTool as CanUseTool | undefined;
     let n = 0;

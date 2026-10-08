@@ -13,7 +13,4 @@ export const serverEnv = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   /** Public self-service signup. Off by default: admins add members in Settings → Members. */
   allowSignup: process.env.ALLOW_SIGNUP === "true",
-  claudeAuthMode: (process.env.CLAUDE_AUTH_MODE ?? "oauth") as "oauth" | "api_key",
-  claudeCredentialPresent:
-    (process.env.CLAUDE_AUTH_MODE ?? "oauth") === "api_key" ? !!process.env.ANTHROPIC_API_KEY : !!process.env.CLAUDE_CODE_OAUTH_TOKEN,
 };

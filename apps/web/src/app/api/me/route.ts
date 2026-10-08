@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, members, users, workspaces } from "@wfos/db";
+import { audit, claudeCredentialStatus, db, members, users, workspaces } from "@wfos/db";
 import { body, route } from "@/lib/server/route";
+import { claudeSummary } from "@/lib/server/claude";
 import { serverEnv } from "@/lib/server/env";
 
 export const GET = route("VIEWER", async ({ session }) => {
@@ -25,7 +26,7 @@ export const GET = route("VIEWER", async ({ session }) => {
     workspace: { id: ws!.id, name: ws!.name, killSwitch: ws!.killSwitch, demoMode: ws!.demoMode, guardsEnabled: ws!.guardsEnabled },
     role: session.role,
     workspaces: all,
-    claude: { authMode: serverEnv.claudeAuthMode, credentialPresent: serverEnv.claudeCredentialPresent },
+    claude: claudeSummary(await claudeCredentialStatus(session.workspaceId)),
     googleEnabled: !!serverEnv.googleClientId,
   };
 });

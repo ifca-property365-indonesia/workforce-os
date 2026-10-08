@@ -3,7 +3,8 @@ import path from "node:path";
 import type { PermissionResult, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { agentQuery } from "./sdk";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
-import { agentEnv, claudeCredentialPresent, env } from "../lib/env";
+import { resolveClaudeCredential } from "@wfos/db";
+import { agentEnv, env } from "../lib/env";
 import { log } from "../lib/logger";
 import { priceFor } from "../lib/pricing";
 import { recordStep } from "../lib/steps";
@@ -35,9 +36,7 @@ export interface AgentRunOutput {
 export class MissingCredentialError extends Error {
   constructor() {
     super(
-      env.claudeAuthMode === "api_key"
-        ? "ANTHROPIC_API_KEY is not set (CLAUDE_AUTH_MODE=api_key)."
-        : "CLAUDE_CODE_OAUTH_TOKEN is not set (CLAUDE_AUTH_MODE=oauth). Run `claude setup-token` and add it to .env, or enable Demo Mode.",
+      "No Claude credential for this workspace. An Owner can add one in Settings → Claude (subscription token from `claude setup-token`, or an API key), or enable Demo Mode.",
     );
   }
 }
@@ -93,12 +92,15 @@ interface OpenTurn {
 }
 
 export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
-  if (!claudeCredentialPresent()) throw new MissingCredentialError();
   const { ctx } = input;
+  // only this workspace's credential, only for this run
+  const credential = await resolveClaudeCredential(ctx.workspaceId);
+  if (!credential) throw new MissingCredentialError();
   const controller = new AbortController();
   registerRun(ctx.runId, { workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, controller });
 
-  const home = path.join(env.storageDir, "agent-home");
+  // per-workspace HOME: Claude Code keeps session transcripts there, which must not mix between tenants
+  const home = path.join(env.storageDir, "agent-home", ctx.workspaceId);
   const cwd = path.join(env.storageDir, "sandbox", ctx.runId);
   await mkdir(home, { recursive: true });
   await mkdir(cwd, { recursive: true });
@@ -162,7 +164,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         model: input.model,
         systemPrompt: input.systemPrompt,
         cwd,
-        env: agentEnv(home),
+        env: agentEnv(home, credential),
         tools: [],
         disallowedTools: BUILTIN_DENY,
         mcpServers: mcpServers as never,

@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, workspaces } from "@wfos/db";
+import { audit, claudeCredentialStatus, db, workspaces } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import { body, route } from "@/lib/server/route";
-import { serverEnv } from "@/lib/server/env";
+import { claudeSummary } from "@/lib/server/claude";
 import { HttpError } from "@/lib/server/auth";
 
 export const GET = route("VIEWER", async ({ session }) => {
@@ -20,7 +20,7 @@ export const GET = route("VIEWER", async ({ session }) => {
       webhookConfigured: !!ws!.webhookUrlEnc,
       require2faAdmins: ws!.require2faAdmins,
     },
-    claude: { authMode: serverEnv.claudeAuthMode, credentialPresent: serverEnv.claudeCredentialPresent },
+    claude: claudeSummary(await claudeCredentialStatus(session.workspaceId)),
   };
 });
 

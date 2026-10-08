@@ -3,7 +3,7 @@ import { DelayedError, Worker, type Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import { conversations, db, getSql, routines, tasks, teams } from "@wfos/db";
 import { QUEUE_ACTIONS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
-import { env, claudeCredentialPresent } from "./lib/env";
+import { env, instanceCredentialSummary } from "./lib/env";
 import { log } from "./lib/logger";
 import { connection, CONTROL_CHANNEL, newRedis, prefix, redis, type ControlMessage } from "./lib/redis";
 import { runTask } from "./runner/task";
@@ -158,7 +158,7 @@ const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
 log.info(
-  { concurrency: env.concurrency, perEmployee: env.perEmployeeConcurrency, authMode: env.claudeAuthMode, credential: claudeCredentialPresent() },
+  { concurrency: env.concurrency, perEmployee: env.perEmployeeConcurrency, instanceCredential: instanceCredentialSummary() },
   "Workforce OS worker started",
 );
 

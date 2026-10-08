@@ -17,11 +17,120 @@ import { dateTime } from "@/lib/format";
 import { useMe } from "@/lib/hooks";
 
 interface Settings {
-  workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean };
-  claude: { authMode: string; credentialPresent: boolean };
+  workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean; require2faAdmins: boolean };
+  claude: { credentialPresent: boolean; source: "workspace" | "instance" | null; type: "oauth" | "api_key" | null };
 }
 
-function General({ s }: { s: Settings }) {
+interface ClaudeStatus {
+  workspace: { type: "oauth" | "api_key"; last4: string; updatedAt: string } | null;
+  instance: { enabled: boolean; type: "oauth" | "api_key"; present: boolean };
+  effective: { source: "workspace" | "instance"; type: "oauth" | "api_key" } | null;
+}
+
+const CRED_LABEL = { oauth: "Claude subscription token", api_key: "Anthropic API key" } as const;
+
+/** Owner-managed Claude credential for this workspace. Only type and the last 4 characters are ever shown. */
+function ClaudeCredential({ owner }: { owner: boolean }) {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["claude-credential"], queryFn: () => api.get<ClaudeStatus>("/api/settings/claude") });
+  const [type, setType] = useState<"oauth" | "api_key">("oauth");
+  const [secret, setSecret] = useState("");
+  const done = () => {
+    setSecret("");
+    void qc.invalidateQueries({ queryKey: ["claude-credential"] });
+    void qc.invalidateQueries({ queryKey: ["me"] });
+  };
+  const save = useMutation({
+    mutationFn: () => api.put<ClaudeStatus>("/api/settings/claude", { type, secret }),
+    onSuccess: () => {
+      toast.success("Claude credential saved (encrypted)");
+      done();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del<ClaudeStatus>("/api/settings/claude"),
+    onSuccess: () => {
+      toast.success("Claude credential removed");
+      done();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  if (!data) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Claude credential</CardTitle>
+        <CardDescription>
+          Each workspace uses its own credential. A run receives only this workspace&apos;s credential, only while it runs. Subscription tokens come from{" "}
+          <code>claude setup-token</code>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div className="space-y-1">
+          <div>
+            This workspace:{" "}
+            {data.workspace ? (
+              <span className="font-medium">
+                {CRED_LABEL[data.workspace.type]} · ending in <code>{data.workspace.last4}</code> · set {dateTime(data.workspace.updatedAt)}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">not set</span>
+            )}
+          </div>
+          <div className="text-muted-foreground">
+            Server fallback:{" "}
+            {!data.instance.enabled ? "disabled by the server owner" : data.instance.present ? `${CRED_LABEL[data.instance.type]} (set in the server .env)` : "not set"}
+          </div>
+          <div>
+            In use:{" "}
+            {data.effective ? (
+              <span className="text-emerald-600">{data.effective.source === "workspace" ? "this workspace's credential" : "the server fallback"}</span>
+            ) : (
+              <span className="text-destructive">none — employees cannot run</span>
+            )}
+          </div>
+        </div>
+        {owner && (
+          <form
+            className="grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save.mutate();
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="claude-type">Type</Label>
+              <select
+                id="claude-type"
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+                value={type}
+                onChange={(e) => setType(e.target.value as "oauth" | "api_key")}
+              >
+                <option value="oauth">{CRED_LABEL.oauth}</option>
+                <option value="api_key">{CRED_LABEL.api_key}</option>
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="claude-secret">{data.workspace ? "Replace with" : "Credential"}</Label>
+              <Input id="claude-secret" type="password" autoComplete="off" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={type === "oauth" ? "sk-ant-oat…" : "sk-ant-api…"} />
+            </div>
+            <div className="flex gap-2">
+              <Button disabled={secret.trim().length < 20 || save.isPending}>Save</Button>
+              {data.workspace && (
+                <Button type="button" variant="outline" disabled={remove.isPending} onClick={() => confirm("Remove this workspace's Claude credential?") && remove.mutate()}>
+                  Remove
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function General({ s, owner, admin }: { s: Settings; owner: boolean; admin: boolean }) {
   const qc = useQueryClient();
   const [name, setName] = useState(s.workspace.name);
   const [budget, setBudget] = useState(s.workspace.monthlyBudget);
@@ -74,17 +183,20 @@ function General({ s }: { s: Settings }) {
             </span>
             <Switch checked={s.workspace.demoMode} onCheckedChange={(v) => save.mutate({ demoMode: v })} />
           </label>
+          <label className="flex items-center justify-between gap-4">
+            <span>
+              <span className="block text-sm font-medium">Require two-factor authentication for Owners and Admins</span>
+              <span className="block text-xs text-muted-foreground">They must set up an authenticator app before they can use the workspace. Only an Owner can change this.</span>
+            </span>
+            <Switch
+              checked={s.workspace.require2faAdmins}
+              disabled={!owner}
+              onCheckedChange={(v) => (v || confirm("Stop requiring two-factor authentication for Owners and Admins?")) && save.mutate({ require2faAdmins: v })}
+            />
+          </label>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Claude Agent SDK</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm">
-          Auth mode: <code>{s.claude.authMode}</code> ({s.claude.authMode === "api_key" ? "ANTHROPIC_API_KEY — multi-user/commercial" : "CLAUDE_CODE_OAUTH_TOKEN — personal/internal"}) ·{" "}
-          {s.claude.credentialPresent ? <span className="text-emerald-600">credential configured</span> : <span className="text-destructive">credential missing — set it in the server .env</span>}
-        </CardContent>
-      </Card>
+      {admin && <ClaudeCredential owner={owner} />}
     </div>
   );
 }
@@ -477,7 +589,7 @@ export default function SettingsPage() {
           {admin && <TabsTrigger value="audit">Audit log</TabsTrigger>}
         </TabsList>
         <TabsContent value="general" className="mt-4">
-          <General s={data} />
+          <General s={data} owner={owner} admin={admin} />
         </TabsContent>
         <TabsContent value="email" className="mt-4">
           <Email />
