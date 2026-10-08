@@ -1,0 +1,66 @@
+########## A: plain unprivileged user (nobody), no extra hardening
+identity: uid=65534(nobody) gid=65534(nogroup) groups=65534(nogroup)
+blocked  list /root (ls: cannot open directory '/root': Permission denied)
+blocked  read app .env (bash: line 1: /root/apps/workforce-os/.env: Permission denied)
+blocked  read worktree .env (bash: line 1: /root/apps/workforce-os-v2/.env: Permission denied)
+blocked  read /proc/1/environ (bash: line 1: /proc/1/environ: Permission denied)
+blocked  read /proc/1147820/environ (worker) (bash: line 1: /proc/1147820/environ: Permission denied)
+ALLOWED  see worker process /bin/bash-csource /root/.claude/shell-
+blocked  read /etc/shadow (bash: line 1: /etc/shadow: Permission denied)
+ALLOWED  read postgres socket dir 16-main.pid
+ALLOWED  connect 127.0.0.1:5432 
+ALLOWED  connect 127.0.0.1:6379 
+ALLOWED  redis PING without password +PONG
+ALLOWED  connect 127.0.0.1:3010 
+ALLOWED  connect 1.1.1.1:443 
+ALLOWED  DNS lookup example.com 2606:4700:10::6814:179a example.com
+2606:4700:10::ac42:93f3 example.com
+blocked  write /etc (touch: cannot touch '/etc/wfos-probe': Permission denied)
+blocked  write /root (touch: cannot touch '/root/wfos-probe': Permission denied)
+ALLOWED  write /var/tmp 
+ALLOWED  write /tmp (private?) 
+ALLOWED  write workspace /var/tmp/wfos-spike-A.7kAT
+ALLOWED  write .git/hooks in workspace 
+blocked  list other workspaces (ls: cannot access '/var/lib/wfos-spike-ws': No such file or directory
+)
+blocked  sudo (sudo: a password is required)
+blocked  setuid binary (su) (Password: su: Authentication failure)
+blocked  postgres via unix socket (peer auth) ()
+blocked  postgres via unix socket as workforce ()
+ALLOWED  allocate 400 MB 419430400
+probe finished
+########## B: transient systemd unit: DynamicUser + hardening + PrivateNetwork + InaccessiblePaths + MemoryMax=256M
+identity: uid=62210(wfos-spike-B) gid=62210(wfos-spike-B) groups=62210(wfos-spike-B)
+blocked  list /root (ls: cannot open directory '/root': Permission denied)
+blocked  read app .env (bash: line 1: /root/apps/workforce-os/.env: Permission denied)
+blocked  read worktree .env (bash: line 1: /root/apps/workforce-os-v2/.env: Permission denied)
+blocked  read /proc/1/environ (bash: line 1: /proc/1/environ: No such file or directory)
+blocked  read /proc/1147820/environ (worker) (bash: line 1: /proc/1147820/environ: No such file or directory)
+blocked  see worker process ()
+blocked  read /etc/shadow (bash: line 1: /etc/shadow: Permission denied)
+blocked  read postgres socket dir (ls: cannot open directory '/var/run/postgresql': Permission denied)
+blocked  connect 127.0.0.1:5432 (bash: connect: Connection refused
+bash: line 1: /dev/tcp/127.0.0.1/543)
+blocked  connect 127.0.0.1:6379 (bash: connect: Connection refused
+bash: line 1: /dev/tcp/127.0.0.1/637)
+blocked  redis PING without password (bash: connect: Connection refused
+bash: line 1: /dev/tcp/127.0.0.1/637)
+blocked  connect 127.0.0.1:3010 (bash: connect: Connection refused
+bash: line 1: /dev/tcp/127.0.0.1/301)
+blocked  connect 1.1.1.1:443 (bash: connect: Network is unreachable
+bash: line 1: /dev/tcp/1.1.1.1/4)
+blocked  DNS lookup example.com ()
+blocked  write /etc (touch: cannot touch '/etc/wfos-probe': Read-only file system)
+blocked  write /root (touch: cannot touch '/root/wfos-probe': Permission denied)
+ALLOWED  write /var/tmp 
+ALLOWED  write /tmp (private?) 
+ALLOWED  write workspace /var/lib/private/wfos-spike-ws/runB
+ALLOWED  write .git/hooks in workspace 
+ALLOWED  list other workspaces runB
+blocked  sudo (sudo: The "no new privileges" flag is set, which prevents sudo from ru)
+blocked  setuid binary (su) (Password: su: Authentication failure)
+blocked  postgres via unix socket (peer auth) ()
+blocked  postgres via unix socket as workforce ()
+blocked  allocate 400 MB ()
+probe finished
+unit exit: 0

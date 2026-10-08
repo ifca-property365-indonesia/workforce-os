@@ -3,7 +3,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/.next/**", "**/dist/**", "storage/**", "apps/web/next-env.d.ts", "packages/db/migrations/**"] },
+  { ignores: ["**/node_modules/**", "**/.next/**", "**/dist/**", "storage/**", "apps/web/next-env.d.ts", "packages/db/migrations/**", "docs/**"] },
   ...tseslint.configs.recommended,
   {
     languageOptions: { globals: { ...globals.node } },

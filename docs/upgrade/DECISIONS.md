@@ -107,3 +107,14 @@ instruction is added and the employee answers in the language of the request (th
 text that people read (notifications, default invoice email, invoice PDF) uses the workspace default language
 (`packages/shared/src/messages.ts`). An approved payload, including a human-edited subject/body, is always sent
 exactly as approved.
+
+## D14. Workspace-mode isolation: per-run transient systemd unit + credential-injecting egress gateway (proposed, awaiting owner OK)
+See `SPIKE-sandbox.md`. Each Workspace-mode run becomes its own `systemd-run` unit (`DynamicUser`, `PrivateNetwork`,
+`ProtectSystem=strict`, `ProtectHome`, `ProtectProc=invisible`, cgroup limits), started by the root worker. The only
+way out is a Unix-socket gateway that allow-lists hosts and injects the workspace's Claude credential, so the sandbox
+never holds a real token. The SDK's bubblewrap sandbox stays off, and a test asserts it can never be switched to
+fail-open.
+Rejected: (a) a `wfos-runner` UID alone. The probe showed it can talk to the password-less production Redis
+(`+PONG`), and bwrap would need host-wide AppArmor/sysctl changes on Ubuntu 24.04. (c) podman/gVisor: too heavy for a
+2 GB host and rootless podman hits the same userns restriction. (d) a separate VM: strongest, but needs a second host;
+it stays the recommended upgrade path when the budget allows.
