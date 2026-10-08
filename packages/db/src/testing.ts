@@ -33,7 +33,16 @@ export async function createTestDatabase(): Promise<{ url: string; drop: () => P
   return {
     url,
     drop: async () => {
-      await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      // FORCE cannot terminate an autovacuum worker that just started on the database (superuser-owned): retry briefly
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+          break;
+        } catch (e) {
+          if (attempt >= 5) throw e;
+          await new Promise((r) => setTimeout(r, 500 * attempt));
+        }
+      }
       await admin.end();
     },
   };

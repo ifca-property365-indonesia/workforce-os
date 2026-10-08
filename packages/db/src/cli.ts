@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { getDb, getSql } from "./index";
 import { audit } from "./audit";
 import { members, users } from "./schema";
+import { reencryptAll } from "./rotate";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(here, "../../../.env"), quiet: true });
@@ -16,10 +17,19 @@ const USAGE = `Workforce OS owner CLI (run on the server; it uses DATABASE_URL f
   pnpm --filter @wfos/db cli unlock <email>      clear a login lockout
   pnpm --filter @wfos/db cli reset-2fa <email>   turn off 2FA, delete recovery codes and clear the lockout
                                                  (the user must set up 2FA again if a workspace requires it)
+  pnpm --filter @wfos/db cli rotate-key          re-encrypt all stored secrets with ENCRYPTION_KEY
+                                                 (set the old key as ENCRYPTION_KEY_PREVIOUS first; see docs/DEPLOY.md)
 `;
 
 async function main() {
   const [cmd, emailArg] = process.argv.slice(2);
+  if (cmd === "rotate-key") {
+    if (!process.env.ENCRYPTION_KEY_PREVIOUS) console.warn("ENCRYPTION_KEY_PREVIOUS is not set: only values already under ENCRYPTION_KEY can be read.");
+    const n = await reencryptAll();
+    for (const [col, count] of Object.entries(n)) console.log(`${col}: ${count}`);
+    console.log("Done. Restart wfos-web and wfos-worker, then remove ENCRYPTION_KEY_PREVIOUS from .env.");
+    return;
+  }
   if (!cmd || !emailArg || !["unlock", "reset-2fa"].includes(cmd)) {
     console.log(USAGE);
     process.exitCode = cmd ? 1 : 0;

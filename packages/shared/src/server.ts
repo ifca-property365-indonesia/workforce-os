@@ -4,12 +4,22 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:
 // AES-256-GCM secret box. Ciphertext format: v1:<iv b64>:<tag b64>:<data b64>
 // ---------------------------------------------------------------------------
 
+function parseKey(raw: string, name: string): Buffer {
+  const buf = /^[0-9a-f]{64}$/i.test(raw) ? Buffer.from(raw, "hex") : Buffer.from(raw, "base64");
+  if (buf.length !== 32) throw new Error(`${name} must be 32 bytes (64 hex chars or base64)`);
+  return buf;
+}
+
 function key(): Buffer {
   const raw = process.env.ENCRYPTION_KEY;
   if (!raw) throw new Error("ENCRYPTION_KEY is not set");
-  const buf = /^[0-9a-f]{64}$/i.test(raw) ? Buffer.from(raw, "hex") : Buffer.from(raw, "base64");
-  if (buf.length !== 32) throw new Error("ENCRYPTION_KEY must be 32 bytes (64 hex chars or base64)");
-  return buf;
+  return parseKey(raw, "ENCRYPTION_KEY");
+}
+
+/** During a key rotation the old key still decrypts (never encrypts) until `cli rotate-key` re-encrypted everything. */
+function previousKey(): Buffer | null {
+  const raw = process.env.ENCRYPTION_KEY_PREVIOUS;
+  return raw ? parseKey(raw, "ENCRYPTION_KEY_PREVIOUS") : null;
 }
 
 export function encryptSecret(plain: string): string {
@@ -20,12 +30,22 @@ export function encryptSecret(plain: string): string {
   return `v1:${iv.toString("base64")}:${tag.toString("base64")}:${data.toString("base64")}`;
 }
 
-export function decryptSecret(box: string): string {
+function openBox(box: string, k: Buffer): string {
   const [v, iv, tag, data] = box.split(":");
   if (v !== "v1" || !iv || !tag || !data) throw new Error("Malformed secret box");
-  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64"));
+  const decipher = createDecipheriv("aes-256-gcm", k, Buffer.from(iv, "base64"));
   decipher.setAuthTag(Buffer.from(tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
+}
+
+export function decryptSecret(box: string): string {
+  try {
+    return openBox(box, key());
+  } catch (e) {
+    const prev = previousKey();
+    if (!prev || (e as Error).message === "Malformed secret box") throw e;
+    return openBox(box, prev);
+  }
 }
 
 export function sha256(s: string): string {
