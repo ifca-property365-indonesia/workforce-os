@@ -2,6 +2,7 @@ import { Redis } from "ioredis";
 import { Queue } from "bullmq";
 import {
   channelFor,
+  controlChannel,
   QUEUE_ACTIONS,
   QUEUE_INGEST,
   QUEUE_MISC,
@@ -12,6 +13,7 @@ import {
   type RealtimeEvent,
   type RunJob,
 } from "@wfos/shared";
+import { queuePrefix } from "@wfos/shared/runtime";
 import { env } from "./env";
 
 export function newRedis(): Redis {
@@ -20,19 +22,21 @@ export function newRedis(): Redis {
 
 export const redis = newRedis();
 export const connection = { url: env.redisUrl };
+/** BullMQ key prefix; non-production instances use their own so they never consume production jobs. */
+export const prefix = queuePrefix();
 
 const defaultJobOptions = { attempts: 3, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 500, removeOnFail: 1000 };
 
-export const runsQueue = new Queue<RunJob>(QUEUE_RUNS, { connection, defaultJobOptions });
-export const actionsQueue = new Queue<ActionJob>(QUEUE_ACTIONS, { connection, defaultJobOptions });
-export const ingestQueue = new Queue<IngestJob>(QUEUE_INGEST, { connection, defaultJobOptions });
-export const miscQueue = new Queue<MiscJob>(QUEUE_MISC, { connection, defaultJobOptions });
+export const runsQueue = new Queue<RunJob>(QUEUE_RUNS, { connection, prefix, defaultJobOptions });
+export const actionsQueue = new Queue<ActionJob>(QUEUE_ACTIONS, { connection, prefix, defaultJobOptions });
+export const ingestQueue = new Queue<IngestJob>(QUEUE_INGEST, { connection, prefix, defaultJobOptions });
+export const miscQueue = new Queue<MiscJob>(QUEUE_MISC, { connection, prefix, defaultJobOptions });
 
 export async function publish(workspaceId: string, ev: RealtimeEvent): Promise<void> {
-  await redis.publish(channelFor(workspaceId), JSON.stringify(ev));
+  await redis.publish(channelFor(workspaceId, env.namespace), JSON.stringify(ev));
 }
 
-export const CONTROL_CHANNEL = "wfos:control";
+export const CONTROL_CHANNEL = controlChannel(env.namespace);
 export type ControlMessage = { type: "kill"; workspaceId: string } | { type: "cancel_task"; taskId: string };
 
 export async function enqueueTask(taskId: string, workspaceId: string, resumeNote?: string, delayMs = 0): Promise<void> {

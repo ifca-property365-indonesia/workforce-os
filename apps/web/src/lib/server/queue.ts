@@ -7,12 +7,14 @@ import {
   QUEUE_MISC,
   QUEUE_RUNS,
   channelFor,
+  controlChannel,
   type ActionJob,
   type IngestJob,
   type MiscJob,
   type RealtimeEvent,
   type RunJob,
 } from "@wfos/shared";
+import { queuePrefix } from "@wfos/shared/runtime";
 import { serverEnv } from "./env";
 
 const g = globalThis as unknown as {
@@ -28,12 +30,13 @@ export function redis(): Redis {
 function queues() {
   if (!g.__wfosQueues) {
     const connection = { url: serverEnv.redisUrl };
+    const prefix = queuePrefix();
     const defaultJobOptions = { attempts: 3, backoff: { type: "exponential" as const, delay: 5000 }, removeOnComplete: 500, removeOnFail: 1000 };
     g.__wfosQueues = {
-      runs: new Queue<RunJob>(QUEUE_RUNS, { connection, defaultJobOptions }),
-      actions: new Queue<ActionJob>(QUEUE_ACTIONS, { connection, defaultJobOptions }),
-      ingest: new Queue<IngestJob>(QUEUE_INGEST, { connection, defaultJobOptions }),
-      misc: new Queue<MiscJob>(QUEUE_MISC, { connection, defaultJobOptions }),
+      runs: new Queue<RunJob>(QUEUE_RUNS, { connection, prefix, defaultJobOptions }),
+      actions: new Queue<ActionJob>(QUEUE_ACTIONS, { connection, prefix, defaultJobOptions }),
+      ingest: new Queue<IngestJob>(QUEUE_INGEST, { connection, prefix, defaultJobOptions }),
+      misc: new Queue<MiscJob>(QUEUE_MISC, { connection, prefix, defaultJobOptions }),
     };
   }
   return g.__wfosQueues;
@@ -49,9 +52,9 @@ export const q = {
 };
 
 export async function publish(workspaceId: string, ev: RealtimeEvent) {
-  await redis().publish(channelFor(workspaceId), JSON.stringify(ev));
+  await redis().publish(channelFor(workspaceId, serverEnv.namespace), JSON.stringify(ev));
 }
 
 export async function control(msg: { type: "kill"; workspaceId: string } | { type: "cancel_task"; taskId: string }) {
-  await redis().publish("wfos:control", JSON.stringify(msg));
+  await redis().publish(controlChannel(serverEnv.namespace), JSON.stringify(msg));
 }

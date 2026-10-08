@@ -19,6 +19,7 @@ import {
 } from "@wfos/db";
 import {
   TOOL_BY_NAME,
+  applyRunSignals,
   classifyTool,
   decideGate,
   emailPayloadSchema,
@@ -222,21 +223,18 @@ async function irreversible(
 ): Promise<ToolResult> {
   const { findings } = await guardOutput(ctx.guard, `${toolName} payload`, meta.textForGuard);
   const highLeak = findings.some((f) => f.severity === "high");
-  let decision = decideGate({
-    toolName,
-    toolClass: "irreversible",
-    employeeAutonomy: ctx.employee.autonomyLevel,
-    permissions: effectivePermissions(ctx),
-    allowList: ctx.employee.allowList,
-    dryRun: ctx.dryRun || ctx.sandboxed,
-    scope: meta.scope,
-  });
-  if (decision.kind === "run" && (ctx.guard.tainted || highLeak)) {
-    decision = {
-      kind: "approval",
-      reason: highLeak ? "Output guard found possible secrets/PII in the payload." : "Untrusted content with injection markers was read in this run.",
-    };
-  }
+  const decision = applyRunSignals(
+    decideGate({
+      toolName,
+      toolClass: "irreversible",
+      employeeAutonomy: ctx.employee.autonomyLevel,
+      permissions: effectivePermissions(ctx),
+      allowList: ctx.employee.allowList,
+      dryRun: ctx.dryRun || ctx.sandboxed,
+      scope: meta.scope,
+    }),
+    { toolClass: "irreversible", tainted: ctx.guard.tainted, highLeak },
+  );
 
   switch (decision.kind) {
     case "deny":

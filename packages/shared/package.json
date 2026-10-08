@@ -9,10 +9,12 @@
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
     "./mail": "./src/mail.ts",
-    "./invoice": "./src/invoice.ts"
+    "./invoice": "./src/invoice.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "zod": "^4.6.5",

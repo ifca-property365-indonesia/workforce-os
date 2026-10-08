@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       send(`retry: 3000\n\n`);
       send(`event: ready\ndata: {}\n\n`);
       sub.on("message", (_ch, msg) => send(`data: ${msg}\n\n`));
-      await sub.subscribe(channelFor(session.workspaceId));
+      await sub.subscribe(channelFor(session.workspaceId, serverEnv.namespace));
       heartbeat = setInterval(() => send(`: ping\n\n`), 20000);
       req.signal.addEventListener("abort", () => {
         clearInterval(heartbeat);

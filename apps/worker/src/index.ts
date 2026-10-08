@@ -5,7 +5,7 @@ import { conversations, db, getSql, routines, tasks, teams } from "@wfos/db";
 import { QUEUE_ACTIONS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
 import { env, claudeCredentialPresent } from "./lib/env";
 import { log } from "./lib/logger";
-import { connection, CONTROL_CHANNEL, newRedis, redis, type ControlMessage } from "./lib/redis";
+import { connection, CONTROL_CHANNEL, newRedis, prefix, redis, type ControlMessage } from "./lib/redis";
 import { runTask } from "./runner/task";
 import { runChat } from "./runner/chat";
 import { executeApproval, handleRejection } from "./runner/approvals";
@@ -79,16 +79,16 @@ async function processRun(job: Job<RunJob>, token?: string): Promise<void> {
 
 const workers = [
   // Agent runs are not retried automatically by BullMQ: the runner sets FAILED with the reason.
-  new Worker<RunJob>(QUEUE_RUNS, processRun, { connection, concurrency: env.concurrency, lockDuration: 10 * 60 * 1000, maxStalledCount: 0 }),
+  new Worker<RunJob>(QUEUE_RUNS, processRun, { connection, prefix, concurrency: env.concurrency, lockDuration: 10 * 60 * 1000, maxStalledCount: 0 }),
   new Worker<ActionJob>(
     QUEUE_ACTIONS,
     async (job) => {
       if (job.data.kind === "execute_approval") await executeApproval(job.data.approvalId);
       else await handleRejection(job.data.approvalId);
     },
-    { connection, concurrency: 2 },
+    { connection, prefix, concurrency: 2 },
   ),
-  new Worker<IngestJob>(QUEUE_INGEST, async (job) => ingestDocument(job.data.documentId), { connection, concurrency: 1 }),
+  new Worker<IngestJob>(QUEUE_INGEST, async (job) => ingestDocument(job.data.documentId), { connection, prefix, concurrency: 1 }),
   new Worker<MiscJob>(
     QUEUE_MISC,
     async (job) => {
@@ -107,7 +107,7 @@ const workers = [
         }
       }
     },
-    { connection, concurrency: 2, lockDuration: 10 * 60 * 1000 },
+    { connection, prefix, concurrency: 2, lockDuration: 10 * 60 * 1000 },
   ),
 ];
 

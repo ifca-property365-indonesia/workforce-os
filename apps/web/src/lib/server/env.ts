@@ -1,9 +1,13 @@
 import "server-only";
+import { assertNotProductionTarget, wfosNamespace } from "@wfos/shared/runtime";
+
+assertNotProductionTarget();
 
 export const serverEnv = {
   appUrl: process.env.APP_URL ?? "http://localhost:3010",
   authSecret: process.env.AUTH_SECRET ?? "",
   redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379/0",
+  namespace: wfosNamespace(),
   storageDir: process.env.STORAGE_DIR ?? "./storage",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",

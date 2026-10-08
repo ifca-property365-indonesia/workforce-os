@@ -10,5 +10,8 @@
     "db:generate": "pnpm --filter @wfos/db generate",
     "db:migrate": "pnpm --filter @wfos/db migrate",
     "db:seed": "pnpm --filter @wfos/db seed"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.3"
   }
 }

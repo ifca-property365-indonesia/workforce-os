@@ -1,4 +1,5 @@
 import { config } from "dotenv";
+import { assertNotProductionTarget } from "@wfos/shared/runtime";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
@@ -9,6 +10,7 @@ import { seedPrices, seedSampleData } from "./sample";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(here, "../../../.env") });
+assertNotProductionTarget();
 
 async function main() {
   const db = getDb();

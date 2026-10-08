@@ -222,6 +222,18 @@ export function decideGate(input: GateInput): GateDecision {
   return { kind: "approval", reason: `Irreversible action requires approval (autonomy ${level}).` };
 }
 
+/**
+ * Run-level safety signals on top of the configured gate. Once a run is tainted by untrusted
+ * content (or the payload looks like it leaks a secret), no irreversible action may run
+ * unattended — not even one the Owner allow-listed.
+ */
+export function applyRunSignals(decision: GateDecision, s: { toolClass: ToolClass; tainted: boolean; highLeak?: boolean }): GateDecision {
+  if (decision.kind !== "run" || s.toolClass !== "irreversible") return decision;
+  if (s.highLeak) return { kind: "approval", reason: "Output guard found possible secrets/PII in the payload." };
+  if (s.tainted) return { kind: "approval", reason: "Untrusted content with injection markers was read in this run." };
+  return decision;
+}
+
 // ---------------------------------------------------------------------------
 // Pricing (1 credit = USD 0.01). Published in Settings → Pricing.
 // ---------------------------------------------------------------------------
@@ -316,8 +328,13 @@ export interface ChatMessageDTO {
   createdAt: string;
 }
 
-export function channelFor(workspaceId: string): string {
-  return `wfos:events:${workspaceId}`;
+/** Pub/sub channels are global across Redis DB indexes, so non-production instances namespace them. */
+export function channelFor(workspaceId: string, namespace = ""): string {
+  return `${namespace ? `${namespace}:` : ""}wfos:events:${workspaceId}`;
+}
+
+export function controlChannel(namespace = ""): string {
+  return `${namespace ? `${namespace}:` : ""}wfos:control`;
 }
 
 // ---------------------------------------------------------------------------

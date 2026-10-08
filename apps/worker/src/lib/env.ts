@@ -1,9 +1,11 @@
 import { config } from "dotenv";
+import { assertNotProductionTarget, wfosNamespace } from "@wfos/shared/runtime";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(here, "../../../../.env"), quiet: true });
+assertNotProductionTarget();
 
 function req(name: string): string {
   const v = process.env[name];
@@ -20,6 +22,7 @@ export const env = {
   concurrency: Number(process.env.WORKER_CONCURRENCY ?? 2),
   perEmployeeConcurrency: Number(process.env.PER_EMPLOYEE_CONCURRENCY ?? 1),
   logLevel: process.env.LOG_LEVEL ?? "info",
+  namespace: wfosNamespace(),
 };
 
 /** Env for the Claude Agent SDK subprocess: only what it needs, with the selected credential. */

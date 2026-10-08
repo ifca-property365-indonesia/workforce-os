@@ -1,7 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { query, type PermissionResult, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { CREDIT_USD, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
+import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
 import { agentEnv, claudeCredentialPresent, env } from "../lib/env";
 import { log } from "../lib/logger";
 import { priceFor } from "../lib/pricing";
@@ -44,24 +44,26 @@ export class MissingCredentialError extends Error {
 const BUILTIN_DENY = ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookEdit", "Task", "Agent", "TodoWrite", "Skill"];
 
 /** Gate for tools that come from external MCP servers (built-in wfos tools gate themselves). */
-async function gateExternalTool(ctx: RunContext, toolName: string, input: Record<string, unknown>): Promise<PermissionResult> {
+export async function gateExternalTool(ctx: RunContext, toolName: string, input: Record<string, unknown>): Promise<PermissionResult> {
   const server = toolName.split("__")[1] ?? "";
   const grant = ctx.employee.toolPermissions.find((p) => p.tool === `mcp:${server}` && p.enabled);
   if (!grant) return { behavior: "deny", message: `MCP server ${server} is not granted to this employee.` };
   const cls = classifyTool(toolName);
-  const decision = decideGate({
-    toolName: `mcp:${server}`,
-    toolClass: cls,
-    employeeAutonomy: ctx.employee.autonomyLevel,
-    permissions: ctx.employee.toolPermissions,
-    allowList: ctx.employee.allowList.map((e) => ({ ...e, tool: e.tool })),
-    dryRun: ctx.dryRun || ctx.sandboxed,
-  });
-  const forceApproval = decision.kind === "run" && cls === "irreversible" && ctx.guard.tainted;
-  if (decision.kind === "run" && !forceApproval) return { behavior: "allow", updatedInput: input };
+  const decision = applyRunSignals(
+    decideGate({
+      toolName: `mcp:${server}`,
+      toolClass: cls,
+      employeeAutonomy: ctx.employee.autonomyLevel,
+      permissions: ctx.employee.toolPermissions,
+      allowList: ctx.employee.allowList,
+      dryRun: ctx.dryRun || ctx.sandboxed,
+    }),
+    { toolClass: cls, tainted: ctx.guard.tainted },
+  );
+  if (decision.kind === "run") return { behavior: "allow", updatedInput: input };
   if (decision.kind === "deny") return { behavior: "deny", message: decision.reason };
-  if (decision.kind === "approval" || forceApproval) {
-    const id = await createApproval(ctx, toolName, `${toolName.split("__").slice(2).join("__")} via ${server}`, forceApproval || !("reason" in decision) ? "Run is tainted by untrusted content." : decision.reason, input, []);
+  if (decision.kind === "approval") {
+    const id = await createApproval(ctx, toolName, `${toolName.split("__").slice(2).join("__")} via ${server}`, decision.reason, input, []);
     return { behavior: "deny", message: `Queued for human approval (id ${id}); not executed yet. Do not retry this call.` };
   }
   const reason = "reason" in decision ? decision.reason : "";
