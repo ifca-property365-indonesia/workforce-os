@@ -64,5 +64,17 @@
     "sendToTheBot": "Buka bot workspace di Telegram dan kirim pesan ini:",
     "expires": "Kode hanya berlaku sekali dan kedaluwarsa dalam 10 menit.",
     "check": "Sudah saya kirim"
+  },
+  "push": {
+    "title": "Notifikasi push",
+    "description": "Notifikasi di perangkat ini, bahkan saat aplikasi ditutup. Aktifkan terpisah di setiap ponsel atau komputer.",
+    "turnOn": "Aktifkan di perangkat ini",
+    "turnOff": "Matikan di perangkat ini",
+    "on": "Notifikasi push aktif di perangkat ini.",
+    "enabled": "Notifikasi push diaktifkan.",
+    "disabled": "Notifikasi push dimatikan.",
+    "denied": "Browser memblokir notifikasi. Izinkan di pengaturan situs, lalu coba lagi.",
+    "unsupported": "Browser ini tidak mendukung notifikasi push.",
+    "iosHint": "Di iPhone dan iPad: tambahkan Workforce OS ke Layar Utama dulu (Bagikan → Tambah ke Layar Utama), lalu buka dari sana."
   }
 }

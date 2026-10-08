@@ -197,3 +197,16 @@ button. The decision then runs through `decideApproval()`, the same function as 
 state, audit with `via: "telegram"`), and voids the other button of the pair. Edit & Approve stays web-only.
 Members below Admin get notifications without buttons. The app never calls `setWebhook`; the owner registers it
 (`.env.example`).
+
+## D25. PWA: offline shell only, never cached data; Web Push endpoints limited to the browsers' push services
+The service worker caches only `/offline.html` and two icons. Navigations go to the network and fall back to the
+offline page; pages and API responses are never cached, because they hold workspace data and a shared device must
+not show one user's data to the next. The service worker is registered only in production builds, and `/sw.js` is
+served with `Cache-Control: no-cache`.
+Web Push uses VAPID (`web-push`, in the worker only; the web app sees only the public key). A browser's endpoint is a
+URL the user controls, and the worker POSTs to it, so it is restricted to https URLs on FCM, Mozilla autopush, Apple
+and WNS hosts: no port, credentials or IP literals. It is checked on subscribe and again at send time. Gone
+subscriptions (404/410) are deleted. The payload carries only a title, a short body and an in-app path, and the
+service worker refuses links to other origins.
+Rejected: caching pages for offline reading (privacy across users, and stale approvals could be acted on), and
+`safeFetch` for push delivery (it is GET-only; the host allow-list makes DNS-based SSRF moot).

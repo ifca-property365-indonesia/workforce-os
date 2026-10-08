@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#3a4bc4">
+<title>Workforce OS · Offline</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f9fafb; --fg: #111827; --muted: #6b7280; --primary: #3a4bc4; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0f1117; --fg: #f3f4f6; --muted: #9ca3af; --primary: #8b9cf0; } }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; padding: 16px; box-sizing: border-box; }
+  main { max-width: 26rem; text-align: center; }
+  img { width: 64px; height: 64px; border-radius: 14px; }
+  h1 { font-size: 1.25rem; margin: 1rem 0 .25rem; }
+  p { margin: .25rem 0; color: var(--muted); }
+  button { margin-top: 1.25rem; padding: .6rem 1.2rem; border: 0; border-radius: .5rem; background: var(--primary); color: #fff; font: inherit; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/icons/icon-192.png" alt="">
+  <h1>Anda sedang offline</h1>
+  <p>Workforce OS butuh koneksi untuk menampilkan data workspace. Halaman akan dimuat ulang saat koneksi kembali.</p>
+  <h1 lang="en">You are offline</h1>
+  <p lang="en">Workforce OS needs a connection to show workspace data. The page reloads when you are back online.</p>
+  <button type="button" onclick="location.reload()">Coba lagi · Try again</button>
+</main>
+<script>addEventListener("online", function () { location.reload(); });</script>
+</body>
+</html>

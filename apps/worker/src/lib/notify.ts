@@ -6,10 +6,11 @@ import { getSmtp, getWebhookUrl, getWorkspace } from "./settings";
 import { msg } from "@wfos/shared/messages";
 import { log } from "./logger";
 import { telegramNotify } from "./telegram";
+import { pushNotify } from "./push";
 
 /**
  * In-app notification + email to the workspace notify address + optional webhook (WhatsApp/Telegram gateway)
- * + Telegram to linked members (with approval buttons for Admins when `approvalId` is set).
+ * + Telegram to linked members (with approval buttons for Admins when `approvalId` is set) + Web Push to subscribed devices.
  */
 export async function notify(workspaceId: string, subject: string, text: string, link?: string, approvalId?: string): Promise<void> {
   await db.insert(notifications).values({ workspaceId, kind: "info", title: subject, body: text, link: link ?? null });
@@ -42,5 +43,10 @@ export async function notify(workspaceId: string, subject: string, text: string,
     await telegramNotify(workspaceId, subject, text, link, approvalId);
   } catch (e) {
     log.warn({ err: e }, "notify telegram failed");
+  }
+  try {
+    await pushNotify(workspaceId, subject, text, link);
+  } catch (e) {
+    log.warn({ err: e }, "notify push failed");
   }
 }

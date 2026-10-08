@@ -64,5 +64,17 @@
     "sendToTheBot": "Open the workspace bot on Telegram and send this message:",
     "expires": "The code works once and expires in 10 minutes.",
     "check": "I've sent it"
+  },
+  "push": {
+    "title": "Push notifications",
+    "description": "Notifications on this device, even when the app is closed. Turn it on separately on each phone or computer.",
+    "turnOn": "Turn on for this device",
+    "turnOff": "Turn off for this device",
+    "on": "Push notifications are on for this device.",
+    "enabled": "Push notifications turned on.",
+    "disabled": "Push notifications turned off.",
+    "denied": "The browser blocked notifications. Allow them in the site settings, then try again.",
+    "unsupported": "This browser does not support push notifications.",
+    "iosHint": "On iPhone and iPad: add Workforce OS to the Home Screen first (Share → Add to Home Screen), then open it from there."
   }
 }

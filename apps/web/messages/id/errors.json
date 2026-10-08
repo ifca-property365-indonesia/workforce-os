@@ -70,5 +70,7 @@
   "feedback_required": "Jelaskan perubahan yang Anda inginkan.",
   "push_not_editable": "Push hanya bisa disetujui atau ditolak, tidak bisa diedit.",
   "department_not_found": "Departemen tidak ditemukan.",
-  "telegram_not_configured": "Telegram belum dikonfigurasi di server ini."
+  "telegram_not_configured": "Telegram belum dikonfigurasi di server ini.",
+  "push_not_configured": "Notifikasi push belum dikonfigurasi di server ini.",
+  "push_endpoint_not_allowed": "Layanan push browser ini tidak didukung."
 }

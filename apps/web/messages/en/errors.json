@@ -70,5 +70,7 @@
   "feedback_required": "Describe the changes you want.",
   "push_not_editable": "A push can only be approved or rejected, not edited.",
   "department_not_found": "Department not found.",
-  "telegram_not_configured": "Telegram is not configured on this server."
+  "telegram_not_configured": "Telegram is not configured on this server.",
+  "push_not_configured": "Push notifications are not configured on this server.",
+  "push_endpoint_not_allowed": "This browser's push service is not supported."
 }

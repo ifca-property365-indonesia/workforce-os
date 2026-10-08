@@ -41,6 +41,7 @@ export const api = {
     fetch(url, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => handle<T>(r)),
   patch: <T>(url: string, body: unknown) =>
     fetch(url, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => handle<T>(r)),
-  del: <T>(url: string) => fetch(url, { method: "DELETE" }).then((r) => handle<T>(r)),
+  del: <T>(url: string, body?: unknown) =>
+    fetch(url, body === undefined ? { method: "DELETE" } : { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => handle<T>(r)),
   form: <T>(url: string, form: FormData) => fetch(url, { method: "POST", body: form }).then((r) => handle<T>(r)),
 };
