@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { and, eq } from "drizzle-orm";
 import { approvals, audit, db, tasks } from "@wfos/db";
 import { approvalDecisionSchema, emailPayloadSchema, invoicePayloadSchema, webhookPayloadSchema } from "@wfos/shared";
@@ -9,6 +10,8 @@ function validatePayload(toolName: string, payload: Record<string, unknown>) {
   if (toolName === "send_email") return emailPayloadSchema.parse(payload);
   if (toolName === "send_invoice") return invoicePayloadSchema.parse(payload);
   if (toolName === "post_webhook") return webhookPayloadSchema.parse(payload);
+  // a PRD handoff may only change who builds it and where; the approved PRD text stays as written
+  if (toolName === "handoff_prd") return z.object({ developerId: z.string().uuid().nullable(), repositoryId: z.string().uuid().nullable() }).parse(payload);
   return payload;
 }
 
@@ -46,7 +49,11 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
   }
 
   let edited: Record<string, unknown> | null = null;
-  if (input.decision === "edit_approve") {
+  if (input.decision === "edit_approve" && a.toolName === "handoff_prd" && input.editedPayload) {
+    const pick = validatePayload(a.toolName, input.editedPayload) as { developerId: string | null; repositoryId: string | null };
+    input.editedPayload = { ...a.payload, developerId: pick.developerId, repositoryId: pick.repositoryId };
+    edited = input.editedPayload;
+  } else if (input.decision === "edit_approve") {
     // a push is approved for one exact commit; it can be approved or rejected, never rewritten
     if (a.toolName === "git_push") throw new HttpError(400, "A push can only be approved or rejected", { code: "push_not_editable" });
     if (!input.editedPayload) throw new HttpError(400, "editedPayload is required for Edit & Approve", { code: "edited_payload_required" });

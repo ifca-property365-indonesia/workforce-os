@@ -214,7 +214,7 @@ export const projects = pgTable("projects", {
 
 export interface Deliverable {
   id: string;
-  kind: "document" | "email_draft" | "invoice" | "code" | "summary" | "simulated_action" | "review";
+  kind: "document" | "email_draft" | "invoice" | "code" | "summary" | "simulated_action" | "review" | "prd";
   title: string;
   content: string;
   /** unified diff vs previous version of the same title, if any */
@@ -247,6 +247,8 @@ export const tasks = pgTable(
     costCredits: doublePrecision("cost_credits").notNull().default(0),
     /** Claude session of the last Workspace-mode run, resumed by follow-ups */
     agentSessionId: text("agent_session_id"),
+    /** the task whose approved PRD created this one (Project → Developer handoff) */
+    originTaskId: uuid("origin_task_id"),
     /** repository checked out into the task workspace (Workspace mode) */
     repositoryId: uuid("repository_id"),
     /** null | active | archived (workspace files removed after retention; deliverables kept) */

@@ -18,7 +18,8 @@
     "post_webhook": "Kirim webhook",
     "bash": "Jalankan perintah",
     "git_push": "Push branch",
-    "create_pull_request": "Buka pull request"
+    "create_pull_request": "Buka pull request",
+    "handoff_prd": "Serah terima PRD"
   },
   "email": {
     "to": "Kepada:",
@@ -64,5 +65,11 @@
   "git": {
     "pushTo": "Push {branch} ke {repository} pada commit {head}",
     "hooksDisabled": "Platform mem-push commit ini persis dari salinannya sendiri dengan git hooks dinonaktifkan; karyawan tidak pernah melihat token."
+  },
+  "handoff": {
+    "to": "Membuat tugas Developer untuk {name} jika disetujui.",
+    "noDeveloper": "Belum ada developer yang dipilih: gunakan Edit & Setujui untuk memilih.",
+    "developer": "Developer",
+    "repository": "Repositori"
   }
 }

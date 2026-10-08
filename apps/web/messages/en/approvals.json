@@ -18,7 +18,8 @@
     "post_webhook": "Post webhook",
     "bash": "Run command",
     "git_push": "Push branch",
-    "create_pull_request": "Open pull request"
+    "create_pull_request": "Open pull request",
+    "handoff_prd": "PRD handoff"
   },
   "email": {
     "to": "To:",
@@ -64,5 +65,11 @@
   "git": {
     "pushTo": "Push {branch} to {repository} at commit {head}",
     "hooksDisabled": "The platform pushes this exact commit from its own copy with git hooks disabled; the employee never sees the token."
+  },
+  "handoff": {
+    "to": "Creates a Developer task for {name} when approved.",
+    "noDeveloper": "No developer chosen yet: use Edit & Approve to pick one.",
+    "developer": "Developer",
+    "repository": "Repository"
   }
 }

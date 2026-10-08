@@ -476,10 +476,25 @@ export function buildTools(ctx: RunContext) {
     tool(
       "draft_document",
       "Save a document, code file or report as a task deliverable. Re-using the same title creates a new version with a diff.",
-      { title: z.string().min(1).max(200), content: z.string().min(1), kind: z.enum(["document", "code", "summary", "review"]).optional() },
-      wrap(ctx, "draft_document", async (a: { title: string; content: string; kind?: "document" | "code" | "summary" | "review" }) => {
+      { title: z.string().min(1).max(200), content: z.string().min(1), kind: z.enum(["document", "code", "summary", "review", "prd"]).optional() },
+      wrap(ctx, "draft_document", async (a: { title: string; content: string; kind?: "document" | "code" | "summary" | "review" | "prd" }) => {
         const { text } = await guardOutput(ctx.guard, "draft_document", a.content);
         const d = await addDeliverable(ctx, { kind: a.kind ?? "document", title: a.title, content: text });
+        if (a.kind === "prd") {
+          // Project → Developer handoff: the owner reviews the PRD; approving it creates the Developer task
+          if (ctx.dryRun || ctx.sandboxed) return ok(`PRD "${d.title}" saved (dry run: no handoff).`);
+          const dev = await defaultDeveloper(ctx.workspaceId);
+          const [task] = ctx.taskId ? await db.select({ repositoryId: tasks.repositoryId, clientId: tasks.clientId, projectId: tasks.projectId }).from(tasks).where(eq(tasks.id, ctx.taskId)) : [];
+          const id = await createApproval(
+            ctx,
+            "handoff_prd",
+            `PRD: ${d.title}`,
+            "Approve to create a Developer task with this PRD; reject with feedback to ask for a revision.",
+            { prdDeliverableId: d.id, title: d.title, prd: text, developerId: dev?.id ?? null, developerName: dev?.name ?? null, repositoryId: task?.repositoryId ?? null, clientId: task?.clientId ?? null, projectId: task?.projectId ?? null },
+            [],
+          );
+          return ok(`PRD "${d.title}" saved and sent to the owner for review (approval ${id}). Wait for the decision; do not start development yourself.`);
+        }
         return ok(`Saved deliverable "${d.title}"${d.diff ? " (new version, diff recorded)" : ""}.`);
       }),
     ),
@@ -786,6 +801,16 @@ export function grantedToolNames(ctx: RunContext): string[] {
   return effectivePermissions(ctx)
     .filter((p) => p.enabled && TOOL_BY_NAME[p.tool])
     .map((p) => `mcp__${WFOS_SERVER}__${p.tool}`);
+}
+
+/** The first active Developer (department developer or Developer template) of a workspace. */
+async function defaultDeveloper(workspaceId: string): Promise<{ id: string; name: string } | null> {
+  const rows = await db
+    .select({ id: employees.id, name: employees.name, department: employees.department, templateKey: employees.templateKey, status: employees.status })
+    .from(employees)
+    .where(eq(employees.workspaceId, workspaceId));
+  const dev = rows.find((r) => r.status === "ACTIVE" && (r.department === "developer" || (!r.department && r.templateKey === "developer")));
+  return dev ? { id: dev.id, name: dev.name } : null;
 }
 
 export async function teamMemberIds(teamId: string): Promise<string[]> {

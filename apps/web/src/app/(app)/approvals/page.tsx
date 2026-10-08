@@ -18,7 +18,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState, PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
-import { useClients } from "@/lib/hooks";
+import { useClients, useEmployees } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -92,6 +92,40 @@ function EmailEditor({ value, onChange }: { value: Email; onChange: (v: Email) =
   );
 }
 
+/** Who builds the approved PRD, and in which repository (the PRD text itself is approved as written). */
+function HandoffPicker({ value, onChange }: { value: { developerId: string | null; repositoryId: string | null }; onChange: (v: { developerId: string | null; repositoryId: string | null }) => void }) {
+  const t = useTranslations("approvals");
+  const { data: emps } = useEmployees();
+  const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
+  const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor="handoff-dev">{t("handoff.developer")}</Label>
+        <select id="handoff-dev" className={sel} value={value.developerId ?? ""} onChange={(e) => onChange({ ...value, developerId: e.target.value || null })}>
+          <option value="">—</option>
+          {emps?.filter((e) => e.status !== "ARCHIVED").map((e) => (
+            <option key={e.id} value={e.id}>
+              {e.name} ({e.role})
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor="handoff-repo">{t("handoff.repository")}</Label>
+        <select id="handoff-repo" className={sel} value={value.repositoryId ?? ""} onChange={(e) => onChange({ ...value, repositoryId: e.target.value || null })}>
+          <option value="">—</option>
+          {repos?.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing: boolean; draft: Record<string, unknown>; setDraft: (v: Record<string, unknown>) => void }) {
   const t = useTranslations("approvals");
   const f = useFormat();
@@ -138,6 +172,19 @@ function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing:
           </ul>
         )}
         <div className="text-xs text-muted-foreground">{t("bash.runsWhere")}</div>
+      </div>
+    );
+  }
+  if (a.toolName === "handoff_prd") {
+    const h = p as { title: string; prd: string; developerId: string | null; developerName: string | null; repositoryId: string | null };
+    return (
+      <div className="space-y-3 text-sm">
+        {editing ? (
+          <HandoffPicker value={h} onChange={(v) => setDraft({ ...p, ...v })} />
+        ) : (
+          <div className="text-xs text-muted-foreground">{h.developerName ? t("handoff.to", { name: h.developerName }) : t("handoff.noDeveloper")}</div>
+        )}
+        <div className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg border bg-background p-3">{h.prd}</div>
       </div>
     );
   }
