@@ -64,6 +64,8 @@ export const users = pgTable("users", {
   recoveryCodes: jsonb("recovery_codes").$type<string[]>().notNull().default([]),
   failedLoginCount: integer("failed_login_count").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  /** linked Telegram chat (notifications, approve/reject buttons) */
+  telegramChatId: text("telegram_chat_id").unique(),
   /** UI language preference (id | en); null = workspace default, then the browser */
   locale: text("locale").$type<Locale>(),
   createdAt: createdAt(),
@@ -553,3 +555,21 @@ export const departments = pgTable(
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.key] })],
 );
+
+/** One-time codes for linking a Telegram chat to a user (stored hashed, 10 minutes). */
+export const telegramLinkCodes = pgTable("telegram_link_codes", {
+  codeHash: text("code_hash").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+/** Approve/reject buttons sent to Telegram: single-use, bound to one user and one approval. */
+export const telegramCallbacks = pgTable("telegram_callbacks", {
+  id: text("id").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  approvalId: uuid("approval_id").notNull().references(() => approvals.id, { onDelete: "cascade" }),
+  action: text("action").$type<"approve" | "reject">().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});

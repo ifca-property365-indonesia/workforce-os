@@ -6,6 +6,7 @@ import { LOCALES } from "@wfos/shared";
 import { setLocaleCookie } from "@/lib/server/locale-cookie";
 import { claudeSummary } from "@/lib/server/claude";
 import { serverEnv } from "@/lib/server/env";
+import { telegramConfigured } from "@wfos/shared/telegram";
 
 export const GET = route("VIEWER", async ({ session }) => {
   const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId));
@@ -14,7 +15,7 @@ export const GET = route("VIEWER", async ({ session }) => {
     .from(members)
     .innerJoin(workspaces, eq(workspaces.id, members.workspaceId))
     .where(eq(members.userId, session.userId));
-  const [u] = await db.select({ passwordHash: users.passwordHash, locale: users.locale }).from(users).where(eq(users.id, session.userId));
+  const [u] = await db.select({ passwordHash: users.passwordHash, locale: users.locale, telegram: users.telegramChatId }).from(users).where(eq(users.id, session.userId));
   return {
     user: {
       id: session.userId,
@@ -25,7 +26,9 @@ export const GET = route("VIEWER", async ({ session }) => {
       twoFactorEnabled: session.twoFactorEnabled,
       mustEnroll2fa: session.mustEnroll2fa,
       locale: u?.locale ?? null,
+      telegramLinked: !!u?.telegram,
     },
+    telegramEnabled: telegramConfigured(),
     workspace: { id: ws!.id, name: ws!.name, killSwitch: ws!.killSwitch, demoMode: ws!.demoMode, guardsEnabled: ws!.guardsEnabled, defaultLocale: ws!.defaultLocale },
     role: session.role,
     workspaces: all,

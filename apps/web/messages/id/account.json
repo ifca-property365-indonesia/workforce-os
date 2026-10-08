@@ -52,5 +52,17 @@
     "description": "Perubahan ini memberi karyawan AI kewenangan lebih besar. Masukkan kata sandi dan kode dari aplikasi autentikator Anda. Konfirmasi berlaku 10 menit.",
     "confirm": "Konfirmasi",
     "needs2fa": "Atur autentikasi dua faktor di akun Anda terlebih dahulu."
+  },
+  "telegram": {
+    "title": "Telegram",
+    "description": "Terima notifikasi di Telegram. Admin dapat menyetujui atau menolak tindakan langsung dari chat.",
+    "link": "Tautkan Telegram",
+    "linked": "Chat Telegram Anda sudah tertaut.",
+    "unlink": "Lepas tautan",
+    "unlinked": "Tautan Telegram dilepas.",
+    "sendToBot": "Buka {bot} di Telegram dan kirim pesan ini:",
+    "sendToTheBot": "Buka bot workspace di Telegram dan kirim pesan ini:",
+    "expires": "Kode hanya berlaku sekali dan kedaluwarsa dalam 10 menit.",
+    "check": "Sudah saya kirim"
   }
 }

@@ -69,5 +69,6 @@
   "task_not_resumable": "Only Workspace-mode tasks can be resumed with changes.",
   "feedback_required": "Describe the changes you want.",
   "push_not_editable": "A push can only be approved or rejected, not edited.",
-  "department_not_found": "Department not found."
+  "department_not_found": "Department not found.",
+  "telegram_not_configured": "Telegram is not configured on this server."
 }

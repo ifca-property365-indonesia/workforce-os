@@ -52,5 +52,17 @@
     "description": "This change gives an AI employee more power. Enter your password and a code from your authenticator app. The confirmation is valid for 10 minutes.",
     "confirm": "Confirm",
     "needs2fa": "Set up two-factor authentication in your account first."
+  },
+  "telegram": {
+    "title": "Telegram",
+    "description": "Get notifications on Telegram. Admins can approve or reject actions from the chat.",
+    "link": "Link Telegram",
+    "linked": "Your Telegram chat is linked.",
+    "unlink": "Unlink",
+    "unlinked": "Telegram unlinked.",
+    "sendToBot": "Open {bot} on Telegram and send this message:",
+    "sendToTheBot": "Open the workspace bot on Telegram and send this message:",
+    "expires": "The code works once and expires in 10 minutes.",
+    "check": "I've sent it"
   }
 }

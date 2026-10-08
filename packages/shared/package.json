@@ -16,7 +16,8 @@
     "./messages": "./src/messages.ts",
     "./bash-classifier": "./src/bash-classifier.ts",
     "./limits": "./src/limits.ts",
-    "./health": "./src/health.ts"
+    "./health": "./src/health.ts",
+    "./telegram": "./src/telegram.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

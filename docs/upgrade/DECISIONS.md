@@ -184,3 +184,16 @@ The subscription belongs to the workspace credential, so a rejection holds every
 tasks keep their Claude session and resume it. Held tasks are re-queued for the reset, and an Admin can resume by
 hand (after upgrading the plan, for example). Known limit: workspaces running on the shared instance fallback are
 paused one by one, as each of them hits the limit.
+
+## D24. Telegram approvals: signed, single-use buttons bound to one user; same decision path as the web
+One bot per installation (`TELEGRAM_BOT_TOKEN`), webhook only (no polling process on a 2 GB host). The webhook
+accepts a request only with the `X-Telegram-Bot-Api-Secret-Token` header (timing-safe compare), and only private
+chats can link. Linking uses an 8-character one-time code, stored hashed with a 10-minute expiry and deleted on use.
+Each Approve/Reject button is a row (user × workspace × approval × action, 24 h expiry). Its `callback_data` is the
+row id plus an HMAC keyed with `AUTH_SECRET`, so forged ids are refused before any lookup. A press must come from
+the chat linked to that user. The user must still be Admin+ in that workspace, checked at press time, not at send
+time. The row is claimed with a conditional update after those checks, so a stranger's press cannot burn a valid
+button. The decision then runs through `decideApproval()`, the same function as the web route (status, task
+state, audit with `via: "telegram"`), and voids the other button of the pair. Edit & Approve stays web-only.
+Members below Admin get notifications without buttons. The app never calls `setWebhook`; the owner registers it
+(`.env.example`).

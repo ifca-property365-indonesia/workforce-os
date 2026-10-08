@@ -69,5 +69,6 @@
   "task_not_resumable": "Hanya tugas mode workspace yang bisa dilanjutkan dengan perubahan.",
   "feedback_required": "Jelaskan perubahan yang Anda inginkan.",
   "push_not_editable": "Push hanya bisa disetujui atau ditolak, tidak bisa diedit.",
-  "department_not_found": "Departemen tidak ditemukan."
+  "department_not_found": "Departemen tidak ditemukan.",
+  "telegram_not_configured": "Telegram belum dikonfigurasi di server ini."
 }

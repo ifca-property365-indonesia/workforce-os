@@ -426,7 +426,7 @@ export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
   | { kind: "demo"; workspaceId: string; userId: string }
   | { kind: "routine_run"; routineId: string; workspaceId: string; userId?: string }
-  | { kind: "notify"; workspaceId: string; subject: string; text: string; link?: string };
+  | { kind: "notify"; workspaceId: string; subject: string; text: string; link?: string; approvalId?: string };
 
 // ---------------------------------------------------------------------------
 // API input schemas (shared by web route handlers and UI forms)

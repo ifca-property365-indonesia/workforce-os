@@ -223,6 +223,7 @@ export async function createApproval(
     subject: msg(locale, "notify.approvalNeeded", { title }),
     text: msg(locale, "notify.approvalNeededText", { employee: ctx.employee.name, role: ctx.employee.role, tool: toolName, reason }),
     link: `/approvals?focus=${a!.id}`,
+    approvalId: a!.id,
   });
   return a!.id;
 }

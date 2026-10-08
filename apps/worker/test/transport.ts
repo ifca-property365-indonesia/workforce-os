@@ -11,6 +11,7 @@ export const transport = {
 
 export function resetTransport() {
   zsets.clear();
+  kv.clear();
   transport.mails.length = 0;
   transport.published.length = 0;
   transport.queued.length = 0;
@@ -53,13 +54,21 @@ function fakeMulti() {
   });
   return chain;
 }
+/** Plain keys: SET with NX only (enough for once-per-day claims). */
+const kv = new Map<string, string>();
+async function set(k: string, v: string, ...opts: unknown[]) {
+  if (opts.includes("NX") && kv.has(k)) return null;
+  kv.set(k, v);
+  return "OK";
+}
 export function resetRedis() {
   zsets.clear();
+  kv.clear();
 }
 
 export const redisModule = {
   newRedis: () => ({ subscribe: vi.fn(), on: vi.fn(), disconnect: vi.fn() }),
-  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m) },
+  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m), set },
   connection: { url: "redis://mock" },
   prefix: "wfos-test",
   runsQueue: fakeQueue("runs"),

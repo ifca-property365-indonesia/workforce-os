@@ -16,6 +16,7 @@ import { runDemoLifecycle } from "./simulation/demo";
 import { backfillMemoryEmbeddings, dispatchRoutine, tickRoutines } from "./scheduler/routines";
 import { abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { collectWorkspaces } from "./runner/workspace/gc";
+import { telegramDailySummary } from "./lib/telegram";
 
 // ---------------------------------------------------------------------------
 // Per-employee concurrency: a lease set in Redis (stale leases expire after 30 min).
@@ -96,7 +97,7 @@ const workers = [
       const d = job.data;
       switch (d.kind) {
         case "notify":
-          return notify(d.workspaceId, d.subject, d.text, d.link);
+          return notify(d.workspaceId, d.subject, d.text, d.link, d.approvalId);
         case "replay":
           return runReplay(d.replayId);
         case "demo":
@@ -157,6 +158,7 @@ const schedTimer = setInterval(async () => {
 }, 30_000);
 // Workspace mode: remove task workspaces after WORKSPACE_RETENTION_DAYS (deliverables stay)
 const gcTimer = setInterval(() => void collectWorkspaces().then((n) => n && log.info({ n }, "workspaces collected")).catch((e) => log.warn({ err: e }, "workspace gc failed")), 3_600_000);
+const summaryTimer = setInterval(() => void telegramDailySummary().catch((e) => log.warn({ err: e }, "telegram summary failed")), 10 * 60_000);
 const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e) => log.warn({ err: e }, "backfill failed")), 120_000);
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
@@ -170,6 +172,7 @@ async function shutdown(sig: string) {
   clearInterval(schedTimer);
   clearInterval(backfillTimer);
   clearInterval(gcTimer);
+  clearInterval(summaryTimer);
   await Promise.allSettled(workers.map((w) => w.close()));
   sub.disconnect();
   redis.disconnect();
