@@ -39,3 +39,13 @@ a fresh database), migrates it, and drops it at the end. Redis, SMTP and embeddi
 `runner/sdk.ts` for the scripted `runner/mock-sdk.ts`. The suites never skip: no `TEST_DATABASE_ADMIN_URL`, no run.
 Rejected: testcontainers (no Docker on the host); mocking the database (the audit trigger and the approval claim
 are database behaviour and must be tested against Postgres).
+
+## D6. SSRF: pin the socket with a custom `lookup`, not a new HTTP client
+`safeFetch` (`packages/shared/src/netguard.ts`) resolves DNS itself, requires every A/AAAA record to be public, and
+then passes a `lookup` function to `http(s).request` that returns only the validated address, so the socket cannot
+resolve again (no DNS-rebinding window). TLS still verifies against the hostname. Redirects are followed manually
+(max 5) and each hop goes through the same check. IPv4 forms (decimal/octal/hex/short) are normalised by the WHATWG
+URL parser before the check, and IPv4-mapped/compatible/NAT64 IPv6 addresses are judged by their embedded IPv4.
+If any record of a multi-record answer is private, the whole request is refused.
+Rejected: undici `Agent` with `connect.lookup` (an extra dependency for the same effect); a hostname regex (what we
+had: misses DNS, redirects and alternate IP notations).

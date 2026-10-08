@@ -206,3 +206,17 @@ describe("output leak guard", () => {
     expect(ctx.pendingApprovalIds).toHaveLength(1);
   });
 });
+
+describe("web_fetch SSRF protection", () => {
+  it.each(["http://169.254.169.254/latest/meta-data/", "http://[::ffff:127.0.0.1]:6379/", "http://2130706433:5432/", "file:///root/.env"])(
+    "refuses %s without connecting",
+    async (url) => {
+      const ws = await makeWorkspace();
+      const emp = await makeEmployee(ws.id, { toolPermissions: [{ tool: "web_fetch", enabled: true }] });
+      const fetchTool = buildTools(runContext(ws, emp, null)).find((d) => d.name === "web_fetch")!;
+      const r = await fetchTool.handler({ url }, {});
+      expect(r.isError).toBe(true);
+      expect(r.content[0]).toMatchObject({ text: expect.stringMatching(/Blocked|Only http/) });
+    },
+  );
+});

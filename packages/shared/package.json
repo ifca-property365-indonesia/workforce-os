@@ -10,7 +10,8 @@
     "./server": "./src/server.ts",
     "./mail": "./src/mail.ts",
     "./invoice": "./src/invoice.ts",
-    "./runtime": "./src/runtime.ts"
+    "./runtime": "./src/runtime.ts",
+    "./netguard": "./src/netguard.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
