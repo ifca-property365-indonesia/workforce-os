@@ -90,5 +90,28 @@
     "total": "Total",
     "tableView": "Table view",
     "week": "Week"
+  },
+  "code": {
+    "tab": "Code",
+    "files": "Changed files",
+    "noChanges": "No changes.",
+    "binary": "Binary file",
+    "truncated": "The diff is too long to show completely.",
+    "none": "No code has been delivered yet. The employee calls git_push when its work is committed.",
+    "into": "into {repository} ({base})",
+    "hooksDisabled": "git hooks are disabled for every platform-run git command",
+    "lastTest": "Last test run",
+    "testOk": "passed",
+    "testFailed": "failed",
+    "noTest": "No test command was run in this task yet.",
+    "approvePush": "Approve & push",
+    "approved": "Approved: the platform is pushing the approved commit",
+    "discard": "Discard",
+    "discardConfirm": "Discard this work? Pending approvals expire and the workspace will be deleted (the deliverables stay).",
+    "discarded": "Discarded",
+    "nothingPending": "Nothing is waiting for approval: the employee has not proposed a push yet, or it was already decided.",
+    "feedbackPlaceholder": "What should change? The employee continues in the same session and workspace.",
+    "requestChanges": "Request changes",
+    "changesRequested": "Changes requested: the employee will continue"
   }
 }

@@ -25,6 +25,7 @@ import type { StepKind, TaskStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CodePanel } from "./code-panel";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
@@ -413,12 +414,16 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
             <TabsList>
               <TabsTrigger value="activity">{t("task.activityTab", { count: stepsData?.steps.length ?? 0 })}</TabsTrigger>
               <TabsTrigger value="deliverables">{t("task.deliverablesTab", { count: task.deliverables.length + children.reduce((s, c) => s + c.deliverables.length, 0) })}</TabsTrigger>
+              {task.deliverables.some((d) => d.kind === "code" && d.meta && "branch" in d.meta) && <TabsTrigger value="code">{t("code.tab")}</TabsTrigger>}
             </TabsList>
             <TabsContent value="activity" className="mt-3">
               <StepTimeline steps={stepsData?.steps ?? []} employees={emp} />
             </TabsContent>
             <TabsContent value="deliverables" className="mt-3">
               <Deliverables items={[...children.flatMap((c) => c.deliverables), ...task.deliverables]} />
+            </TabsContent>
+            <TabsContent value="code" className="mt-3">
+              <CodePanel taskId={task.id} />
             </TabsContent>
           </Tabs>
         </div>

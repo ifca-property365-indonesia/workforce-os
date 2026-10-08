@@ -6,13 +6,42 @@ import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
 import { control, publish, q } from "@/lib/server/queue";
 
-const schema = z.object({ action: z.enum(["start", "cancel", "retry", "dry_run"]) });
+const schema = z.object({
+  action: z.enum(["start", "cancel", "retry", "dry_run", "request_changes", "discard"]),
+  /** request_changes: what the employee should change; resumes the same Claude session and workspace */
+  feedback: z.string().trim().min(3).max(10000).optional(),
+});
 
 export const POST = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {
-  const { action } = await body(req, schema);
+  const { action, feedback } = await body(req, schema);
   const [t] = await db.select().from(tasks).where(and(eq(tasks.id, params.id), eq(tasks.workspaceId, session.workspaceId)));
   if (!t) notFound();
-  if (action === "cancel") {
+  if (action === "request_changes") {
+    if (!t.agentSessionId) throw new HttpError(409, "Only Workspace-mode tasks can be resumed with changes", { code: "task_not_resumable" });
+    if (!["AWAITING_APPROVAL", "DONE", "FAILED"].includes(t.status)) throw new HttpError(409, `Cannot request changes on a ${t.status} task`, { code: "task_cannot_rerun", status: t.status });
+    if (!feedback) throw new HttpError(400, "Describe the changes you want", { code: "feedback_required" });
+    // pending deliveries of the old version can no longer be approved
+    const expired = await db.transaction(async (tx) => {
+      await tx.update(tasks).set({ status: "QUEUED", error: null, completedAt: null }).where(eq(tasks.id, t.id));
+      return tx
+        .update(approvals)
+        .set({ status: "EXPIRED", decidedBy: session.userId, decidedAt: new Date(), executionResult: { ok: false, summary: "Changes were requested instead." } })
+        .where(and(eq(approvals.taskId, t.id), eq(approvals.status, "PENDING")))
+        .returning({ id: approvals.id });
+    });
+    for (const x of expired) await publish(session.workspaceId, { type: "approval.updated", approvalId: x.id, status: "EXPIRED" });
+    await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "QUEUED" });
+    await q.task(t.id, session.workspaceId, `The reviewer requested changes:\n${feedback}\nMake the changes in your workspace, run the tests, commit, and propose the push again.`);
+    await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.changes_requested", targetType: "task", targetId: t.id, details: { feedback } });
+    return { ok: true };
+  }
+  if (action === "discard" && t.status === "DONE") {
+    // finished work keeps its status; only the workspace files go (deliverables stay on the task)
+    await db.update(tasks).set({ workspaceStatus: "discarded" }).where(eq(tasks.id, t.id));
+    await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.discarded", targetType: "task", targetId: t.id });
+    return { ok: true };
+  }
+  if (action === "cancel" || action === "discard") {
     if (!canTransition(t.status, "CANCELLED")) throw new HttpError(409, `Cannot cancel a ${t.status} task`, { code: "task_cannot_cancel", status: t.status });
     // a team task takes its open subtasks with it
     const children = await db.select().from(tasks).where(eq(tasks.parentTaskId, t.id));
@@ -32,7 +61,17 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
       await publish(session.workspaceId, { type: "task.updated", taskId: c.id, status: "CANCELLED" });
     }
     for (const x of expired) await publish(session.workspaceId, { type: "approval.updated", approvalId: x.id, status: "EXPIRED" });
-    await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.cancelled", targetType: "task", targetId: t.id, details: { subtasks: ids.length - 1, approvalsExpired: expired.length } });
+    // discard: the workspace is removed by the next garbage collection (deliverables stay on the task)
+    if (action === "discard") await db.update(tasks).set({ workspaceStatus: "discarded" }).where(eq(tasks.id, t.id));
+    await audit({
+      workspaceId: session.workspaceId,
+      actorUserId: session.userId,
+      actorLabel: session.email,
+      action: action === "discard" ? "task.discarded" : "task.cancelled",
+      targetType: "task",
+      targetId: t.id,
+      details: { subtasks: ids.length - 1, approvalsExpired: expired.length },
+    });
     return { ok: true };
   }
   if (action === "start") {

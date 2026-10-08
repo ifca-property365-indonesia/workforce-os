@@ -53,7 +53,7 @@ const UI_ATTRS = new Set(["placeholder", "title", "alt", "aria-label", "aria-des
 const UI_PROPS = new Set(["label", "title", "description", "placeholder", "text", "hint", "help", "message", "empty", "heading", "subtitle", "caption"]);
 const UI_CALLS = new Set(["toast", "toast.success", "toast.error", "toast.warning", "toast.info", "toast.message", "confirm", "alert", "prompt"]);
 /** literals that are the same in every language */
-const ALLOWED = new Set(["Workforce OS", "Claude", "Google", "MCP", "SMTP", "TLS", "IDR", "USD", "OK", "PDF", "DOCX", "MD", "API", "SSE", "cron", "UTC"]);
+const ALLOWED = new Set(["Workforce OS", "Claude", "Google", "GitHub", "GitLab", "MCP", "SMTP", "TLS", "IDR", "USD", "OK", "PDF", "DOCX", "MD", "API", "SSE", "cron", "UTC"]);
 const HAS_LETTER = /\p{L}/u;
 
 function ignored(sf: ts.SourceFile, node: ts.Node): boolean {

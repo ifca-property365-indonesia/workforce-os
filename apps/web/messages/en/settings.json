@@ -7,7 +7,8 @@
     "integrations": "Integrations",
     "pricing": "Pricing",
     "members": "Members",
-    "audit": "Audit log"
+    "audit": "Audit log",
+    "repositories": "Repositories"
   },
   "workspace": {
     "title": "Workspace",
@@ -121,5 +122,21 @@
   "audit": {
     "title": "Audit log",
     "description": "Immutable (append-only, enforced by a database trigger): approvals, permission changes, credential changes, kill-switch use."
+  },
+  "repositories": {
+    "title": "Git repositories",
+    "description": "Workspace-mode employees work on these repositories in their sandbox. The platform clones, pushes and opens pull requests with the token; employees never see it.",
+    "branchAndToken": "default branch {branch} · token {token}",
+    "noToken": "not set",
+    "removeConfirm": "Remove the repository {name}?",
+    "empty": "No repositories connected yet.",
+    "provider": "Provider",
+    "otherGit": "Other (git over HTTPS)",
+    "url": "HTTPS clone URL",
+    "defaultBranch": "Default branch",
+    "token": "Access token (optional)",
+    "tokenHelp": "Needed for private repositories, pushing and pull requests. Use a fine-grained token limited to this repository (contents + pull requests). Stored encrypted; only its last 4 characters are shown.",
+    "add": "Connect repository",
+    "added": "Repository connected"
   }
 }

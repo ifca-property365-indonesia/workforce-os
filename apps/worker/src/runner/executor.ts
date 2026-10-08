@@ -14,6 +14,7 @@ import { priceFor } from "../lib/pricing";
 import { recordStep } from "../lib/steps";
 import { getExternalMcpServers } from "../lib/settings";
 import { guardOutput } from "../guards/content";
+import { redactSecrets } from "@wfos/shared/server";
 import { registerRun, unregisterRun } from "../guards/killswitch";
 import { buildToolServer, createApproval, grantedToolNames, WFOS_SERVER, type RunContext } from "../tools/registry";
 
@@ -92,6 +93,27 @@ export async function gateExternalTool(ctx: RunContext, toolName: string, input:
   return { behavior: "deny", message: `${reason} The call was recorded but not executed.` };
 }
 
+/** Workspace mode: keep each Bash result (test output, build errors) as an inspectable, redacted step. */
+async function recordBashOutputs(ctx: RunContext, calls: Map<string, string>, content: unknown): Promise<void> {
+  if (!Array.isArray(content)) return;
+  for (const b of content as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]) {
+    if (b.type !== "tool_result" || !b.tool_use_id || !calls.has(b.tool_use_id)) continue;
+    const text = typeof b.content === "string" ? b.content : Array.isArray(b.content) ? (b.content as { text?: string }[]).map((x) => x.text ?? "").join("") : "";
+    if (/^Queued for human approval|^DRY RUN:/.test(text)) continue;
+    await recordStep({
+      workspaceId: ctx.workspaceId,
+      taskId: ctx.taskId,
+      employeeId: ctx.employee.id,
+      kind: "tool",
+      name: "bash_output",
+      status: b.is_error ? "error" : "ok",
+      input: { command: calls.get(b.tool_use_id) },
+      output: redactSecrets(text).slice(-20_000),
+    });
+    calls.delete(b.tool_use_id);
+  }
+}
+
 interface OpenTurn {
   id: string;
   model: string;
@@ -134,6 +156,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   let requestStartedAt = Date.now();
 
   const price = await priceFor(input.model);
+  const bashCalls = new Map<string, string>();
 
   const closeTurn = async () => {
     if (!turn) return;
@@ -262,6 +285,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
             .map((b) => b.text)
             .join("");
           if (text) lastAssistantText = text;
+          for (const b of m.message.content) if (b.type === "tool_use" && b.name === "Bash") bashCalls.set(b.id, String((b.input as { command?: string }).command ?? ""));
           // Fallback accounting when no stream events were delivered for this message.
           if (!recordedMessageIds.has(m.message.id) && (!turn || turn.id !== m.message.id) && m.message.stop_reason) {
             const u = m.message.usage;
@@ -281,6 +305,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         case "user": {
           // tool results returned → the next model request starts now
           requestStartedAt = Date.now();
+          if (ctx.workspace && !m.parent_tool_use_id) await recordBashOutputs(ctx, bashCalls, m.message.content);
           break;
         }
         case "system": {

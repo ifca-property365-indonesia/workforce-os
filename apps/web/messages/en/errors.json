@@ -63,5 +63,10 @@
   "unsupported_file_type": "Unsupported file type {ext}. Allowed: {allowed}",
   "user_not_found": "User not found.",
   "validation": "Some fields are missing or invalid: {fields}",
-  "request_failed": "Request failed ({status})."
+  "request_failed": "Request failed ({status}).",
+  "repository_exists": "A repository with this name already exists.",
+  "repository_not_found": "Repository not found.",
+  "task_not_resumable": "Only Workspace-mode tasks can be resumed with changes.",
+  "feedback_required": "Describe the changes you want.",
+  "push_not_editable": "A push can only be approved or rejected, not edited."
 }

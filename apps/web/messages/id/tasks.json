@@ -26,6 +26,9 @@
     "dryRun": "Dry run",
     "startImmediately": "Langsung mulai",
     "submit": "Buat tugas",
-    "created": "Tugas berhasil dibuat"
+    "created": "Tugas berhasil dibuat",
+    "repository": "Repositori",
+    "noRepository": "Tanpa repositori (workspace kosong)",
+    "repositoryHelp": "Di-checkout ke branch sendiri agent/<task> di sandbox karyawan. Push memerlukan persetujuan Anda."
   }
 }

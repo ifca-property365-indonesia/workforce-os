@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -21,7 +21,10 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
   const { data: clients } = useClients();
-  const [f, setF] = useState({ title: "", brief: "", assignee: "", clientId: "", projectId: "", dryRun: false, start: true });
+  const [f, setF] = useState({ title: "", brief: "", assignee: "", clientId: "", projectId: "", repositoryId: "", dryRun: false, start: true });
+  const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
+  const assignedEmployee = f.assignee.startsWith("e:") ? emps?.find((e) => e.id === f.assignee.slice(2)) : undefined;
+  const workspaceMode = assignedEmployee?.executionMode === "workspace";
   const projects = clients?.find((c) => c.id === f.clientId)?.projects ?? [];
   const m = useMutation({
     mutationFn: () => {
@@ -33,6 +36,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         teamId: kind === "t" ? id : null,
         clientId: f.clientId || null,
         projectId: f.projectId || null,
+        repositoryId: workspaceMode && f.repositoryId ? f.repositoryId : null,
         dryRun: f.dryRun,
         start: f.start,
       });
@@ -40,7 +44,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     onSuccess: () => {
       toast.success(t("newTask.created"));
       onOpenChange(false);
-      setF({ title: "", brief: "", assignee: "", clientId: "", projectId: "", dryRun: false, start: true });
+      setF({ title: "", brief: "", assignee: "", clientId: "", projectId: "", repositoryId: "", dryRun: false, start: true });
       void qc.invalidateQueries({ queryKey: ["tasks"] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -108,6 +112,20 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
               </select>
             </div>
           </div>
+          {workspaceMode && (
+            <div className="space-y-1.5">
+              <Label htmlFor="task-repository">{t("newTask.repository")}</Label>
+              <select id="task-repository" className={sel} value={f.repositoryId} onChange={(e) => setF({ ...f, repositoryId: e.target.value })}>
+                <option value="">{t("newTask.noRepository")}</option>
+                {repos?.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">{t("newTask.repositoryHelp")}</p>
+            </div>
+          )}
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={f.dryRun} onChange={(e) => setF({ ...f, dryRun: e.target.checked })} /> {t("newTask.dryRun")}

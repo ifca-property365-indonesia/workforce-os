@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
-import { db, employees, tasks, teams } from "@wfos/db";
+import { db, employees, repositories, tasks, teams } from "@wfos/db";
 import { taskInputSchema, TASK_STATUSES, type TaskStatus } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { body, route } from "@/lib/server/route";
@@ -41,6 +41,10 @@ export const GET = route("VIEWER", async ({ session, req }) => {
 
 export const POST = route("MEMBER", async ({ session, req }) => {
   const input = await body(req, taskInputSchema);
+  if (input.repositoryId) {
+    const [repo] = await db.select({ id: repositories.id }).from(repositories).where(and(eq(repositories.id, input.repositoryId), eq(repositories.workspaceId, session.workspaceId)));
+    if (!repo) throw new HttpError(400, "Unknown repository", { code: "repository_not_found" });
+  }
   if (!input.assigneeId && !input.teamId) throw new HttpError(400, "Assign the task to an employee or a team", { code: "task_needs_assignee" });
   if (input.assigneeId) {
     const [e] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, input.assigneeId), eq(employees.workspaceId, session.workspaceId)));
@@ -61,6 +65,7 @@ export const POST = route("MEMBER", async ({ session, req }) => {
       teamId: input.teamId ?? null,
       clientId: input.clientId ?? null,
       projectId: input.projectId ?? null,
+      repositoryId: input.repositoryId ?? null,
       dryRun: input.dryRun,
       source: "board",
       status: "QUEUED",

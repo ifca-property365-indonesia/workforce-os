@@ -26,6 +26,9 @@
     "dryRun": "Dry run",
     "startImmediately": "Start immediately",
     "submit": "Create task",
-    "created": "Task created"
+    "created": "Task created",
+    "repository": "Repository",
+    "noRepository": "No repository (empty workspace)",
+    "repositoryHelp": "Checked out on its own branch agent/<task> in the employee's sandbox. Pushing needs your approval."
   }
 }

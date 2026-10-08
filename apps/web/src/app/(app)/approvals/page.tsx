@@ -1,5 +1,7 @@
 "use client";
 
+import { CodeDiff } from "@/components/inspector/code-view";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -118,6 +120,42 @@ function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing:
           {t("invoice.attachment", { file: `${inv.invoiceNumber}.pdf`, lines: inv.lines.length, total, due: inv.dueDate ? f.date(inv.dueDate) : "—" })}
         </div>
         <iframe title={t("invoice.pdfTitle")} src={`/api/approvals/${a.id}/invoice`} className="h-[480px] w-full rounded-lg border bg-white" />
+      </div>
+    );
+  }
+  if (a.toolName === "bash") {
+    const b = p as { command: string; category?: string; reasons?: string[]; hooksDisabled?: boolean };
+    return editing ? (
+      <Textarea rows={4} className="font-mono text-xs" value={String(b.command ?? "")} onChange={(e) => setDraft({ ...p, command: e.target.value })} />
+    ) : (
+      <div className="space-y-2 text-sm">
+        <pre className="overflow-x-auto rounded-lg border bg-muted/40 p-3 font-mono text-xs">$ {b.command}</pre>
+        {!!b.reasons?.length && (
+          <ul className="list-disc pl-5 text-xs text-muted-foreground">
+            {b.reasons.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        )}
+        <div className="text-xs text-muted-foreground">{t("bash.runsWhere")}</div>
+      </div>
+    );
+  }
+  if (a.toolName === "git_push") {
+    const g = p as { repository: string; branch: string; head: string; commits: { sha: string; subject: string }[]; diff: string; diffTruncated?: boolean; summary?: string };
+    return (
+      <div className="space-y-2 text-sm">
+        <div>{t("git.pushTo", { branch: g.branch, repository: g.repository, head: g.head.slice(0, 8) })}</div>
+        {g.summary && <p className="text-muted-foreground">{g.summary}</p>}
+        <ul className="text-xs">
+          {g.commits.map((c) => (
+            <li key={c.sha}>
+              <code className="text-muted-foreground">{c.sha.slice(0, 8)}</code> {c.subject}
+            </li>
+          ))}
+        </ul>
+        <div className="text-xs text-muted-foreground">{t("git.hooksDisabled")}</div>
+        <CodeDiff diff={g.diff} truncated={g.diffTruncated} />
       </div>
     );
   }
@@ -258,9 +296,11 @@ function ApprovalCard({ a, focused }: { a: Approval; focused: boolean }) {
                 <Button size="sm" onClick={() => decide.mutate({ decision: "approve" })} disabled={decide.isPending} className="gap-1">
                   <ShieldCheck className="size-3.5" /> {t("card.approve")}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1">
-                  <Pencil className="size-3.5" /> {t("card.editAndApprove")}
-                </Button>
+                {a.toolName !== "git_push" && (
+                  <Button size="sm" variant="outline" onClick={() => setEditing(true)} className="gap-1">
+                    <Pencil className="size-3.5" /> {t("card.editAndApprove")}
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => setRejecting(true)} className="gap-1 text-destructive">
                   <X className="size-3.5" /> {t("card.reject")}
                 </Button>

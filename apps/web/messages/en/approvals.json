@@ -15,7 +15,10 @@
   "tools": {
     "send_email": "Send email",
     "send_invoice": "Send invoice",
-    "post_webhook": "Post webhook"
+    "post_webhook": "Post webhook",
+    "bash": "Run command",
+    "git_push": "Push branch",
+    "create_pull_request": "Open pull request"
   },
   "email": {
     "to": "To:",
@@ -54,5 +57,12 @@
     "reject": "Reject",
     "rejected": "Rejected — feedback saved to the employee’s memory",
     "approved": "Approved — executing now"
+  },
+  "bash": {
+    "runsWhere": "Runs exactly this command in the employee's sandbox (same workspace, no host access, allow-listed network only, git hooks disabled)."
+  },
+  "git": {
+    "pushTo": "Push {branch} to {repository} at commit {head}",
+    "hooksDisabled": "The platform pushes this exact commit from its own copy with git hooks disabled; the employee never sees the token."
   }
 }

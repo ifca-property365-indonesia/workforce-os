@@ -15,7 +15,10 @@
   "tools": {
     "send_email": "Kirim email",
     "send_invoice": "Kirim faktur",
-    "post_webhook": "Kirim webhook"
+    "post_webhook": "Kirim webhook",
+    "bash": "Jalankan perintah",
+    "git_push": "Push branch",
+    "create_pull_request": "Buka pull request"
   },
   "email": {
     "to": "Kepada:",
@@ -54,5 +57,12 @@
     "reject": "Tolak",
     "rejected": "Ditolak — masukan disimpan ke memori karyawan",
     "approved": "Disetujui — sedang dijalankan"
+  },
+  "bash": {
+    "runsWhere": "Menjalankan persis perintah ini di sandbox karyawan (workspace yang sama, tanpa akses ke host, jaringan hanya yang diizinkan, git hooks dinonaktifkan)."
+  },
+  "git": {
+    "pushTo": "Push {branch} ke {repository} pada commit {head}",
+    "hooksDisabled": "Platform mem-push commit ini persis dari salinannya sendiri dengan git hooks dinonaktifkan; karyawan tidak pernah melihat token."
   }
 }

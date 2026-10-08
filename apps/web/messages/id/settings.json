@@ -7,7 +7,8 @@
     "integrations": "Integrasi",
     "pricing": "Harga",
     "members": "Anggota",
-    "audit": "Log audit"
+    "audit": "Log audit",
+    "repositories": "Repositori"
   },
   "workspace": {
     "title": "Workspace",
@@ -121,5 +122,21 @@
   "audit": {
     "title": "Log audit",
     "description": "Tidak dapat diubah (hanya bisa ditambah, dijamin oleh trigger database): persetujuan, perubahan izin, perubahan kredensial, penggunaan kill switch."
+  },
+  "repositories": {
+    "title": "Repositori git",
+    "description": "Karyawan mode workspace mengerjakan repositori ini di sandbox mereka. Platform melakukan clone, push, dan membuka pull request dengan token; karyawan tidak pernah melihatnya.",
+    "branchAndToken": "branch default {branch} · token {token}",
+    "noToken": "belum diatur",
+    "removeConfirm": "Hapus repositori {name}?",
+    "empty": "Belum ada repositori yang terhubung.",
+    "provider": "Penyedia",
+    "otherGit": "Lainnya (git lewat HTTPS)",
+    "url": "URL clone HTTPS",
+    "defaultBranch": "Branch default",
+    "token": "Token akses (opsional)",
+    "tokenHelp": "Diperlukan untuk repositori privat, push, dan pull request. Gunakan token fine-grained yang dibatasi ke repositori ini (contents + pull requests). Disimpan terenkripsi; hanya 4 karakter terakhir yang ditampilkan.",
+    "add": "Hubungkan repositori",
+    "added": "Repositori terhubung"
   }
 }

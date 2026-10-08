@@ -464,6 +464,17 @@ export const taskInputSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   dryRun: z.boolean().default(false),
   start: z.boolean().default(true),
+  /** Workspace mode: repository to check out on branch agent/<task> */
+  repositoryId: z.string().uuid().nullable().optional(),
+});
+
+/** A git repository connected to a workspace (https only; the token never reaches the agent). */
+export const repositoryInputSchema = z.object({
+  name: z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/, "letters, digits, dot, dash, underscore"),
+  provider: z.enum(["github", "gitlab", "git"]),
+  url: z.url().refine((u) => /^https:\/\/[^@\s]+$/.test(u) && !/\s/.test(u), "an https clone URL without credentials"),
+  defaultBranch: z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._/-]+$/).default("main"),
+  token: z.string().trim().min(10).max(500).optional(),
 });
 
 export const routineInputSchema = z.object({

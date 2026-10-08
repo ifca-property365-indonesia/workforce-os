@@ -1,5 +1,7 @@
 "use client";
 
+import { RepositoriesSettings } from "@/components/settings/repositories";
+
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -642,6 +644,7 @@ export default function SettingsPage() {
           {admin && <TabsTrigger value="email">{t("tabs.email")}</TabsTrigger>}
           {admin && <TabsTrigger value="notifications">{t("tabs.notifications")}</TabsTrigger>}
           {admin && <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>}
+          {admin && <TabsTrigger value="repositories">{t("tabs.repositories")}</TabsTrigger>}
           <TabsTrigger value="pricing">{t("tabs.pricing")}</TabsTrigger>
           <TabsTrigger value="members">{t("tabs.members")}</TabsTrigger>
           {admin && <TabsTrigger value="audit">{t("tabs.audit")}</TabsTrigger>}
@@ -657,6 +660,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="integrations" className="mt-4">
           <Integrations />
+        </TabsContent>
+        <TabsContent value="repositories" className="mt-4">
+          <RepositoriesSettings owner={owner} />
         </TabsContent>
         <TabsContent value="pricing" className="mt-4">
           <Pricing owner={owner} />

@@ -90,5 +90,28 @@
     "total": "Total",
     "tableView": "Tampilan tabel",
     "week": "Minggu"
+  },
+  "code": {
+    "tab": "Kode",
+    "files": "Berkas yang berubah",
+    "noChanges": "Tidak ada perubahan.",
+    "binary": "Berkas biner",
+    "truncated": "Diff terlalu panjang untuk ditampilkan seluruhnya.",
+    "none": "Belum ada kode yang diserahkan. Karyawan memanggil git_push setelah pekerjaannya di-commit.",
+    "into": "ke {repository} ({base})",
+    "hooksDisabled": "git hooks dinonaktifkan untuk setiap perintah git yang dijalankan platform",
+    "lastTest": "Uji terakhir",
+    "testOk": "lulus",
+    "testFailed": "gagal",
+    "noTest": "Belum ada perintah uji yang dijalankan di tugas ini.",
+    "approvePush": "Setujui & push",
+    "approved": "Disetujui: platform sedang mem-push commit yang disetujui",
+    "discard": "Buang",
+    "discardConfirm": "Buang pekerjaan ini? Persetujuan yang menunggu akan kedaluwarsa dan workspace akan dihapus (hasil kerja tetap tersimpan).",
+    "discarded": "Dibuang",
+    "nothingPending": "Tidak ada yang menunggu persetujuan: karyawan belum mengusulkan push, atau sudah diputuskan.",
+    "feedbackPlaceholder": "Apa yang perlu diubah? Karyawan melanjutkan di sesi dan workspace yang sama.",
+    "requestChanges": "Minta perubahan",
+    "changesRequested": "Perubahan diminta: karyawan akan melanjutkan"
   }
 }

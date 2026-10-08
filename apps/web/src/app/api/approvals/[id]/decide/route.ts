@@ -47,6 +47,8 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
 
   let edited: Record<string, unknown> | null = null;
   if (input.decision === "edit_approve") {
+    // a push is approved for one exact commit; it can be approved or rejected, never rewritten
+    if (a.toolName === "git_push") throw new HttpError(400, "A push can only be approved or rejected", { code: "push_not_editable" });
     if (!input.editedPayload) throw new HttpError(400, "editedPayload is required for Edit & Approve", { code: "edited_payload_required" });
     edited = validatePayload(a.toolName, input.editedPayload) as Record<string, unknown>;
   }
