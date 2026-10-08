@@ -4,6 +4,7 @@ import { audit, db, workspaces } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import { body, route } from "@/lib/server/route";
 import { serverEnv } from "@/lib/server/env";
+import { HttpError } from "@/lib/server/auth";
 
 export const GET = route("VIEWER", async ({ session }) => {
   const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId));
@@ -17,6 +18,7 @@ export const GET = route("VIEWER", async ({ session }) => {
       killSwitch: ws!.killSwitch,
       notifyEmail: ws!.notifyEmail,
       webhookConfigured: !!ws!.webhookUrlEnc,
+      require2faAdmins: ws!.require2faAdmins,
     },
     claude: { authMode: serverEnv.claudeAuthMode, credentialPresent: serverEnv.claudeCredentialPresent },
   };
@@ -29,10 +31,14 @@ const schema = z.object({
   demoMode: z.boolean().optional(),
   notifyEmail: z.email().or(z.literal("")).optional(),
   webhookUrl: z.url().or(z.literal("")).optional(),
+  require2faAdmins: z.boolean().optional(),
 });
 
 export const PUT = route("ADMIN", async ({ session, req }) => {
   const input = await body(req, schema);
+  if (input.require2faAdmins !== undefined && session.role !== "OWNER") {
+    throw new HttpError(403, "Only an Owner can change the two-factor requirement", { code: "owner_only" });
+  }
   const { webhookUrl, notifyEmail, ...rest } = input;
   const set: Partial<typeof workspaces.$inferInsert> = { ...rest };
   if (notifyEmail !== undefined) set.notifyEmail = notifyEmail || null;
@@ -45,7 +51,14 @@ export const PUT = route("ADMIN", async ({ session, req }) => {
     workspaceId: session.workspaceId,
     actorUserId: session.userId,
     actorLabel: session.email,
-    action: webhookUrl !== undefined ? "credential.webhook_changed" : input.guardsEnabled !== undefined ? "settings.guards_changed" : "settings.updated",
+    action:
+      webhookUrl !== undefined
+        ? "credential.webhook_changed"
+        : input.require2faAdmins !== undefined
+          ? "settings.2fa_requirement_changed"
+          : input.guardsEnabled !== undefined
+            ? "settings.guards_changed"
+            : "settings.updated",
     targetType: "workspace",
     targetId: session.workspaceId,
     details,

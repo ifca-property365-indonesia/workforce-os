@@ -38,6 +38,9 @@ export interface Session {
   workspaceName: string;
   role: Role;
   mustChangePassword: boolean;
+  twoFactorEnabled: boolean;
+  /** OWNER/ADMIN in a workspace that requires 2FA, not enrolled yet: everything else is blocked */
+  mustEnroll2fa: boolean;
 }
 
 export async function getSession(): Promise<Session | null> {
@@ -59,19 +62,32 @@ export async function getSession(): Promise<Session | null> {
   if (user.passwordChangedAt && issuedAt < Math.floor(user.passwordChangedAt.getTime() / 1000)) return null;
   const preferred = jar.get(WS_COOKIE)?.value;
   const rows = await db
-    .select({ workspaceId: members.workspaceId, role: members.role, name: workspaces.name })
+    .select({ workspaceId: members.workspaceId, role: members.role, name: workspaces.name, require2fa: workspaces.require2faAdmins })
     .from(members)
     .innerJoin(workspaces, eq(workspaces.id, members.workspaceId))
     .where(eq(members.userId, user.id));
   const m = rows.find((r) => r.workspaceId === preferred) ?? rows[0];
   if (!m) return null;
-  return { userId: user.id, email: user.email, name: user.name, workspaceId: m.workspaceId, workspaceName: m.name, role: m.role, mustChangePassword: user.mustChangePassword };
+  const twoFactorEnabled = !!user.totpSecretEnc;
+  return {
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    workspaceId: m.workspaceId,
+    workspaceName: m.name,
+    role: m.role,
+    mustChangePassword: user.mustChangePassword,
+    twoFactorEnabled,
+    mustEnroll2fa: !twoFactorEnabled && m.require2fa && hasRole(m.role, "ADMIN"),
+  };
 }
 
 export class HttpError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** machine-readable error code (the UI translates `errors.<code>`) plus extra fields for the client */
+    public extra: { code?: string; [k: string]: unknown } = {},
   ) {
     super(message);
   }

@@ -8,6 +8,7 @@ import { setSession } from "@/lib/server/auth";
 import { serverEnv } from "@/lib/server/env";
 import { logger } from "@/lib/server/logger";
 import { signupAllowed } from "@/lib/server/signup";
+import { setTwoFactorChallenge } from "@/lib/server/twofactor";
 
 export async function GET(req: NextRequest) {
   const fail = (reason: string) => NextResponse.redirect(`${serverEnv.appUrl}/login?error=${encodeURIComponent(reason)}`);
@@ -53,6 +54,12 @@ export async function GET(req: NextRequest) {
       await audit({ workspaceId: ws!.id, actorUserId: user!.id, actorLabel: email, action: "workspace.created", targetType: "workspace", targetId: ws!.id, details: { via: "google" } });
     } else if (!user.googleSub) {
       await db.update(users).set({ googleSub: claims.sub }).where(eq(users.id, user.id));
+    }
+    // Google proves the password factor only: lockout and 2FA apply exactly as for password sign-in
+    if (user!.lockedUntil && user!.lockedUntil.getTime() > Date.now()) return fail("account_locked");
+    if (user!.totpSecretEnc) {
+      await setTwoFactorChallenge(user!.id);
+      return NextResponse.redirect(`${serverEnv.appUrl}/login?step=2fa`);
     }
     await setSession(user!.id);
     return NextResponse.redirect(`${serverEnv.appUrl}/dashboard`);

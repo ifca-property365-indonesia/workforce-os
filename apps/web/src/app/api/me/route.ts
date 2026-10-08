@@ -13,7 +13,15 @@ export const GET = route("VIEWER", async ({ session }) => {
     .where(eq(members.userId, session.userId));
   const [u] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, session.userId));
   return {
-    user: { id: session.userId, email: session.email, name: session.name, mustChangePassword: session.mustChangePassword, hasPassword: !!u?.passwordHash },
+    user: {
+      id: session.userId,
+      email: session.email,
+      name: session.name,
+      mustChangePassword: session.mustChangePassword,
+      hasPassword: !!u?.passwordHash,
+      twoFactorEnabled: session.twoFactorEnabled,
+      mustEnroll2fa: session.mustEnroll2fa,
+    },
     workspace: { id: ws!.id, name: ws!.name, killSwitch: ws!.killSwitch, demoMode: ws!.demoMode, guardsEnabled: ws!.guardsEnabled },
     role: session.role,
     workspaces: all,

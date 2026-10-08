@@ -49,6 +49,17 @@ export const users = pgTable("users", {
   mustChangePassword: boolean("must_change_password").notNull().default(false),
   /** sessions issued before this instant are rejected */
   passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
+  /** TOTP secret (AES-256-GCM); set once enrollment is confirmed */
+  totpSecretEnc: text("totp_secret_enc"),
+  /** secret shown during enrollment, promoted to totpSecretEnc after the first valid code */
+  totpPendingEnc: text("totp_pending_enc"),
+  totpEnabledAt: timestamp("totp_enabled_at", { withTimezone: true }),
+  /** last accepted TOTP time step; codes at or below it are rejected (no replay) */
+  totpLastCounter: integer("totp_last_counter"),
+  /** SHA-256 hashes of unused recovery codes */
+  recoveryCodes: jsonb("recovery_codes").$type<string[]>().notNull().default([]),
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -58,6 +69,8 @@ export const workspaces = pgTable("workspaces", {
   slug: text("slug").notNull().unique(),
   monthlyBudget: doublePrecision("monthly_budget").notNull().default(5000),
   killSwitch: boolean("kill_switch").notNull().default(false),
+  /** OWNER and ADMIN members must enroll in TOTP 2FA before using the workspace */
+  require2faAdmins: boolean("require_2fa_admins").notNull().default(true),
   guardsEnabled: boolean("guards_enabled").notNull().default(true),
   demoMode: boolean("demo_mode").notNull().default(false),
   notifyEmail: text("notify_email"),

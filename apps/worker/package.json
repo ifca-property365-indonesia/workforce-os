@@ -34,7 +34,6 @@
     "@types/node": "^24",
     "@types/nodemailer": "^7",
     "pino-pretty": "^13",
-    "postgres": "^3.4.9",
     "typescript": "^5.9.3"
   }
 }

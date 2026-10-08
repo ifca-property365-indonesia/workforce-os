@@ -8,5 +8,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const session = await getSession();
   if (!session) redirect("/login");
   if (session.mustChangePassword) redirect("/change-password");
+  if (session.mustEnroll2fa) redirect("/setup-2fa");
   return <AppShell>{children}</AppShell>;
 }

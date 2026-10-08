@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ChangePasswordForm } from "@/components/account/change-password-form";
+import { TwoFactorCard } from "@/components/account/two-factor";
 import { PageHeader } from "@/components/layout/common";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,6 +88,7 @@ export default function AccountPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Profile />
         <Password />
+        <TwoFactorCard />
       </div>
     </div>
   );

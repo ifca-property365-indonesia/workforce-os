@@ -11,7 +11,8 @@
     "./mail": "./src/mail.ts",
     "./invoice": "./src/invoice.ts",
     "./runtime": "./src/runtime.ts",
-    "./netguard": "./src/netguard.ts"
+    "./netguard": "./src/netguard.ts",
+    "./totp": "./src/totp.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

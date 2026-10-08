@@ -49,3 +49,28 @@ URL parser before the check, and IPv4-mapped/compatible/NAT64 IPv6 addresses are
 If any record of a multi-record answer is private, the whole request is refused.
 Rejected: undici `Agent` with `connect.lookup` (an extra dependency for the same effect); a hostname regex (what we
 had: misses DNS, redirects and alternate IP notations).
+
+## D7. 2FA: TOTP implemented with node:crypto; mandatory-for-admins defaults to ON
+TOTP (RFC 6238, SHA-1, 30 s, 6 digits, ±1 step, replay-protected via the last accepted step) and base32 live in
+`packages/shared/src/totp.ts` and are tested against the RFC vectors, so no dependency is needed. The secret is stored
+AES-256-GCM encrypted. The 10 recovery codes (50 bits each) are stored as SHA-256 hashes and consumed with a
+conditional update. `workspaces.require_2fa_admins` defaults to `true`: after this migration an existing Owner or
+Admin is sent to `/setup-2fa` at the next sign-in, and every other API answers 403
+`two_factor_enrollment_required` until they enroll. Only an Owner can switch the requirement off.
+Rejected: `otplib`/`speakeasy` (small, well-specified algorithm; fewer dependencies in the auth path); default OFF
+(the brief says mandatory for Owner/Admin).
+
+## D8. Lockout: 5 failures → 15 minutes, counted in the database
+Wrong passwords and wrong second-factor codes both count. The 5th failure sets `locked_until` in one atomic UPDATE.
+While locked, even the right password is refused with 423 and `lockedUntil`, and the UI formats it as "try again at
+<local time>". The existing Redis rate limits (per account/IP) stay as a first layer. Known trade-off: someone who
+knows an email address can keep that account locked (a denial of service). The owner CLI (`pnpm --filter @wfos/db cli
+unlock <email>`) clears it.
+Rejected: lockout in Redis only (lost on restart, and the CLI could not inspect it).
+
+## D9. Google sign-in goes through the same lockout and 2FA step
+The Google callback now only proves the first factor. Lockout and the TOTP step apply exactly as for password sign-in.
+
+## D10. Step-up re-auth cookie for sensitive changes
+`POST /api/me/reauth` (password + TOTP) sets a 10-minute signed `wfos_stepup` cookie that `requireStepUp()` checks.
+Phase 1.1 uses it for switching an employee to Workspace mode.
