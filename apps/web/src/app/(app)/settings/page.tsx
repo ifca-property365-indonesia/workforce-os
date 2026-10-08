@@ -1,6 +1,7 @@
 "use client";
 
 import { RepositoriesSettings } from "@/components/settings/repositories";
+import { DepartmentsSettings } from "@/components/settings/departments";
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
@@ -669,6 +670,7 @@ export default function SettingsPage() {
           {admin && <TabsTrigger value="notifications">{t("tabs.notifications")}</TabsTrigger>}
           {admin && <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>}
           {admin && <TabsTrigger value="repositories">{t("tabs.repositories")}</TabsTrigger>}
+          <TabsTrigger value="departments">{t("tabs.departments")}</TabsTrigger>
           <TabsTrigger value="pricing">{t("tabs.pricing")}</TabsTrigger>
           <TabsTrigger value="members">{t("tabs.members")}</TabsTrigger>
           {admin && <TabsTrigger value="audit">{t("tabs.audit")}</TabsTrigger>}
@@ -684,6 +686,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="integrations" className="mt-4">
           <Integrations />
+        </TabsContent>
+        <TabsContent value="departments" className="mt-4">
+          <DepartmentsSettings admin={admin} />
         </TabsContent>
         <TabsContent value="repositories" className="mt-4">
           <RepositoriesSettings owner={owner} />

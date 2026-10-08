@@ -194,5 +194,11 @@
     "egressLabel": "Host yang boleh diakses sandbox",
     "egressHelp": "Satu host per baris, mis. registry.npmjs.org atau *.pypi.org. Selain itu diblokir. Menambah host memerlukan konfirmasi 2FA.",
     "saveEgress": "Simpan host"
+  },
+  "department": {
+    "label": "Departemen",
+    "help": "Karyawan mengikuti SOP departemen ini (dan bisa memakai subagennya di mode workspace).",
+    "none": "Tidak ada",
+    "saved": "Departemen tersimpan"
   }
 }

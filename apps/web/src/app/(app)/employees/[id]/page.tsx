@@ -7,7 +7,7 @@ import { use, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Archive, MessageSquare, Pause, Play, Plus, Trash2, FlaskConical } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { OUTPUT_LANGUAGES, type AllowListEntry, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -353,6 +353,45 @@ function OutputLanguageCard({ e }: { e: Employee }) {
   );
 }
 
+function DepartmentCard({ e }: { e: Employee }) {
+  const t = useTranslations("employees");
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["departments"], queryFn: () => api.get<{ departments: { key: string; name: { en: string; id: string } }[] }>("/api/departments").then((r) => r.departments) });
+  const locale = useLocale() as "en" | "id";
+  const save = useMutation({
+    mutationFn: (department: string | null) => api.patch(`/api/employees/${e.id}`, { department }),
+    onSuccess: () => {
+      toast.success(t("department.saved"));
+      void qc.invalidateQueries({ queryKey: ["employee", e.id] });
+    },
+    onError: (x) => toast.error((x as Error).message),
+  });
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+        <div className="flex-1 space-y-0.5">
+          <Label htmlFor="employee-department">{t("department.label")}</Label>
+          <p className="text-xs text-muted-foreground">{t("department.help")}</p>
+        </div>
+        <select
+          id="employee-department"
+          className="h-9 w-full rounded-md border bg-background px-2 text-sm sm:w-56"
+          value={e.department ?? ""}
+          disabled={save.isPending}
+          onChange={(ev) => save.mutate(ev.target.value || null)}
+        >
+          <option value="">{t("department.none")}</option>
+          {data?.map((d) => (
+            <option key={d.key} value={d.key}>
+              {d.name[locale] ?? d.name.en}
+            </option>
+          ))}
+        </select>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExecutionModeCard({ e }: { e: Employee }) {
   const t = useTranslations("employees");
   const qc = useQueryClient();
@@ -473,6 +512,7 @@ export default function EmployeePage({ params }: P) {
         <TabsContent value="overview" className="mt-4 space-y-4">
           <OutputLanguageCard e={e} />
           <ExecutionModeCard e={e} />
+          <DepartmentCard e={e} />
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="p-4 text-sm">

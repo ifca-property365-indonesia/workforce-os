@@ -8,7 +8,8 @@
     "pricing": "Harga",
     "members": "Anggota",
     "audit": "Log audit",
-    "repositories": "Repositori"
+    "repositories": "Repositori",
+    "departments": "Departemen"
   },
   "workspace": {
     "title": "Workspace",
@@ -140,5 +141,18 @@
     "tokenHelp": "Diperlukan untuk repositori privat, push, dan pull request. Gunakan token fine-grained yang dibatasi ke repositori ini (contents + pull requests). Disimpan terenkripsi; hanya 4 karakter terakhir yang ditampilkan.",
     "add": "Hubungkan repositori",
     "added": "Repositori terhubung"
+  },
+  "departments": {
+    "title": "Departemen",
+    "intro": "Prosedur operasi standar dan subagen per departemen, dalam Bahasa Indonesia dan English. Karyawan mengikuti SOP dalam bahasa keluarannya; subagen dipakai di mode workspace.",
+    "sop": "SOP",
+    "subagents": "Subagen",
+    "noSubagents": "Tidak ada subagen.",
+    "description": "Deskripsi",
+    "prompt": "Instruksi",
+    "tools": "Tool:",
+    "addSubagent": "Tambah subagen",
+    "subagentsHelp": "Subagen berjalan di sandbox yang sama, dengan persetujuan yang sama.",
+    "saved": "Departemen tersimpan"
   }
 }

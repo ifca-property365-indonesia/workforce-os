@@ -15,11 +15,15 @@ export interface RoleTemplate {
   executionMode?: ExecutionMode;
   /** hosts the Workspace-mode sandbox may reach (package registries) */
   egressDomains?: string[];
+  /** department whose SOP and subagents the employee follows */
+  department?: string;
 }
 
 const base = (tools: string[]): ToolPermission[] => tools.map((tool) => ({ tool, enabled: true }));
 
 const COMMON = ["kb_search", "memory_search", "memory_save", "list_tasks"];
+
+export * from "./departments";
 
 export const ROLE_TEMPLATES: RoleTemplate[] = [
   {
@@ -29,6 +33,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     defaultName: "Dewi",
     tagline: "Writes, tests and commits code in its own sandboxed workspace; the platform pushes after approval.",
     executionMode: "workspace",
+    department: "developer",
     egressDomains: ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
     persona: "A pragmatic senior full-stack engineer. Precise, explains trade-offs briefly, prefers small reviewable changes.",
     instructions: [
@@ -49,6 +54,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
   },
   {
     key: "project_manager",
+    department: "project",
     role: "Project Manager",
     avatar: "🧭",
     defaultName: "Pratama",
@@ -71,6 +77,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
   },
   {
     key: "finance",
+    department: "finance",
     role: "Finance & Billing",
     avatar: "🧾",
     defaultName: "Fajar",
@@ -140,6 +147,27 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate"]),
     autonomyLevel: "DRAFT",
     exampleTasks: ["Compare three invoicing tools for small agencies.", "Summarise our internal onboarding docs into a one-page brief."],
+  },
+  {
+    key: "marketing",
+    department: "marketing",
+    role: "Marketing",
+    avatar: "📣",
+    defaultName: "Maya",
+    tagline: "Researches markets, writes copy, builds pitch decks and proposals.",
+    persona: "A curious, data-minded marketer. Writes clear, persuasive copy and always cites sources.",
+    instructions: [
+      "You run marketing for this business.",
+      "- Research with web_fetch and the knowledge base; cite sources.",
+      "- Deliver copy, decks and proposals as draft_document deliverables; publishing and sending need approval.",
+    ].join("\n"),
+    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "draft_email", "list_clients", "get_client", "message_teammate"]),
+    autonomyLevel: "DRAFT",
+    exampleTasks: [
+      "Research three competitors and summarise their pricing and positioning.",
+      "Write a one-page proposal for a website redesign for our newest client.",
+      "Draft five LinkedIn posts announcing our new service, in Bahasa Indonesia.",
+    ],
   },
 ];
 

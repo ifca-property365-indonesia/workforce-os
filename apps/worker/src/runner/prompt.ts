@@ -58,6 +58,8 @@ export function buildSystemPrompt(opts: {
   outputLocale?: Locale | null;
   /** Workspace mode: Claude Code tools in an isolated sandbox */
   workspace?: { egressDomains: string[]; hasRepository: boolean };
+  /** department SOP (already in the output language) and the names of its subagents */
+  department?: { name: string; sop: string; subagents: string[] };
 }): string {
   const e = { ...opts.employee, ...Object.fromEntries(Object.entries(opts.overrides ?? {}).filter(([, v]) => v !== undefined)) } as PromptEmployee;
   const tools = BUILTIN_TOOLS.filter((t) => opts.grantedTools.includes(t.name))
@@ -68,6 +70,10 @@ export function buildSystemPrompt(opts: {
     e.persona && `## Persona\n${e.persona}`,
     e.instructions && `## Instructions\n${e.instructions}`,
     e.businessContext && `## Business context\n${e.businessContext}`,
+    opts.department
+      ? `## ${opts.department.name} SOP\n${opts.department.sop}` +
+        (opts.department.subagents.length ? `\n\nSubagents you can delegate to with the Task tool: ${opts.department.subagents.join(", ")}.` : "")
+      : "",
     `## Autonomy\nYour autonomy level is ${e.autonomyLevel}: ${AUTONOMY_DESCRIPTIONS[e.autonomyLevel]}\n` +
       "Irreversible actions (send, publish, pay, delete, merge, deploy) are enforced by the platform: you cannot bypass approval. " +
       "When a tool says an action was queued for approval or saved as a draft, report that honestly; never claim something was sent when it was not.",

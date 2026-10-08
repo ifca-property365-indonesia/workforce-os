@@ -455,6 +455,7 @@ export const employeeInputSchema = z.object({
   dailyBudget: z.number().nonnegative().max(1_000_000).default(200),
   outputLanguage: z.enum(OUTPUT_LANGUAGES).default("inherit"),
   executionMode: z.enum(EXECUTION_MODES).default("tool"),
+  department: z.string().regex(/^[a-z0-9_-]{1,40}$/).nullable().optional(),
   egressDomains: z.array(egressDomainSchema).max(50).default([]),
 });
 export type EmployeeInput = z.infer<typeof employeeInputSchema>;

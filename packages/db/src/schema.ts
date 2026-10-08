@@ -150,6 +150,8 @@ export const employees = pgTable(
     executionMode: text("execution_mode").$type<ExecutionMode>().notNull().default("tool"),
     /** extra hosts the sandbox may reach through the egress proxy (e.g. registry.npmjs.org) */
     egressDomains: jsonb("egress_domains").$type<string[]>().notNull().default([]),
+    /** department key: SOP instructions and (Workspace mode) subagents */
+    department: text("department"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -531,4 +533,21 @@ export const claudeLimits = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.credentialSource, t.rateLimitType] })],
+);
+
+/** Per-workspace, editable copy of a department: bilingual SOP and subagent definitions. */
+export const departments = pgTable(
+  "departments",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    name: jsonb("name").$type<{ en: string; id: string }>().notNull(),
+    sop: jsonb("sop").$type<{ en: string; id: string }>().notNull(),
+    subagents: jsonb("subagents")
+      .$type<{ name: string; description: { en: string; id: string }; prompt: { en: string; id: string }; tools?: string[] }[]>()
+      .notNull()
+      .default([]),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.key] })],
 );

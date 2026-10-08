@@ -8,7 +8,8 @@
     "pricing": "Pricing",
     "members": "Members",
     "audit": "Audit log",
-    "repositories": "Repositories"
+    "repositories": "Repositories",
+    "departments": "Departments"
   },
   "workspace": {
     "title": "Workspace",
@@ -140,5 +141,18 @@
     "tokenHelp": "Needed for private repositories, pushing and pull requests. Use a fine-grained token limited to this repository (contents + pull requests). Stored encrypted; only its last 4 characters are shown.",
     "add": "Connect repository",
     "added": "Repository connected"
+  },
+  "departments": {
+    "title": "Departments",
+    "intro": "Standard operating procedures and subagents per department, in Bahasa Indonesia and English. Employees follow the SOP in their output language; subagents are used in Workspace mode.",
+    "sop": "SOP",
+    "subagents": "Subagents",
+    "noSubagents": "No subagents.",
+    "description": "Description",
+    "prompt": "Instructions",
+    "tools": "Tools:",
+    "addSubagent": "Add subagent",
+    "subagentsHelp": "Subagents run inside the same sandbox, with the same approvals.",
+    "saved": "Department saved"
   }
 }

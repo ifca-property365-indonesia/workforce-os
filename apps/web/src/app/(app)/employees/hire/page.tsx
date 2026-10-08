@@ -43,6 +43,7 @@ interface Draft {
   outputLanguage: OutputLanguage;
   executionMode: "tool" | "workspace";
   egressDomains: string[];
+  department: string | null;
 }
 
 const blank: Draft = {
@@ -60,6 +61,7 @@ const blank: Draft = {
   outputLanguage: "inherit",
   executionMode: "tool",
   egressDomains: [],
+  department: null,
 };
 
 function fromTemplate(t: RoleTemplate): Draft {
@@ -75,6 +77,7 @@ function fromTemplate(t: RoleTemplate): Draft {
     toolPermissions: t.suggestedTools,
     executionMode: t.executionMode ?? "tool",
     egressDomains: t.egressDomains ?? [],
+    department: t.department ?? null,
   };
 }
 

@@ -7,6 +7,7 @@ export { schema };
 export { audit } from "./audit";
 export { seedSampleData, seedPrices, nextCronRun } from "./sample";
 export * from "./claude";
+export { workspaceDepartments } from "./departments";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 

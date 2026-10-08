@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { approvals, clients, db, employees, projects, repositories, tasks } from "@wfos/db";
+import { approvals, clients, db, employees, projects, repositories, tasks, workspaceDepartments } from "@wfos/db";
+import { ROLE_TEMPLATES } from "@wfos/templates";
 import { decryptSecret } from "@wfos/shared/server";
 import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
 import { assertTransition, type TaskStatus } from "@wfos/shared";
@@ -174,6 +175,15 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     promptParts.push(`## Your previous deliverables on this task\n${task.deliverables.map((d) => `- ${d.title} (${d.kind})`).join("\n")}`);
   }
 
+  // department SOP (in the employee's output language) and, in Workspace mode, its subagents
+  const deptKey = emp.department ?? ROLE_TEMPLATES.find((t) => t.key === emp.templateKey)?.department ?? null;
+  const dept = deptKey ? (await workspaceDepartments(ws.id)).find((d) => d.key === deptKey) : undefined;
+  const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
+  const agents =
+    dept && ctx.workspace
+      ? Object.fromEntries(dept.subagents.map((a) => [a.name, { description: a.description[lang], prompt: a.prompt[lang], ...(a.tools ? { tools: a.tools } : {}) }]))
+      : undefined;
+
   const systemPrompt = buildSystemPrompt({
     employee: emp,
     workspaceName: ws.name,
@@ -183,12 +193,13 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     dryRun: task.dryRun,
     mode: "task",
     workspace: ctx.workspace ? { egressDomains: ctx.workspace.egressDomains, hasRepository: !!task.repositoryId } : undefined,
+    department: dept ? { name: dept.name[lang], sop: dept.sop[lang], subagents: agents ? Object.keys(agents) : [] } : undefined,
     outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
   });
 
   let out;
   try {
-    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget: budget.remaining });
+    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget: budget.remaining, agents });
   } catch (e) {
     if (e instanceof WorkspaceBusyError) {
       // not a failure: wait for a free sandbox slot

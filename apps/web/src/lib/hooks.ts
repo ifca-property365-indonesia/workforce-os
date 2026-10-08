@@ -30,6 +30,7 @@ export interface Employee {
   dailyBudget: number;
   outputLanguage: "inherit" | "id" | "en";
   executionMode: "tool" | "workspace";
+  department: string | null;
   egressDomains: string[];
   status: EmployeeStatus;
   instructionsVersion: number;

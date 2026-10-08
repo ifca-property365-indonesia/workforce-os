@@ -31,6 +31,8 @@ export interface AgentRunInput {
   onTextDelta?: (text: string) => void;
   /** record LLM steps under this name (e.g. "replay") */
   stepName?: string;
+  /** department subagents (Workspace mode only: they need Claude Code's Task tool) */
+  agents?: Record<string, { description: string; prompt: string; tools?: string[] }>;
 }
 
 export interface AgentRunOutput {
@@ -253,6 +255,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         maxBudgetUsd: Math.max(0.01, input.creditBudget * CREDIT_USD),
         canUseTool: (toolName, toolInput, opts) => canUseTool(toolName, toolInput, opts),
         ...(ctx.workspace?.resume ? { resume: ctx.workspace.resume } : {}),
+        ...(ctx.workspace && input.agents && Object.keys(input.agents).length ? { agents: input.agents } : {}),
         stderr: (d) => log.debug({ runId: ctx.runId, d: d.slice(0, 500) }, "sdk stderr"),
       },
     });

@@ -91,6 +91,7 @@ async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?:
     resume: o.resume,
     credentialType: cfg.credential.type,
     gitIdentity: cfg.gitIdentity,
+    agents: o.agents as RunSpec["agents"],
   };
 
   await prepareWorkspaceDirs(layout, { skillsDir: path.join(host.runnerDir, "skills") });

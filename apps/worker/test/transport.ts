@@ -10,6 +10,7 @@ export const transport = {
 };
 
 export function resetTransport() {
+  zsets.clear();
   transport.mails.length = 0;
   transport.published.length = 0;
   transport.queued.length = 0;
@@ -20,9 +21,40 @@ function fakeQueue(queue: string) {
   return { add: vi.fn(async (name: string, data: unknown) => void transport.queued.push({ queue, name, data })) };
 }
 
+/** In-memory sorted sets: enough Redis for the lease/slot code (zadd, zrem, zcard, zremrangebyscore, multi). */
+const zsets = new Map<string, Map<string, number>>();
+const z = (k: string) => zsets.get(k) ?? zsets.set(k, new Map()).get(k)!;
+const zops = {
+  zadd: (k: string, score: number, m: string) => (z(k).set(m, score), 1),
+  zrem: (k: string, m: string) => (z(k).delete(m) ? 1 : 0),
+  zcard: (k: string) => z(k).size,
+  zremrangebyscore: (k: string, min: number, max: number) => {
+    let n = 0;
+    for (const [m, s] of z(k)) if (s >= min && s <= max) (z(k).delete(m), n++);
+    return n;
+  },
+  pexpire: () => 1,
+};
+function fakeMulti() {
+  const ops: (() => unknown)[] = [];
+  const chain = new Proxy({} as Record<string, unknown>, {
+    get: (_t, name: string) =>
+      name === "exec"
+        ? async () => ops.map((f) => [null, f()])
+        : (...args: unknown[]) => {
+            ops.push(() => (zops as Record<string, (...a: unknown[]) => unknown>)[name]!(...args));
+            return chain;
+          },
+  });
+  return chain;
+}
+export function resetRedis() {
+  zsets.clear();
+}
+
 export const redisModule = {
   newRedis: () => ({ subscribe: vi.fn(), on: vi.fn(), disconnect: vi.fn() }),
-  redis: { publish: vi.fn(), disconnect: vi.fn() },
+  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m) },
   connection: { url: "redis://mock" },
   prefix: "wfos-test",
   runsQueue: fakeQueue("runs"),

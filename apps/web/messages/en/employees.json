@@ -194,5 +194,11 @@
     "egressLabel": "Hosts the sandbox may reach",
     "egressHelp": "One host per line, e.g. registry.npmjs.org or *.pypi.org. Everything else is blocked. Adding hosts needs a 2FA confirmation.",
     "saveEgress": "Save hosts"
+  },
+  "department": {
+    "label": "Department",
+    "help": "The employee follows this department's SOP (and can use its subagents in Workspace mode).",
+    "none": "None",
+    "saved": "Department saved"
   }
 }

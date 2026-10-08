@@ -27,6 +27,8 @@ export interface RunSpec {
   /** which header the gateway will rewrite; the runner itself only holds a per-run dummy */
   credentialType: "oauth" | "api_key";
   gitIdentity: { name: string; email: string };
+  /** department subagents (Claude Code Task tool) */
+  agents?: Record<string, { description: string; prompt: string; tools?: string[] }>;
 }
 
 export type RunnerToWorker =
