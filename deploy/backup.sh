@@ -1,48 +1,56 @@
 #!/usr/bin/env bash
-# Daily backup for a native (PM2) install: Postgres dump + uploaded files + .env.
+# Backup for a native (PM2) install: Postgres dump + uploaded files + git mirrors + .env, with a checksum manifest.
 #
 # The .env copy matters: credentials in the database are encrypted with ENCRYPTION_KEY,
-# so a dump restored without that key cannot decrypt SMTP passwords or integration secrets.
+# so a dump restored without that key cannot decrypt SMTP passwords, repository tokens or Claude credentials.
 #
 #   deploy/backup.sh                       # writes to $BACKUP_DIR (default /root/backups/workforce-os)
 #   KEEP_DAYS=30 deploy/backup.sh
 #   cron: 30 2 * * * /path/to/workforce-os/deploy/backup.sh >> /var/log/workforce-os-backup.log 2>&1
 #
-# Restore (as the app role, into an empty database whose extensions a superuser created first:
-# CREATE EXTENSION vector; CREATE EXTENSION pgcrypto; — the two "must be owner of extension" errors are harmless):
-#   pg_restore --clean --if-exists --no-owner -d "$DATABASE_URL" wfos-<stamp>.dump
-#   tar -xzf wfos-<stamp>-uploads.tar.gz -C <app dir>/storage
-#   cp wfos-<stamp>.env <app dir>/.env
+# Restore: deploy/restore.sh (see docs/DEPLOY.md → Backups). Tested by deploy/test/backup-restore.sh.
+# Not included: task workspaces under /var/lib/private/wfos (temporary by design; deliverables are in the database)
+# and the embedding model cache (downloaded again).
 set -euo pipefail
 umask 077
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
 BACKUP_DIR="${BACKUP_DIR:-/root/backups/workforce-os}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 set -a
-# shellcheck disable=SC1091
-. "$APP_DIR/.env"
+# shellcheck disable=SC1090
+. "$ENV_FILE"
 set +a
-: "${DATABASE_URL:?DATABASE_URL missing in .env}"
+: "${DATABASE_URL:?DATABASE_URL missing in $ENV_FILE}"
 STORAGE="${STORAGE_DIR:-./storage}"
 [[ "$STORAGE" = /* ]] || STORAGE="$APP_DIR/$STORAGE"
 
 mkdir -p "$BACKUP_DIR"
-tmp="$BACKUP_DIR/.wfos-$STAMP.dump.partial"
+base="$BACKUP_DIR/wfos-$STAMP"
+tmp="$base.dump.partial"
 trap 'rm -f "$tmp"' EXIT
 
 pg_dump --format=custom --no-owner "$DATABASE_URL" > "$tmp"
 pg_restore --list "$tmp" > /dev/null # fails on a truncated or corrupt dump
-mv "$tmp" "$BACKUP_DIR/wfos-$STAMP.dump"
+mv "$tmp" "$base.dump"
 
-# uploads only: agent-home, sandbox and the embedding model cache are rebuilt automatically
-if [[ -d "$STORAGE/uploads" ]]; then
-  tar -czf "$BACKUP_DIR/wfos-$STAMP-uploads.tar.gz" -C "$STORAGE" uploads
-fi
-cp "$APP_DIR/.env" "$BACKUP_DIR/wfos-$STAMP.env"
+# uploads (documents, attachments) and the bare git mirrors (delivered agent branches)
+for d in uploads repos; do
+  if [[ -d "$STORAGE/$d" ]]; then tar -czf "$base-$d.tar.gz" -C "$STORAGE" "$d"; fi
+done
+cp "$ENV_FILE" "$base.env"
+
+commit="$(git -C "$APP_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+{
+  echo "created=$(date -Is)"
+  echo "commit=$commit"
+  echo "migrations=$(pg_restore --list "$base.dump" | grep -c 'TABLE DATA drizzle __drizzle_migrations' || true)"
+  (cd "$BACKUP_DIR" && sha256sum "$(basename "$base").dump" "$(basename "$base")".env $(ls "$(basename "$base")"-*.tar.gz 2>/dev/null))
+} > "$base.manifest"
 
 find "$BACKUP_DIR" -maxdepth 1 -name 'wfos-*' -mtime "+$KEEP_DAYS" -delete
 
-echo "$(date -Is) backup ok: $BACKUP_DIR/wfos-$STAMP.dump ($(du -h "$BACKUP_DIR/wfos-$STAMP.dump" | cut -f1))"
+echo "$(date -Is) backup ok: $base.dump ($(du -h "$base.dump" | cut -f1)), manifest $base.manifest"

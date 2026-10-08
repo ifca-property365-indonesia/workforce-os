@@ -14,7 +14,7 @@ describe("health verdict", () => {
   it("ok when db, redis and a fresh worker heartbeat are there", () => {
     const r = evaluateHealth({ db: true, redis: true, heartbeat: hb(5000), workspaceModeInUse: false, now: NOW });
     expect(r.status).toBe("ok");
-    expect(r.checks.worker).toEqual({ ok: true, ageSec: 5 });
+    expect(r.checks.worker).toEqual({ ok: true, ageSec: 5, activeRuns: 0 });
     expect(r.commit).toBe("abc1234");
   });
   it("down when the database or redis is unreachable", () => {

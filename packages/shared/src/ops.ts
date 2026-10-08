@@ -31,7 +31,7 @@ export interface HealthReport {
   checks: {
     db: boolean;
     redis: boolean;
-    worker: { ok: boolean; ageSec: number | null };
+    worker: { ok: boolean; ageSec: number | null; activeRuns: number | null };
     sandbox: { ok: boolean; required: boolean; runner: boolean; claude: boolean } | null;
   };
   commit: string | null;
@@ -47,5 +47,5 @@ export function evaluateHealth(i: HealthInput): HealthReport {
   const sb = i.heartbeat?.sandbox;
   const sandbox = sb ? { ok: sb.available && sb.runner && sb.claude, required: i.workspaceModeInUse, runner: sb.runner, claude: sb.claude } : null;
   const status = !i.db || !i.redis ? "down" : !workerOk || (i.workspaceModeInUse && !sandbox?.ok) ? "degraded" : "ok";
-  return { status, checks: { db: i.db, redis: i.redis, worker: { ok: workerOk, ageSec: age }, sandbox }, commit: i.heartbeat?.commit ?? null };
+  return { status, checks: { db: i.db, redis: i.redis, worker: { ok: workerOk, ageSec: age, activeRuns: workerOk ? (i.heartbeat?.activeRuns ?? 0) : null }, sandbox }, commit: i.heartbeat?.commit ?? null };
 }
