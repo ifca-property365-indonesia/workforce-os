@@ -10,3 +10,4 @@ apps/web/next-env.d.ts
 !.env.example
 .env.local
 apps/*/.env
+apps/web/AGENTS.md

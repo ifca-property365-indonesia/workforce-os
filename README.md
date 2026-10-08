@@ -23,7 +23,9 @@ packages/templates  Role templates (Developer, PM, Finance, Support, Sales, Rese
 | Budgets | per-employee daily and per-workspace monthly caps are checked before each run and after every LLM step, with an SDK `maxBudgetUsd` backstop. Hitting a cap sets the employee to `PAUSED_BUDGET` |
 | Kill switch | sets a DB flag, Redis pub/sub aborts every in-flight run immediately, queued work is held, and approvals cannot execute |
 | Audit | `audit_log` is append-only (a Postgres trigger blocks UPDATE/DELETE/TRUNCATE) |
-| Credentials | AES-256-GCM (`ENCRYPTION_KEY`). They are never returned to the browser or given to the model |
+| Approval execution | an approved action is claimed (`APPROVED → EXECUTING`) before it runs, so concurrent or retried jobs execute it at most once |
+| Web fetch | `safeFetch` (`packages/shared/src/netguard.ts`) resolves DNS itself, refuses non-public addresses (private, loopback, link-local/metadata, CGNAT, ULA, IPv4-mapped), pins the socket to the checked IP and re-checks every redirect |
+| Credentials | AES-256-GCM (`ENCRYPTION_KEY`). They are never returned to the browser or given to the model. The agent process gets an allow-listed env with only its own workspace's Claude credential |
 
 Run `pnpm --filter @wfos/worker exec tsx src/scripts/safety-check.ts <workspaceId>` to check the gate against a real DB and SMTP. It needs no Claude token.
 
@@ -33,8 +35,9 @@ Run `pnpm --filter @wfos/worker exec tsx src/scripts/safety-check.ts <workspaceI
 
 ## Claude authentication
 
-`CLAUDE_AUTH_MODE=oauth` uses `CLAUDE_CODE_OAUTH_TOKEN`, for personal or internal use. Create a token with `claude setup-token`.
-`CLAUDE_AUTH_MODE=api_key` uses `ANTHROPIC_API_KEY`, for multi-user or commercial use.
+Each workspace stores its own Claude credential: **Settings → Claude credential** (Owner only). It is either a Claude subscription token (create one with `claude setup-token`) or an Anthropic API key. It is encrypted with AES-256-GCM, and the UI only ever shows its type and last 4 characters. A run receives only the credential of its own workspace, only while it runs.
+
+The instance env credential is an optional **fallback** for workspaces without their own: `CLAUDE_AUTH_MODE=oauth` uses `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_AUTH_MODE=api_key` uses `ANTHROPIC_API_KEY`. Set `CLAUDE_INSTANCE_FALLBACK=false` to require every workspace to bring its own (recommended as soon as other people can sign up).
 
 Without a credential, runs fail with a clear message. **Demo Mode** (Settings, or "Run scripted demo" on the Dashboard) needs no token and makes no network calls.
 
@@ -75,6 +78,9 @@ The backups sit on the same disk. Copy them off the server too (rclone, S3, or a
 - Admins add people in **Settings → Members**. New accounts get a one-time temporary password, and the user has to pick their own at first sign-in (`/change-password`). Until they do, every other page and API is blocked.
 - **Account** (avatar menu, top right, or your name in the sidebar) edits your display name and changes your password. A password change signs out every other session.
 - Admins can **reset** a member's password (new temporary password, old sessions revoked) and **remove** members. Only Owners can act on Owners, and a workspace always keeps at least one Owner. A password reset is refused when the user also belongs to another workspace.
+- **Two-factor authentication (TOTP)**: Account → Two-factor authentication (QR enrollment, 10 single-use recovery codes, password + code to turn it off). It is **mandatory for Owners and Admins** while the workspace setting is on (default on; Settings → General → Safety, Owner only). They are sent to `/setup-2fa` at sign-in until they enroll.
+- **Lockout**: 5 failed password or code attempts lock the account for 15 minutes ("try again at <time>"). Google sign-in goes through the same lockout and 2FA step.
+- **Owner CLI** (on the server): `pnpm --filter @wfos/db cli unlock <email>` clears a lockout; `pnpm --filter @wfos/db cli reset-2fa <email>` turns 2FA off for a user who lost their authenticator and recovery codes. Both are written to the audit log.
 - Login is limited to 10 attempts per account and 30 per IP every 15 minutes, and signup to 5 per IP per hour. Behind Cloudflare, Nginx has to resolve the real visitor IP (`set_real_ip_from` + `real_ip_header CF-Connecting-IP`, see `nginx/ai.vardiv.id.conf`) and pass it as `X-Real-IP`. Without that, every visitor shares Cloudflare's IPs.
 
 ## Deploy with Docker Compose (fresh Ubuntu VPS)
@@ -89,6 +95,31 @@ docker compose up -d --build
 
 Compose runs `postgres` (pgvector), `redis`, `migrate` (migrations + seed, runs once), `web`, `worker`, `nginx` (SSE-safe proxy) and `certbot` (renews every 12 hours). Uploaded files and the local embedding model live in the `storage` volume.
 
+## Languages
+
+The UI is available in **Bahasa Indonesia** and **English**. Each user picks a language (account menu or Account page), the workspace has a default (Settings → General), and otherwise the browser language is used. Dates, numbers and money follow the language (`Rp 1.234.567` in Indonesian) in `APP_TIME_ZONE` (default `Asia/Jakarta`). Each employee has an **output language** (workspace default / Bahasa Indonesia / English) for answers, documents and emails. Notifications, default invoice emails and invoice PDFs use the workspace language. Conventions for contributors: `docs/upgrade/I18N.md`.
+
+## Tests, typecheck and lint
+
+```bash
+pnpm -r typecheck
+pnpm test        # shared + web + worker; never calls Claude, sends mail or touches the network
+pnpm lint
+```
+
+The web and worker suites run against a **throwaway PostgreSQL database** that the test setup creates and drops. They need a role with `CREATEDB` that owns a template database with pgvector (one-time setup, as the postgres superuser):
+
+```sql
+CREATE ROLE workforce_dev LOGIN CREATEDB PASSWORD '…';
+CREATE DATABASE workforce_os_test_template OWNER workforce_dev;
+\c workforce_os_test_template
+CREATE EXTENSION vector;
+```
+
+Then set `TEST_DATABASE_ADMIN_URL=postgres://workforce_dev:…@127.0.0.1:5432/postgres` in `.env`. The suites never skip: without it they fail.
+
+**Working on a production host:** use a separate checkout (git worktree) with its own `.env`, its own database, another Redis DB index, `WFOS_ENV=development`, `WFOS_NAMESPACE=wfos-dev` and `WFOS_PROD_ENV_FILE=<path to the production .env>`. Worker, web, migrate and seed then refuse to start if they would touch the production database, Redis queues or pub/sub channels.
+
 ## Environment
 
 | Variable | Purpose |
@@ -102,6 +133,10 @@ Compose runs `postgres` (pgvector), `redis`, `migrate` (migrations + seed, runs 
 | `ALLOW_SIGNUP` | public signup (default `false`; the first user can always sign up). Admins add members in Settings → Members |
 | `WORKER_CONCURRENCY`, `PER_EMPLOYEE_CONCURRENCY` | parallel runs total / per employee |
 | `STORAGE_DIR` | uploads, embedding model cache, agent sandbox dirs |
+| `CLAUDE_INSTANCE_FALLBACK` | `false` = workspaces without their own Claude credential cannot run (default `true`) |
+| `APP_TIME_ZONE` | time zone for dates in the UI (default `Asia/Jakarta`) |
+| `WFOS_ENV`, `WFOS_NAMESPACE`, `WFOS_PROD_ENV_FILE` | dev/test isolation guard (leave unset in production) |
+| `TEST_DATABASE_ADMIN_URL` | Postgres role with `CREATEDB` for the test suites |
 
 ## Feature map
 
