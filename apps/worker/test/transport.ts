@@ -30,7 +30,12 @@ const zops = {
   zcard: (k: string) => z(k).size,
   zremrangebyscore: (k: string, min: number, max: number) => {
     let n = 0;
-    for (const [m, s] of z(k)) if (s >= min && s <= max) (z(k).delete(m), n++);
+    for (const [m, s] of z(k)) {
+      if (s >= min && s <= max) {
+        z(k).delete(m);
+        n++;
+      }
+    }
     return n;
   },
   pexpire: () => 1,
