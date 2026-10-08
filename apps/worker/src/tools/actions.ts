@@ -1,4 +1,5 @@
-import { clients, db, employees, workspaces } from "@wfos/db";
+import { clients, db, employees, repositories, workspaces } from "@wfos/db";
+import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
 import {
   emailPayloadSchema,
@@ -8,11 +9,11 @@ import {
   type EmailPayload,
   type InvoicePayload,
 } from "@wfos/shared";
-import { withRetry } from "@wfos/shared/server";
+import { decryptSecret, withRetry } from "@wfos/shared/server";
 import { sendMail } from "@wfos/shared/mail";
 import { renderInvoicePdf, formatMoney } from "@wfos/shared/invoice";
 import { msg } from "@wfos/shared/messages";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { getExternalMcpServers, getSmtp, getWebhookUrl } from "../lib/settings";
@@ -104,6 +105,37 @@ async function doRunApprovedCommand(workspaceId: string, command: string, contex
   };
 }
 
+async function repoFor(workspaceId: string, repositoryId: unknown): Promise<(RepoRef & { name: string }) | null> {
+  if (typeof repositoryId !== "string") return null;
+  const [r] = await db.select().from(repositories).where(and(eq(repositories.id, repositoryId), eq(repositories.workspaceId, workspaceId)));
+  if (!r) return null;
+  return { id: r.id, name: r.name, provider: r.provider, url: r.url, defaultBranch: r.defaultBranch, token: r.tokenEnc ? decryptSecret(r.tokenEnc) : null };
+}
+
+/** Push exactly the approved commit (payload.head) from the platform mirror. */
+async function doGitPush(workspaceId: string, p: Record<string, unknown>, context: { taskId?: string | null }): Promise<ActionResult> {
+  const repo = await repoFor(workspaceId, p.repositoryId);
+  if (!repo || !context.taskId) return { ok: false, summary: "Repository not found" };
+  const r = await pushAgentBranch(repo, context.taskId, String(p.head ?? ""));
+  return { ok: r.ok, summary: r.summary, details: { branch: p.branch, head: p.head } };
+}
+
+async function doCreatePullRequest(workspaceId: string, p: Record<string, unknown>): Promise<ActionResult> {
+  const repo = await repoFor(workspaceId, p.repositoryId);
+  if (!repo) return { ok: false, summary: "Repository not found" };
+  const r = await createPullRequest(repo, { taskId: String(p.taskId), title: String(p.title ?? ""), body: String(p.body ?? ""), base: String(p.base ?? repo.defaultBranch) }, providerFetch());
+  return { ok: r.ok, summary: r.summary, details: { url: r.url } };
+}
+
+/** Provider HTTP client (swappable in tests: no real GitHub/GitLab calls). */
+let providerFetchImpl: ProviderFetch | null = null;
+export function setProviderFetch(f: ProviderFetch | null): void {
+  providerFetchImpl = f;
+}
+function providerFetch(): ProviderFetch {
+  return providerFetchImpl ?? (fetch as unknown as ProviderFetch);
+}
+
 export async function callExternalMcpTool(workspaceId: string, server: string, tool: string, args: Record<string, unknown>): Promise<ActionResult> {
   const servers = await getExternalMcpServers(workspaceId);
   const s = servers.find((x) => x.name === server);
@@ -135,6 +167,10 @@ export async function executeAction(
   switch (toolName) {
     case "bash":
       return doRunApprovedCommand(workspaceId, String(payload.command ?? ""), context);
+    case "git_push":
+      return doGitPush(workspaceId, payload, context);
+    case "create_pull_request":
+      return doCreatePullRequest(workspaceId, payload);
     case "send_email":
       return doSendEmail(workspaceId, emailPayloadSchema.parse(payload));
     case "send_invoice":

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { approvals, clients, db, employees, projects, tasks } from "@wfos/db";
+import { approvals, clients, db, employees, projects, repositories, tasks } from "@wfos/db";
+import { decryptSecret } from "@wfos/shared/server";
+import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
 import { assertTransition, type TaskStatus } from "@wfos/shared";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
@@ -96,6 +98,27 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
 
   await setTaskStatus(task, "RUNNING", { error: null });
 
+  // Workspace mode with a repository: refresh the platform mirror, then clone/refresh inside the sandbox
+  let repository: (RepoRef & { name: string }) | undefined;
+  if (emp.executionMode === "workspace" && !team && task.repositoryId) {
+    const [r] = await db.select().from(repositories).where(and(eq(repositories.id, task.repositoryId), eq(repositories.workspaceId, ws.id)));
+    if (!r) {
+      await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: "The task's repository no longer exists." });
+      return;
+    }
+    repository = { id: r.id, name: r.name, provider: r.provider, url: r.url, defaultBranch: r.defaultBranch, token: r.tokenEnc ? decryptSecret(r.tokenEnc) : null };
+    try {
+      await syncMirror(repository);
+      await prepareTaskRepo({ workspaceId: ws.id, taskId: task.id, repo: repository });
+      await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "repository_prepared", output: { repository: r.name, branch: `agent/${task.id}` } });
+    } catch (e) {
+      const msg = `Could not prepare repository ${r.name}: ${(e as Error).message}`.replace(/Authorization: [^\s]+ [^\s]+/g, "Authorization: ***");
+      await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "repository_failed", status: "error", output: msg });
+      await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: msg });
+      return;
+    }
+  }
+
   const ctx: RunContext = {
     runId: randomUUID(),
     workspaceId: ws.id,
@@ -120,6 +143,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
             onSession: async (sessionId: string) => {
               await db.update(tasks).set({ agentSessionId: sessionId, workspaceStatus: "active" }).where(eq(tasks.id, task.id));
             },
+            repository,
           },
         }
       : {}),

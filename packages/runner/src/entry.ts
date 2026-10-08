@@ -54,12 +54,17 @@ async function execApproved(command: string): Promise<number> {
         NO_PROXY: "127.0.0.1,localhost",
         NODE_USE_ENV_PROXY: "1",
         GIT_TERMINAL_PROMPT: "0",
+        GIT_CONFIG_GLOBAL: "/mnt/wfos/runner/gitconfig",
+        GIT_CONFIG_NOSYSTEM: "1",
         // hooks never run for platform-executed commands, whatever the repo or command configures
-        GIT_CONFIG_COUNT: "2",
+        GIT_CONFIG_COUNT: "3",
         GIT_CONFIG_KEY_0: "core.hooksPath",
         GIT_CONFIG_VALUE_0: "/dev/null",
         GIT_CONFIG_KEY_1: "core.fsmonitor",
         GIT_CONFIG_VALUE_1: "false",
+        // the platform's read-only mirror is owned by root; trust exactly that path
+        GIT_CONFIG_KEY_2: "safe.directory",
+        GIT_CONFIG_VALUE_2: "/mnt/wfos/upstream.git",
       },
     });
     child.on("exit", (c, sig) => resolve(c ?? (sig ? 128 : 1)));

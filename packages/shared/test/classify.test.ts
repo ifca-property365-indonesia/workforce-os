@@ -8,7 +8,7 @@ describe("classifyTool", () => {
 
   it("classifies every irreversible builtin as irreversible", () => {
     const irreversible = BUILTIN_TOOLS.filter((t) => t.class === "irreversible").map((t) => t.name).sort();
-    expect(irreversible).toEqual(["post_webhook", "send_email", "send_invoice"]);
+    expect(irreversible).toEqual(["create_pull_request", "git_push", "post_webhook", "send_email", "send_invoice"]);
   });
 
   it("uses the registry for builtins reached through an mcp__ prefix", () => {

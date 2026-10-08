@@ -38,6 +38,7 @@ import { recordStep } from "../lib/steps";
 import { publish, miscQueue } from "../lib/redis";
 import { guardOutput, guardToolResult, type GuardCtx } from "../guards/content";
 import { executeAction } from "./actions";
+import { exportAgentBranch, type RepoRef } from "../runner/workspace/git";
 import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
@@ -81,6 +82,8 @@ export interface RunContext {
     resume?: string;
     /** called with the session id of the run, so follow-ups can resume it */
     onSession?: (sessionId: string) => Promise<void> | void;
+    /** repository checked out in the workspace (git_push / create_pull_request) */
+    repository?: RepoRef & { name: string };
   };
 }
 
@@ -682,6 +685,75 @@ export function buildTools(ctx: RunContext) {
           scope: { recipients: p.to, clientId: p.clientId, amount: total },
           draftKind: "invoice",
           draftContent: p.lines.map((l) => `${l.description} — ${l.quantity} × ${l.unitPrice}`).join("\n") + `\nTotal: ${p.currency} ${total}`,
+        });
+      }),
+    ),
+  );
+
+  // ---- Workspace mode: code delivery (the platform pushes; the agent never holds the token) ----
+  add(
+    "git_push",
+    tool(
+      "git_push",
+      "Workspace mode: propose pushing your committed work to the branch agent/<task> on the remote. IRREVERSIBLE: a human approves the exact commit and diff first. Commit your changes before calling this.",
+      { summary: z.string().max(2000).optional() },
+      wrap(ctx, "git_push", async (a: { summary?: string }) => {
+        const repo = ctx.workspace?.repository;
+        if (!ctx.workspace || !repo || !ctx.taskId) return err("No repository is connected to this task.");
+        const ex = await exportAgentBranch({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, repo });
+        if (!ex) return err("There are no new commits on your branch. Commit your changes first (git add -A && git commit -m ...).");
+        if (!ex.mergeable) {
+          return err(
+            `Your branch conflicts with ${repo.defaultBranch} in: ${ex.conflicts.join(", ") || "some files"}. ` +
+              `Rebase onto upstream/${repo.defaultBranch} (already fetched), resolve the conflicts, commit, and call git_push again.`,
+          );
+        }
+        await addDeliverable(ctx, {
+          kind: "code",
+          title: `Branch ${ex.branch}`,
+          content: ex.diff,
+          meta: { repositoryId: repo.id, repository: repo.name, branch: ex.branch, base: ex.base, head: ex.head, commits: ex.commits, files: ex.files, diffTruncated: ex.diffTruncated },
+        });
+        const payload = {
+          repositoryId: repo.id,
+          repository: repo.name,
+          branch: ex.branch,
+          base: ex.base,
+          head: ex.head,
+          commits: ex.commits,
+          files: ex.files,
+          diff: ex.diff.slice(0, 100_000),
+          diffTruncated: ex.diffTruncated || ex.diff.length > 100_000,
+          summary: a.summary ?? "",
+          hooksDisabled: true,
+        };
+        return irreversible(ctx, "git_push", payload, {
+          title: `Push ${ex.commits.length} commit(s) to ${ex.branch} (${repo.name})`,
+          textForGuard: `${a.summary ?? ""}\n${ex.diff.slice(0, 200_000)}`,
+          scope: {},
+          draftKind: "code",
+          draftContent: ex.diff,
+        });
+      }),
+    ),
+  );
+
+  add(
+    "create_pull_request",
+    tool(
+      "create_pull_request",
+      "Workspace mode: propose opening a pull/merge request from agent/<task> into the default branch. IRREVERSIBLE: a human approves it; the branch must have been pushed with git_push.",
+      { title: z.string().min(3).max(200), body: z.string().max(20000).optional() },
+      wrap(ctx, "create_pull_request", async (a: { title: string; body?: string }) => {
+        const repo = ctx.workspace?.repository;
+        if (!ctx.workspace || !repo || !ctx.taskId) return err("No repository is connected to this task.");
+        const payload = { repositoryId: repo.id, repository: repo.name, taskId: ctx.taskId, title: a.title, body: a.body ?? "", base: repo.defaultBranch, head: `agent/${ctx.taskId}` };
+        return irreversible(ctx, "create_pull_request", payload, {
+          title: `Pull request: ${a.title} (${repo.name})`,
+          textForGuard: `${a.title}\n${a.body ?? ""}`,
+          scope: {},
+          draftKind: "document",
+          draftContent: `${a.title}\n\n${a.body ?? ""}`,
         });
       }),
     ),

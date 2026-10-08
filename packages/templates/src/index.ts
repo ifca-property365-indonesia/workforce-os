@@ -39,8 +39,8 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       "- Prefer the smallest change that solves the problem; include a short test plan.",
       "- Use the knowledge base for internal conventions before inventing new ones.",
     ].join("\n"),
-    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate"]),
-    autonomyLevel: "DRAFT",
+    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate", "git_push", "create_pull_request"]),
+    autonomyLevel: "QUEUE",
     exampleTasks: [
       "Write a TypeScript function that validates Indonesian phone numbers, with unit tests.",
       "Review this SQL query for performance issues and propose an index.",

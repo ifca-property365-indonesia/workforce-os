@@ -105,6 +105,9 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
     const needsRevision = all.filter((x) => x.status === "REJECTED" && x.feedback && !consumed(x));
     // Workspace mode: approved commands ran on the agent's behalf; it continues with their output
     const commandResults = all.filter((x) => x.toolName === "bash" && (x.status === "EXECUTED" || x.status === "FAILED") && !consumed(x));
+    // a failed push or pull request (conflict, rejected, branch moved) goes back to the employee, not a silent failure
+    const deliveryFailures = all.filter((x) => (x.toolName === "git_push" || x.toolName === "create_pull_request") && x.status === "FAILED" && !consumed(x));
+    for (const r of deliveryFailures) commandResults.push(r);
     if (needsRevision.length || commandResults.length) {
       for (const r of needsRevision) await tx.update(approvals).set({ executionResult: { consumed: true } }).where(eq(approvals.id, r.id));
       for (const r of commandResults) {
@@ -114,6 +117,10 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
       const note = [
         ...needsRevision.map((r) => `- Your proposed "${r.title}" was REJECTED. Feedback: ${r.feedback}`),
         ...commandResults.map((r) => {
+          if (r.toolName !== "bash") {
+            const d = (r.executionResult as { summary?: string } | null) ?? {};
+            return `- ${r.toolName === "git_push" ? "Pushing your branch" : "Opening the pull request"} FAILED: ${d.summary ?? "unknown error"}. Fix the cause (for conflicts: rebase onto upstream/<default branch>, which is up to date), commit, and call ${r.toolName} again.`;
+          }
           const d = (r.executionResult as { summary?: string; details?: { output?: string } } | null) ?? {};
           const out = String(d.details?.output ?? "").slice(-8000);
           return `- Approved command \`${String((r.editedPayload ?? r.payload).command ?? "")}\` ${d.summary ?? r.status}. Output:\n\`\`\`\n${out}\n\`\`\``;

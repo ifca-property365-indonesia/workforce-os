@@ -23,7 +23,14 @@ export const DEFAULT_LIMITS: UnitLimits = {
  * The isolation of a Workspace-mode run, as systemd properties. Pure, so tests can assert every flag.
  * See docs/upgrade/SPIKE-sandbox.md for what each one blocks (measured on the production host).
  */
-export function unitProperties(host: SandboxHost, layout: RunLayout, limits: UnitLimits = DEFAULT_LIMITS, workDir = layout.sandboxRepoDir): string[] {
+/** Extra read-only mounts under /mnt/wfos (e.g. the platform's bare repository mirror). */
+export interface ExtraBind {
+  host: string;
+  sandbox: string;
+}
+
+export function unitProperties(host: SandboxHost, layout: RunLayout, limits: UnitLimits = DEFAULT_LIMITS, workDir = layout.sandboxRepoDir, extraBinds: ExtraBind[] = []): string[] {
+  for (const b of extraBinds) if (!b.sandbox.startsWith("/mnt/wfos/")) throw new Error("extra binds must live under /mnt/wfos");
   return [
     // identity: a dynamic UID, stable per task, never root
     "DynamicUser=yes",
@@ -52,6 +59,7 @@ export function unitProperties(host: SandboxHost, layout: RunLayout, limits: Uni
     `BindReadOnlyPaths=${host.runnerDir}:/mnt/wfos/runner`,
     `BindReadOnlyPaths=-${host.claudeDir}:/mnt/wfos/claude`,
     `BindPaths=${layout.hostSocketDir}:${SANDBOX.socketDir}`,
+    ...extraBinds.map((b) => `BindReadOnlyPaths=${b.host}:${b.sandbox}`),
     // privileges
     "NoNewPrivileges=yes",
     "RestrictSUIDSGID=yes",
@@ -89,6 +97,7 @@ export interface LaunchOptions {
   env: Record<string, string>;
   command: string[];
   workDir?: string;
+  extraBinds?: ExtraBind[];
 }
 
 /** Start the unit and wait for it (systemd-run --wait). stdout/stderr of the unit come back on the pipes. */
@@ -96,7 +105,7 @@ export function launchUnit(o: LaunchOptions): ChildProcess {
   // bind sources must exist, or systemd fails the unit with EXIT_NAMESPACE (226)
   mkdirSync(o.layout.hostSocketDir, { recursive: true, mode: 0o755 });
   const args = ["--quiet", "--collect", "--wait", "--pipe", "--service-type=exec", `--unit=${o.layout.unitName}`];
-  for (const p of unitProperties(o.host, o.layout, o.limits, o.workDir)) args.push("-p", p);
+  for (const p of unitProperties(o.host, o.layout, o.limits, o.workDir, o.extraBinds)) args.push("-p", p);
   for (const [k, v] of Object.entries(o.env)) args.push(`--setenv=${k}=${v}`);
   args.push(...o.command);
   return spawn("systemd-run", args, { stdio: ["ignore", "pipe", "pipe"] });

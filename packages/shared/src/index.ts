@@ -143,7 +143,7 @@ export interface ToolMeta {
   class: ToolClass;
   /** credits charged per call, on top of tokens */
   credits: number;
-  category: "knowledge" | "memory" | "clients" | "drafting" | "comms" | "billing" | "team" | "web" | "tasks";
+  category: "knowledge" | "memory" | "clients" | "drafting" | "comms" | "billing" | "team" | "web" | "tasks" | "code";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -163,6 +163,8 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "message_teammate", label: "Message teammate", description: "Send a structured message to another employee", class: "reversible", credits: 0.05, category: "team" },
   { name: "send_email", label: "Send email", description: "Send an email via workspace SMTP", class: "irreversible", credits: 1, category: "comms" },
   { name: "send_invoice", label: "Send invoice", description: "Email an invoice PDF to a client", class: "irreversible", credits: 1, category: "billing" },
+  { name: "git_push", label: "Push branch", description: "Workspace mode: push your committed work to agent/<task> on the remote (the platform pushes after approval)", class: "irreversible", credits: 0.5, category: "code" },
+  { name: "create_pull_request", label: "Open pull request", description: "Workspace mode: open a pull/merge request from your branch (after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "post_webhook", label: "Publish to webhook", description: "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)", class: "irreversible", credits: 0.5, category: "comms" },
 ] as const;
 

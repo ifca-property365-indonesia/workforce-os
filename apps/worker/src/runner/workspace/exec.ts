@@ -3,32 +3,42 @@ import { mkdir, rm } from "node:fs/promises";
 import { startGateway, type GatewayOptions } from "./gateway";
 import { defaultSandboxHost, runLayout, SANDBOX, type SandboxHost } from "./layout";
 import { prepareWorkspaceDirs } from "./query";
-import { DEFAULT_LIMITS, launchUnit, stopUnit } from "./unit";
+import { DEFAULT_LIMITS, launchUnit, stopUnit, type ExtraBind } from "./unit";
 
-export interface ApprovedCommandResult {
+export interface SandboxCommandResult {
   exitCode: number | null;
+  /** combined stdout+stderr as text (capped) */
   output: string;
+  /** raw stdout bytes (only with rawStdout) */
+  stdout: Buffer;
   truncated: boolean;
   timedOut: boolean;
 }
+export type ApprovedCommandResult = SandboxCommandResult;
 
 const MAX_OUTPUT = 64 * 1024;
+const MAX_RAW = 200 * 1024 * 1024;
 
-/**
- * Run exactly the approved command in the task's workspace, in a fresh unit with the same isolation as the
- * agent (same dynamic UID, no host network, egress only through the allow-list proxy). No Claude credential
- * is involved: the API socket refuses everything.
- */
-export async function runApprovedCommand(o: {
+export interface SandboxCommand {
   workspaceId: string;
   taskId: string;
   command: string;
   egressAllow: string[];
   host?: SandboxHost;
   timeoutSec?: number;
+  extraBinds?: ExtraBind[];
+  /** keep stdout as bytes (e.g. a git bundle) instead of text */
+  rawStdout?: boolean;
   /** tests only */
   gateway?: Pick<GatewayOptions, "resolve" | "isBlocked" | "connectPort" | "onEvent">;
-}): Promise<ApprovedCommandResult> {
+}
+
+/**
+ * Run a shell command in the task's workspace, in a fresh unit with the same isolation as the agent
+ * (same dynamic UID, no host network, egress only through the allow-list proxy, git hooks disabled).
+ * No Claude credential is involved: the API socket refuses everything.
+ */
+export async function runInSandbox(o: SandboxCommand): Promise<SandboxCommandResult> {
   const host = o.host ?? defaultSandboxHost();
   const layout = runLayout(host, { runId: randomUUID(), workspaceId: o.workspaceId, taskId: o.taskId });
   await prepareWorkspaceDirs(layout);
@@ -44,7 +54,9 @@ export async function runApprovedCommand(o: {
   const timeout = o.timeoutSec ?? 600;
   let output = "";
   let truncated = false;
-  const append = (d: Buffer) => {
+  const raw: Buffer[] = [];
+  let rawSize = 0;
+  const appendText = (d: Buffer) => {
     if (output.length >= MAX_OUTPUT) {
       truncated = true;
       return;
@@ -62,9 +74,15 @@ export async function runApprovedCommand(o: {
       limits: { ...DEFAULT_LIMITS, runtimeMaxSec: timeout },
       env: { HOME: layout.sandboxHomeDir, PATH: `${SANDBOX.nodeDir}/bin:/usr/local/bin:/usr/bin:/bin`, WFOS_EXEC_COMMAND: o.command },
       command: [...SANDBOX.startCommand],
+      extraBinds: o.extraBinds,
     });
-    child.stdout?.on("data", append);
-    child.stderr?.on("data", append);
+    child.stdout?.on("data", (d: Buffer) => {
+      if (!o.rawStdout) return appendText(d);
+      rawSize += d.length;
+      if (rawSize <= MAX_RAW) raw.push(d);
+      else truncated = true;
+    });
+    child.stderr?.on("data", appendText);
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -72,10 +90,15 @@ export async function runApprovedCommand(o: {
     }, (timeout + 15) * 1000);
     const exitCode = await new Promise<number | null>((r) => child.on("exit", (c) => r(c)));
     clearTimeout(timer);
-    return { exitCode, output, truncated, timedOut };
+    return { exitCode, output, stdout: Buffer.concat(raw), truncated, timedOut };
   } finally {
     await stopUnit(layout.unitName);
     await gateway.close();
     await rm(layout.hostSocketDir, { recursive: true, force: true });
   }
+}
+
+/** Run exactly the command a human approved (Workspace-mode Bash approval). */
+export function runApprovedCommand(o: Omit<SandboxCommand, "rawStdout" | "extraBinds">): Promise<ApprovedCommandResult> {
+  return runInSandbox(o);
 }
