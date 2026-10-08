@@ -210,3 +210,28 @@ subscriptions (404/410) are deleted. The payload carries only a title, a short b
 service worker refuses links to other origins.
 Rejected: caching pages for offline reading (privacy across users, and stale approvals could be acted on), and
 `safeFetch` for push delivery (it is GET-only; the host allow-list makes DNS-based SSRF moot).
+
+## D26. Live office: one pure model, two renderers; driven by the last step of the current task
+`@wfos/shared/office` holds everything testable: the room layout from the real employee list, state → activity,
+activity → animation (place, pose, bubble), standing spots and walking. The 2D canvas (default) and the three.js view
+(loaded with `next/dynamic` only when chosen) only draw it.
+- **Rooms:** the employee's first team (by name), else their department, else a shared room. The lounge grows with
+  the headcount. Rooms pack left to right and wrap at 36 tiles.
+- **Activity:**
+  - a paused employee is shown asleep;
+  - a task awaiting approval shows "!";
+  - on a running task, the last tool step decides: write tools → desk, read/search → bookshelf, Bash/git → rack;
+  - LLM steps, no steps, or a step older than 90 s → thinking at the desk;
+  - no task → idle (lounge, coffee or chatting, rotating every 45 s per employee via a stable hash, the same on
+    every client).
+- **Data:** `GET /api/office` sends the snapshot: employee, team names, task title and the last step's kind and name,
+  never step input or output. SSE events patch the snapshot in place, held in a ref so the render loop does not
+  re-render React.
+- **Performance and accessibility:**
+  - `requestAnimationFrame` only while the tab is visible;
+  - with `prefers-reduced-motion`, no walking, bobbing or blinking, and redraws only on change;
+  - the canvas is `aria-hidden` inside a `role="img"` wrapper whose label is the summary, described by a visible
+    "who is doing what" list of links (attention first);
+  - clicking a character, or its list entry, opens its task (or the employee when idle).
+- **Known limit:** a tool step is recorded when the tool finishes (Workspace-mode permission steps when it starts), so
+  the view trails the real action by one tool call at most.

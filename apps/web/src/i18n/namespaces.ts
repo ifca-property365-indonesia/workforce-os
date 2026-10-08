@@ -21,5 +21,6 @@ export const NAMESPACES = [
   "routines",
   "knowledge",
   "settings",
+  "office",
 ] as const;
 export type Namespace = (typeof NAMESPACES)[number];

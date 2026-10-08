@@ -1,0 +1,35 @@
+{
+  "title": "Office",
+  "description": "Your AI employees at work, live. Click a person to open what they are working on.",
+  "view2d": "2D",
+  "view3d": "3D",
+  "viewLabel": "View",
+  "loading3d": "Loading 3D view…",
+  "empty": "No employees yet. Hire one to fill the office.",
+  "live": "Live",
+  "offline": "Reconnecting…",
+  "activity": {
+    "typing": "writing",
+    "reading": "reading or searching",
+    "terminal": "running commands",
+    "thinking": "thinking",
+    "waiting": "waiting for approval",
+    "idle": "idle",
+    "paused": "paused"
+  },
+  "summary": "{total, plural, one {# employee} other {# employees}}: {working} working, {waiting} waiting for approval, {idle} idle.",
+  "listTitle": "Who is doing what",
+  "person": "{name}: {activity}",
+  "personTask": "{name}: {activity} · {task}",
+  "generalRoom": "Office",
+  "lounge": "Lounge",
+  "legend": {
+    "desk": "Desk: writing / thinking",
+    "bookshelf": "Bookshelf: reading",
+    "rack": "Server rack: commands",
+    "alert": "! waiting for approval"
+  },
+  "openTask": "Open task",
+  "openEmployee": "Open employee",
+  "noWebgl": "3D is not available in this browser. Showing the 2D view."
+}

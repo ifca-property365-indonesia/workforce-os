@@ -18,7 +18,8 @@
     "./limits": "./src/limits.ts",
     "./health": "./src/health.ts",
     "./telegram": "./src/telegram.ts",
-    "./push": "./src/push.ts"
+    "./push": "./src/push.ts",
+    "./office": "./src/office.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

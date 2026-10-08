@@ -1,0 +1,35 @@
+{
+  "title": "Kantor",
+  "description": "Karyawan AI Anda sedang bekerja, secara langsung. Klik seseorang untuk membuka pekerjaannya.",
+  "view2d": "2D",
+  "view3d": "3D",
+  "viewLabel": "Tampilan",
+  "loading3d": "Memuat tampilan 3D…",
+  "empty": "Belum ada karyawan. Rekrut satu untuk mengisi kantor.",
+  "live": "Langsung",
+  "offline": "Menyambung ulang…",
+  "activity": {
+    "typing": "menulis",
+    "reading": "membaca atau mencari",
+    "terminal": "menjalankan perintah",
+    "thinking": "berpikir",
+    "waiting": "menunggu persetujuan",
+    "idle": "santai",
+    "paused": "dijeda"
+  },
+  "summary": "{total, plural, other {# karyawan}}: {working} bekerja, {waiting} menunggu persetujuan, {idle} santai.",
+  "listTitle": "Siapa sedang apa",
+  "person": "{name}: {activity}",
+  "personTask": "{name}: {activity} · {task}",
+  "generalRoom": "Kantor",
+  "lounge": "Ruang santai",
+  "legend": {
+    "desk": "Meja: menulis / berpikir",
+    "bookshelf": "Rak buku: membaca",
+    "rack": "Rak server: perintah",
+    "alert": "! menunggu persetujuan"
+  },
+  "openTask": "Buka tugas",
+  "openEmployee": "Buka karyawan",
+  "noWebgl": "3D tidak tersedia di browser ini. Menampilkan tampilan 2D."
+}

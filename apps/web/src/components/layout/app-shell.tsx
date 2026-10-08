@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   Bell,
+  Armchair,
   Bot,
   BookOpen,
   Building2,
@@ -53,6 +54,7 @@ const NAV = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
   { href: "/employees", key: "employees", icon: Bot },
   { href: "/teams", key: "teams", icon: UsersRound },
+  { href: "/office", key: "office", icon: Armchair },
   { href: "/chat", key: "chat", icon: MessageSquare },
   { href: "/tasks", key: "tasks", icon: KanbanSquare },
   { href: "/routines", key: "routines", icon: CalendarClock },
