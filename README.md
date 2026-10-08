@@ -110,6 +110,48 @@ An employee runs in **Tool mode** (platform tools only, the default) or **Worksp
 - **Toolchain** for documents and code (LibreOffice, pandoc, poppler, qpdf, tesseract eng+ind, Python document libraries): `deploy/setup-ubuntu.sh --toolchain`. Built-in skills for docx/xlsx/pptx/pdf are seeded into each new workspace.
 - Workspace mode is not available in the Docker Compose deployment yet (it fails closed there; Tool mode works).
 
+## Live office
+
+**Office** (`/office`) shows every employee as a character whose behaviour follows live work:
+- typing at the desk while writing or editing;
+- at the bookshelf while reading or searching;
+- at the server rack while running commands;
+- standing with **!** while an approval waits;
+- "…" while thinking, asleep when paused;
+- in the lounge, at the coffee machine or chatting when idle.
+
+Teams and departments get their own rooms, generated from the actual employee list. The 2D view is the default; the low-poly 3D view (three.js) loads only when chosen. Clicking a character opens its task. The page lists "who is doing what" as text, respects `prefers-reduced-motion`, and stops rendering while the tab is hidden.
+
+## Departments and PRD handoff
+
+Each workspace has **Developer** (Workspace mode with backend/frontend/qa subagents), **Project**, **Finance** and **Marketing** departments. Each has bilingual SOP instructions and subagent definitions, editable in **Settings → Departments**. An employee's department adds its SOP to the instructions, and in Workspace mode its subagents too.
+
+A Project employee can draft a **PRD** (`draft_document` with kind `prd`). It becomes a `handoff_prd` approval:
+- the owner reviews it, can request changes, or pick another developer or repository (never edit the approved text);
+- approving creates a linked Developer task carrying the PRD as context.
+
+## Client project health
+
+Projects have a deadline and progress. The Clients page shows each project as:
+- **late**: past the deadline and not done;
+- **at risk**: deadline in under 14 days with progress below 70%, or no activity for 7 days;
+- **on track**: otherwise.
+
+All date math uses the workspace time zone (`APP_TIME_ZONE`).
+
+## Telegram and push notifications
+
+- **Telegram** (optional, `TELEGRAM_*`):
+  - Each user links their own chat under **Account → Telegram**, with a one-time code sent to the bot as `/link CODE`.
+  - Linked members get done/failed/approval notifications and a daily summary.
+  - Admins and Owners also get **Approve / Reject** buttons. Each button is HMAC-signed, works once, only for the user it was sent to, and only while that user still has the Admin role. The decision goes through the same checks and audit log as the web (`via: telegram`).
+  - Register the webhook yourself after deploy; the command is in `.env.example`.
+- **Web push** (optional, `VAPID_*`):
+  - The app is installable (manifest, icons, offline page).
+  - **Account → Push notifications** turns push on per device.
+  - The service worker never caches pages or API data.
+  - Push endpoints are limited to the browsers' push services.
+
 ## Languages
 
 The UI is available in **Bahasa Indonesia** and **English**. Each user picks a language (account menu or Account page), the workspace has a default (Settings → General), and otherwise the browser language is used. Dates, numbers and money follow the language (`Rp 1.234.567` in Indonesian) in `APP_TIME_ZONE` (default `Asia/Jakarta`). Each employee has an **output language** (workspace default / Bahasa Indonesia / English) for answers, documents and emails. Notifications, default invoice emails and invoice PDFs use the workspace language. Conventions for contributors: `docs/upgrade/I18N.md`.
@@ -153,10 +195,13 @@ Then set `TEST_DATABASE_ADMIN_URL=postgres://workforce_dev:…@127.0.0.1:5432/po
 | `APP_TIME_ZONE` | time zone for dates in the UI (default `Asia/Jakarta`) |
 | `WFOS_ENV`, `WFOS_NAMESPACE`, `WFOS_PROD_ENV_FILE` | dev/test isolation guard (leave unset in production) |
 | `TEST_DATABASE_ADMIN_URL` | Postgres role with `CREATEDB` for the test suites |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_SUMMARY_HOUR` | optional Telegram bot (notifications, approval buttons, daily summary) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | optional Web Push (`pnpm --filter @wfos/worker exec web-push generate-vapid-keys`) |
 
 ## Feature map
 
 - **Hire wizard** (`/employees/hire`), in four steps: template → persona & context → tools & autonomy → a first bounded task with a live inspector.
+- **Office** (`/office`): the live 2D/3D office (see above).
 - **Teams** (`/teams`): drag-and-drop membership with a crowned Lead. A team brief gets a plan, then `delegate_subtask`, then a wait while members work, then a review (`request_revision`, once per subtask), then the final deliverable. Agents talk to each other through `agent_messages`, which are logged as Activity.
 - **Chat** (`/chat`) streams over SSE, accepts attachments (which are indexed into the knowledge base), and can turn a message into a task.
 - **Task board** (`/tasks`) is a Kanban by status, filterable by employee, client and project. The task page is the **Activity Inspector**: every LLM call, tool call, guard hit, approval and compaction, with model, tokens, latency and credits.
