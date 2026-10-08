@@ -37,7 +37,8 @@ export function unitProperties(host: SandboxHost, layout: RunLayout, limits: Uni
     `User=${layout.userName}`,
     `StateDirectory=${layout.stateRel}`,
     "StateDirectoryMode=0700",
-    `WorkingDirectory=${workDir}`,
+    // "-": a workspace the agent emptied must not stop the unit (root never recreates paths inside it)
+    `WorkingDirectory=-${workDir}`,
     "UMask=0077",
     // filesystem: read-only system, no /root or /home, private /tmp, no devices, platform paths hidden
     "ProtectSystem=strict",

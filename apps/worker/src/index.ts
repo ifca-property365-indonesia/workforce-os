@@ -15,6 +15,7 @@ import { runReplay } from "./simulation/replay";
 import { runDemoLifecycle } from "./simulation/demo";
 import { backfillMemoryEmbeddings, dispatchRoutine, tickRoutines } from "./scheduler/routines";
 import { abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
+import { collectWorkspaces } from "./runner/workspace/gc";
 
 // ---------------------------------------------------------------------------
 // Per-employee concurrency: a lease set in Redis (stale leases expire after 30 min).
@@ -154,6 +155,8 @@ const schedTimer = setInterval(async () => {
     ticking = false;
   }
 }, 30_000);
+// Workspace mode: remove task workspaces after WORKSPACE_RETENTION_DAYS (deliverables stay)
+const gcTimer = setInterval(() => void collectWorkspaces().then((n) => n && log.info({ n }, "workspaces collected")).catch((e) => log.warn({ err: e }, "workspace gc failed")), 3_600_000);
 const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e) => log.warn({ err: e }, "backfill failed")), 120_000);
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
@@ -166,6 +169,7 @@ async function shutdown(sig: string) {
   log.info({ sig, active: activeRunCount() }, "shutting down");
   clearInterval(schedTimer);
   clearInterval(backfillTimer);
+  clearInterval(gcTimer);
   await Promise.allSettled(workers.map((w) => w.close()));
   sub.disconnect();
   redis.disconnect();

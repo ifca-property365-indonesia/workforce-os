@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { Options, Query, SDKMessage, SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
@@ -28,10 +28,20 @@ export interface WorkspaceRunConfig {
   onLayout?: (l: RunLayout) => void;
 }
 
-/** Host-side preparation of the per-task workspace before the unit starts (runs as root, before chown). */
-export async function prepareWorkspaceDirs(layout: RunLayout): Promise<void> {
-  await mkdir(path.join(layout.hostStateDir, "repo"), { recursive: true, mode: 0o700 });
+/**
+ * Host-side preparation of a NEW task workspace (runs as root). Once the workspace exists it belongs to the
+ * sandbox user and root never writes into it again: the agent could have replaced any path inside it with a
+ * symlink (e.g. home → /etc), and root following that link would write outside the sandbox.
+ */
+export async function prepareWorkspaceDirs(layout: RunLayout, seed?: { skillsDir?: string }): Promise<void> {
+  if (await workspaceExists(layout)) return;
+  await mkdir(layout.hostStateDir, { recursive: true, mode: 0o700 });
+  await mkdir(path.join(layout.hostStateDir, "repo"), { mode: 0o700 });
   await mkdir(path.join(layout.hostStateDir, "home", ".claude"), { recursive: true, mode: 0o700 });
+  if (seed?.skillsDir && (await stat(seed.skillsDir).then(() => true, () => false))) {
+    // built-in skills (docx/xlsx/pptx/pdf); copied once into the fresh, root-created home
+    await cp(seed.skillsDir, path.join(layout.hostStateDir, "home", ".claude", "skills"), { recursive: true, dereference: false, verbatimSymlinks: true });
+  }
 }
 
 export async function workspaceExists(layout: RunLayout): Promise<boolean> {
@@ -83,7 +93,7 @@ async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?:
     gitIdentity: cfg.gitIdentity,
   };
 
-  await prepareWorkspaceDirs(layout);
+  await prepareWorkspaceDirs(layout, { skillsDir: path.join(host.runnerDir, "skills") });
   await mkdir(layout.hostSocketDir, { recursive: true, mode: 0o755 });
   const gateway = await startGateway({
     socketDir: layout.hostSocketDir,

@@ -6,6 +6,7 @@ import { createWorkspaceQuery, type WorkspaceRunConfig } from "./workspace/query
 import { workspacePermissions } from "./workspace/permissions";
 import { defaultSandboxHost, runLayout } from "./workspace/layout";
 import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
+import { sandboxAvailable } from "./workspace/gc";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
 import { resolveClaudeCredential } from "@wfos/db";
 import { agentEnv, env } from "../lib/env";
@@ -130,6 +131,9 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   const credential = await resolveClaudeCredential(ctx.workspaceId);
   if (!credential) throw new MissingCredentialError();
   if (ctx.workspace && !ctx.taskId) throw new Error("Workspace mode runs only for tasks");
+  if (ctx.workspace && !workspaceQueryOverride() && !(await sandboxAvailable())) {
+    throw new Error("Workspace mode needs the native installation (root + systemd sandbox). It is not available on this server; switch the employee to Tool mode.");
+  }
   if (ctx.workspace && !(await acquireWorkspaceSlot(ctx.runId))) throw new WorkspaceBusyError();
   const controller = new AbortController();
   registerRun(ctx.runId, { workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, controller });
