@@ -275,7 +275,7 @@ function Inbox() {
       <Tabs value={tab} onValueChange={setTab} className="mb-4">
         <TabsList>
           <TabsTrigger value="PENDING">Pending</TabsTrigger>
-          <TabsTrigger value="EXECUTED,APPROVED">Approved</TabsTrigger>
+          <TabsTrigger value="EXECUTED,EXECUTING,APPROVED">Approved</TabsTrigger>
           <TabsTrigger value="REJECTED,EXPIRED">Rejected & expired</TabsTrigger>
           <TabsTrigger value="ALL">All</TabsTrigger>
         </TabsList>

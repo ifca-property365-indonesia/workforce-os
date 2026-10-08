@@ -281,8 +281,18 @@ function extractRecipients(p: { to?: string[]; cc?: string[] }): string[] {
   return [...(p.to ?? []), ...(p.cc ?? [])];
 }
 
+const toolDefs = new WeakMap<object, SdkMcpToolDefinition[]>();
+
 export function buildToolServer(ctx: RunContext) {
-  return createSdkMcpServer({ name: WFOS_SERVER, version: "0.1.0", tools: buildTools(ctx), alwaysLoad: true, timeout: 120_000 });
+  const tools = buildTools(ctx);
+  const server = createSdkMcpServer({ name: WFOS_SERVER, version: "0.1.0", tools, alwaysLoad: true, timeout: 120_000 });
+  toolDefs.set(server, tools);
+  return server;
+}
+
+/** Tool definitions behind a server built by buildToolServer (used by the mock runner). */
+export function toolDefsOf(server: unknown): SdkMcpToolDefinition[] | undefined {
+  return typeof server === "object" && server ? toolDefs.get(server) : undefined;
 }
 
 /** The tool definitions granted to this run (exported for tests and the SDK server). */

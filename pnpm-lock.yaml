@@ -184,6 +184,9 @@ importers:
       pino-pretty:
         specifier: ^13
         version: 13.2.0
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

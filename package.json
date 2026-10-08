@@ -9,7 +9,8 @@
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @wfos/db generate",
     "db:migrate": "pnpm --filter @wfos/db migrate",
-    "db:seed": "pnpm --filter @wfos/db seed"
+    "db:seed": "pnpm --filter @wfos/db seed",
+    "test": "pnpm -r --workspace-concurrency=1 --if-present test"
   },
   "devDependencies": {
     "vitest": "^5.0.3"

@@ -13,9 +13,13 @@ import { sql } from "drizzle-orm";
 
 /** Execute an APPROVED action with the exact (possibly edited) payload. Idempotent per approval. */
 export async function executeApproval(approvalId: string): Promise<void> {
-  // Claim: APPROVED → EXECUTED/FAILED happens once; a retry after success is a no-op.
-  const [a] = await db.select().from(approvals).where(eq(approvals.id, approvalId));
-  if (!a || a.status !== "APPROVED") return;
+  // Claim first (APPROVED → EXECUTING) so concurrent or retried jobs can never execute the same action twice.
+  const [a] = await db
+    .update(approvals)
+    .set({ status: "EXECUTING" })
+    .where(and(eq(approvals.id, approvalId), eq(approvals.status, "APPROVED")))
+    .returning();
+  if (!a) return;
   const payload = (a.editedPayload ?? a.payload) as Record<string, unknown>;
   const [task] = a.taskId ? await db.select().from(tasks).where(eq(tasks.id, a.taskId)) : [];
   const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, a.workspaceId));
@@ -39,7 +43,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
   const updated = await db
     .update(approvals)
     .set({ status, executionResult: result })
-    .where(and(eq(approvals.id, a.id), eq(approvals.status, "APPROVED")))
+    .where(and(eq(approvals.id, a.id), eq(approvals.status, "EXECUTING")))
     .returning({ id: approvals.id });
   if (!updated.length) return;
   await recordStep({
@@ -95,7 +99,7 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
     const [task] = await tx.select().from(tasks).where(eq(tasks.id, taskId)).for("update");
     if (!task || task.status !== "AWAITING_APPROVAL") return null;
     const all = await tx.select().from(approvals).where(eq(approvals.taskId, taskId));
-    if (all.some((x) => x.status === "PENDING" || x.status === "APPROVED")) return null;
+    if (all.some((x) => x.status === "PENDING" || x.status === "APPROVED" || x.status === "EXECUTING")) return null;
 
     const needsRevision = all.filter((x) => x.status === "REJECTED" && x.feedback && !(x.executionResult as { consumed?: boolean } | null)?.consumed);
     if (needsRevision.length) {

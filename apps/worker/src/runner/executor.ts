@@ -1,6 +1,7 @@
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
-import { query, type PermissionResult, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { PermissionResult, SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { agentQuery } from "./sdk";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, roundCredits } from "@wfos/shared";
 import { agentEnv, claudeCredentialPresent, env } from "../lib/env";
 import { log } from "../lib/logger";
@@ -154,7 +155,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   const allowed = new Set(grantedToolNames(ctx));
 
   try {
-    const q = query({
+    const q = agentQuery({
       prompt: input.prompt,
       options: {
         abortController: controller,

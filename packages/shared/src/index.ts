@@ -26,7 +26,8 @@ export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
 export const TASK_STATUSES = ["QUEUED", "RUNNING", "AWAITING_APPROVAL", "DONE", "FAILED", "CANCELLED"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const APPROVAL_STATUSES = ["PENDING", "APPROVED", "REJECTED", "EXECUTED", "FAILED", "EXPIRED"] as const;
+/** EXECUTING = claimed by one executor; an approved action runs at most once (a crash leaves it EXECUTING for a human to check). */
+export const APPROVAL_STATUSES = ["PENDING", "APPROVED", "EXECUTING", "REJECTED", "EXECUTED", "FAILED", "EXPIRED"] as const;
 export type ApprovalStatus = (typeof APPROVAL_STATUSES)[number];
 
 export const STEP_KINDS = [

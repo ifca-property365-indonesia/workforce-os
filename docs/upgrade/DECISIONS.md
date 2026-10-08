@@ -22,3 +22,20 @@ default (it would need to know which instance is "production", and a mistake the
 ## D3. Taint/leak override is one pure function
 `applyRunSignals()` in `@wfos/shared` is used by both the platform tool path (`registry.ts`) and the external
 MCP path (`executor.ts`), so "taint forces approval" cannot drift between them and is unit-tested once.
+
+## D4. Approved actions run at most once (new status EXECUTING)
+`executeApproval` used to read `APPROVED`, run the action and only then mark it `EXECUTED`. Two concurrent jobs, or
+a retry after a crash, could therefore send the same email twice. A test showed 5 parallel calls sending more than
+once. The executor now claims the row first (`APPROVED → EXECUTING`, conditional UPDATE … RETURNING). If the
+process dies mid-action, the approval stays `EXECUTING` and is not retried automatically, because for
+irreversible actions "maybe not sent" needs a human, never a blind retry.
+Rejected: relying on the BullMQ jobId for dedupe (does not cover retries after a crash).
+
+## D5. Worker tests use a real throwaway Postgres and mocked transports
+`apps/worker/test/global-setup.ts` clones `workforce_os_test_<pid>_<ts>` from the template
+`workforce_os_test_template` (pgvector is not a trusted extension, so a non-superuser role cannot create it in
+a fresh database), migrates it, and drops it at the end. Redis, SMTP and embeddings are replaced with in-memory mocks,
+`fetch` is stubbed to fail, and any attempted network call fails the test. The Agent SDK is swapped through
+`runner/sdk.ts` for the scripted `runner/mock-sdk.ts`. The suites never skip: no `TEST_DATABASE_ADMIN_URL`, no run.
+Rejected: testcontainers (no Docker on the host); mocking the database (the audit trigger and the approval claim
+are database behaviour and must be tested against Postgres).
