@@ -13,20 +13,22 @@
     "./runtime": "./src/runtime.ts",
     "./netguard": "./src/netguard.ts",
     "./totp": "./src/totp.ts",
-    "./messages": "./src/messages.ts"
+    "./messages": "./src/messages.ts",
+    "./bash-classifier": "./src/bash-classifier.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "zod": "^4.6.5",
+    "mvdan-sh": "^0.10.1",
     "nodemailer": "^7",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
     "@types/node": "^24",
-    "@types/nodemailer": "^7"
+    "@types/nodemailer": "^7",
+    "typescript": "^5.9.3"
   }
 }
