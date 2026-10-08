@@ -46,5 +46,11 @@
     "title": "Language",
     "description": "The language of the interface for you. Without a choice, the workspace default (or your browser) is used.",
     "followWorkspace": "Workspace default"
+  },
+  "stepUp": {
+    "title": "Confirm it's you",
+    "description": "This change gives an AI employee more power. Enter your password and a code from your authenticator app. The confirmation is valid for 10 minutes.",
+    "confirm": "Confirm",
+    "needs2fa": "Set up two-factor authentication in your account first."
   }
 }

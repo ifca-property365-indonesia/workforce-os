@@ -1,5 +1,7 @@
 "use client";
 
+import { useStepUp } from "@/components/account/step-up";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
@@ -39,6 +41,8 @@ interface Draft {
   toolPermissions: ToolPermission[];
   dailyBudget: number;
   outputLanguage: OutputLanguage;
+  executionMode: "tool" | "workspace";
+  egressDomains: string[];
 }
 
 const blank: Draft = {
@@ -54,6 +58,8 @@ const blank: Draft = {
   toolPermissions: [],
   dailyBudget: 200,
   outputLanguage: "inherit",
+  executionMode: "tool",
+  egressDomains: [],
 };
 
 function fromTemplate(t: RoleTemplate): Draft {
@@ -67,6 +73,8 @@ function fromTemplate(t: RoleTemplate): Draft {
     instructions: t.instructions,
     autonomyLevel: t.autonomyLevel,
     toolPermissions: t.suggestedTools,
+    executionMode: t.executionMode ?? "tool",
+    egressDomains: t.egressDomains ?? [],
   };
 }
 
@@ -85,6 +93,7 @@ function Wizard() {
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [firstTask, setFirstTask] = useState({ title: "", brief: "", dryRun: true });
   const [taskId, setTaskId] = useState<string | null>(null);
+  const withStepUp = useStepUp();
 
   useEffect(() => {
     const key = sp.get("template");
@@ -101,8 +110,10 @@ function Wizard() {
   }, [d.templateKey, tpl, firstTask.title]);
 
   const hire = useMutation({
-    mutationFn: () => api.post<{ employee: Employee }>("/api/employees", d),
+    // Workspace mode asks for a 2FA confirmation first (server answers step_up_required)
+    mutationFn: () => withStepUp(() => api.post<{ employee: Employee }>("/api/employees", d)),
     onSuccess: (r) => {
+      if (!r) return;
       setEmployee(r.employee);
       void qc.invalidateQueries({ queryKey: ["employees"] });
       toast.success(t("joined", { name: r.employee.name }));
@@ -230,6 +241,19 @@ function Wizard() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">{t("persona.outputLanguageHelp")}</p>
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="execution-mode">{t("persona.executionMode")}</Label>
+                <Select value={d.executionMode} onValueChange={(v) => set("executionMode", v as Draft["executionMode"])}>
+                  <SelectTrigger id="execution-mode" className="w-full sm:w-80">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tool">{t("persona.modeTool")}</SelectItem>
+                    <SelectItem value="workspace">{t("persona.modeWorkspace")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">{d.executionMode === "workspace" ? t("persona.modeWorkspaceHelp") : t("persona.modeToolHelp")}</p>
               </div>
             </div>
             <div className="space-y-4">

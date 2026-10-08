@@ -183,5 +183,16 @@
       "label": "Publikasikan ke webhook",
       "description": "Memublikasikan pesan ke webhook yang dikonfigurasi (gateway Slack/Telegram/WhatsApp)"
     }
+  },
+  "executionMode": {
+    "label": "Mode kerja",
+    "tool": "Mode tool (hanya tool platform)",
+    "workspace": "Mode workspace (Claude Code di sandbox)",
+    "toolHelp": "Hanya memakai tool platform seperti draf, email, dan basis pengetahuan. Disarankan untuk Keuangan, Penjualan, dan Dukungan.",
+    "workspaceHelp": "Menjalankan Claude Code (shell, berkas, git) di sandbox terisolasi per tugas. Perintah berisiko tetap memerlukan persetujuan.",
+    "saved": "Mode kerja tersimpan",
+    "egressLabel": "Host yang boleh diakses sandbox",
+    "egressHelp": "Satu host per baris, mis. registry.npmjs.org atau *.pypi.org. Selain itu diblokir. Menambah host memerlukan konfirmasi 2FA.",
+    "saveEgress": "Simpan host"
   }
 }

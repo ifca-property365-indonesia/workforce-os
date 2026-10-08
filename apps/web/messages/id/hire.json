@@ -22,7 +22,12 @@
     "businessContext": "Konteks bisnis",
     "businessContextPlaceholder": "Siapa Anda, klien Anda, gaya bahasa, batasan…",
     "outputLanguage": "Bahasa keluaran",
-    "outputLanguageHelp": "Bahasa yang digunakan karyawan ini untuk menulis jawaban, dokumen, dan email."
+    "outputLanguageHelp": "Bahasa yang digunakan karyawan ini untuk menulis jawaban, dokumen, dan email.",
+    "executionMode": "Mode kerja",
+    "modeTool": "Mode tool (hanya tool platform)",
+    "modeWorkspace": "Mode workspace (Claude Code di sandbox)",
+    "modeToolHelp": "Pilihan paling aman: draf, email, basis pengetahuan, dan tool platform lain.",
+    "modeWorkspaceHelp": "Shell, berkas, dan git di sandbox terisolasi per tugas. Merekrut dalam mode ini meminta kata sandi dan kode 2FA Anda."
   },
   "tools": {
     "defaultAutonomy": "Otonomi bawaan",

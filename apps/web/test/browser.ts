@@ -37,12 +37,22 @@ export function resetBrowser() {
 type Handler = (req: NextRequest, ctx: { params: Promise<Record<string, string>> }) => Promise<Response>;
 
 export async function call(handler: unknown, method: string, path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
+  return callWithParams(handler, method, path, body, {});
+}
+
+export async function callWithParams(
+  handler: unknown,
+  method: string,
+  path: string,
+  body: unknown,
+  params: Record<string, string>,
+): Promise<{ status: number; json: Record<string, unknown> }> {
   const req = new NextRequest(`http://localhost:3010${path}`, {
     method,
     headers: { "content-type": "application/json", "x-real-ip": "203.0.113.7" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const res = await (handler as Handler)(req, { params: Promise.resolve({}) });
+  const res = await (handler as Handler)(req, { params: Promise.resolve(params) });
   const text = await res.text();
   return { status: res.status, json: text ? JSON.parse(text) : {} };
 }

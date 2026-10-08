@@ -46,5 +46,11 @@
     "title": "Bahasa",
     "description": "Bahasa tampilan untuk Anda. Jika tidak dipilih, digunakan bahasa default workspace (atau browser Anda).",
     "followWorkspace": "Ikuti workspace"
+  },
+  "stepUp": {
+    "title": "Konfirmasi bahwa ini Anda",
+    "description": "Perubahan ini memberi karyawan AI kewenangan lebih besar. Masukkan kata sandi dan kode dari aplikasi autentikator Anda. Konfirmasi berlaku 10 menit.",
+    "confirm": "Konfirmasi",
+    "needs2fa": "Atur autentikasi dua faktor di akun Anda terlebih dahulu."
   }
 }

@@ -22,7 +22,12 @@
     "businessContext": "Business context",
     "businessContextPlaceholder": "Who you are, your clients, tone, constraints…",
     "outputLanguage": "Output language",
-    "outputLanguageHelp": "The language this employee writes answers, documents and emails in."
+    "outputLanguageHelp": "The language this employee writes answers, documents and emails in.",
+    "executionMode": "Execution mode",
+    "modeTool": "Tool mode (platform tools only)",
+    "modeWorkspace": "Workspace mode (Claude Code in a sandbox)",
+    "modeToolHelp": "Safest choice: drafts, email, knowledge base and other platform tools.",
+    "modeWorkspaceHelp": "Shell, files and git in an isolated sandbox per task. Hiring in this mode asks for your password and a 2FA code."
   },
   "tools": {
     "defaultAutonomy": "Default autonomy",

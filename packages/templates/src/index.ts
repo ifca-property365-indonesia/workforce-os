@@ -1,4 +1,4 @@
-import type { AutonomyLevel, ToolPermission } from "@wfos/shared";
+import type { AutonomyLevel, ExecutionMode, ToolPermission } from "@wfos/shared";
 
 export interface RoleTemplate {
   key: string;
@@ -11,6 +11,10 @@ export interface RoleTemplate {
   suggestedTools: ToolPermission[];
   autonomyLevel: AutonomyLevel;
   exampleTasks: string[];
+  /** default execution mode; switching to workspace still needs Owner/Admin + 2FA confirmation */
+  executionMode?: ExecutionMode;
+  /** hosts the Workspace-mode sandbox may reach (package registries) */
+  egressDomains?: string[];
 }
 
 const base = (tools: string[]): ToolPermission[] => tools.map((tool) => ({ tool, enabled: true }));
@@ -23,11 +27,14 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     role: "Developer",
     avatar: "👩‍💻",
     defaultName: "Dewi",
-    tagline: "Writes, reviews and explains code; proposes changes as diffs.",
+    tagline: "Writes, tests and commits code in its own sandboxed workspace; the platform pushes after approval.",
+    executionMode: "workspace",
+    egressDomains: ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
     persona: "A pragmatic senior full-stack engineer. Precise, explains trade-offs briefly, prefers small reviewable changes.",
     instructions: [
       "You are a software developer on this team.",
-      "- Deliver code as `draft_document` deliverables (kind code) so changes are reviewable as diffs; never claim to have deployed or merged anything.",
+      "- In Workspace mode you work in a git checkout: make small commits, run the tests before you finish, and never push yourself (use git_push / create_pull_request; a human approves).",
+      "- Without a workspace, deliver code as `draft_document` deliverables (kind code) so changes are reviewable as diffs; never claim to have deployed or merged anything.",
       "- State assumptions explicitly. When requirements are ambiguous, list the open questions in your deliverable.",
       "- Prefer the smallest change that solves the problem; include a short test plan.",
       "- Use the knowledge base for internal conventions before inventing new ones.",

@@ -183,5 +183,16 @@
       "label": "Publish to webhook",
       "description": "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)"
     }
+  },
+  "executionMode": {
+    "label": "Execution mode",
+    "tool": "Tool mode (platform tools only)",
+    "workspace": "Workspace mode (Claude Code in a sandbox)",
+    "toolHelp": "Uses only platform tools such as drafts, email and the knowledge base. Recommended for Finance, Sales and Support.",
+    "workspaceHelp": "Runs Claude Code (shell, files, git) in an isolated per-task sandbox. Risky commands still need approval.",
+    "saved": "Execution mode saved",
+    "egressLabel": "Hosts the sandbox may reach",
+    "egressHelp": "One host per line, e.g. registry.npmjs.org or *.pypi.org. Everything else is blocked. Adding hosts needs a 2FA confirmation.",
+    "saveEgress": "Save hosts"
   }
 }

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { db, members, users, workspaces } from "@wfos/db";
+import { db, employees, members, users, workspaces } from "@wfos/db";
 import { decryptSecret } from "@wfos/shared/server";
 import { totp } from "@wfos/shared/totp";
 import { POST as login } from "@/app/api/auth/login/route";
@@ -12,9 +12,11 @@ import { POST as enable } from "@/app/api/me/2fa/enable/route";
 import { POST as disable } from "@/app/api/me/2fa/disable/route";
 import { POST as reauth } from "@/app/api/me/reauth/route";
 import { GET as settingsGet } from "@/app/api/settings/route";
+import { PATCH as patchEmployee } from "@/app/api/employees/[id]/route";
+import { POST as createEmployee } from "@/app/api/employees/route";
 import { getSession } from "@/lib/server/auth";
 import { requireStepUp } from "@/lib/server/twofactor";
-import { call, jar, resetBrowser } from "./browser";
+import { call, callWithParams, jar, resetBrowser } from "./browser";
 
 const PASSWORD = "correct horse battery";
 
@@ -198,5 +200,55 @@ describe("re-authentication", () => {
     const { email } = await makeUser();
     await call(login, "POST", "/api/auth/login", { email, password: PASSWORD });
     await expect(requireStepUp((await getSession())!)).rejects.toMatchObject({ extra: { code: "two_factor_required" } });
+  });
+});
+
+describe("Workspace mode needs Owner/Admin and a fresh 2FA confirmation", () => {
+  async function adminWith2fa(role: "ADMIN" | "MEMBER" = "ADMIN") {
+    const { email, ws } = await makeUser({ role });
+    const { secret } = await enroll(email);
+    await call(login, "POST", "/api/auth/login", { email, password: PASSWORD });
+    await call(login2fa, "POST", "/api/auth/login/2fa", { code: totp(secret) });
+    const [emp] = await db.insert(employees).values({ workspaceId: ws.id, name: "Dewi", role: "Developer", model: "claude-sonnet-5-5" }).returning();
+    return { secret, emp: emp! };
+  }
+
+  it("refuses the switch without a step-up, allows it after one", async () => {
+    const { secret, emp } = await adminWith2fa();
+    const r1 = await callWithParams(patchEmployee, "PATCH", `/api/employees/${emp.id}`, { executionMode: "workspace" }, { id: emp.id });
+    expect(r1.status).toBe(401);
+    expect(r1.json.code).toBe("step_up_required");
+    expect((await call(reauth, "POST", "/api/me/reauth", { password: PASSWORD, code: totp(secret, Date.now() + 30_000) })).status).toBe(200);
+    const r2 = await callWithParams(patchEmployee, "PATCH", `/api/employees/${emp.id}`, { executionMode: "workspace" }, { id: emp.id });
+    expect(r2.status).toBe(200);
+    expect((r2.json.employee as { executionMode: string }).executionMode).toBe("workspace");
+  });
+
+  it("refuses members entirely", async () => {
+    const { emp } = await adminWith2fa("MEMBER");
+    const r = await callWithParams(patchEmployee, "PATCH", `/api/employees/${emp.id}`, { executionMode: "workspace" }, { id: emp.id });
+    expect(r.status).toBe(403);
+  });
+
+  it("needs a step-up to widen the egress allow-list, not to narrow it", async () => {
+    const { emp } = await adminWith2fa();
+    const wider = await callWithParams(patchEmployee, "PATCH", `/api/employees/${emp.id}`, { egressDomains: ["registry.npmjs.org"] }, { id: emp.id });
+    expect(wider.status).toBe(401);
+    const same = await callWithParams(patchEmployee, "PATCH", `/api/employees/${emp.id}`, { egressDomains: [] }, { id: emp.id });
+    expect(same.status).toBe(200);
+  });
+
+  it("refuses hiring straight into Workspace mode without a step-up", async () => {
+    await adminWith2fa();
+    const r = await call(createEmployee, "POST", "/api/employees", { name: "X", role: "Developer", executionMode: "workspace" });
+    expect(r.status).toBe(401);
+  });
+
+  it("rejects egress entries that are not host names", async () => {
+    const { emp } = await adminWith2fa();
+    for (const bad of ["127.0.0.1", "http://evil.com", "*", "evil.com:22", "localhost"]) {
+      const r = await callWithParams(patchEmployee, "PATCH", `/api/employees/${emp.id}`, { egressDomains: [bad] }, { id: emp.id });
+      expect(r.status, bad).toBe(400);
+    }
   });
 });

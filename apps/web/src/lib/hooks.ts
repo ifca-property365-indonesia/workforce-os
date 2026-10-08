@@ -29,6 +29,8 @@ export interface Employee {
   allowList: AllowListEntry[];
   dailyBudget: number;
   outputLanguage: "inherit" | "id" | "en";
+  executionMode: "tool" | "workspace";
+  egressDomains: string[];
   status: EmployeeStatus;
   instructionsVersion: number;
   spentToday?: number;

@@ -1,5 +1,7 @@
 "use client";
 
+import { useStepUp } from "@/components/account/step-up";
+
 import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -351,6 +353,60 @@ function OutputLanguageCard({ e }: { e: Employee }) {
   );
 }
 
+function ExecutionModeCard({ e }: { e: Employee }) {
+  const t = useTranslations("employees");
+  const qc = useQueryClient();
+  const withStepUp = useStepUp();
+  const [domains, setDomains] = useState((e.egressDomains ?? []).join("\n"));
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => withStepUp(() => api.patch(`/api/employees/${e.id}`, body)),
+    onSuccess: (r) => {
+      if (r === undefined) return;
+      toast.success(t("executionMode.saved"));
+      void qc.invalidateQueries({ queryKey: ["employee", e.id] });
+    },
+    onError: (x) => toast.error((x as Error).message),
+  });
+  const workspace = e.executionMode === "workspace";
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex-1 space-y-0.5">
+            <Label htmlFor="execution-mode">{t("executionMode.label")}</Label>
+            <p className="text-xs text-muted-foreground">{workspace ? t("executionMode.workspaceHelp") : t("executionMode.toolHelp")}</p>
+          </div>
+          <Select value={e.executionMode ?? "tool"} disabled={save.isPending} onValueChange={(v) => save.mutate({ executionMode: v })}>
+            <SelectTrigger id="execution-mode" className="w-full sm:w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tool">{t("executionMode.tool")}</SelectItem>
+              <SelectItem value="workspace">{t("executionMode.workspace")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {workspace && (
+          <form
+            className="space-y-1.5"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              save.mutate({ egressDomains: domains.split(/[\s,]+/).map((d) => d.trim()).filter(Boolean) });
+            }}
+          >
+            <Label htmlFor="egress-domains">{t("executionMode.egressLabel")}</Label>
+            <Textarea id="egress-domains" rows={3} value={domains} onChange={(ev) => setDomains(ev.target.value)} className="font-mono text-xs" />
+            <p className="text-xs text-muted-foreground">{t("executionMode.egressHelp")}</p>
+            <Button size="sm" variant="outline" disabled={save.isPending}>
+              {t("executionMode.saveEgress")}
+            </Button>
+          </form>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function EmployeePage({ params }: P) {
   const t = useTranslations("employees");
   const tc = useTranslations("common");
@@ -416,6 +472,7 @@ export default function EmployeePage({ params }: P) {
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-4">
           <OutputLanguageCard e={e} />
+          <ExecutionModeCard e={e} />
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="p-4 text-sm">
