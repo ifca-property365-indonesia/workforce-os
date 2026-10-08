@@ -235,3 +235,46 @@ activity → animation (place, pose, bubble), standing spots and walking. The 2D
   - clicking a character, or its list entry, opens its task (or the employee when idle).
 - **Known limit:** a tool step is recorded when the tool finishes (Workspace-mode permission steps when it starts), so
   the view trails the real action by one tool call at most.
+
+## D27. No `wfos-runner` PM2 process; the worker launches the sandbox units
+The brief lists `wfos-web`/`wfos-worker`/`wfos-runner`. With design (b) (approved after the spike), each
+Workspace-mode run is a short-lived systemd unit with its own dynamic user, started by the worker. A long-lived
+unprivileged runner would either share one UID across runs or need polkit rights to start arbitrary units, which is
+equivalent to root, so it adds a process without adding a boundary (SPIKE-sandbox.md, "Changes to the brief's 1.2
+wording"). `ecosystem.config.cjs` therefore has two apps. "Runner" readiness shows in `/api/health` through the worker
+heartbeat (systemd-run available, runner bundle and Claude Code binary present).
+
+## D28. Health semantics and an upgrade that checks the new commit
+- **Health:**
+  - `/api/health` is public, so it returns booleans only.
+  - `down` (503) means the web cannot serve.
+  - `degraded` means it serves but work will not run: no fresh worker heartbeat (TTL 75 s), or Workspace-mode
+    employees exist and the sandbox is not ready. A missing sandbox alone does not degrade a Tool-mode-only
+    instance, so Docker stays `ok`.
+  - `?strict=1` turns `degraded` into 503 for scripts. The worker heartbeat carries the commit and the number of
+    active runs.
+- **Upgrade (`deploy/upgrade.sh`):**
+  - fast-forward only (never resets over local commits);
+  - refuses a dirty checkout or low RAM before changing anything;
+  - waits for active runs to finish, so a reload does not fail a task mid-run;
+  - backs up before migrating;
+  - counts as healthy only when the reloaded worker reports the **new** commit (an old heartbeat can live for up to
+    75 s);
+  - on failure, `git reset --keep` to the recorded commit, then reinstall, rebuild, reload and check again.
+  Migrations are not reversed: they are written additive (`IF NOT EXISTS`, nullable/defaulted columns), so the
+  previous code runs on the newer schema, and the pre-migration backup covers anything else.
+- **Rejected:**
+  - building into a second `.next` and swapping directories: it cannot be verified on this 2 GB host, where a build
+    is not allowed while production runs;
+  - release directories with a symlink: they would change the production layout the owner runs today.
+
+## D29. Secrets lifecycle: key rotation and no default accounts
+- **Key rotation:** `ENCRYPTION_KEY_PREVIOUS` is a decrypt-only fallback. `cli rotate-key` re-encrypts all five
+  encrypted columns in one transaction (tested, including a wrong key leaving everything unchanged).
+- **Seed:** it no longer creates `owner@workforce.local` / `workforce-demo` by default. Docker's migrate step runs
+  the seed on every start, so a fresh public instance had an Owner with a published password.
+  - The first user signs up instead.
+  - `SEED_DEMO=true` creates the demo owner with a random password that must be changed at first login.
+- **Docker image:** it was missing `packages/runner/package.json` in the deps stage since Phase 1, so
+  `pnpm install --frozen-lockfile` failed. A test now checks that the Dockerfile covers every lockfile importer and
+  that every env var the code reads is documented.

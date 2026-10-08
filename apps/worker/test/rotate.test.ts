@@ -24,7 +24,7 @@ describe("ENCRYPTION_KEY rotation", () => {
     const [cred] = await db.select().from(credentials).where(eq(credentials.workspaceId, ws.id));
     expect(decryptSecret(cred!.secretEnc!)).toBe("smtp-pass"); // via the fallback
 
-    const n = await reencryptAll();
+    const n = await reencryptAll({ workspaceIds: [ws.id] });
     expect(n["credentials.secret_enc"]).toBeGreaterThanOrEqual(1);
     expect(n["repositories.token_enc"]).toBeGreaterThanOrEqual(1);
 
@@ -40,7 +40,7 @@ describe("ENCRYPTION_KEY rotation", () => {
   it("a wrong key fails loudly and rotation changes nothing", async () => {
     const ws = await makeWorkspace();
     process.env.ENCRYPTION_KEY = randomBytes(32).toString("hex"); // no previous key: old values unreadable
-    await expect(reencryptAll()).rejects.toThrow();
+    await expect(reencryptAll({ workspaceIds: [ws.id] })).rejects.toThrow();
     process.env.ENCRYPTION_KEY = original;
     const [c] = await db.select().from(credentials).where(eq(credentials.workspaceId, ws.id));
     expect(decryptSecret(c!.secretEnc!)).toBe("smtp-pass");
