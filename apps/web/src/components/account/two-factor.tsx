@@ -74,7 +74,6 @@ export function EnrollTwoFactor({ onEnrolled }: { onEnrolled: () => void }) {
       }}
     >
       <p className="text-sm">{t("twoFactor.scan")}</p>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={setup.qrDataUrl} alt={t("twoFactor.qrAlt")} width={220} height={220} className="rounded-md border bg-white p-1" />
       <p className="text-xs text-muted-foreground">
         {t("twoFactor.manualKey")} <code className="select-all break-all font-mono">{setup.secret}</code>

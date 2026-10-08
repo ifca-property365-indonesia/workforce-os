@@ -10,9 +10,15 @@
     "db:generate": "pnpm --filter @wfos/db generate",
     "db:migrate": "pnpm --filter @wfos/db migrate",
     "db:seed": "pnpm --filter @wfos/db seed",
-    "test": "pnpm -r --workspace-concurrency=1 --if-present test"
+    "test": "pnpm -r --workspace-concurrency=1 --if-present test",
+    "lint": "eslint ."
   },
   "devDependencies": {
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3"
-  }
+  },
+  "type": "module"
 }
