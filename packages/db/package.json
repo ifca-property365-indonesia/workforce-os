@@ -10,7 +10,8 @@
     "./schema": "./src/schema.ts",
     "./testing": "./src/testing.ts",
     "./claude": "./src/claude.ts",
-    "./rotate": "./src/rotate.ts"
+    "./rotate": "./src/rotate.ts",
+    "./seed-plan": "./src/seed-plan.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

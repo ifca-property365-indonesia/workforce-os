@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 # Multi-target image for the pnpm monorepo: `web` (Next.js) and `worker` (BullMQ + Claude Agent SDK).
 FROM node:24-bookworm-slim AS base
-ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH NEXT_TELEMETRY_DISABLED=1
+# commit shown by /api/health (.git is not copied into the image)
+ARG WFOS_COMMIT=""
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH NEXT_TELEMETRY_DISABLED=1 WFOS_COMMIT=$WFOS_COMMIT
 RUN corepack enable && apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
@@ -12,6 +14,7 @@ COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
 COPY packages/shared/package.json packages/shared/
 COPY packages/templates/package.json packages/templates/
+COPY packages/runner/package.json packages/runner/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 
 FROM deps AS build-web

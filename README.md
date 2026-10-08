@@ -51,13 +51,13 @@ Requires Ubuntu 24.04, Node 24, pnpm 10, PostgreSQL 16 with `postgresql-16-pgvec
 ```bash
 cp .env.example .env              # fill DATABASE_URL, ENCRYPTION_KEY, AUTH_SECRET, APP_URL, Claude credential
 pnpm install
-pnpm db:migrate && pnpm db:seed   # seed: 3 employees, 1 team, 2 clients, 1 weekly routine (+ owner, see below)
+pnpm db:migrate && pnpm db:seed   # model prices; SEED_DEMO=true adds a demo owner + 3 employees, 1 team, 2 clients, 1 routine
 pnpm build                         # Next.js build (≈1.2 GB RAM peak)
 pm2 start ecosystem.config.cjs && pm2 save
 sudo cp nginx/ai.vardiv.id.conf /etc/nginx/sites-available/<domain> && sudo ln -s … && sudo nginx -t && sudo systemctl reload nginx
 ```
 
-The seed owner is `SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD` (defaults `owner@workforce.local` / `workforce-demo`). **Set your own values or change the password right away** on any server that is reachable from the internet.
+The first account is created by signing up (always allowed for the first user). With `SEED_DEMO=true` the seed also creates a demo owner (`SEED_OWNER_EMAIL`, default `owner@workforce.local`) with a random password that is printed once and must be changed at first login, or with `SEED_OWNER_PASSWORD` if you set one. No account with a known password is ever created by default.
 
 ### Backups
 
@@ -93,7 +93,7 @@ cp .env.example .env   # set DOMAIN, POSTGRES_PASSWORD, ENCRYPTION_KEY, AUTH_SEC
 docker compose up -d --build
 ```
 
-Compose runs `postgres` (pgvector), `redis`, `migrate` (migrations + seed, runs once), `web`, `worker`, `nginx` (SSE-safe proxy) and `certbot` (renews every 12 hours). Uploaded files and the local embedding model live in the `storage` volume.
+Compose runs `postgres` (pgvector), `redis`, `migrate` (migrations + price seed, runs once per start), `web`, `worker`, `nginx` (SSE-safe proxy) and `certbot` (renews every 12 hours). Uploaded files and the local embedding model live in the `storage` volume.
 
 ## Claude subscription meter
 
