@@ -33,6 +33,23 @@
       "paused": "paused",
       "done": "done",
       "archived": "archived"
+    },
+    "deadline": "Deadline",
+    "progress": "Progress"
+  },
+  "health": {
+    "late": "Late",
+    "at_risk": "At risk",
+    "on_track": "On track",
+    "done": "Done",
+    "count": "{count} {health}",
+    "overdue": "{count, plural, one {# day overdue} other {# days overdue}}",
+    "dueIn": "{count, plural, =0 {due today} one {due in # day} other {due in # days}}",
+    "lastActivity": "last activity {when}",
+    "reason": {
+      "past_deadline": "Past the deadline",
+      "deadline_soon": "Deadline in less than 14 days with progress below 70%",
+      "no_activity": "No activity for 7 days"
     }
   }
 }

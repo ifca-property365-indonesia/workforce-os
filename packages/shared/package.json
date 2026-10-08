@@ -15,7 +15,8 @@
     "./totp": "./src/totp.ts",
     "./messages": "./src/messages.ts",
     "./bash-classifier": "./src/bash-classifier.ts",
-    "./limits": "./src/limits.ts"
+    "./limits": "./src/limits.ts",
+    "./health": "./src/health.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

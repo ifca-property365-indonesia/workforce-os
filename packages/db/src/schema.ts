@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   vector,
   primaryKey,
+  date,
 } from "drizzle-orm/pg-core";
 import type {
   AllowListEntry,
@@ -76,6 +77,8 @@ export const workspaces = pgTable("workspaces", {
   killSwitch: boolean("kill_switch").notNull().default(false),
   /** OWNER and ADMIN members must enroll in TOTP 2FA before using the workspace */
   require2faAdmins: boolean("require_2fa_admins").notNull().default(true),
+  /** IANA time zone for dates in this workspace (project health, routines default) */
+  timezone: text("timezone").notNull().default("Asia/Jakarta"),
   /** subscription limit reached: the queue is held until this instant (status PAUSED_QUOTA in the UI) */
   quotaPausedUntil: timestamp("quota_paused_until", { withTimezone: true }),
   quotaPauseReason: text("quota_pause_reason"),
@@ -195,7 +198,12 @@ export const projects = pgTable("projects", {
   status: text("status").notNull().default("active"),
   description: text("description").notNull().default(""),
   hourlyRate: doublePrecision("hourly_rate").notNull().default(0),
+  /** calendar date in the workspace time zone (YYYY-MM-DD) */
+  deadline: date("deadline", { mode: "string" }),
+  /** 0..100 */
+  progress: integer("progress").notNull().default(0),
   createdAt: createdAt(),
+  updatedAt: updatedAt(),
 });
 
 // ---------------------------------------------------------------------------

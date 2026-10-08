@@ -509,7 +509,18 @@ export const projectInputSchema = z.object({
   status: z.string().default("active"),
   description: z.string().max(5000).default(""),
   hourlyRate: z.number().nonnegative().default(0),
+  deadline: z.iso.date().nullable().optional(),
+  progress: z.number().int().min(0).max(100).default(0),
 });
+
+export function isTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const smtpSettingsSchema = z.object({
   host: z.string().min(1),

@@ -20,8 +20,15 @@ import { useFormat } from "@/lib/use-format";
 import { useMe } from "@/lib/hooks";
 
 interface Settings {
-  workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean; require2faAdmins: boolean; defaultLocale: "id" | "en" | null };
+  workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean; require2faAdmins: boolean; defaultLocale: "id" | "en" | null; timezone: string };
   claude: { credentialPresent: boolean; source: "workspace" | "instance" | null; type: "oauth" | "api_key" | null };
+}
+
+/** Time zones the browser knows, with the current one first; Indonesian zones are listed first. */
+function timeZones(current: string): string[] {
+  const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [current];
+  const first = ["Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "UTC"];
+  return [...new Set([current, ...first, ...all])];
 }
 
 interface ClaudeStatus {
@@ -194,6 +201,23 @@ function General({ s, owner, admin }: { s: Settings; owner: boolean; admin: bool
               <option value="en">{ts("outputLanguage.en")}</option>
             </select>
             <p className="text-xs text-muted-foreground">{t("workspace.languageDescription")}</p>
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="workspace-timezone">{t("workspace.timezone")}</Label>
+            <select
+              id="workspace-timezone"
+              className="h-9 w-full max-w-xs rounded-md border bg-background px-2 text-sm"
+              value={s.workspace.timezone}
+              disabled={save.isPending}
+              onChange={(e) => save.mutate({ timezone: e.target.value })}
+            >
+              {timeZones(s.workspace.timezone).map((z) => (
+                <option key={z} value={z}>
+                  {z}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">{t("workspace.timezoneDescription")}</p>
           </div>
         </CardContent>
       </Card>

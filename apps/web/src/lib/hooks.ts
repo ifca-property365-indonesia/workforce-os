@@ -62,7 +62,21 @@ export interface Client {
   contacts: { name: string; email: string; role: string }[];
   notes: string;
   currency: string;
-  projects: { id: string; name: string; status: string; description: string; hourlyRate: number; clientId: string }[];
+  projects: {
+    id: string;
+    name: string;
+    status: string;
+    description: string;
+    hourlyRate: number;
+    clientId: string;
+    deadline: string | null;
+    progress: number;
+    lastActivityAt: string;
+    health: "late" | "at_risk" | "on_track" | "done";
+    daysToDeadline: number | null;
+    idleDays: number;
+    reasons: ("past_deadline" | "deadline_soon" | "no_activity")[];
+  }[];
 }
 
 export interface Team {

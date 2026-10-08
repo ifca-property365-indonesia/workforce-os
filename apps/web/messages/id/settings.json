@@ -15,7 +15,9 @@
     "monthlyBudget": "Anggaran bulanan (kredit; 1 kredit = $0,01)",
     "language": "Bahasa workspace",
     "languageFollowBrowser": "Ikuti browser masing-masing",
-    "languageDescription": "Bahasa antarmuka default bagi anggota yang belum memilih bahasa sendiri, sekaligus bahasa yang digunakan karyawan saat bahasa output mereka diatur ke “Ikuti workspace”."
+    "languageDescription": "Bahasa antarmuka default bagi anggota yang belum memilih bahasa sendiri, sekaligus bahasa yang digunakan karyawan saat bahasa output mereka diatur ke “Ikuti workspace”.",
+    "timezone": "Zona waktu",
+    "timezoneDescription": "Dipakai untuk tenggat dan kesehatan proyek, serta tanggal lain di workspace ini."
   },
   "safety": {
     "title": "Keamanan",

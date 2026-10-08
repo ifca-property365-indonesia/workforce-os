@@ -33,6 +33,23 @@
       "paused": "dijeda",
       "done": "selesai",
       "archived": "diarsipkan"
+    },
+    "deadline": "Tenggat",
+    "progress": "Progres"
+  },
+  "health": {
+    "late": "Terlambat",
+    "at_risk": "Berisiko",
+    "on_track": "Sesuai jadwal",
+    "done": "Selesai",
+    "count": "{count} {health}",
+    "overdue": "{count, plural, other {terlambat # hari}}",
+    "dueIn": "{count, plural, =0 {jatuh tempo hari ini} other {jatuh tempo # hari lagi}}",
+    "lastActivity": "aktivitas terakhir {when}",
+    "reason": {
+      "past_deadline": "Melewati tenggat",
+      "deadline_soon": "Tenggat kurang dari 14 hari dengan progres di bawah 70%",
+      "no_activity": "Tidak ada aktivitas selama 7 hari"
     }
   }
 }

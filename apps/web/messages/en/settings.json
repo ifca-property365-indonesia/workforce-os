@@ -15,7 +15,9 @@
     "monthlyBudget": "Monthly budget (credits; 1 credit = $0.01)",
     "language": "Workspace language",
     "languageFollowBrowser": "Follow each browser",
-    "languageDescription": "The default interface language for members who have not chosen their own, and the language employees write in when their output language is set to “Workspace default”."
+    "languageDescription": "The default interface language for members who have not chosen their own, and the language employees write in when their output language is set to “Workspace default”.",
+    "timezone": "Time zone",
+    "timezoneDescription": "Used for project deadlines and health, and other dates of this workspace."
   },
   "safety": {
     "title": "Safety",

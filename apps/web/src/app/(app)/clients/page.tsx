@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -81,11 +82,39 @@ function ClientDialog({ client, onClose }: { client?: Client; onClose: () => voi
   );
 }
 
+const HEALTH_TONE: Record<Client["projects"][number]["health"], string> = {
+  late: "bg-destructive/15 text-destructive",
+  at_risk: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
+  on_track: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  done: "bg-muted text-muted-foreground",
+};
+
+/** Per-client health summary: how many projects are late / at risk / on track. */
+function HealthSummary({ projects }: { projects: Client["projects"] }) {
+  const t = useTranslations("clients");
+  const counts = (["late", "at_risk", "on_track"] as const).map((h) => [h, projects.filter((p) => p.health === h).length] as const).filter(([, n]) => n);
+  if (!counts.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {counts.map(([h, n]) => (
+        <span key={h} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${HEALTH_TONE[h]}`}>
+          {t("health.count", { count: n, health: t(`health.${h}`) })}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ProjectRow({ p, currency }: { p: Client["projects"][number]; currency: string }) {
   const t = useTranslations("clients");
   const f = useFormat();
   const qc = useQueryClient();
   const del = useMutation({ mutationFn: () => api.del(`/api/projects/${p.id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }) });
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch(`/api/projects/${p.id}`, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
+    onError: (e) => toast.error((e as Error).message),
+  });
   return (
     <div className="flex items-start gap-2 rounded-md border p-2 text-sm">
       <div className="min-w-0 flex-1">
@@ -94,6 +123,38 @@ function ProjectRow({ p, currency }: { p: Client["projects"][number]; currency: 
         </div>
         <div className="text-xs text-muted-foreground">{p.description}</div>
         <div className="text-xs text-muted-foreground">{t("project.rate", { rate: f.money(p.hourlyRate, currency) })}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
+          <span className={`rounded-full px-2 py-0.5 font-medium ${HEALTH_TONE[p.health]}`} title={p.reasons.map((r) => t(`health.reason.${r}`)).join(" · ")}>
+            {t(`health.${p.health}`)}
+          </span>
+          <label className="flex items-center gap-1 text-muted-foreground">
+            {t("project.deadline")}
+            <input
+              type="date"
+              className="rounded border bg-background px-1 py-0.5"
+              defaultValue={p.deadline ?? ""}
+              onChange={(e) => save.mutate({ deadline: e.target.value || null })}
+            />
+          </label>
+          <label className="flex items-center gap-1 text-muted-foreground">
+            {t("project.progress")}
+            <input
+              type="number"
+              min={0}
+              max={100}
+              className="w-14 rounded border bg-background px-1 py-0.5"
+              defaultValue={p.progress}
+              onBlur={(e) => Number(e.target.value) !== p.progress && save.mutate({ progress: Math.max(0, Math.min(100, Number(e.target.value))) })}
+            />
+            %
+          </label>
+          <span className="text-muted-foreground">
+            {p.daysToDeadline !== null && p.health !== "done" && (p.daysToDeadline < 0 ? t("health.overdue", { count: -p.daysToDeadline }) : t("health.dueIn", { count: p.daysToDeadline }))}
+            {" · "}
+            {t("health.lastActivity", { when: f.ago(p.lastActivityAt) })}
+          </span>
+        </div>
+        <Progress value={p.progress} className="mt-1 h-1" />
       </div>
       <Link href={`/tasks?projectId=${p.id}`} className="text-xs text-primary hover:underline">
         {t("project.tasks")}
@@ -182,6 +243,7 @@ export default function ClientsPage() {
                 </div>
               )}
               {c.notes && <p className="text-xs text-muted-foreground">{c.notes}</p>}
+              <HealthSummary projects={c.projects} />
               <div className="space-y-2">
                 {c.projects.map((p) => (
                   <ProjectRow key={p.id} p={p} currency={c.currency} />

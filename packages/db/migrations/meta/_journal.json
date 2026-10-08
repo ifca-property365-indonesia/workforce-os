@@ -50,6 +50,13 @@
       "when": 1791371379677,
       "tag": "0006_claude_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791371379678,
+      "tag": "0007_project_health",
+      "breakpoints": true
     }
   ]
 }

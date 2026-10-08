@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { LOCALES } from "@wfos/shared";
+import { LOCALES, isTimeZone } from "@wfos/shared";
 import { audit, claudeCredentialStatus, db, workspaces } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import { body, route } from "@/lib/server/route";
@@ -21,6 +21,7 @@ export const GET = route("VIEWER", async ({ session }) => {
       webhookConfigured: !!ws!.webhookUrlEnc,
       require2faAdmins: ws!.require2faAdmins,
       defaultLocale: ws!.defaultLocale,
+      timezone: ws!.timezone,
     },
     claude: claudeSummary(await claudeCredentialStatus(session.workspaceId)),
   };
@@ -36,6 +37,7 @@ const schema = z.object({
   require2faAdmins: z.boolean().optional(),
   /** workspace language for the UI default and employee output; null = follow each browser */
   defaultLocale: z.enum(LOCALES).nullable().optional(),
+  timezone: z.string().refine(isTimeZone, "an IANA time zone such as Asia/Jakarta").optional(),
 });
 
 export const PUT = route("ADMIN", async ({ session, req }) => {
