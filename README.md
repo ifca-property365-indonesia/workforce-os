@@ -124,7 +124,7 @@ An employee runs in **Tool mode** (platform tools only, the default) or **Worksp
 - "…" while thinking, asleep when paused;
 - in the lounge, at the coffee machine or chatting when idle.
 
-Teams and departments get their own rooms, generated from the actual employee list. The 2D view is the default; the low-poly 3D view (three.js) loads only when chosen. Clicking a character opens its task. The page lists "who is doing what" as text, respects `prefers-reduced-motion`, and stops rendering while the tab is hidden.
+Teams and departments get their own rooms, generated from the actual employee list. The 2D view is the default; the low-poly 3D view (three.js) loads only when chosen: an office building on a city block, with CC0 models from Kenney and KayKit in `apps/web/public/office` (≈0.5 MB gzipped; sources and licences in its README). Clicking a character opens its task. The page lists "who is doing what" as text, respects `prefers-reduced-motion`, and stops rendering while the tab is hidden.
 
 ## Departments and PRD handoff
 
