@@ -1,6 +1,6 @@
 # Deploying Workforce OS
 
-Fresh Ubuntu 24.04 VPS → running HTTPS instance. The native install (PM2) is the primary path. It is the only one
+Fresh Ubuntu 24.04 or 26.04 VPS → running HTTPS instance. The native install (PM2) is the primary path. It is the only one
 where **Workspace mode** (Claude Code in a per-task sandbox) is available. Docker Compose is the alternative at the
 end.
 
@@ -32,7 +32,7 @@ Then run, as root:
 deploy/setup-ubuntu.sh --domain ai.example.com --email you@example.com
 ```
 
-It installs Node 24, pnpm, PM2, PostgreSQL 16 + pgvector, Redis 7 (`noeviction`, local only, password from
+It installs Node 24, pnpm, PM2, PostgreSQL + pgvector (the release's own major: 16 on 24.04, 18 on 26.04), Redis 7 (`noeviction`, local only, password from
 `REDIS_URL`), creates the database from `DATABASE_URL`, enables the firewall (SSH, 80, 443; skip with `--no-firewall`),
 configures Nginx with a Let's Encrypt certificate, checks the sandbox prerequisites (systemd ≥ 252, cgroup v2) and
 installs the document toolchain. It is idempotent: run it again after changing `.env`.

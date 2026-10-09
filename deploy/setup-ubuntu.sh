@@ -41,7 +41,10 @@ envval() { [ -f "$APP_DIR/.env" ] && sed -nE "s/^$1=['\"]?([^'\"]*)['\"]?\s*$/\1
 if [ "$ONLY_TOOLCHAIN" = 0 ]; then
   echo "== packages"
   apt-get update -q
-  apt_install ca-certificates curl gnupg git nginx ufw postgresql-16 postgresql-16-pgvector redis-server python3
+  # the release's own PostgreSQL major (16 on 24.04, 18 on 26.04); a pg_dump from an older major restores into it
+  PG_MAJOR="$(apt-cache depends postgresql 2>/dev/null | sed -nE 's/.*Depends: postgresql-([0-9]+)$/\1/p' | head -1)"
+  PG_MAJOR="${PG_MAJOR:-16}"
+  apt_install ca-certificates curl gnupg git nginx ufw "postgresql-$PG_MAJOR" "postgresql-$PG_MAJOR-pgvector" redis-server python3
 
   echo "== Node.js 24, pnpm, PM2"
   if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 24 ]; then
@@ -50,6 +53,9 @@ if [ "$ONLY_TOOLCHAIN" = 0 ]; then
   fi
   corepack enable
   command -v pm2 >/dev/null || npm install -g pm2@6
+
+  # next build/start run in apps/web and only read .env from there: without this link the web has no DATABASE_URL
+  [ -e "$APP_DIR/apps/web/.env" ] || ln -s ../../.env "$APP_DIR/apps/web/.env"
 
   echo "== Redis: never evict queue data; local only"
   conf=/etc/redis/redis.conf
@@ -89,7 +95,8 @@ if [ "$ONLY_TOOLCHAIN" = 0 ]; then
 
   if [ "$FIREWALL" = 1 ]; then
     echo "== firewall (ufw)"
-    ssh_port="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
+    # awk exits at the first match, so sshd may die of SIGPIPE: under pipefail that must not abort the script
+    ssh_port="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}' || true)"
     ufw allow "${ssh_port:-22}/tcp" >/dev/null
     ufw allow 80/tcp >/dev/null
     ufw allow 443/tcp >/dev/null
