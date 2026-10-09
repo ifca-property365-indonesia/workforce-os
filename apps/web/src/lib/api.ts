@@ -26,7 +26,9 @@ async function handle<T>(res: Response): Promise<T> {
     data = {};
   }
   if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined" && !location.pathname.startsWith("/login")) location.href = "/login";
+    // step_up_required is also a 401 but the session is fine: <StepUpProvider> asks for password + 2FA instead
+    const code = (data as { code?: string }).code;
+    if (res.status === 401 && code !== "step_up_required" && typeof window !== "undefined" && !location.pathname.startsWith("/login")) location.href = "/login";
     // the server sends `error` already translated into the user's language
     throw new ApiError(res.status, (data as { error?: string }).error ?? fallbackMessage(res.status), data);
   }
