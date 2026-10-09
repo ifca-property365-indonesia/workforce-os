@@ -44,7 +44,7 @@ Without a credential, runs fail with a clear message. **Demo Mode** (Settings, o
 Check a credential end to end:
 `pnpm --filter @wfos/worker exec tsx src/scripts/sdk-smoke.ts <employeeId> "Reply with exactly: pong"`
 
-## Deploy natively with PM2 (this is how ai.vardiv.id runs)
+## Deploy natively with PM2 (this is how workforce-os.property365.co.id runs)
 
 **Step by step from a fresh VPS, including backups, upgrades and key rotation: [docs/DEPLOY.md](docs/DEPLOY.md).**
 
@@ -56,7 +56,9 @@ pnpm install
 pnpm db:migrate && pnpm db:seed   # model prices; SEED_DEMO=true adds a demo owner + 3 employees, 1 team, 2 clients, 1 routine
 pnpm build                         # Next.js build (≈1.2 GB RAM peak)
 pm2 start ecosystem.config.cjs && pm2 save
-sudo cp nginx/ai.vardiv.id.conf /etc/nginx/sites-available/<domain> && sudo ln -s … && sudo nginx -t && sudo systemctl reload nginx
+sed 's/${DOMAIN}/<domain>/g' nginx/native.conf.template | sudo tee /etc/nginx/sites-available/workforce-os >/dev/null
+sudo ln -sf ../sites-available/workforce-os /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d <domain> --redirect   # deploy/setup-ubuntu.sh --domain does these three steps for you
 ```
 
 The first account is created by signing up (always allowed for the first user). With `SEED_DEMO=true` the seed also creates a demo owner (`SEED_OWNER_EMAIL`, default `owner@workforce.local`) with a random password that is printed once and must be changed at first login, or with `SEED_OWNER_PASSWORD` if you set one. No account with a known password is ever created by default.
@@ -83,7 +85,7 @@ The backups sit on the same disk. Copy them off the server too (rclone, S3, or a
 - **Two-factor authentication (TOTP)**: Account → Two-factor authentication (QR enrollment, 10 single-use recovery codes, password + code to turn it off). It is **mandatory for Owners and Admins** while the workspace setting is on (default on; Settings → General → Safety, Owner only). They are sent to `/setup-2fa` at sign-in until they enroll.
 - **Lockout**: 5 failed password or code attempts lock the account for 15 minutes ("try again at <time>"). Google sign-in goes through the same lockout and 2FA step.
 - **Owner CLI** (on the server): `pnpm --filter @wfos/db cli unlock <email>` clears a lockout; `pnpm --filter @wfos/db cli reset-2fa <email>` turns 2FA off for a user who lost their authenticator and recovery codes. Both are written to the audit log.
-- Login is limited to 10 attempts per account and 30 per IP every 15 minutes, and signup to 5 per IP per hour. Behind Cloudflare, Nginx has to resolve the real visitor IP (`set_real_ip_from` + `real_ip_header CF-Connecting-IP`, see `nginx/ai.vardiv.id.conf`) and pass it as `X-Real-IP`. Without that, every visitor shares Cloudflare's IPs.
+- Login is limited to 10 attempts per account and 30 per IP every 15 minutes, and signup to 5 per IP per hour. Behind Cloudflare, Nginx has to resolve the real visitor IP (`set_real_ip_from` + `real_ip_header CF-Connecting-IP`, include `nginx/cloudflare-realip.conf`) and pass it as `X-Real-IP`. Without that, every visitor shares Cloudflare's IPs.
 
 ## Deploy with Docker Compose (fresh Ubuntu VPS)
 

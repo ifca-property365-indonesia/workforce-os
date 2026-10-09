@@ -13,6 +13,9 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
     client_max_body_size 25m;
 
+    # The app has no Server Actions, so a Next-Action header is always a scanner probe: refuse it here, before Next.js
+    if ($http_next_action) { return 403; }
+
     location /api/events {
         proxy_pass http://web:3010;
         proxy_http_version 1.1;

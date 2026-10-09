@@ -44,5 +44,6 @@
 8. **Subscription meter** updates only while agents run (no polling), and stores no overage fields.
 9. **Telegram:** one bot per installation; Edit & Approve is web-only. **Push on iOS** needs the app on the Home
    Screen.
-10. **This production host** still has a password-less Redis and a Postgres listening on all interfaces with an
-    inactive firewall (found in Phase 0). The fix commands are in PHASE-4.md; they are the owner's to run.
+10. **This production host** (workforce-os.property365.co.id): of the Phase 0 findings, the firewall is now active
+    and Postgres and Redis listen on localhost only (checked 2026-10-09). Redis still has no password; the fix is in
+    PHASE-4.md (`requirepass` + `REDIS_URL`, then restart `wfos-web` and `wfos-worker`) and is the owner's to run.

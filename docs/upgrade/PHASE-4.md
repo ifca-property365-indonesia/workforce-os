@@ -59,8 +59,9 @@ They need the fresh-VM check in the definition of done.
   `pnpm db:migrate` (0003–0011), then build and reload, or use `deploy/upgrade.sh` once `upgrade/v2` is merged into the
   branch production tracks.
 - Recommended, from the Phase 0 findings on this host:
-  - set a Redis password (`REDIS_URL` + `requirepass`);
-  - make Postgres listen on localhost only, or enable the firewall.
+  - set a Redis password (`REDIS_URL` + `requirepass`). **Still open** as of 2026-10-09;
+  - ~~make Postgres listen on localhost only, or enable the firewall~~: done (ufw active, Postgres on localhost only,
+    checked 2026-10-09).
   `setup-ubuntu.sh` does both on a fresh server. On this host, run the steps by hand after reading them: it also
   serves other apps.
 - On this 2 GB host, building needs swap or `deploy/upgrade.sh --stop-web-for-build` (a short downtime).

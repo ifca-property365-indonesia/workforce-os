@@ -1,6 +1,6 @@
 # Spike 1.0 — Isolation for Workspace mode on this host
 
-Date: 2026-10-08. Host: the production VPS (ai.vardiv.id). Nothing was installed and no system configuration
+Date: 2026-10-08. Host: the production VPS (then ai.vardiv.id, now workforce-os.property365.co.id). Nothing was installed and no system configuration
 (packages, sysctl, AppArmor, firewall, systemd unit files, users, Nginx) was changed. The experiments used
 **transient** systemd units with `DynamicUser` (no persistent user is created) and throwaway directories that were
 removed afterwards. Only stub/dummy Claude tokens were used. Production processes were not restarted (PM2 restart

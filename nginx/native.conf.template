@@ -6,6 +6,9 @@ server {
     server_name ${DOMAIN};
 
     client_max_body_size 25m;
+
+    # The app has no Server Actions, so a Next-Action header is always a scanner probe: refuse it here, before Next.js
+    if ($http_next_action) { return 403; }
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
