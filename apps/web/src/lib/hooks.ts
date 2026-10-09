@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { AllowListEntry, AutonomyLevel, EmployeeStatus, ToolMeta, ToolPermission, TaskStatus, Role } from "@wfos/shared";
+import type { AllowListEntry, AutonomyLevel, EmployeeStatus, OfficeLook, ToolMeta, ToolPermission, TaskStatus, Role } from "@wfos/shared";
 import type { RoleTemplate } from "@wfos/templates";
 import { api } from "./api";
 
@@ -33,6 +33,7 @@ export interface Employee {
   executionMode: "tool" | "workspace";
   department: string | null;
   egressDomains: string[];
+  look: OfficeLook | null;
   status: EmployeeStatus;
   instructionsVersion: number;
   spentToday?: number;

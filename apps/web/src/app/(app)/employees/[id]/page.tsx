@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Archive, MessageSquare, Pause, Play, Plus, Trash2, FlaskConical } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { OUTPUT_LANGUAGES, type AllowListEntry, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
+import { hasRole, OUTPUT_LANGUAGES, type AllowListEntry, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
+import { LookEditor } from "@/components/employees/look-editor";
 import { DiffView } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
@@ -461,6 +462,7 @@ export default function EmployeePage({ params }: P) {
     onError: (x) => toast.error((x as Error).message),
   });
   const archive = useMutation({ mutationFn: () => api.del(`/api/employees/${id}`), onSuccess: () => (location.href = "/employees") });
+  const { data: me } = useMe();
   const [k, setK] = useState(0);
   useEffect(() => {
     setK((x) => x + 1);
@@ -513,6 +515,7 @@ export default function EmployeePage({ params }: P) {
           <OutputLanguageCard e={e} />
           <ExecutionModeCard e={e} />
           <DepartmentCard e={e} />
+          <LookEditor e={e} company={me?.workspace.name ?? ""} canEdit={!!me && hasRole(me.role, "ADMIN")} />
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="p-4 text-sm">

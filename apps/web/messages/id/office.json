@@ -31,5 +31,6 @@
   },
   "openTask": "Buka tugas",
   "openEmployee": "Buka karyawan",
-  "noWebgl": "3D tidak tersedia di browser ini. Menampilkan tampilan 2D."
+  "noWebgl": "3D tidak tersedia di browser ini. Menampilkan tampilan 2D.",
+  "reception": "Resepsionis"
 }

@@ -200,5 +200,53 @@
     "help": "Karyawan mengikuti SOP departemen ini (dan bisa memakai subagennya di mode workspace).",
     "none": "Tidak ada",
     "saved": "Departemen tersimpan"
+  },
+  "look": {
+    "label": "Karakter kantor",
+    "help": "Tampilan karyawan ini di kantor. Perubahan langsung terlihat.",
+    "auto": "Otomatis",
+    "saved": "Karakter disimpan",
+    "save": "Simpan karakter",
+    "random": "Acak",
+    "reset": "Kembali ke otomatis",
+    "adminOnly": "Hanya Owner atau Admin yang bisa mengubah karakter.",
+    "preview": "Pratinjau karakter",
+    "skin": "Kulit",
+    "hair": "Rambut",
+    "hairColor": "Warna rambut",
+    "beard": "Jenggot",
+    "glasses": "Kacamata",
+    "hat": "Penutup kepala",
+    "shirt": "Baju",
+    "logo": "Logo perusahaan di baju",
+    "hairStyles": {
+      "short": "Pendek",
+      "spiky": "Jabrik",
+      "side": "Belah samping",
+      "bob": "Bob",
+      "long": "Panjang",
+      "bun": "Cepol",
+      "tail": "Kuncir",
+      "afro": "Afro",
+      "bald": "Botak"
+    },
+    "beards": {
+      "none": "Tidak ada",
+      "stubble": "Tipis",
+      "moustache": "Kumis",
+      "full": "Lebat"
+    },
+    "glassesTypes": {
+      "none": "Tidak ada",
+      "round": "Bulat",
+      "square": "Kotak",
+      "sun": "Kacamata hitam"
+    },
+    "hats": {
+      "none": "Tidak ada",
+      "cap": "Topi",
+      "beanie": "Kupluk",
+      "headphones": "Headphone"
+    }
   }
 }

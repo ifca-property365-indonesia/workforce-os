@@ -60,7 +60,7 @@ export default function OfficePage() {
   const people = describeOrder([...state.people.current.values()].map((p) => ({ ...p, activity: state.activityOf(p) })));
   const count = (as: Activity[]) => people.filter((p) => as.includes(p.activity)).length;
   const summary = t("summary", { total: people.length, working: count(WORKING), waiting: count(["waiting"]), idle: count(["idle", "paused"]) });
-  const viewProps = { state, reducedMotion, onSelect: open, labels: { lounge: t("lounge"), activity: activityLabel } };
+  const viewProps = { state, reducedMotion, onSelect: open, labels: { lounge: t("lounge"), reception: t("reception"), activity: activityLabel } };
 
   return (
     <div className="space-y-4">

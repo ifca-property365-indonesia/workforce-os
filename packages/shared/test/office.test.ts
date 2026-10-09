@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  activityOf, animationFor, describeOrder, IDLE_PERIOD_MS, layoutOffice, MAX_W, moveToward, roomOf, spotPoint, STALE_STEP_MS, toolActivity,
-  type Activity, type OfficeLayout, type OfficeMember,
+  activityOf, animationFor, defaultLook, describeOrder, IDLE_PERIOD_MS, initials, layoutOffice, MAX_W, moveToward, resolveLook, roomOf, SKIN_TONES, spotPoint,
+  STALE_STEP_MS, toolActivity, type Activity, type OfficeLayout, type OfficeMember,
 } from "../src/office";
+import { officeLookSchema } from "../src/index";
 
 const NOW = Date.parse("2026-10-08T10:00:00Z");
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
@@ -88,6 +89,15 @@ function checkLayout(l: OfficeLayout, n: number) {
   expect(l.lounge.seats.length).toBeGreaterThanOrEqual(n);
   for (const s of l.lounge.seats) expect(overlaps({ x: s.x, y: s.y, w: 0.01, h: 0.01 }, l.lounge)).toBe(true);
   expect(l.width).toBeGreaterThan(0);
+  // the reception is in front of every room, centred, inside the office
+  const rc = { key: "reception", ...l.reception };
+  for (const r of all) expect(overlaps(r, rc), r.key).toBe(false);
+  for (const r of all) expect(r.y + r.h).toBeLessThan(rc.y);
+  expect(rc.x).toBeGreaterThanOrEqual(0);
+  expect(rc.x + rc.w).toBeLessThanOrEqual(l.width);
+  expect(rc.x + rc.w / 2).toBeCloseTo(l.width / 2);
+  expect(rc.y + rc.h).toBe(l.height);
+  expect(overlaps({ x: rc.desk.x, y: rc.desk.y, w: 0.01, h: 0.01 }, rc)).toBe(true);
 }
 
 describe("layout", () => {
@@ -153,5 +163,34 @@ describe("text alternative order", () => {
       { name: "C", activity: "waiting" as Activity },
     ]);
     expect(out.map((p) => p.name)).toEqual(["C", "A", "B"]);
+  });
+});
+
+describe("character looks", () => {
+  it("derives a valid, stable look from the id", () => {
+    for (let i = 0; i < 200; i++) {
+      const l = defaultLook(`emp-${i}`);
+      expect(officeLookSchema.safeParse(l).success).toBe(true);
+      expect(defaultLook(`emp-${i}`)).toEqual(l);
+    }
+    const shirts = new Set(Array.from({ length: 50 }, (_, i) => defaultLook(`e${i}`).shirt));
+    expect(shirts.size).toBeGreaterThan(4); // varied, not one uniform
+  });
+
+  it("keeps a valid stored look and replaces a broken one with the default", () => {
+    const mine = { skin: 2, hair: "afro", hairColor: 1, beard: "full", glasses: "round", hat: "cap", shirt: 3, logo: true } as const;
+    expect(resolveLook("e1", mine)).toEqual(mine);
+    expect(resolveLook("e1", null)).toEqual(defaultLook("e1"));
+    expect(resolveLook("e1", { ...mine, hair: "mohawk" })).toEqual(defaultLook("e1"));
+    expect(resolveLook("e1", { ...mine, skin: SKIN_TONES.length })).toEqual(defaultLook("e1"));
+    expect(resolveLook("e1", "afro")).toEqual(defaultLook("e1"));
+    expect(officeLookSchema.safeParse({ ...mine, shirt: -1 }).success).toBe(false);
+  });
+
+  it("makes logo initials from the workspace name", () => {
+    expect(initials("Property 365 Indonesia")).toBe("P3I");
+    expect(initials("  ifca  ")).toBe("IF");
+    expect(initials("a b c d")).toBe("ABC");
+    expect(initials("")).toBe("");
   });
 });

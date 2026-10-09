@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { animationFor, moveToward, spotPoint, stableHash, type Point } from "@wfos/shared/office";
+import { animationFor, moveToward, resolveLook, SHIRT_COLORS, spotPoint, stableHash, type Point } from "@wfos/shared/office";
 import type { OfficePerson, OfficeState } from "./use-office";
 
 export interface OfficeViewProps {
   state: OfficeState;
   reducedMotion: boolean;
-  labels: { lounge: string; activity: (p: OfficePerson) => string };
+  labels: { lounge: string; reception: string; activity: (p: OfficePerson) => string };
   onSelect: (p: OfficePerson) => void;
 }
 
@@ -109,6 +109,23 @@ export function Office2D({ state, reducedMotion, labels, onSelect }: OfficeViewP
       ctx.arc(layout.lounge.coffee.x, layout.lounge.coffee.y + 0.1, 0.15, 0, Math.PI * 2);
       ctx.fill();
 
+      // reception: the company name on the back wall, the counter in the middle
+      const rc = layout.reception;
+      ctx.fillStyle = pal.floor;
+      ctx.strokeStyle = pal.wall;
+      ctx.lineWidth = 0.12;
+      roundRect(ctx, rc.x, rc.y, rc.w, rc.h, 0.3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = pal.name;
+      ctx.font = "800 0.6px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(state.workspaceName || labels.reception, rc.x + rc.w / 2, rc.y + 0.7, rc.w - 1);
+      ctx.textAlign = "left";
+      ctx.fillStyle = pal.desk;
+      roundRect(ctx, rc.desk.x - 1.6, rc.desk.y - 0.3, 3.2, 0.6, 0.15);
+      ctx.fill();
+
       // desks and chairs
       for (const d of layout.desks) {
         ctx.fillStyle = pal.chair;
@@ -149,7 +166,7 @@ export function Office2D({ state, reducedMotion, labels, onSelect }: OfficeViewP
         ctx.beginPath();
         ctx.ellipse(pos.x, pos.y + 0.05, 0.32, 0.12, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = BODY_COLORS[stableHash(p.id) % BODY_COLORS.length]!;
+        ctx.fillStyle = SHIRT_COLORS[resolveLook(p.id, p.look).shirt]!;
         roundRect(ctx, x - 0.3, y - 0.3, 0.6, sitting ? 0.5 : 0.65, 0.2);
         ctx.fill();
         ctx.fillStyle = "#fde2c4";

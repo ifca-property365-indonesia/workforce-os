@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BEARDS, GLASSES, HAIR_COLORS, HAIR_STYLES, HATS, SHIRT_COLORS, SKIN_TONES, type OfficeLook } from "./office";
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -61,6 +62,19 @@ export function employeeOutputLocale(setting: OutputLanguage | null | undefined,
 
 export const EXECUTION_MODES = ["tool", "workspace"] as const;
 export type ExecutionMode = (typeof EXECUTION_MODES)[number];
+
+/** An employee's character in the office (see office.ts). */
+export const officeLookSchema = z.object({
+  skin: z.number().int().min(0).max(SKIN_TONES.length - 1),
+  hair: z.enum(HAIR_STYLES),
+  hairColor: z.number().int().min(0).max(HAIR_COLORS.length - 1),
+  beard: z.enum(BEARDS),
+  glasses: z.enum(GLASSES),
+  hat: z.enum(HATS),
+  shirt: z.number().int().min(0).max(SHIRT_COLORS.length - 1),
+  logo: z.boolean(),
+});
+export type { OfficeLook };
 
 /** Claude Code built-ins enabled in Workspace mode (inside the sandbox; Bash is classified per call). */
 export const WORKSPACE_BUILTIN_TOOLS = ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "TodoWrite", "Task", "Skill", "NotebookEdit"] as const;
@@ -457,6 +471,8 @@ export const employeeInputSchema = z.object({
   executionMode: z.enum(EXECUTION_MODES).default("tool"),
   department: z.string().regex(/^[a-z0-9_-]{1,40}$/).nullable().optional(),
   egressDomains: z.array(egressDomainSchema).max(50).default([]),
+  /** office character; null derives one from the id */
+  look: officeLookSchema.nullable().optional(),
 });
 export type EmployeeInput = z.infer<typeof employeeInputSchema>;
 

@@ -27,6 +27,7 @@ import type {
   Locale,
   OutputLanguage,
   ExecutionMode,
+  OfficeLook,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -154,6 +155,8 @@ export const employees = pgTable(
     egressDomains: jsonb("egress_domains").$type<string[]>().notNull().default([]),
     /** department key: SOP instructions and (Workspace mode) subagents */
     department: text("department"),
+    /** office character (officeLookSchema); null derives one from the id */
+    look: jsonb("look").$type<OfficeLook>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -135,12 +135,22 @@ export interface Lounge extends Room {
   coffee: Point;
   seats: Point[];
 }
+/** The entrance at the front, centred: the company sign on its back wall, a reception desk, a waiting corner. */
+export interface Reception {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** centre of the reception counter */
+  desk: Point;
+}
 export interface OfficeLayout {
   width: number;
   height: number;
   rooms: Room[];
   desks: Desk[];
   lounge: Lounge;
+  reception: Reception;
 }
 
 export const CELL = 3; // one desk cell is 3 × 3 tiles: desk, chair, walkway
@@ -149,6 +159,8 @@ const PAD = 1; // inner padding of a room
 const TOP = 2; // strip along the top wall: bookshelf and server rack
 export const MAX_W = 36; // office width before rooms wrap to the next row
 const GAP = 1; // corridor between rooms
+const RECEPTION_H = 6;
+const RECEPTION_MAX_W = 16;
 
 /** Room of an employee: first team (by name), else department, else the general room. */
 export function roomOf(m: OfficeMember, departmentLabel?: (key: string) => string): { key: string; label: string; kind: Room["kind"] } {
@@ -234,7 +246,13 @@ export function layoutOffice(members: OfficeMember[], departmentLabel?: (key: st
     seats,
   };
   const all: Room[] = [...rooms, lounge];
-  return { width: Math.max(...all.map((r) => r.x + r.w)), height: Math.max(...all.map((r) => r.y + r.h)), rooms, desks, lounge };
+  const width = Math.max(...all.map((r) => r.x + r.w));
+  // reception: in front of the last row, centred, entered from the front
+  const ry = Math.max(...all.map((r) => r.y + r.h)) + GAP;
+  const rw = Math.min(width, RECEPTION_MAX_W);
+  const rx = (width - rw) / 2;
+  const reception: Reception = { x: rx, y: ry, w: rw, h: RECEPTION_H, desk: { x: rx + rw / 2, y: ry + 2.4 } };
+  return { width, height: ry + RECEPTION_H, rooms, desks, lounge, reception };
 }
 
 /** Target point of an employee for a spot; several people at one shelf or rack stand side by side. */
@@ -274,4 +292,78 @@ export function moveToward(pos: Point, target: Point, dtMs: number, speed = 4): 
 export function describeOrder<T extends { name: string; activity: Activity }>(people: T[]): T[] {
   const rank: Record<Activity, number> = { waiting: 0, terminal: 1, typing: 2, reading: 3, thinking: 4, idle: 5, paused: 6 };
   return [...people].sort((a, b) => rank[a.activity] - rank[b.activity] || a.name.localeCompare(b.name));
+}
+
+// ---------------------------------------------------------------------------
+// Characters: how each employee looks in the office. Chosen in the character editor, or derived from the id.
+
+export const SKIN_TONES = ["#f6d8be", "#f3cba7", "#e2ae86", "#c78b62", "#b67a52", "#9a6644", "#6e4630"] as const;
+export const HAIR_STYLES = ["short", "spiky", "side", "bob", "long", "bun", "tail", "afro", "bald"] as const;
+export const HAIR_COLORS = ["#14131a", "#2e221b", "#5a3a24", "#8a5a34", "#c99a5b", "#e8cf8f", "#b7472a", "#a3a8b0"] as const;
+export const BEARDS = ["none", "stubble", "moustache", "full"] as const;
+export const GLASSES = ["none", "round", "square", "sun"] as const;
+export const HATS = ["none", "cap", "beanie", "headphones"] as const;
+export const SHIRT_COLORS = ["#1f1d24", "#f1f0ec", "#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#64748b", "#8a9a5b", "#b98a5a"] as const;
+
+export type HairStyle = (typeof HAIR_STYLES)[number];
+export interface OfficeLook {
+  /** index into SKIN_TONES */
+  skin: number;
+  hair: HairStyle;
+  /** index into HAIR_COLORS */
+  hairColor: number;
+  beard: (typeof BEARDS)[number];
+  glasses: (typeof GLASSES)[number];
+  hat: (typeof HATS)[number];
+  /** index into SHIRT_COLORS */
+  shirt: number;
+  /** the company initials on the shirt */
+  logo: boolean;
+}
+
+/** The look of an employee nobody has customised: varied, and the same on every client. */
+export function defaultLook(id: string): OfficeLook {
+  const h = stableHash(id);
+  const at = <T>(arr: readonly T[], shift: number) => arr[(h >>> shift) % arr.length]!;
+  const hair = at(HAIR_STYLES.filter((s) => s !== "bald"), 7);
+  return {
+    skin: (h >>> 0) % SKIN_TONES.length,
+    hair,
+    hairColor: (h >>> 3) % HAIR_COLORS.length === 7 ? 0 : (h >>> 3) % HAIR_COLORS.length,
+    beard: (h >>> 11) % 5 === 0 ? at(BEARDS.slice(1), 13) : "none",
+    glasses: (h >>> 15) % 4 === 0 ? at(GLASSES.slice(1, 3), 17) : "none",
+    hat: "none",
+    shirt: (h >>> 19) % SHIRT_COLORS.length,
+    logo: false,
+  };
+}
+
+const index = (v: unknown, n: number): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v < n;
+const member = <T extends string>(v: unknown, arr: readonly T[]): v is T => typeof v === "string" && (arr as readonly string[]).includes(v);
+
+/** A stored look if it is valid, else the default for the id (old or hand-edited rows must not break the office). */
+export function resolveLook(id: string, look: unknown): OfficeLook {
+  const l = look as Partial<OfficeLook> | null | undefined;
+  if (
+    l &&
+    typeof l === "object" &&
+    index(l.skin, SKIN_TONES.length) &&
+    member(l.hair, HAIR_STYLES) &&
+    index(l.hairColor, HAIR_COLORS.length) &&
+    member(l.beard, BEARDS) &&
+    member(l.glasses, GLASSES) &&
+    member(l.hat, HATS) &&
+    index(l.shirt, SHIRT_COLORS.length) &&
+    typeof l.logo === "boolean"
+  )
+    return { skin: l.skin, hair: l.hair, hairColor: l.hairColor, beard: l.beard, glasses: l.glasses, hat: l.hat, shirt: l.shirt, logo: l.logo };
+  return defaultLook(id);
+}
+
+/** Initials for a logo: "Property 365 Indonesia" → "P3I", one word → its first two letters. */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return "";
+  if (words.length === 1) return words[0]!.slice(0, 2).toUpperCase();
+  return words.slice(0, 3).map((w) => w[0]!.toUpperCase()).join("");
 }

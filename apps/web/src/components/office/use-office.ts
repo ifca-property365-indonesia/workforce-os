@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { activityOf, layoutOffice, type Activity, type OfficeLayout } from "@wfos/shared/office";
+import { activityOf, layoutOffice, type Activity, type OfficeLayout, type OfficeLook } from "@wfos/shared/office";
 import { api } from "@/lib/api";
 import { useRealtime } from "@/lib/events";
 
@@ -10,6 +10,8 @@ export interface OfficePerson {
   id: string;
   name: string;
   avatar: string;
+  /** office character; null derives one from the id */
+  look: OfficeLook | null;
   role: string;
   department: string | null;
   status: string;
@@ -18,6 +20,7 @@ export interface OfficePerson {
   lastStep: { kind: string; name: string; at: string } | null;
 }
 interface Snapshot {
+  workspace: { name: string };
   departments: Record<string, string>;
   employees: OfficePerson[];
 }
@@ -30,6 +33,8 @@ export interface OfficeState {
   version: number;
   activityOf: (p: OfficePerson, now?: number) => Activity;
   roomLabel: (key: string) => string;
+  /** the company name on the reception sign */
+  workspaceName: string;
   loading: boolean;
 }
 
@@ -109,5 +114,5 @@ export function useOffice(generalLabel: string): OfficeState {
     return layoutOffice(data?.employees ?? [], (k) => deps[k] ?? k);
   }, [data]);
   const roomLabel = (key: string) => layout.rooms.find((r) => r.key === key)?.label || generalLabel;
-  return { layout, people, version, activityOf: activity, roomLabel, loading: isLoading };
+  return { layout, people, version, activityOf: activity, roomLabel, workspaceName: data?.workspace.name ?? "", loading: isLoading };
 }

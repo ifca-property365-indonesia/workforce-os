@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { animationFor, moveToward, spotPoint, stableHash, type Activity, type Pose, type Spot, type Point } from "@wfos/shared/office";
+import { animationFor, initials, moveToward, resolveLook, SHIRT_COLORS, spotPoint, stableHash, type Activity, type OfficeLook, type Pose, type Spot, type Point } from "@wfos/shared/office";
 import { type OfficeViewProps } from "./office-2d";
-import { CHARACTERS, loadOfficeAssets, type OfficeAssets } from "./office-assets";
+import { createChibiKit, poseChibi, textTexture, type Chibi } from "./chibi";
+import { loadOfficeAssets, type OfficeAssets } from "./office-assets";
 import type { OfficePerson } from "./use-office";
 
 // start fetching the models as soon as this chunk loads, while React mounts the view
@@ -14,26 +15,26 @@ if (typeof window !== "undefined") void loadOfficeAssets().catch(() => {});
 // One floor tile of the shared layout is one world unit: layout x → world x, layout y → world z.
 // Every model faces +z at rotation 0. Scales bring the packs to that unit:
 const K = 2.5; // Kenney furniture kit
-const KC = 2.0; // Kenney mini characters (≈1.4 tall)
 const KK = 0.62; // KayKit furniture
-const CITY = 4; // KayKit city: one road tile is 8 × 8
-const TILE = 2 * CITY;
-const SIT_Y = 0.4; // the sit clip is made for the floor; lift seated people onto the chair
-const SEAT_IN = 0.3; // chairs stand closer to the desk than the layout's walking spot
-const TAG_Y = 1.85;
+const TAG_Y = 2.05;
 const WALL_H = 1.15;
 const WALL_T = 0.18;
 const BASE_H = 0.4;
 const ROOM_COLORS = ["#7c5cff", "#f0b429", "#1fae7a", "#2fb5d0", "#e25385", "#ef8a4a"];
-// office wear only: the police officer and the character on crutches (which go through the desk) stay out
-const PEOPLE = CHARACTERS.filter((n) => n !== "character-male-c" && n !== "character-female-a");
 const C = {
+  ground: "#2a2838",
+  grid: "#34304a",
   floor: "#e7dcc8",
+  lobby: "#efe6d6",
   corridor: "#efe7d8",
   base: "#ece8e1",
   wall: "#f1eee8",
   glass: "#bcd3e3",
+  sign: "#24222b",
+  planter: "#b98a5a",
 };
+/** the person behind the reception desk */
+const RECEPTIONIST: OfficeLook = { skin: 1, hair: "bun", hairColor: 2, beard: "none", glasses: "none", hat: "none", shirt: 0, logo: true };
 /** screen glow per activity: colour, intensity */
 const GLOW: Record<Activity, [string, number]> = {
   typing: ["#7dd3fc", 1.4],
@@ -56,27 +57,10 @@ const STATUS_COLOR: Record<Activity, string> = {
 const SEATED: Pose[] = ["type", "sit", "chat", "sleep"];
 /** which way a character faces once it has arrived at a spot (radians around y; 0 faces the camera side) */
 const FACING: Record<Spot, number> = { desk: Math.PI, bookshelf: Math.PI, rack: Math.PI, coffee: Math.PI, lounge: 0 };
-/** animation clip per pose; arms and head get small offsets on top (see pose()) */
-const CLIP: Record<Pose | "walk", string> = {
-  walk: "walk",
-  type: "sit",
-  sit: "sit",
-  chat: "sit",
-  sleep: "sit",
-  read: "holding-both",
-  operate: "interact-right",
-  stand: "idle",
-};
 
 interface Avatar {
-  root: THREE.Group;
-  mixer: THREE.AnimationMixer;
-  actions: Map<string, THREE.AnimationAction>;
-  clip: string;
-  armL: THREE.Object3D;
-  armR: THREE.Object3D;
-  head: THREE.Object3D;
-  book: THREE.Mesh;
+  c: Chibi;
+  lookKey: string;
   pos: Point & { walking: boolean };
   heading: number;
   phase: number;
@@ -86,8 +70,9 @@ interface Avatar {
 }
 
 const pick = <T,>(arr: readonly T[], h: number): T => arr[h % arr.length]!;
+const light = (hex: string) => new THREE.Color(hex).getHSL({ h: 0, s: 0, l: 0 }).l > 0.6;
 
-/** Low-poly 3D office (three.js, CC0 models from public/office). Same layout and behaviour as the 2D view; loaded only when chosen. */
+/** Low-poly 3D office (three.js; CC0 furniture from public/office, characters from chibi.ts). Same layout and behaviour as the 2D view; loaded only when chosen. */
 export default function Office3D({ state, reducedMotion, labels, onSelect, onUnavailable }: OfficeViewProps & { onUnavailable: () => void }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [assets, setAssets] = useState<OfficeAssets | null>(null);
@@ -100,7 +85,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
   const unavailableRef = useRef(onUnavailable);
   unavailableRef.current = onUnavailable;
   const rerender = useRef<() => void>(() => {});
-  const { layout } = state;
+  const { layout, workspaceName } = state;
 
   useEffect(() => {
     let live = true;
@@ -123,11 +108,8 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       unavailableRef.current();
       return;
     }
-    const dark = document.documentElement.classList.contains("dark");
-    const sky = dark ? "#262338" : "#dfe9f2";
-    const grass = dark ? "#2c3b33" : "#b7d39b";
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setClearColor(sky);
+    renderer.setClearColor(C.ground);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -139,11 +121,11 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
     el.appendChild(overlay);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(sky);
+    scene.background = new THREE.Color(C.ground);
     const center = new THREE.Vector3(layout.width / 2, 0, layout.height / 2);
     const span = Math.max(layout.width, layout.height);
-    scene.fog = new THREE.Fog(sky, span * 2.2 + 40, span * 4 + 90);
-    scene.add(new THREE.HemisphereLight("#fff8ee", dark ? "#3d3858" : "#8a9a84", 1.3));
+    scene.fog = new THREE.Fog(C.ground, span * 1.6 + 20, span * 3 + 50); // the grid fades out around the building
+    scene.add(new THREE.HemisphereLight("#fff8ee", "#4a4568", 1.3));
     const sun = new THREE.DirectionalLight("#ffe9cc", 2.6);
     sun.position.set(center.x - span * 0.45, span * 0.8 + 10, center.z - span * 0.25);
     sun.target.position.copy(center);
@@ -190,11 +172,11 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       return p;
     };
     /** a model from the packs, footprint centred on (x, z) */
-    const put = (name: string, scale: number, x: number, z: number, rotY = 0, y = 0, parent: THREE.Object3D = scene) => {
+    const put = (name: string, scale: number, x: number, z: number, rotY = 0, y = 0) => {
       const m = assets.place(name, scale);
       m.position.set(x, y, z);
       m.rotation.y = rotY;
-      parent.add(m);
+      scene.add(m);
       return m;
     };
     const height = (name: string, scale: number) => assets.size(name).y * scale;
@@ -210,81 +192,33 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       t.anisotropy = 8;
       return t;
     };
+    /** a flat textured sign: on the floor (rotX −π/2) or upright */
+    const sign = (tex: THREE.Texture, w: number, h: number, x: number, y: number, z: number, rotX = 0) => {
+      const m = new THREE.Mesh(track(new THREE.PlaneGeometry(w, h)), track(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })));
+      m.rotation.x = rotX;
+      m.position.set(x, y, z);
+      scene.add(m);
+      return m;
+    };
+    const company = workspaceName.trim();
+    const mark = initials(company);
+    const badgeLight = mark ? track(textTexture(mark, { color: "#f1f0ec" })) : null;
+    const badgeDark = mark ? track(textTexture(mark, { color: "#1f1d24" })) : null;
 
-    // ---------- the street around the office: lawn, a ring road, buildings behind and beside it ----------
-    plane(1200, 1200, track(new THREE.MeshStandardMaterial({ color: grass, roughness: 1 })), center.x, -BASE_H, center.z);
+    // ---------- ground and building base ----------
+    plane(600, 600, track(new THREE.MeshStandardMaterial({ color: C.ground, roughness: 1 })), center.x, -BASE_H, center.z);
+    const grid = track(new THREE.GridHelper(400, 100, C.grid, C.grid));
+    grid.position.set(center.x, -BASE_H + 0.005, center.z);
+    scene.add(grid);
     const baseSide = mat(C.base);
     const base = add(boxGeo(layout.width + 2, BASE_H, layout.height + 2), [baseSide, baseSide, mat(C.corridor), baseSide, baseSide, baseSide], center.x, -BASE_H / 2, center.z);
     base.castShadow = false;
-    // the ring's inner edge keeps a 3-tile lawn around the building, in whole road tiles
-    const nx = Math.ceil((layout.width + 8) / TILE);
-    const nz = Math.ceil((layout.height + 8) / TILE);
-    const x0 = center.x - (nx * TILE) / 2;
-    const z0 = center.z - (nz * TILE) / 2;
-    const x1 = x0 + nx * TILE;
-    const z1 = z0 + nz * TILE;
-    // street models stand outside the sun's shadow box, where a shadow would be cut off: they cast none
-    const street = (name: string, x: number, z: number, rotY = 0, lift = 0) => {
-      const m = put(name, CITY, x, z, rotY, -BASE_H + lift);
-      m.traverse((o) => (o.castShadow = false));
-      return m;
-    };
-    for (let i = 0; i < nx; i++) {
-      const x = x0 + TILE / 2 + i * TILE;
-      street(i === Math.floor(nx / 2) ? "road_straight_crossing" : "road_straight", x, z0 - TILE / 2, Math.PI / 2);
-      street("road_straight", x, z1 + TILE / 2, Math.PI / 2);
-    }
-    for (let i = 0; i < nz; i++) {
-      const z = z0 + TILE / 2 + i * TILE;
-      street("road_straight", x0 - TILE / 2, z, 0);
-      street("road_straight", x1 + TILE / 2, z, 0);
-    }
-    street("road_corner", x0 - TILE / 2, z0 - TILE / 2, 0);
-    street("road_corner", x1 + TILE / 2, z0 - TILE / 2, -Math.PI / 2);
-    street("road_corner", x1 + TILE / 2, z1 + TILE / 2, Math.PI);
-    street("road_corner", x0 - TILE / 2, z1 + TILE / 2, Math.PI / 2);
-    // buildings face the road: a tall row behind, lower ones at the sides; nothing in front, where the camera is
-    const tall = ["building_C", "building_D", "building_G", "building_H", "building_E", "building_F"];
-    const low = ["building_A", "building_B", "building_E", "building_F"];
-    for (let i = -1; i <= nx; i++) street(pick(tall, i + 7), x0 + TILE / 2 + i * TILE, z0 - TILE * 1.5, 0);
-    for (let i = 0; i < nz; i++) {
-      const z = z0 + TILE / 2 + i * TILE;
-      street(pick(low, i), x0 - TILE * 1.5, z, Math.PI / 2);
-      street(pick(low, i + 2), x1 + TILE * 1.5, z, -Math.PI / 2);
-    }
-    // lawn: hedges and street lights along the ring, benches by the front door
-    for (let x = x0 + 2; x < x1 - 1; x += 3.2) {
-      street("bush", x, z0 + 1.2, 0);
-      street("bush", x, z1 - 1.2, 0);
-    }
-    for (let i = 0; i <= nx; i++) {
-      street("streetlight", x0 + i * TILE, z1 + 0.4, Math.PI);
-      street("streetlight", x0 + i * TILE, z0 - 0.4, 0);
-    }
-    street("bench", center.x - 3, z1 - 2.6, Math.PI);
-    street("bench", center.x + 3, z1 - 2.6, Math.PI);
-    street("firehydrant", x1 - 1.5, z1 - 1, 0);
-    // cars drive along the front and back roads (two lanes each, opposite ways), wrapping at the ends
-    const carNames = ["car_sedan", "car_taxi", "car_hatchback", "car_stationwagon"];
-    const roadFrom = x0 - TILE;
-    const roadLen = x1 - x0 + 2 * TILE;
-    const cars = [0, 1, 2, 3, 4, 5].map((i) => {
-      const dir = i % 2 ? -1 : 1;
-      const z = (i < 3 ? z1 + TILE / 2 : z0 - TILE / 2) + dir * 1.6;
-      const car = street(pick(carNames, i), 0, z, dir * (Math.PI / 2), 0.3);
-      return { car, dir, offset: (i * 0.37) % 1, speed: 2.2 + (i % 3) * 0.6 };
-    });
-    const moveCars = (t: number) => {
-      for (const c of cars) {
-        const u = (((c.offset + (reducedMotion ? 0 : ((t / 1000) * c.speed) / roadLen)) % 1) + 1) % 1;
-        c.car.position.x = roadFrom + (c.dir > 0 ? u : 1 - u) * roadLen;
-      }
-    };
 
     // ---------- walls: the far wall has windows; side walls are solid; the near edge is a low curb with a doorway ----------
     const wallX = (wx0: number, wx1: number, z: number, windows: boolean) => {
       const len = wx1 - wx0;
       const cx = (wx0 + wx1) / 2;
+      if (len <= 0) return;
       if (!windows || len < 3) return void box(len + WALL_T, WALL_H, WALL_T, C.wall, cx, WALL_H / 2, z);
       box(len + WALL_T, 0.45, WALL_T, C.wall, cx, 0.225, z);
       box(len + WALL_T, 0.2, WALL_T, C.wall, cx, WALL_H - 0.1, z);
@@ -295,7 +229,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       scene.add(glass);
     };
     const wallZ = (wz0: number, wz1: number, x: number) => box(WALL_T, WALL_H, wz1 - wz0 + WALL_T, C.wall, x, WALL_H / 2, (wz0 + wz1) / 2);
-    const curb = (cx0: number, cx1: number, z: number) => box(cx1 - cx0 + WALL_T, 0.22, WALL_T, C.wall, (cx0 + cx1) / 2, 0.11, z);
+    const curb = (cx0: number, cx1: number, z: number) => cx1 > cx0 && box(cx1 - cx0 + WALL_T, 0.22, WALL_T, C.wall, (cx0 + cx1) / 2, 0.11, z);
 
     // ---------- rooms ----------
     const floorLabel = (text: string, x: number, z: number) => {
@@ -351,7 +285,58 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       for (let i = 0; i < 4; i++) add(boxGeo(0.5, 0.05, 0.02), ledMat, r.rack.x - 0.1, 0.4 + i * 0.32, r.rack.y + 0.31);
     }
 
-    // desks: monitors whose screens glow with what the person is doing, keyboard, mouse, office chair
+    // ---------- reception: company sign on the back wall, a counter with a receptionist, a waiting corner ----------
+    const rc = layout.reception;
+    const rcx = rc.x + rc.w / 2;
+    plane(rc.w, rc.h, mat(C.lobby), rcx, 0.004, rc.y + rc.h / 2);
+    // back wall with a doorway towards the offices on each side of the sign; side walls; the street side is open glass
+    const signW = Math.min(6, rc.w * 0.45);
+    const doorL = rc.x + Math.max(1.5, rc.w * 0.18);
+    const doorR = rc.x + rc.w - Math.max(1.5, rc.w * 0.18);
+    wallX(rc.x, doorL - 0.9, rc.y, false);
+    wallX(doorL + 0.9, doorR - 0.9, rc.y, false);
+    wallX(doorR + 0.9, rc.x + rc.w, rc.y, false);
+    wallZ(rc.y, rc.y + rc.h, rc.x);
+    wallZ(rc.y, rc.y + rc.h, rc.x + rc.w);
+    curb(rc.x, rcx - 1.6, rc.y + rc.h);
+    curb(rcx + 1.6, rc.x + rc.w, rc.y + rc.h);
+    // the sign: a dark panel on the wall with the initials and the company name
+    const signH = 1.55;
+    box(signW, signH, 0.14, C.sign, rcx, signH / 2, rc.y + 0.15);
+    if (company) {
+      const signTex = canvasTexture(1024, 384, (ctx) => {
+        ctx.fillStyle = "#f1f0ec";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "900 190px system-ui, sans-serif";
+        ctx.fillText(mark, 512, 150, 980);
+        ctx.font = "700 64px system-ui, sans-serif";
+        ctx.fillText(company, 512, 310, 980);
+      });
+      sign(signTex, signW * 0.92, signW * 0.92 * (384 / 1024), rcx, signH * 0.6, rc.y + 0.23);
+    }
+    put("pottedPlant", 2.2, rcx - signW / 2 - 0.5, rc.y + 0.5);
+    put("pottedPlant", 2.2, rcx + signW / 2 + 0.5, rc.y + 0.5);
+    // counter of three bar sections, a screen and a plant on it, the receptionist behind
+    const counterTop = height("kitchenBar", K);
+    const barW = assets.size("kitchenBar").x * K;
+    for (const i of [-1, 0, 1]) put("kitchenBar", K, rc.desk.x + i * barW, rc.desk.y);
+    put("computerScreen", 1.6, rc.desk.x - 0.4, rc.desk.y - 0.1, Math.PI, counterTop);
+    put("plantSmall1", K, rc.desk.x + barW, rc.desk.y, 0, counterTop);
+    // the floor mat at the entrance
+    box(3, 0.02, 1.3, C.sign, rcx, 0.012, rc.y + rc.h - 0.9);
+    if (badgeLight) sign(badgeLight, 2.4, 1.2, rcx, 0.025, rc.y + rc.h - 0.9, -Math.PI / 2);
+    // waiting corners: a sofa and table on the left, armchairs and a lamp on the right
+    const side = Math.min(2.4, rc.w * 0.18);
+    put("rug_oval_A", KK, rc.x + side, rc.y + rc.h / 2 + 0.6, 0, 0.004);
+    put("couch_pillows", KK, rc.x + 0.75, rc.y + rc.h / 2 + 0.6, Math.PI / 2);
+    put("table_low", KK * 0.8, rc.x + side + 0.3, rc.y + rc.h / 2 + 0.6, Math.PI / 2);
+    put("armchair_pillows", KK, rc.x + rc.w - 0.8, rc.y + rc.h / 2, -Math.PI / 2);
+    put("armchair_pillows", KK, rc.x + rc.w - 0.8, rc.y + rc.h / 2 + 1.4, -Math.PI / 2);
+    put("lamp_standing", KK, rc.x + rc.w - 0.6, rc.y + rc.h - 0.6);
+    put("cactus_medium_A", KK, rc.x + 0.6, rc.y + rc.h - 0.6);
+
+    // desks: monitors whose screens glow with what the person is doing, keyboard, mouse, a planter, office chair
     const screens = new Map<string, THREE.MeshStandardMaterial>();
     const top = height("desk", K);
     for (const d of layout.desks) {
@@ -361,7 +346,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       const scr = track(new THREE.MeshStandardMaterial({ color: "#0d0d12", emissive: GLOW.idle[0], emissiveIntensity: GLOW.idle[1], roughness: 0.35 }));
       screens.set(d.employeeId, scr);
       for (const off of h % 3 === 0 ? [0] : [-0.34, 0.34]) {
-        const mon = put("computerScreen", 1.6, cx + off, d.y + 0.28, -off * 0.5, top);
+        const mon = put("computerScreen", 1.6, cx + off, d.y + 0.3, -off * 0.5, top);
         // the light face of the Kenney screen ("metal") becomes this desk's glowing screen
         mon.traverse((o) => {
           if (o instanceof THREE.Mesh && (o.material as THREE.Material).name === "metal") o.material = scr;
@@ -369,107 +354,53 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       }
       put("computerKeyboard", 2.2, cx, d.y + 0.72, 0, top);
       put("computerMouse", 2.2, cx + 0.48, d.y + 0.72, 0, top);
-      if (h % 4 === 0) put(pick(["plantSmall1", "plantSmall2", "plantSmall3"], h >>> 3), K, cx - 0.72, d.y + 0.4, 0, top);
-      put("chairDesk", K, d.seat.x, d.seat.y - SEAT_IN, Math.PI);
+      // a planter along the back edge, as in shared offices
+      box(1.7, 0.1, 0.16, C.planter, cx, top + 0.05, d.y + 0.08);
+      for (const [i, px] of [-0.6, 0, 0.6].entries()) put(pick(["plantSmall1", "plantSmall2", "plantSmall3"], (h >>> i) & 7), K * 0.9, cx + px, d.y + 0.08, 0, top + 0.06);
+      put("chairDesk", K, d.seat.x, d.seat.y - 0.3, Math.PI);
     }
 
     // ---------- characters ----------
+    const kit = createChibiKit();
     const pickables: THREE.Object3D[] = [];
-    const hitGeo = boxGeo(0.9, 1.5, 0.9);
+    const hitGeo = boxGeo(0.9, 1.7, 0.9);
     const hitMat = track(new THREE.MeshBasicMaterial({ visible: false }));
-    const bookGeo = boxGeo(0.3, 0.24, 0.06);
+    const badgeFor = (look: OfficeLook) => (light(SHIRT_COLORS[look.shirt] ?? "#000") ? badgeDark : badgeLight);
+    const receptionist = kit.build(RECEPTIONIST, { logo: badgeFor(RECEPTIONIST) });
+    receptionist.root.position.set(rc.desk.x + 0.3, 0, rc.desk.y - 0.9);
+    scene.add(receptionist.root);
+
     const avatars = new Map<string, Avatar>();
+    const removeAvatar = (id: string, a: Avatar) => {
+      scene.remove(a.c.root);
+      a.tag.remove();
+      for (let i = pickables.length - 1; i >= 0; i--) if (pickables[i]!.userData.id === id) pickables.splice(i, 1);
+      avatars.delete(id);
+    };
     const ensureAvatar = (p: OfficePerson, at: Point): Avatar => {
+      const look = resolveLook(p.id, p.look);
+      const lookKey = JSON.stringify(look);
       let a = avatars.get(p.id);
-      if (a) return a;
-      const h = stableHash(p.id);
-      const root = assets.place(pick(PEOPLE, h), KC);
-      scene.add(root);
+      if (a && a.lookKey === lookKey) return a;
+      // a changed look rebuilds the character where it stands
+      const from = a ? { pos: a.pos, heading: a.heading } : { pos: { ...at, walking: false }, heading: Math.PI };
+      if (a) removeAvatar(p.id, a);
+      const c = kit.build(look, { logo: badgeFor(look) });
+      scene.add(c.root);
       const hit = new THREE.Mesh(hitGeo, hitMat);
-      hit.position.y = 0.75;
+      hit.position.y = 0.65;
       hit.userData.id = p.id;
-      root.add(hit);
+      c.root.add(hit);
       pickables.push(hit);
-      const book = add(bookGeo, mat(pick(["#4f81bd", "#c0504d", "#9bbb59", "#8064a2"], h >>> 4)), 0, 0.62, 0.34, root);
-      book.rotation.x = -0.5;
-      book.visible = false;
-      const mixer = new THREE.AnimationMixer(root);
-      const actions = new Map(assets.clips.map((c) => [c.name, mixer.clipAction(c)]));
       const tag = document.createElement("div");
       tag.addEventListener("click", () => {
         const person = stateRef.current.people.current.get(p.id);
         if (person) selectRef.current(person);
       });
       overlay.appendChild(tag);
-      a = {
-        root,
-        mixer,
-        actions,
-        clip: "",
-        armL: root.getObjectByName("arm-left")!,
-        armR: root.getObjectByName("arm-right")!,
-        head: root.getObjectByName("head")!,
-        book,
-        pos: { ...at, walking: false },
-        heading: Math.PI,
-        phase: (h % 1000) / 160,
-        tag,
-        tagKey: "",
-        card: false,
-      };
+      a = { c, lookKey, ...from, phase: (stableHash(p.id) % 1000) / 160, tag, tagKey: "", card: false };
       avatars.set(p.id, a);
       return a;
-    };
-    const removeAvatar = (id: string, a: Avatar) => {
-      a.mixer.stopAllAction();
-      a.mixer.uncacheRoot(a.root);
-      scene.remove(a.root);
-      a.root.traverse((o) => {
-        if (o instanceof THREE.SkinnedMesh) o.skeleton.dispose();
-      });
-      a.tag.remove();
-      for (let i = pickables.length - 1; i >= 0; i--) if (pickables[i]!.userData.id === id) pickables.splice(i, 1);
-      avatars.delete(id);
-    };
-
-    /** play the pose's clip (cross-faded), then add the small arm and head movements the clips don't have */
-    const pose = (a: Avatar, kind: Pose | "walk", t: number, dt: number) => {
-      const clip = CLIP[kind];
-      if (clip !== a.clip) {
-        const next = a.actions.get(clip)!;
-        const prev = a.clip ? a.actions.get(a.clip) : undefined;
-        next.reset().play();
-        if (prev && !reducedMotion) next.crossFadeFrom(prev, 0.25, false);
-        else prev?.stop();
-        a.clip = clip;
-      }
-      a.mixer.update(reducedMotion ? 0 : dt / 1000);
-      const ph = t / 1000 + a.phase;
-      const k = reducedMotion ? 0 : 1;
-      switch (kind) {
-        case "type":
-          a.armL.rotation.x += -1.2 + Math.sin(ph * 22) * 0.08 * k;
-          a.armR.rotation.x += -1.2 + Math.sin(ph * 22 + 1.7) * 0.08 * k;
-          a.head.rotation.x += 0.1;
-          break;
-        case "sit":
-          a.armL.rotation.x += -0.5;
-          a.armR.rotation.x += -0.5;
-          a.head.rotation.y += Math.sin(ph * 0.6) * 0.35 * k;
-          break;
-        case "chat":
-          a.armR.rotation.x += -0.9 + Math.sin(ph * 3) * 0.3 * k;
-          a.head.rotation.y += Math.sin(ph * 0.9) * 0.5 * k;
-          break;
-        case "sleep":
-          a.head.rotation.x += 0.45;
-          break;
-        case "stand":
-          // waiting for approval beside the chair: a raised, waving arm
-          a.armR.rotation.x += -2.6 + Math.sin(ph * 8) * 0.3 * k;
-          break;
-      }
-      a.book.visible = kind === "read";
     };
 
     // ---------- task cards above people (DOM; all text goes through textContent) ----------
@@ -570,7 +501,8 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       const w = el.clientWidth;
       const h = renderer.domElement.clientHeight;
       for (const a of avatars.values()) {
-        proj.set(a.root.position.x, a.root.position.y + TAG_Y, a.root.position.z);
+        const r = a.c.root;
+        proj.set(r.position.x, r.position.y + TAG_Y, r.position.z);
         const dist = camera.position.distanceTo(proj);
         proj.project(camera);
         if (proj.z > 1 || Math.abs(proj.x) > 1.2 || proj.y < -1.2 || proj.y > 1.3) {
@@ -601,14 +533,13 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
         a.pos = { ...m.pos, walking: !m.arrived };
         const goal = a.pos.walking && Math.hypot(dx, dz) > 1e-4 ? Math.atan2(dx, dz) : FACING[anim.spot];
         a.heading += Math.atan2(Math.sin(goal - a.heading), Math.cos(goal - a.heading)) * (reducedMotion ? 1 : Math.min(1, dt / 100));
-        a.root.rotation.y = a.heading;
-        const seated = !a.pos.walking && SEATED.includes(anim.pose);
+        const root = a.c.root;
+        root.rotation.y = a.heading;
         // someone waiting for approval stands beside their chair, waving
-        const standOff = !a.pos.walking && anim.pose === "stand" && anim.spot === "desk" ? 0.7 : 0;
-        a.root.position.x = a.pos.x + standOff;
-        a.root.position.z = a.pos.y + (seated ? (anim.spot === "desk" ? 0.1 - SEAT_IN : -0.05) : a.pos.walking ? 0 : 0.15);
-        a.root.position.y = seated ? SIT_Y : 0;
-        pose(a, a.pos.walking ? "walk" : anim.pose, t, dt);
+        const standOff = !a.pos.walking && anim.pose === "stand" && anim.spot === "desk" ? 0.6 : 0;
+        root.position.x = a.pos.x + standOff;
+        root.position.z = a.pos.y + (a.pos.walking ? 0 : SEATED.includes(anim.pose) ? (anim.spot === "desk" ? -0.25 : -0.05) : 0.15);
+        poseChibi(a.c, a.pos.walking ? "walk" : anim.pose, t, a.phase, reducedMotion);
         const scr = screens.get(p.id);
         if (scr) {
           scr.emissive.set(GLOW[act][0]);
@@ -618,7 +549,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
         renderTag(a, p, act, desk ? s.roomLabel(desk.room) : "");
       }
       for (const [id, a] of avatars) if (!people.has(id)) removeAvatar(id, a);
-      moveCars(t);
+      poseChibi(receptionist, "idle", t, 0, reducedMotion);
       ledMat.emissiveIntensity = reducedMotion ? 1 : 0.6 + Math.abs(Math.sin(t / 400)) * 0.8;
       controls.update();
       renderer.render(scene, camera);
@@ -724,13 +655,14 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       dom.removeEventListener("dblclick", onDblClick);
       for (const [id, a] of avatars) removeAvatar(id, a);
       controls.dispose();
+      kit.dispose();
       disposables.forEach((d) => d.dispose());
       renderer.dispose();
       dom.remove();
       overlay.remove();
     };
-    // the scene is rebuilt when the layout changes; live state is read through refs
-  }, [layout, reducedMotion, assets]);
+    // the scene is rebuilt when the layout or the company name changes; live state is read through refs
+  }, [layout, workspaceName, reducedMotion, assets]);
 
   useEffect(() => rerender.current(), [state.version]);
 

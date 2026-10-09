@@ -200,5 +200,53 @@
     "help": "The employee follows this department's SOP (and can use its subagents in Workspace mode).",
     "none": "None",
     "saved": "Department saved"
+  },
+  "look": {
+    "label": "Office character",
+    "help": "How this employee looks in the office. Changes show up live.",
+    "auto": "Automatic",
+    "saved": "Character saved",
+    "save": "Save character",
+    "random": "Shuffle",
+    "reset": "Back to automatic",
+    "adminOnly": "Only an Owner or Admin can change the character.",
+    "preview": "Character preview",
+    "skin": "Skin",
+    "hair": "Hair",
+    "hairColor": "Hair colour",
+    "beard": "Beard",
+    "glasses": "Glasses",
+    "hat": "Headwear",
+    "shirt": "Shirt",
+    "logo": "Company logo on the shirt",
+    "hairStyles": {
+      "short": "Short",
+      "spiky": "Spiky",
+      "side": "Side part",
+      "bob": "Bob",
+      "long": "Long",
+      "bun": "Bun",
+      "tail": "Ponytail",
+      "afro": "Afro",
+      "bald": "Bald"
+    },
+    "beards": {
+      "none": "None",
+      "stubble": "Stubble",
+      "moustache": "Moustache",
+      "full": "Full beard"
+    },
+    "glassesTypes": {
+      "none": "None",
+      "round": "Round",
+      "square": "Square",
+      "sun": "Sunglasses"
+    },
+    "hats": {
+      "none": "None",
+      "cap": "Cap",
+      "beanie": "Beanie",
+      "headphones": "Headphones"
+    }
   }
 }

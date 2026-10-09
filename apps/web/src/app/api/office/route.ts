@@ -1,17 +1,17 @@
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
-import { db, employees, steps, tasks, teamMembers, teams, workspaceDepartments } from "@wfos/db";
+import { db, employees, steps, tasks, teamMembers, teams, workspaceDepartments, workspaces } from "@wfos/db";
 import { route } from "@/lib/server/route";
 import { currentLocale } from "@/i18n/locale";
 
 /**
- * Live office snapshot: employees with their rooms (teams/departments), the task each is on and the last step of
+ * Live office snapshot: the workspace name (the sign at reception), employees with their rooms (teams/departments), the task each is on and the last step of
  * that task. The page keeps it live from SSE (`step.created`, `task.updated`, `employee.updated`). Titles only:
  * no step input/output leaves the server here.
  */
 export const GET = route("VIEWER", async ({ session }) => {
   const ws = session.workspaceId;
   const emps = await db
-    .select({ id: employees.id, name: employees.name, avatar: employees.avatar, role: employees.role, department: employees.department, status: employees.status })
+    .select({ id: employees.id, name: employees.name, avatar: employees.avatar, look: employees.look, role: employees.role, department: employees.department, status: employees.status })
     .from(employees)
     .where(and(eq(employees.workspaceId, ws), ne(employees.status, "ARCHIVED")));
   const ids = emps.map((e) => e.id);
@@ -42,7 +42,9 @@ export const GET = route("VIEWER", async ({ session }) => {
     : [];
   const locale = await currentLocale();
   const depts = await workspaceDepartments(ws);
+  const [workspace] = await db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.id, ws));
   return {
+    workspace: { name: workspace?.name ?? "" },
     departments: Object.fromEntries(depts.map((d) => [d.key, d.name[locale] ?? d.name.en])),
     employees: emps.map((e) => {
       const t = taskOf.get(e.id);
