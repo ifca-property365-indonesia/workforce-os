@@ -48,7 +48,7 @@ Check a credential end to end:
 
 **Step by step from a fresh VPS, including backups, upgrades and key rotation: [docs/DEPLOY.md](docs/DEPLOY.md).**
 
-Requires Ubuntu 24.04, Node 24, pnpm 10, PostgreSQL 16 with `postgresql-16-pgvector`, Redis 7 (set `maxmemory-policy noeviction`), and Nginx.
+Requires Ubuntu 24.04 or 26.04, Node 24, pnpm 10, PostgreSQL with pgvector (16 on 24.04, 18 on 26.04), Redis 7 (set `maxmemory-policy noeviction`), and Nginx.
 
 ```bash
 cp .env.example .env              # fill DATABASE_URL, ENCRYPTION_KEY, AUTH_SECRET, APP_URL, Claude credential

@@ -4,7 +4,7 @@ Fresh Ubuntu 24.04 or 26.04 VPS → running HTTPS instance. The native install (
 where **Workspace mode** (Claude Code in a per-task sandbox) is available. Docker Compose is the alternative at the
 end.
 
-**You need:** a VPS running Ubuntu 24.04 with root access; 2 GB RAM minimum (4 GB recommended if employees use
+**You need:** a VPS running Ubuntu 24.04 or 26.04 with root access; 2 GB RAM minimum (4 GB recommended if employees use
 Workspace mode, or to build without swap); a domain with an A record pointing to the server; an email address for
 Let's Encrypt.
 

@@ -55,13 +55,15 @@ They need the fresh-VM check in the definition of done.
 
 ## For the owner
 
+- *Update 2026-10-09: production has moved to a fresh Ubuntu 26.04 VPS (workforce-os.property365.co.id) with all 12
+  migrations; the notes below describe the old host.*
 - Production is on commit `c26afb6` with 3 of 12 migrations. Review, then run `deploy/backup.sh`, then
   `pnpm db:migrate` (0003–0011), then build and reload, or use `deploy/upgrade.sh` once `upgrade/v2` is merged into the
   branch production tracks.
 - Recommended, from the Phase 0 findings on this host:
-  - set a Redis password (`REDIS_URL` + `requirepass`). **Still open** as of 2026-10-09;
-  - ~~make Postgres listen on localhost only, or enable the firewall~~: done (ufw active, Postgres on localhost only,
-    checked 2026-10-09).
+  - set a Redis password (`REDIS_URL` + `requirepass`). **Still open on the new VPS** as of 2026-10-09;
+  - make Postgres listen on localhost only, or enable the firewall: done on the new VPS (ufw active, Postgres on
+    localhost only).
   `setup-ubuntu.sh` does both on a fresh server. On this host, run the steps by hand after reading them: it also
   serves other apps.
 - On this 2 GB host, building needs swap or `deploy/upgrade.sh --stop-web-for-build` (a short downtime).

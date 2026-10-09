@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Workforce OS — idempotent setup for a fresh Ubuntu 24.04 server (run as root from the checkout; re-run safely).
+# Workforce OS — idempotent setup for a fresh Ubuntu 24.04 or 26.04 server (run as root from the checkout; re-run safely).
 #
 #   deploy/setup-ubuntu.sh [--domain ai.example.com --email you@example.com] [--no-firewall]
 #   deploy/setup-ubuntu.sh --toolchain        only the Workspace-mode toolchain
 #
 # What it does (each step skips what is already in place):
-#   - Node.js 24, pnpm (corepack), PM2; PostgreSQL 16 + pgvector; Redis 7 with maxmemory-policy noeviction
+#   - Node.js 24, pnpm (corepack), PM2; PostgreSQL (16 on 24.04, 18 on 26.04) + pgvector; Redis 7 with maxmemory-policy noeviction
 #   - if .env exists: creates the database role/database from DATABASE_URL (local only) with the vector and pgcrypto
 #     extensions, and sets the Redis password from REDIS_URL (requirepass) when it has one
 #   - firewall (ufw): allow SSH (detected port), 80 and 443; deny the rest incoming. Skip with --no-firewall.
@@ -18,7 +18,7 @@ set -euo pipefail
 
 [ "$(id -u)" = 0 ] || { echo "run as root" >&2; exit 1; }
 . /etc/os-release
-[ "${ID:-}" = ubuntu ] || echo "warning: tested for Ubuntu 24.04 only (found ${PRETTY_NAME:-unknown})" >&2
+[ "${ID:-}" = ubuntu ] || echo "warning: tested for Ubuntu 24.04 and 26.04 only (found ${PRETTY_NAME:-unknown})" >&2
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 ONLY_TOOLCHAIN=0 FIREWALL=1 DOMAIN="" EMAIL=""
