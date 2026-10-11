@@ -48,6 +48,7 @@
     },
     "status": {
       "dispatched": "dijalankan",
+      "done": "selesai",
       "failed": "gagal"
     }
   }

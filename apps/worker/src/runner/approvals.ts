@@ -7,8 +7,8 @@ import { embedOne } from "../lib/embeddings";
 import { log } from "../lib/logger";
 import { executeAction } from "../tools/actions";
 import { TOOL_BY_NAME } from "@wfos/shared";
-import { notifyFinished } from "./task";
-import { onChildFinished } from "../orchestration/team";
+import { afterTerminal, failTask } from "./task-status";
+import { errorMessage } from "../lib/errors";
 import { sql } from "drizzle-orm";
 
 /** Execute an APPROVED action with the exact (possibly edited) payload. Idempotent per approval. */
@@ -36,7 +36,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
     try {
       result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId });
     } catch (e) {
-      result = { ok: false, summary: (e as Error).message };
+      result = { ok: false, summary: errorMessage(e) };
     }
   }
   const status = result.ok ? "EXECUTED" : "FAILED";
@@ -92,7 +92,13 @@ export async function handleRejection(approvalId: string): Promise<void> {
   if (a.taskId) await afterApprovalResolved(a.taskId);
 }
 
-/** When the last pending approval of a task is resolved: revise (if rejected with feedback) or close. */
+/**
+ * When the last pending approval of a task is resolved: revise (if rejected with feedback) or close.
+ * Idempotent: it only acts on an AWAITING_APPROVAL task (row-locked) with no open approval, and the
+ * outcome moves the task out of AWAITING_APPROVAL in the same transaction (revise / DONE) or right
+ * after it through failTask (conditional on AWAITING_APPROVAL). So calling it again, concurrently,
+ * or from the reaper for a task whose resolver died, is harmless.
+ */
 export async function afterApprovalResolved(taskId: string): Promise<void> {
   // Row lock so concurrent approval jobs cannot both resolve the same task.
   const outcome = await db.transaction(async (tx) => {
@@ -132,13 +138,10 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
       .map((x) => `- ${x.title}: ${x.status}${(x.executionResult as { summary?: string } | null)?.summary ? ` — ${(x.executionResult as { summary?: string }).summary}` : ""}`)
       .join("\n");
     const result = `${task.result ?? ""}\n\nApproval outcomes:\n${summary}`.trim();
-    const failed = all.some((x) => x.status === "FAILED");
-    const status = failed ? ("FAILED" as const) : ("DONE" as const);
-    await tx
-      .update(tasks)
-      .set({ status, result, completedAt: new Date(), error: failed ? "One or more approved actions failed to execute." : null })
-      .where(eq(tasks.id, task.id));
-    return { kind: "close" as const, task, status, result };
+    // a failure is written after commit by failTask (conditional on AWAITING_APPROVAL, so a concurrent resolver is a no-op)
+    if (all.some((x) => x.status === "FAILED")) return { kind: "fail" as const, task, result };
+    const [done] = await tx.update(tasks).set({ status: "DONE", result, completedAt: new Date(), error: null }).where(eq(tasks.id, task.id)).returning();
+    return { kind: "close" as const, task: done! };
   });
   if (!outcome) return;
   const { task } = outcome;
@@ -147,7 +150,9 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
     await enqueueTask(task.id, task.workspaceId, `${outcome.note}\nContinue the task: revise and propose again where appropriate.`);
     return;
   }
-  await publish(task.workspaceId, { type: "task.updated", taskId: task.id, status: outcome.status, employeeId: task.assigneeId, title: task.title });
-  await notifyFinished(task, outcome.status, outcome.result);
-  if (task.parentTaskId) await onChildFinished(task.workspaceId, task.parentTaskId);
+  if (outcome.kind === "fail") {
+    await failTask(task, "One or more approved actions failed to execute.", { kind: "approval_failed", result: outcome.result, onlyIfStatus: ["AWAITING_APPROVAL"] });
+    return;
+  }
+  await afterTerminal(task, "DONE");
 }

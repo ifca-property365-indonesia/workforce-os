@@ -8,6 +8,7 @@ import {
   approvals,
   chunks,
   clients,
+  createTask,
   db,
   documents,
   employees,
@@ -15,7 +16,9 @@ import {
   projects,
   tasks,
   teamMembers,
+  TaskInputError,
   type Deliverable,
+  type TaskRow,
 } from "@wfos/db";
 import {
   TOOL_BY_NAME,
@@ -554,23 +557,25 @@ export function buildTools(ctx: RunContext) {
       "Create a task on the task board for yourself or another employee (by id).",
       { title: z.string().min(1).max(200), brief: z.string().min(1), assigneeId: z.string().uuid().optional(), clientId: z.string().uuid().optional(), start: z.boolean().optional() },
       wrap(ctx, "create_task", async (a: { title: string; brief: string; assigneeId?: string; clientId?: string; start?: boolean }) => {
-        const [t] = await db
-          .insert(tasks)
-          .values({
+        let t: TaskRow;
+        try {
+          t = await createTask(db, {
             workspaceId: ctx.workspaceId,
             title: a.title,
             brief: a.brief,
             assigneeId: a.assigneeId ?? ctx.employee.id,
             clientId: a.clientId ?? null,
             source: ctx.conversationId ? "chat" : "board",
-            status: "QUEUED",
             dryRun: ctx.dryRun,
             phase: a.start === false ? "hold" : null,
-          })
-          .returning();
-        ctx.createdTaskIds.push(t!.id);
-        await publish(ctx.workspaceId, { type: "task.created", taskId: t!.id, title: t!.title, employeeId: t!.assigneeId });
-        return ok(`Task created (id ${t!.id}). It will appear on the board${a.start === false ? " (not started)" : " and start shortly"}.`);
+          });
+        } catch (e) {
+          if (e instanceof TaskInputError) return err(`${e.message}. Use ids from this workspace.`);
+          throw e;
+        }
+        ctx.createdTaskIds.push(t.id);
+        await publish(ctx.workspaceId, { type: "task.created", taskId: t.id, title: t.title, employeeId: t.assigneeId });
+        return ok(`Task created (id ${t.id}). It will appear on the board${a.start === false ? " (not started)" : " and start shortly"}.`);
       }),
     ),
   );
@@ -585,9 +590,9 @@ export function buildTools(ctx: RunContext) {
         if (!ctx.team || ctx.team.role !== "lead" || ctx.team.phase !== "plan") return err("delegate_subtask is only available to a team lead while planning.");
         if (!ctx.team.memberIds.includes(a.assigneeId)) return err("Assignee is not a member of this team.");
         const [parent] = ctx.taskId ? await db.select().from(tasks).where(eq(tasks.id, ctx.taskId)) : [];
-        const [t] = await db
-          .insert(tasks)
-          .values({
+        let t: TaskRow;
+        try {
+          t = await createTask(db, {
             workspaceId: ctx.workspaceId,
             title: a.title,
             brief: a.acceptanceCriteria ? `${a.brief}\n\nAcceptance criteria:\n${a.acceptanceCriteria}` : a.brief,
@@ -597,21 +602,25 @@ export function buildTools(ctx: RunContext) {
             clientId: parent?.clientId ?? null,
             projectId: parent?.projectId ?? null,
             source: "team",
-            status: "QUEUED",
             dryRun: ctx.dryRun,
-          })
-          .returning();
-        ctx.delegatedTaskIds.push(t!.id);
+            // the lead is running this; a Lead change mid-run must not drop the subtask
+            requireTeamLead: false,
+          });
+        } catch (e) {
+          if (e instanceof TaskInputError) return err(`${e.message}. Use ids from this workspace.`);
+          throw e;
+        }
+        ctx.delegatedTaskIds.push(t.id);
         await db.insert(agentMessages).values({
           workspaceId: ctx.workspaceId,
-          taskId: t!.id,
+          taskId: t.id,
           fromEmployeeId: ctx.employee.id,
           toEmployeeId: a.assigneeId,
           intent: "request",
           content: `New subtask: ${a.title}`,
         });
-        await publish(ctx.workspaceId, { type: "task.created", taskId: t!.id, parentTaskId: ctx.taskId, title: t!.title, employeeId: a.assigneeId });
-        return ok(`Subtask "${a.title}" delegated (id ${t!.id}).`);
+        await publish(ctx.workspaceId, { type: "task.created", taskId: t.id, parentTaskId: ctx.taskId, title: t.title, employeeId: a.assigneeId });
+        return ok(`Subtask "${a.title}" delegated (id ${t.id}).`);
       }),
     ),
   );

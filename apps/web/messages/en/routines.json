@@ -48,6 +48,7 @@
     },
     "status": {
       "dispatched": "dispatched",
+      "done": "done",
       "failed": "failed"
     }
   }

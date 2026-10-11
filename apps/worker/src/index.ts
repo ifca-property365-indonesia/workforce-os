@@ -1,10 +1,11 @@
 import "./lib/env";
 import { DelayedError, Worker, type Job } from "bullmq";
 import { eq } from "drizzle-orm";
-import { conversations, db, getSql, routines, tasks, teams } from "@wfos/db";
+import { conversations, db, getSql, tasks, teams } from "@wfos/db";
 import { QUEUE_ACTIONS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
 import { env, instanceCredentialSummary } from "./lib/env";
 import { log } from "./lib/logger";
+import { errorMessage } from "./lib/errors";
 import { connection, CONTROL_CHANNEL, newRedis, prefix, redis, type ControlMessage } from "./lib/redis";
 import { runTask } from "./runner/task";
 import { runChat } from "./runner/chat";
@@ -13,40 +14,17 @@ import { ingestDocument } from "./lib/ingest";
 import { notify } from "./lib/notify";
 import { runReplay } from "./simulation/replay";
 import { runDemoLifecycle } from "./simulation/demo";
-import { backfillMemoryEmbeddings, dispatchRoutine, tickRoutines } from "./scheduler/routines";
+import { backfillMemoryEmbeddings, runRoutineJob, tickRoutines } from "./scheduler/routines";
 import { abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
+import { acquireEmployeeLease, releaseEmployeeLease } from "./guards/lease";
+import { handleRunJobFailed } from "./runner/task-status";
+import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
 import { collectWorkspaces } from "./runner/workspace/gc";
 import { telegramDailySummary } from "./lib/telegram";
 import { writeHeartbeat } from "./lib/heartbeat";
 import { HEARTBEAT_EVERY_MS } from "@wfos/shared/ops";
 
-// ---------------------------------------------------------------------------
-// Per-employee concurrency: a lease set in Redis (stale leases expire after 30 min).
-// ---------------------------------------------------------------------------
-const LEASE_TTL_MS = 30 * 60 * 1000;
-
-async function acquireEmployeeLease(employeeId: string, leaseId: string): Promise<boolean> {
-  const key = `wfos:emp-lease:${employeeId}`;
-  const now = Date.now();
-  const res = await redis
-    .multi()
-    .zremrangebyscore(key, 0, now - LEASE_TTL_MS)
-    .zadd(key, now, leaseId)
-    .zcard(key)
-    .pexpire(key, LEASE_TTL_MS)
-    .exec();
-  const count = Number(res?.[2]?.[1] ?? 0);
-  if (count > env.perEmployeeConcurrency) {
-    await redis.zrem(key, leaseId);
-    return false;
-  }
-  return true;
-}
-
-async function releaseEmployeeLease(employeeId: string, leaseId: string): Promise<void> {
-  await redis.zrem(`wfos:emp-lease:${employeeId}`, leaseId);
-}
-
+// Per-employee concurrency: a Redis lease set per employee (./guards/lease), one member per job.
 async function employeeForRun(data: RunJob): Promise<string | null> {
   if (data.kind === "task") {
     const [t] = await db.select({ assigneeId: tasks.assigneeId, teamId: tasks.teamId, parentTaskId: tasks.parentTaskId }).from(tasks).where(eq(tasks.id, data.taskId));
@@ -69,7 +47,7 @@ async function employeeForRun(data: RunJob): Promise<string | null> {
 async function processRun(job: Job<RunJob>, token?: string): Promise<void> {
   const employeeId = await employeeForRun(job.data);
   const leaseId = `${job.id}`;
-  if (employeeId && !(await acquireEmployeeLease(employeeId, leaseId))) {
+  if (employeeId && !(await acquireEmployeeLease(employeeId, leaseId, env.perEmployeeConcurrency))) {
     await job.moveToDelayed(Date.now() + 4000, token);
     throw new DelayedError();
   }
@@ -104,11 +82,9 @@ const workers = [
           return runReplay(d.replayId);
         case "demo":
           return runDemoLifecycle(d.workspaceId, d.userId);
-        case "routine_run": {
-          const [r] = await db.select().from(routines).where(eq(routines.id, d.routineId));
-          if (r) await dispatchRoutine(r, "manual", d.userId);
+        case "routine_run":
+          await runRoutineJob(d.routineId, d.userId);
           return;
-        }
       }
     },
     { connection, prefix, concurrency: 2, lockDuration: 10 * 60 * 1000 },
@@ -116,23 +92,20 @@ const workers = [
 ];
 
 for (const w of workers) {
-  w.on("failed", (job, err) => log.error({ queue: w.name, jobId: job?.id, err: err.message }, "job failed"));
-  w.on("error", (err) => log.error({ queue: w.name, err: err.message }, "worker error"));
+  w.on("failed", (job, err) => log.error({ queue: w.name, jobId: job?.id, err: errorMessage(err) }, "job failed"));
+  w.on("error", (err) => log.error({ queue: w.name, err: errorMessage(err) }, "worker error"));
 }
 
-// Mark agent runs whose job exhausted / stalled as failed rather than leaving them RUNNING.
-workers[0]!.on("failed", async (job) => {
-  if (job?.data.kind === "task" && job.attemptsMade >= (job.opts.attempts ?? 1)) {
-    const [t] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, job.data.taskId));
-    if (t?.status === "RUNNING") await db.update(tasks).set({ status: "FAILED", error: `Worker error: ${job.failedReason}` }).where(eq(tasks.id, job.data.taskId));
-  }
+// Mark agent runs whose job exhausted / stalled as failed rather than leaving them RUNNING (chat: close the turn).
+workers[0]!.on("failed", (job) => {
+  if (job) void handleRunJobFailed(job as Job<RunJob>).catch((e) => log.error({ err: e, jobId: job.id }, "failing the task of a failed job failed"));
 });
 
 // ---------------------------------------------------------------------------
 // Kill switch / cancellation: control channel aborts in-flight runs immediately.
 // ---------------------------------------------------------------------------
 const sub = newRedis();
-void sub.subscribe(CONTROL_CHANNEL);
+sub.subscribe(CONTROL_CHANNEL).catch((e: unknown) => log.error({ err: e }, "control channel subscribe failed"));
 sub.on("message", (_ch, raw) => {
   try {
     const msg = JSON.parse(raw) as ControlMessage;
@@ -144,7 +117,7 @@ sub.on("message", (_ch, raw) => {
 });
 
 // ---------------------------------------------------------------------------
-// Scheduler: routines every 30s; memory embedding backfill every 2 min.
+// Scheduler: routines every 30s; memory embedding backfill every 2 min; orphan reaper every 5 min.
 // ---------------------------------------------------------------------------
 let ticking = false;
 const schedTimer = setInterval(async () => {
@@ -158,6 +131,22 @@ const schedTimer = setInterval(async () => {
     ticking = false;
   }
 }, 30_000);
+// Stale RUNNING tasks (crashed / restarted worker, a run that threw) → FAILED; settles routine runs.
+// Assumes one worker process; with more, the reaper's age gate + lease/queue probes keep live runs safe.
+let reaping = false;
+const reap = async () => {
+  if (reaping) return;
+  reaping = true;
+  try {
+    await reapOrphanedTasks();
+  } catch (e) {
+    log.error({ err: e }, "orphan reaper failed");
+  } finally {
+    reaping = false;
+  }
+};
+const reapTimer = setInterval(() => void reap(), REAP_EVERY_MS);
+void reap(); // at startup the run registry is empty; only rows older than the orphan age are touched
 // Workspace mode: remove task workspaces after WORKSPACE_RETENTION_DAYS (deliverables stay)
 const gcTimer = setInterval(() => void collectWorkspaces().then((n) => n && log.info({ n }, "workspaces collected")).catch((e) => log.warn({ err: e }, "workspace gc failed")), 3_600_000);
 // health: /api/health treats a missing or old heartbeat as "worker down"
@@ -176,6 +165,7 @@ log.info(
 async function shutdown(sig: string) {
   log.info({ sig, active: activeRunCount() }, "shutting down");
   clearInterval(schedTimer);
+  clearInterval(reapTimer);
   clearInterval(backfillTimer);
   clearInterval(gcTimer);
   clearInterval(summaryTimer);
@@ -186,5 +176,10 @@ async function shutdown(sig: string) {
   await getSql().end({ timeout: 5 });
   process.exit(0);
 }
-process.on("SIGINT", () => void shutdown("SIGINT"));
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
+const onSignal = (sig: string) => () =>
+  void shutdown(sig).catch((e: unknown) => {
+    log.error({ err: e, sig }, "shutdown failed");
+    process.exit(1);
+  });
+process.on("SIGINT", onSignal("SIGINT"));
+process.on("SIGTERM", onSignal("SIGTERM"));

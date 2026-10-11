@@ -6,6 +6,8 @@ import { log } from "../lib/logger";
 interface ActiveRun {
   workspaceId: string;
   taskId: string | null;
+  /** chat runs: the conversation being answered */
+  conversationId?: string | null;
   employeeId: string;
   controller: AbortController;
 }
@@ -19,6 +21,16 @@ export function unregisterRun(runId: string): void {
 }
 export function activeRunCount(): number {
   return active.size;
+}
+/** True while this process has an agent run registered for the task (the registry is per process). */
+export function isTaskRunActive(taskId: string): boolean {
+  for (const [, r] of active) if (r.taskId === taskId) return true;
+  return false;
+}
+
+/** Conversations this process is answering right now (chat runs in the registry). */
+export function activeConversationIds(): string[] {
+  return [...new Set([...active.values()].map((r) => r.conversationId).filter((c): c is string => !!c))];
 }
 
 export function abortWorkspace(workspaceId: string, reason: string): number {

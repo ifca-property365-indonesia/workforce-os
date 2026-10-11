@@ -34,16 +34,40 @@ describe("classifyTool", () => {
     expect(classifyTool("get_or_create_user")).toBe("irreversible");
   });
 
-  it.each(["frobnicate", "mcp__weird__do_the_thing", "mcp__srv__", "", "mcp__", "Bash", "WebFetch", "x"])(
+  it.each(["frobnicate", "mcp__weird__do_the_thing", "mcp__srv__", "", "mcp__", "Bash", "TodoWrite", "x", "mcp__x__LISTALL", "mcp__x__listingsSync"])(
     "unknown name %j fails closed",
     (name) => {
       expect(classifyTool(name)).toBe("irreversible");
     },
   );
 
-  it("does not trust camelCase/compound tricks to look reversible", () => {
-    // tokens are split on non-letters only; "listAll" is one token and not a known read verb
-    expect(classifyTool("mcp__x__listAll")).toBe("irreversible");
+  it.each([
+    // camelCase / PascalCase / acronym boundaries are word boundaries
+    ["mcp__crm__listContacts", "reversible"],
+    ["mcp__crm__ListContacts", "reversible"],
+    ["mcp__x__listAll", "reversible"],
+    ["mcp__http__getHTTPResponse", "reversible"],
+    ["mcp__http__HTTPGetResponse", "reversible"],
+    ["mcp__x__fetchURLs2Json", "reversible"],
+    ["mcp__crm__searchCRMRecords", "reversible"],
+    ["mcp__gmail__sendEmail", "irreversible"],
+    ["mcp__gmail__SendEmail", "irreversible"],
+    ["mcp__crm__deleteContact", "irreversible"],
+    ["mcp__crm__getOrCreateContact", "irreversible"],
+    ["mcp__crm__listAndDeleteContacts", "irreversible"],
+    ["mcp__x__POSTData", "irreversible"],
+    ["mcp__x__readThenUpdateRow", "irreversible"],
+    // snake_case unchanged
+    ["send_email", "irreversible"],
+    ["mcp__crm__list_contacts", "reversible"],
+    ["mcp__crm__get_HTTP_response", "reversible"],
+  ] as const)("splits camelCase before classifying %s → %s", (name, cls) => {
+    expect(classifyTool(name)).toBe(cls);
+  });
+
+  it("a verb glued inside a longer lowercase word is not a verb", () => {
+    expect(classifyTool("mcp__x__listall")).toBe("irreversible");
+    expect(classifyTool("mcp__x__getaway")).toBe("irreversible");
   });
 
   it("overrides win by full name and by bare name", () => {

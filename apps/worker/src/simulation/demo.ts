@@ -6,7 +6,6 @@ import { TEMPLATE_BY_KEY } from "@wfos/templates";
 import { publish, miscQueue } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { setTaskStatus } from "../runner/task";
-import { onChildFinished } from "../orchestration/team";
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 type Task = typeof tasks.$inferSelect;
@@ -39,7 +38,7 @@ async function addDeliverable(taskId: string, d: Omit<Deliverable, "id" | "creat
 
 /** Any task that runs while Demo Mode is on (or a demo task) gets a scripted, zero-cost execution. */
 export async function scriptedTaskRun(task: Task, emp: Employee): Promise<void> {
-  await setTaskStatus(task, "RUNNING", { error: null });
+  if (!(await setTaskStatus(task, "RUNNING", { error: null }))) return; // changed meanwhile (cancelled, taken by another job)
   const running = { ...task, status: "RUNNING" as const };
   await fakeLlm(task.workspaceId, task.id, emp.id, "demo_script", 1850, 420);
   if (task.source === "demo" && task.phase === "review") {
@@ -56,8 +55,7 @@ export async function scriptedTaskRun(task: Task, emp: Employee): Promise<void> 
   }
   await addDeliverable(task.id, { kind: "summary", title: `Demo output: ${task.title}`, content: `Scripted demo output for "${task.title}". No tokens were used.` });
   await pause(600);
-  await setTaskStatus(running, "DONE", { result: "Demo mode: scripted result (0 credits)." });
-  if (task.parentTaskId) await onChildFinished(task.workspaceId, task.parentTaskId);
+  await setTaskStatus(running, "DONE", { result: "Demo mode: scripted result (0 credits)." }); // wakes the parent (afterTerminal)
 }
 
 async function ensureEmployee(workspaceId: string, key: string, fallback: { name: string; role: string; avatar: string }): Promise<Employee> {

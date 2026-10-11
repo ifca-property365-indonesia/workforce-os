@@ -4,10 +4,10 @@ import { approvals, clients, db, employees, projects, repositories, tasks, works
 import { ROLE_TEMPLATES } from "@wfos/templates";
 import { decryptSecret } from "@wfos/shared/server";
 import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
-import { assertTransition, type TaskStatus } from "@wfos/shared";
-import { enqueueTask, miscQueue, publish } from "../lib/redis";
+import type { TaskStatus } from "@wfos/shared";
+import { enqueueTask, miscQueue } from "../lib/redis";
 import { recordStep } from "../lib/steps";
-import { getWorkspace, workspaceLocale } from "../lib/settings";
+import { getWorkspace } from "../lib/settings";
 import { activeQuotaPause } from "../lib/limits";
 import { employeeOutputLocale } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
@@ -16,24 +16,28 @@ import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, recallMemories, workspaceDirectory } from "./prompt";
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
-import { onChildFinished, planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
+import { planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
+import { failTask, setTaskStatus } from "./task-status";
+import { errorMessage } from "../lib/errors";
 import { scriptedTaskRun } from "../simulation/demo";
 
 type Task = typeof tasks.$inferSelect;
 
-export async function setTaskStatus(task: Pick<Task, "id" | "workspaceId" | "status" | "assigneeId" | "title">, to: TaskStatus, extra: Partial<Task> = {}): Promise<void> {
-  assertTransition(task.status, to);
-  const now = new Date();
-  await db
-    .update(tasks)
-    .set({
-      status: to,
-      ...(to === "RUNNING" ? { startedAt: now } : {}),
-      ...(to === "DONE" || to === "FAILED" || to === "CANCELLED" ? { completedAt: now } : {}),
-      ...extra,
-    })
-    .where(eq(tasks.id, task.id));
-  await publish(task.workspaceId, { type: "task.updated", taskId: task.id, status: to, employeeId: task.assigneeId, title: task.title });
+// Status changes live in ./task-status (setTaskStatus, failTask); re-exported for existing importers.
+export { failTask, notifyFinished, setTaskStatus } from "./task-status";
+
+/** While a run is in flight its row is touched this often, so the reaper (35 min) never takes it for an orphan. */
+export const RUN_HEARTBEAT_MS = 5 * 60_000;
+
+function startRunHeartbeat(taskId: string): () => void {
+  const timer = setInterval(() => {
+    db.update(tasks)
+      .set({ updatedAt: new Date() })
+      .where(and(eq(tasks.id, taskId), eq(tasks.status, "RUNNING")))
+      .catch((e: unknown) => log.warn({ err: e, taskId }, "run heartbeat failed"));
+  }, RUN_HEARTBEAT_MS);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 async function taskContext(task: Task): Promise<string> {
@@ -71,12 +75,12 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
 
   const { employeeId, team } = await resolveExecutor(task);
   if (!employeeId) {
-    await setTaskStatus(task, "FAILED", { error: "Task has no assignee (and no team lead)." });
+    await failTask(task, "Task has no assignee (and no team lead).", { kind: "could_not_start" });
     return;
   }
   const [emp] = await db.select().from(employees).where(eq(employees.id, employeeId));
   if (!emp) {
-    await setTaskStatus(task, "FAILED", { error: "Assignee not found." });
+    await failTask(task, "Assignee not found.", { kind: "could_not_start" });
     return;
   }
   if (emp.status !== "ACTIVE") {
@@ -106,14 +110,35 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     return;
   }
 
-  await setTaskStatus(task, "RUNNING", { error: null });
+  if (!(await setTaskStatus(task, "RUNNING", { error: null }))) {
+    log.info({ taskId }, "task changed before the run started (cancelled, or another job took it); skipping");
+    return;
+  }
+  const stopHeartbeat = startRunHeartbeat(task.id);
+  try {
+    await runStarted({ ...task, status: "RUNNING" }, ws, emp, team, budget.remaining, resumeNote);
+  } catch (e) {
+    // Anything unexpected after RUNNING fails the task now: a BullMQ retry would only see RUNNING and skip it.
+    log.error({ err: e, taskId }, "task run threw");
+    await failTask(task, `Runner error: ${errorMessage(e)}`, { kind: "error", onlyIfStatus: ["RUNNING"], step: true, stepName: "runner_error", employeeId: emp.id });
+  } finally {
+    stopHeartbeat();
+  }
+}
 
+type Workspace = Awaited<ReturnType<typeof getWorkspace>>;
+type Employee = typeof employees.$inferSelect;
+type Team = Awaited<ReturnType<typeof resolveExecutor>>["team"];
+
+/** The run proper, entered with the task RUNNING. */
+async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, creditBudget: number, resumeNote?: string): Promise<void> {
+  const taskId = task.id;
   // Workspace mode with a repository: refresh the platform mirror, then clone/refresh inside the sandbox
   let repository: (RepoRef & { name: string }) | undefined;
   if (emp.executionMode === "workspace" && !team && task.repositoryId) {
     const [r] = await db.select().from(repositories).where(and(eq(repositories.id, task.repositoryId), eq(repositories.workspaceId, ws.id)));
     if (!r) {
-      await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: "The task's repository no longer exists." });
+      await failTask(task, "The task's repository no longer exists.", { kind: "could_not_start" });
       return;
     }
     repository = { id: r.id, name: r.name, provider: r.provider, url: r.url, defaultBranch: r.defaultBranch, token: r.tokenEnc ? decryptSecret(r.tokenEnc) : null };
@@ -122,9 +147,9 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
       await prepareTaskRepo({ workspaceId: ws.id, taskId: task.id, repo: repository });
       await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "repository_prepared", output: { repository: r.name, branch: `agent/${task.id}` } });
     } catch (e) {
-      const msg = `Could not prepare repository ${r.name}: ${(e as Error).message}`.replace(/Authorization: [^\s]+ [^\s]+/g, "Authorization: ***");
+      const msg = `Could not prepare repository ${r.name}: ${errorMessage(e)}`.replace(/Authorization: [^\s]+ [^\s]+/g, "Authorization: ***");
       await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "repository_failed", status: "error", output: msg });
-      await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: msg });
+      await failTask(task, msg, { kind: "could_not_start" });
       return;
     }
   }
@@ -199,18 +224,18 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
 
   let out;
   try {
-    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget: budget.remaining, agents });
+    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget, agents });
   } catch (e) {
     if (e instanceof WorkspaceBusyError) {
       // not a failure: wait for a free sandbox slot
-      await setTaskStatus({ ...task, status: "RUNNING" }, "QUEUED", { error: null });
+      if (!(await setTaskStatus({ ...task, status: "RUNNING" }, "QUEUED", { error: null }))) return; // cancelled meanwhile
       await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "workspace_slot_busy", status: "waiting" });
       await enqueueTask(task.id, ws.id, resumeNote, 15_000);
       return;
     }
-    const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${(e as Error).message}`;
+    const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${errorMessage(e)}`;
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "runner_error", status: "error", output: msg });
-    await setTaskStatus({ ...task, status: "RUNNING" }, "FAILED", { error: msg });
+    await failTask(task, msg, { kind: "error" });
     return;
   }
 
@@ -218,14 +243,14 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
 
   if (out.stopped === "budget") {
     await pauseForBudget(ws.id, emp.id, "Budget reached during the run", taskId);
-    await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." });
+    if (!(await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." }))) return;
     await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedMidTask", { name: emp.name }), text: task.title, link: `/tasks/${task.id}` });
     return;
   }
   if (out.stopped === "quota") {
     // interrupted by the subscription limit: resumable (same session in Workspace mode), resumes after the reset
     const until = out.quotaResetsAt ?? new Date(Date.now() + 3_600_000);
-    await setTaskStatus(running, "QUEUED", { error: `Interrupted by the Claude subscription limit; resumes automatically at ${until.toISOString()}.` });
+    if (!(await setTaskStatus(running, "QUEUED", { error: `Interrupted by the Claude subscription limit; resumes automatically at ${until.toISOString()}.` }))) return;
     await enqueueTask(task.id, ws.id, resumeNote ?? "You were interrupted by a usage limit. Continue where you left off.", Math.max(1000, until.getTime() - Date.now() + 5000));
     return;
   }
@@ -236,9 +261,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   }
   if (out.stopped === "error") {
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "run_failed", status: "error", output: out.error });
-    await setTaskStatus(running, "FAILED", { error: out.error ?? "Unknown error", result: out.text || null });
-    await notifyFinished(task, "FAILED", out.error ?? "");
-    if (task.parentTaskId) await onChildFinished(ws.id, task.parentTaskId);
+    await failTask(task, out.error ?? "Unknown error", { kind: "error", result: out.text || null });
     return;
   }
 
@@ -271,19 +294,6 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     return;
   }
 
+  // DONE wakes the parent, settles the routine run, publishes and notifies (afterTerminal)
   await setTaskStatus(running, "DONE", { result: out.text, phase: team ? "done" : task.phase });
-  await notifyFinished(task, "DONE", out.text);
-  if (task.parentTaskId) await onChildFinished(ws.id, task.parentTaskId);
-}
-
-export async function notifyFinished(task: Pick<Task, "workspaceId" | "id" | "title" | "parentTaskId" | "source">, status: TaskStatus, text: string): Promise<void> {
-  if (task.parentTaskId || task.source === "replay") return; // only top-level tasks notify humans
-  const locale = await workspaceLocale(task.workspaceId);
-  await miscQueue.add("notify", {
-    kind: "notify",
-    workspaceId: task.workspaceId,
-    subject: msg(locale, status === "DONE" ? "notify.taskFinished" : "notify.taskFailed", { title: task.title }),
-    text: text.slice(0, 1500),
-    link: `/tasks/${task.id}`,
-  });
 }

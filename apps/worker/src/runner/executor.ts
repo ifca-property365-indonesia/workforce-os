@@ -141,7 +141,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   }
   if (ctx.workspace && !(await acquireWorkspaceSlot(ctx.runId))) throw new WorkspaceBusyError();
   const controller = new AbortController();
-  registerRun(ctx.runId, { workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, controller });
+  registerRun(ctx.runId, { workspaceId: ctx.workspaceId, taskId: ctx.taskId, conversationId: ctx.conversationId, employeeId: ctx.employee.id, controller });
 
   // per-workspace HOME: Claude Code keeps session transcripts there, which must not mix between tenants
   const home = path.join(env.storageDir, "agent-home", ctx.workspaceId);

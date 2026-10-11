@@ -20,13 +20,23 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
     const doc = await saveDocument(session.workspaceId, session.userId, f);
     attachments.push({ name: doc.name, size: doc.size, documentId: doc.id });
   }
+  // handledAt stays null: the chat run claims this message (and any sent right after it) as one turn.
   const [m] = await db.insert(messages).values({ conversationId: c.id, role: "user", content: content || "(see attachments)", attachments }).returning();
   if (c.title === "New chat" && content) {
     await db.update(conversations).set({ title: content.slice(0, 60) }).where(eq(conversations.id, c.id));
   } else {
     await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, c.id));
   }
-  const dto: ChatMessageDTO = { id: m!.id, conversationId: c.id, role: "user", content: m!.content, attachments, createdAt: m!.createdAt.toISOString() };
+  const dto: ChatMessageDTO = {
+    id: m!.id,
+    conversationId: c.id,
+    role: "user",
+    content: m!.content,
+    attachments,
+    status: m!.status,
+    meta: m!.meta,
+    createdAt: m!.createdAt.toISOString(),
+  };
   await publish(session.workspaceId, { type: "chat.message", conversationId: c.id, message: dto });
   await q.chat(c.id, m!.id, session.workspaceId);
   return { message: dto };

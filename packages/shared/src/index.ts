@@ -192,6 +192,20 @@ const IRREVERSIBLE_VERBS = [
 const REVERSIBLE_VERBS = ["get", "list", "read", "search", "find", "fetch", "query", "describe", "view", "draft", "preview", "navigate"];
 
 /**
+ * Lower-case word tokens of a tool name. camelCase, PascalCase and acronym boundaries are split
+ * before lower-casing (`listContacts` → list, contacts; `getHTTPResponse` → get, http, response),
+ * then anything that is not a letter separates tokens (`send_email` → send, email).
+ */
+function toolNameTokens(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter(Boolean);
+}
+
+/**
  * Classify any tool name. Built-ins use the registry; unknown tools (e.g. from external
  * MCP servers) are classified by verb, and default to irreversible when unsure (fail closed).
  */
@@ -201,8 +215,7 @@ export function classifyTool(name: string, overrides?: Record<string, ToolClass>
   if (overrides?.[bare]) return overrides[bare];
   const builtin = TOOL_BY_NAME[bare];
   if (builtin) return builtin.class;
-  const lower = bare.toLowerCase();
-  const tokens = lower.split(/[^a-z]+/).filter(Boolean);
+  const tokens = toolNameTokens(bare);
   if (tokens.some((t) => REVERSIBLE_VERBS.includes(t)) && !tokens.some((t) => IRREVERSIBLE_VERBS.includes(t))) {
     return "reversible";
   }
@@ -399,6 +412,12 @@ export interface StepDTO {
   createdAt: string;
 }
 
+/** Structured extras on a chat message; every field is optional so old rows ({}) stay valid. */
+export interface MessageMeta {
+  /** user messages folded into this assistant turn (rapid messages coalesce into one reply) */
+  turnMessageIds?: string[];
+}
+
 export interface ChatMessageDTO {
   id: string;
   conversationId: string;
@@ -407,6 +426,8 @@ export interface ChatMessageDTO {
   employeeId?: string | null;
   taskId?: string | null;
   attachments?: { name: string; size: number; documentId?: string }[];
+  status?: string;
+  meta?: MessageMeta;
   createdAt: string;
 }
 
@@ -509,6 +530,13 @@ export const routineInputSchema = z.object({
   dryRun: z.boolean().default(false),
   enabled: z.boolean().default(true),
 });
+
+/**
+ * A routine firing (routine_runs.status): "dispatched" while any of its tasks is still open,
+ * then "done" when every task finished DONE, else "failed" (also used when dispatch itself failed).
+ */
+export const ROUTINE_RUN_STATUSES = ["dispatched", "done", "failed"] as const;
+export type RoutineRunStatus = (typeof ROUTINE_RUN_STATUSES)[number];
 
 export const clientInputSchema = z.object({
   name: z.string().min(1).max(160),

@@ -15,6 +15,7 @@ import {
   date,
 } from "drizzle-orm/pg-core";
 import type {
+  MessageMeta,
   AllowListEntry,
   ToolPermission,
   ApprovalStatus,
@@ -390,6 +391,9 @@ export const messages = pgTable(
     taskId: uuid("task_id"),
     attachments: jsonb("attachments").$type<{ name: string; size: number; documentId?: string }[]>().notNull().default([]),
     status: text("status").notNull().default("done"), // pending | streaming | done | error
+    /** user messages: set when a chat run folds the message into a turn (null = still waiting for a reply) */
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    meta: jsonb("meta").$type<MessageMeta>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [index("messages_conv").on(t.conversationId, t.createdAt)],

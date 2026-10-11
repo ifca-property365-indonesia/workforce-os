@@ -2,16 +2,17 @@ import { and, eq } from "drizzle-orm";
 import { audit, db, teamMembers, teams } from "@wfos/db";
 import { teamInputSchema } from "@wfos/shared";
 import { notFound, patchBody, route } from "@/lib/server/route";
+import { assertWorkspaceEmployees } from "@/lib/server/teams";
 
 type P = { id: string };
 
 export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   const input = await patchBody(req, teamInputSchema.partial());
-  const [t] = await db
-    .update(teams)
-    .set({ ...(input.name ? { name: input.name } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.leadId !== undefined ? { leadId: input.leadId } : {}) })
-    .where(and(eq(teams.id, params.id), eq(teams.workspaceId, session.workspaceId)))
-    .returning();
+  await assertWorkspaceEmployees(session.workspaceId, [input.leadId, ...(input.memberIds ?? [])]);
+  const set = { ...(input.name ? { name: input.name } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.leadId !== undefined ? { leadId: input.leadId } : {}) };
+  const mine = and(eq(teams.id, params.id), eq(teams.workspaceId, session.workspaceId));
+  // a members-only change has no team columns to set
+  const [t] = Object.keys(set).length ? await db.update(teams).set(set).where(mine).returning() : await db.select().from(teams).where(mine);
   if (!t) notFound();
   if (input.memberIds) {
     await db.delete(teamMembers).where(eq(teamMembers.teamId, t.id));

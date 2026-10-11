@@ -5,6 +5,7 @@ import { canTransition } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
 import { control, publish, q } from "@/lib/server/queue";
+import { createTaskOr400 } from "@/lib/server/tasks";
 
 const schema = z.object({
   action: z.enum(["start", "cancel", "retry", "dry_run", "request_changes", "discard"]),
@@ -84,25 +85,24 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
     if (!["FAILED", "CANCELLED", "DONE", "QUEUED"].includes(t.status)) throw new HttpError(409, `Cannot rerun a ${t.status} task`, { code: "task_cannot_rerun", status: t.status });
     if (action === "dry_run" || t.status === "DONE") {
       // reruns of finished work create a fresh copy so history stays intact
-      const [copy] = await db
-        .insert(tasks)
-        .values({
-          workspaceId: t.workspaceId,
-          title: `${action === "dry_run" ? "[DRY RUN] " : ""}${t.title}`,
-          brief: t.brief,
-          assigneeId: t.assigneeId,
-          teamId: t.teamId,
-          clientId: t.clientId,
-          projectId: t.projectId,
-          source: "board",
-          dryRun: action === "dry_run" ? true : t.dryRun,
-          status: "QUEUED",
-          createdBy: session.userId,
-        })
-        .returning();
-      await publish(session.workspaceId, { type: "task.created", taskId: copy!.id, title: copy!.title, employeeId: copy!.assigneeId });
-      await q.task(copy!.id, session.workspaceId);
-      return { taskId: copy!.id };
+      const copy = await createTaskOr400(db, {
+        workspaceId: t.workspaceId,
+        title: `${action === "dry_run" ? "[DRY RUN] " : ""}${t.title}`,
+        brief: t.brief,
+        assigneeId: t.assigneeId,
+        teamId: t.teamId,
+        clientId: t.clientId,
+        projectId: t.projectId,
+        source: "board",
+        dryRun: action === "dry_run" ? true : t.dryRun,
+        createdBy: session.userId,
+        // unchanged: a copy keeps the original's (possibly since removed) assignee and team
+        requireAssignee: false,
+        requireTeamLead: false,
+      });
+      await publish(session.workspaceId, { type: "task.created", taskId: copy.id, title: copy.title, employeeId: copy.assigneeId });
+      await q.task(copy.id, session.workspaceId);
+      return { taskId: copy.id };
     }
     await db.update(tasks).set({ status: "QUEUED", error: null, phase: t.teamId && !t.parentTaskId ? null : t.phase }).where(eq(tasks.id, t.id));
     await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "QUEUED" });

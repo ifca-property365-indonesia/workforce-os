@@ -4,6 +4,7 @@ import { audit, db, nextCronRun, routineRuns, routines } from "@wfos/db";
 import { routineInputSchema } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { notFound, patchBody, route } from "@/lib/server/route";
+import { assertWorkspaceEmployees, assertWorkspaceTeam } from "@/lib/server/teams";
 
 type P = { id: string };
 
@@ -25,6 +26,8 @@ export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   const input = await patchBody(req, routineInputSchema.partial());
   const [cur] = await db.select().from(routines).where(and(eq(routines.id, params.id), eq(routines.workspaceId, session.workspaceId)));
   if (!cur) notFound();
+  await assertWorkspaceEmployees(session.workspaceId, [input.assigneeId]);
+  await assertWorkspaceTeam(session.workspaceId, input.teamId);
   const cron = input.cron ?? cur.cron;
   const tz = input.timezone ?? cur.timezone;
   try {

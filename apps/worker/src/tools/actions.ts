@@ -1,4 +1,4 @@
-import { clients, db, employees, repositories, tasks, workspaces } from "@wfos/db";
+import { clients, createTask, db, employees, repositories, TaskInputError, workspaces, type TaskRow } from "@wfos/db";
 import { enqueueTask, publish } from "../lib/redis";
 import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
@@ -113,14 +113,10 @@ async function doHandoffPrd(workspaceId: string, p: Record<string, unknown>, con
   const [dev] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, developerId), eq(employees.workspaceId, workspaceId)));
   if (!dev) return { ok: false, summary: "The chosen developer does not exist in this workspace." };
   const repositoryId = typeof p.repositoryId === "string" ? p.repositoryId : null;
-  if (repositoryId) {
-    const [r] = await db.select({ id: repositories.id }).from(repositories).where(and(eq(repositories.id, repositoryId), eq(repositories.workspaceId, workspaceId)));
-    if (!r) return { ok: false, summary: "The chosen repository does not exist in this workspace." };
-  }
   const title = String(p.title ?? "PRD").slice(0, 180);
-  const [t] = await db
-    .insert(tasks)
-    .values({
+  let t: TaskRow;
+  try {
+    t = await createTask(db, {
       workspaceId,
       title: `Implement: ${title}`,
       brief: `Implement the approved PRD below. Ask before deviating from its scope or acceptance criteria.
@@ -133,12 +129,15 @@ ${String(p.prd ?? "")}`,
       clientId: typeof p.clientId === "string" ? p.clientId : null,
       projectId: typeof p.projectId === "string" ? p.projectId : null,
       source: "board",
-      status: "QUEUED",
-    })
-    .returning();
-  await publish(workspaceId, { type: "task.created", taskId: t!.id, title: t!.title, employeeId: dev.id });
-  await enqueueTask(t!.id, workspaceId);
-  return { ok: true, summary: `Created Developer task "${t!.title}" for ${dev.name}`, details: { taskId: t!.id } };
+    });
+  } catch (e) {
+    if (!(e instanceof TaskInputError)) throw e;
+    if (e.code === "repository_not_found") return { ok: false, summary: "The chosen repository does not exist in this workspace." };
+    return { ok: false, summary: `The Developer task could not be created: ${e.message}.` };
+  }
+  await publish(workspaceId, { type: "task.created", taskId: t.id, title: t.title, employeeId: dev.id });
+  await enqueueTask(t.id, workspaceId);
+  return { ok: true, summary: `Created Developer task "${t.title}" for ${dev.name}`, details: { taskId: t.id } };
 }
 
 async function repoFor(workspaceId: string, repositoryId: unknown): Promise<(RepoRef & { name: string }) | null> {

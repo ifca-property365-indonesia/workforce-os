@@ -1,9 +1,9 @@
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
-import { db, employees, repositories, tasks, teams } from "@wfos/db";
+import { db, tasks } from "@wfos/db";
 import { taskInputSchema, TASK_STATUSES, type TaskStatus } from "@wfos/shared";
-import { HttpError } from "@/lib/server/auth";
 import { body, route } from "@/lib/server/route";
 import { publish, q } from "@/lib/server/queue";
+import { createTaskOr400 } from "@/lib/server/tasks";
 
 export const GET = route("VIEWER", async ({ session, req }) => {
   const sp = req.nextUrl.searchParams;
@@ -41,39 +41,21 @@ export const GET = route("VIEWER", async ({ session, req }) => {
 
 export const POST = route("MEMBER", async ({ session, req }) => {
   const input = await body(req, taskInputSchema);
-  if (input.repositoryId) {
-    const [repo] = await db.select({ id: repositories.id }).from(repositories).where(and(eq(repositories.id, input.repositoryId), eq(repositories.workspaceId, session.workspaceId)));
-    if (!repo) throw new HttpError(400, "Unknown repository", { code: "repository_not_found" });
-  }
-  if (!input.assigneeId && !input.teamId) throw new HttpError(400, "Assign the task to an employee or a team", { code: "task_needs_assignee" });
-  if (input.assigneeId) {
-    const [e] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, input.assigneeId), eq(employees.workspaceId, session.workspaceId)));
-    if (!e) throw new HttpError(400, "Unknown employee", { code: "unknown_employee" });
-  }
-  if (input.teamId) {
-    const [t] = await db.select({ id: teams.id, leadId: teams.leadId }).from(teams).where(and(eq(teams.id, input.teamId), eq(teams.workspaceId, session.workspaceId)));
-    if (!t) throw new HttpError(400, "Unknown team", { code: "unknown_team" });
-    if (!t.leadId) throw new HttpError(400, "This team has no Lead", { code: "team_has_no_lead" });
-  }
-  const [t] = await db
-    .insert(tasks)
-    .values({
-      workspaceId: session.workspaceId,
-      title: input.title,
-      brief: input.brief,
-      assigneeId: input.assigneeId ?? null,
-      teamId: input.teamId ?? null,
-      clientId: input.clientId ?? null,
-      projectId: input.projectId ?? null,
-      repositoryId: input.repositoryId ?? null,
-      dryRun: input.dryRun,
-      source: "board",
-      status: "QUEUED",
-      phase: input.start ? null : "hold",
-      createdBy: session.userId,
-    })
-    .returning();
-  await publish(session.workspaceId, { type: "task.created", taskId: t!.id, title: t!.title, employeeId: t!.assigneeId });
-  if (input.start) await q.task(t!.id, session.workspaceId);
+  const t = await createTaskOr400(db, {
+    workspaceId: session.workspaceId,
+    title: input.title,
+    brief: input.brief,
+    assigneeId: input.assigneeId ?? null,
+    teamId: input.teamId ?? null,
+    clientId: input.clientId ?? null,
+    projectId: input.projectId ?? null,
+    repositoryId: input.repositoryId ?? null,
+    dryRun: input.dryRun,
+    source: "board",
+    phase: input.start ? null : "hold",
+    createdBy: session.userId,
+  });
+  await publish(session.workspaceId, { type: "task.created", taskId: t.id, title: t.title, employeeId: t.assigneeId });
+  if (input.start) await q.task(t.id, session.workspaceId);
   return { task: t };
 });
