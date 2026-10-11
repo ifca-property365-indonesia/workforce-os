@@ -76,5 +76,31 @@
     "denied": "Browser memblokir notifikasi. Izinkan di pengaturan situs, lalu coba lagi.",
     "unsupported": "Browser ini tidak mendukung notifikasi push.",
     "iosHint": "Di iPhone dan iPad: tambahkan Workforce OS ke Layar Utama dulu (Bagikan → Tambah ke Layar Utama), lalu buka dari sana."
+  },
+  "notifications": {
+    "title": "Notifikasi",
+    "description": "Pilih notifikasi mana yang sampai kepada Anda, dan lewat mana. Pilihan ini hanya berlaku untuk Anda, di workspace ini.",
+    "saved": "Preferensi notifikasi disimpan",
+    "kind": "Notifikasi",
+    "channel": {
+      "inapp": "Di aplikasi",
+      "email": "Email",
+      "telegram": "Telegram",
+      "push": "Push"
+    },
+    "kinds": {
+      "approval": "Perlu persetujuan",
+      "task_done": "Tugas selesai",
+      "task_failed": "Tugas gagal",
+      "incident": "Insiden",
+      "routine_failed": "Rutinitas gagal",
+      "limits": "Batas langganan",
+      "chat_reply": "Balasan chat"
+    },
+    "cellLabel": "{kind} lewat {channel}",
+    "mutedTitle": "Karyawan yang dibisukan",
+    "mutedHelp": "Anda tidak menerima notifikasi apa pun tentang karyawan yang dibisukan, di kanal mana pun.",
+    "noEmployees": "Belum ada karyawan.",
+    "muted": "dibisukan"
   }
 }

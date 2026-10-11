@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { useClients, useEmployees } from "@/lib/hooks";
+import { useClients, useEmployees, useTeams } from "@/lib/hooks";
+import { SchedulePreviewView, useSchedulePreview } from "@/components/routines/schedule-preview";
 import { useFormat } from "@/lib/use-format";
 import type { Approval, Email } from "./types";
 
@@ -87,6 +88,48 @@ export function HandoffPicker({ value, onChange }: { value: { developerId: strin
             </option>
           ))}
         </select>
+      </div>
+    </div>
+  );
+}
+
+/** create_routine: what the employee wants to schedule, with the rule in words and its next runs. */
+export function RoutineApprovalPreview({ p }: { p: Record<string, unknown> }) {
+  const t = useTranslations("approvals");
+  const { data: emps } = useEmployees();
+  const { data: teams } = useTeams();
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const cron = str(p.cron);
+  const timezone = str(p.timezone) || "Asia/Jakarta";
+  const { data: preview, pending } = useSchedulePreview(cron, timezone);
+  const assigneeId = str(p.assigneeId);
+  const teamId = str(p.teamId);
+  const target = assigneeId
+    ? (emps?.find((e) => e.id === assigneeId)?.name ?? (str(p.targetName) || assigneeId))
+    : teamId
+      ? (teams?.find((x) => x.id === teamId)?.name ?? (str(p.targetName) || teamId))
+      : str(p.targetName);
+  const overlap = p.overlap === "queue" ? "queue" : "skip";
+  return (
+    <div className="space-y-2 rounded-lg border bg-background p-3 text-sm">
+      <div className="font-medium">{str(p.name)}</div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">{t("routine.rule")}</dt>
+        <dd>
+          <code className="mr-2 rounded bg-muted px-1">{cron}</code>
+          {!pending && preview?.valid && preview.label}
+        </dd>
+        <dt className="text-muted-foreground">{t("routine.timezone")}</dt>
+        <dd>{timezone}</dd>
+        <dt className="text-muted-foreground">{t("routine.target")}</dt>
+        <dd>{target || "—"}</dd>
+        <dt className="text-muted-foreground">{t("routine.overlap")}</dt>
+        <dd>{t(`routine.overlapMode.${overlap}`)}</dd>
+      </dl>
+      <SchedulePreviewView data={preview} pending={pending} compact />
+      <div>
+        <div className="mb-1 text-xs text-muted-foreground">{t("routine.brief")}</div>
+        <div className="max-h-60 overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-2">{str(p.brief)}</div>
       </div>
     </div>
   );
@@ -172,6 +215,7 @@ export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; e
       </div>
     );
   }
+  if (a.toolName === "create_routine" && !editing) return <RoutineApprovalPreview p={p} />;
   if (a.toolName === "post_webhook") {
     return editing ? (
       <Textarea rows={6} value={String(p.text ?? "")} onChange={(e) => setDraft({ ...p, text: e.target.value })} />

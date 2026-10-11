@@ -141,6 +141,34 @@
       "when": 1791713892861,
       "tag": "0019_untrusted_marks",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791726549778,
+      "tag": "0020_routine_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791726549779,
+      "tag": "0021_memory_journal",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791726549780,
+      "tag": "0022_notification_prefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791726549781,
+      "tag": "0023_message_tree",
+      "breakpoints": true
     }
   ]
 }

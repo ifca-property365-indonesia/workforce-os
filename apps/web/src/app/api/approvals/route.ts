@@ -2,7 +2,12 @@ import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { approvals, db, employees, tasks } from "@wfos/db";
 import { APPROVAL_STATUSES, type ApprovalStatus } from "@wfos/shared";
 import { route } from "@/lib/server/route";
+import { offBranchApprovals } from "@/app/api/conversations/[id]/thread";
 
+/**
+ * The inbox. `olderVersion`: raised in a chat by a message that is not on the conversation's active branch any
+ * more (someone switched to another version) — still decidable, since switching back brings it into view again.
+ */
 export const GET = route("VIEWER", async ({ session, req }) => {
   const st = req.nextUrl.searchParams.get("status");
   const conds: SQL[] = [eq(approvals.workspaceId, session.workspaceId)];
@@ -20,5 +25,6 @@ export const GET = route("VIEWER", async ({ session, req }) => {
     .where(and(...conds))
     .orderBy(desc(approvals.createdAt))
     .limit(200);
-  return { approvals: rows.map((r) => ({ ...r.approval, employee: r.employee, task: r.task })) };
+  const older = await offBranchApprovals(session.workspaceId, rows.map((r) => r.approval));
+  return { approvals: rows.map((r) => ({ ...r.approval, employee: r.employee, task: r.task, olderVersion: older.has(r.approval.id) })) };
 });

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { approvals, credentials, db, employees, tasks, workspaces } from "@wfos/db";
+import { eq } from "drizzle-orm";
+import { approvals, conversations, credentials, db, employees, messages, tasks, workspaces } from "@wfos/db";
 import type { AllowListEntry, AutonomyLevel, ToolPermission } from "@wfos/shared";
 import { encryptSecret } from "@wfos/shared/server";
 import type { RunContext } from "../src/tools/registry";
@@ -82,4 +83,15 @@ export function runContext(
     revisionRequests: [],
     ...over,
   };
+}
+
+/**
+ * A user message as the web composer (and the MCP server) store it: below the conversation's active leaf, which
+ * then moves to it. A conversation without a leaf gets a root message (the legacy path adopts it).
+ */
+export async function sendUserMessage(conversationId: string, values: Omit<typeof messages.$inferInsert, "conversationId" | "role" | "parentId">) {
+  const [conv] = await db.select({ leaf: conversations.activeLeafId }).from(conversations).where(eq(conversations.id, conversationId));
+  const [m] = await db.insert(messages).values({ ...values, conversationId, role: "user", parentId: conv?.leaf ?? null }).returning();
+  if (conv?.leaf) await db.update(conversations).set({ activeLeafId: m!.id }).where(eq(conversations.id, conversationId));
+  return m!;
 }

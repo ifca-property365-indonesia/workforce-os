@@ -5,7 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronDown, Clock, FlaskConical, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Check, ChevronDown, Clock, FlaskConical, History, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -257,6 +257,13 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
             )}
           </div>
           <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">{a.reason}</div>
+          {a.olderVersion && (
+            <div className="mt-1">
+              <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                <History className="size-3" aria-hidden /> {t("card.olderVersion")}
+              </span>
+            </div>
+          )}
         </div>
         <ApprovalStatusPill status={a.status} />
       </CardHeader>

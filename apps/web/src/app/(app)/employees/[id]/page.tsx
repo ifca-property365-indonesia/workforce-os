@@ -19,6 +19,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { LookEditor } from "@/components/employees/look-editor";
+import { MemoryPanel } from "@/components/employees/memory-panel";
+import { ActivityTab } from "@/components/employees/activity-tab";
 import { ExportButton } from "@/components/packages/export-dialog";
 import { DiffView } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
@@ -268,57 +270,6 @@ function ToolsTab({ e }: { e: Employee }) {
   );
 }
 
-function MemoryTab({ e }: { e: Employee }) {
-  const t = useTranslations("employees");
-  const tc = useTranslations("common");
-  const f = useFormat();
-  const qc = useQueryClient();
-  const key = ["memories", e.id];
-  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<{ memories: { id: string; kind: string; content: string; source: string; createdAt: string }[] }>(`/api/employees/${e.id}/memories`) });
-  const [text, setText] = useState("");
-  const [editing, setEditing] = useState<{ id: string; content: string } | null>(null);
-  const inv = () => qc.invalidateQueries({ queryKey: key });
-  const add = useMutation({ mutationFn: () => api.post(`/api/employees/${e.id}/memories`, { content: text, kind: "fact" }), onSuccess: () => (setText(""), inv()) });
-  const upd = useMutation({ mutationFn: (v: { id: string; content: string }) => api.patch(`/api/memories/${v.id}`, { content: v.content }), onSuccess: () => (setEditing(null), inv()) });
-  const del = useMutation({ mutationFn: (id: string) => api.del(`/api/memories/${id}`), onSuccess: () => inv() });
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        <Input placeholder={t("memory.placeholder")} value={text} onChange={(x) => setText(x.target.value)} />
-        <Button disabled={text.length < 2} onClick={() => add.mutate()}>
-          {tc("add")}
-        </Button>
-      </div>
-      {data?.memories.map((m) => (
-        <div key={m.id} className="flex items-start gap-3 rounded-lg border p-3">
-          <span className={m.kind === "feedback" ? "rounded bg-amber-500/15 px-1.5 text-[11px] uppercase text-amber-700" : "rounded bg-muted px-1.5 text-[11px] uppercase"}>{t.has(`memory.kind.${m.kind}`) ? t(`memory.kind.${m.kind}`) : m.kind}</span>
-          <div className="min-w-0 flex-1">
-            {editing?.id === m.id ? (
-              <div className="flex gap-2">
-                <Textarea value={editing.content} onChange={(x) => setEditing({ ...editing, content: x.target.value })} />
-                <Button size="sm" onClick={() => upd.mutate(editing)}>
-                  {tc("save")}
-                </Button>
-              </div>
-            ) : (
-              <p className="whitespace-pre-wrap text-sm" onDoubleClick={() => setEditing({ id: m.id, content: m.content })}>
-                {m.content}
-              </p>
-            )}
-            <div className="mt-1 text-xs text-muted-foreground">
-              {t("memory.meta", { source: m.source, when: f.ago(m.createdAt) })}
-            </div>
-          </div>
-          <Button size="icon" variant="ghost" onClick={() => del.mutate(m.id)} aria-label={t("memory.delete")}>
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
-      ))}
-      {!data?.memories.length && <p className="text-sm text-muted-foreground">{t("memory.empty")}</p>}
-    </div>
-  );
-}
-
 function OutputLanguageCard({ e }: { e: Employee }) {
   const t = useTranslations("employees");
   const ts = useTranslations("status");
@@ -512,6 +463,7 @@ export default function EmployeePage({ params }: P) {
           <TabsTrigger value="instructions">{t("detail.tabs.instructions")}</TabsTrigger>
           <TabsTrigger value="tools">{t("detail.tabs.tools")}</TabsTrigger>
           <TabsTrigger value="memory">{t("detail.tabs.memory")}</TabsTrigger>
+          <TabsTrigger value="activity">{t("detail.tabs.activity")}</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-4">
           <OutputLanguageCard e={e} />
@@ -563,7 +515,10 @@ export default function EmployeePage({ params }: P) {
           <ToolsTab key={k} e={e} />
         </TabsContent>
         <TabsContent value="memory" className="mt-4">
-          <MemoryTab e={e} />
+          <MemoryPanel employeeId={e.id} />
+        </TabsContent>
+        <TabsContent value="activity" className="mt-4">
+          <ActivityTab employeeId={e.id} />
         </TabsContent>
       </Tabs>
     </div>

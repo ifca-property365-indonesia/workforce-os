@@ -1,5 +1,6 @@
-import { and, eq, isNull, lte } from "drizzle-orm";
-import { clients, createTask, db, memories, nextCronRun, routineRuns, routines, TaskInputError } from "@wfos/db";
+import { and, desc, eq, inArray, isNull, lte, notInArray } from "drizzle-orm";
+import { clients, createTask, db, memories, nextCronRun, routineRuns, routines, tasks, TaskInputError } from "@wfos/db";
+import { ROUTINE_CATCH_UP_MS, TERMINAL_STATUSES } from "@wfos/shared";
 import { enqueueTask, publish } from "../lib/redis";
 import { log } from "../lib/logger";
 import { embed } from "../lib/embeddings";
@@ -51,6 +52,8 @@ async function createRoutineTasks(r: Routine, userId: string | undefined, ids: s
       source: "routine",
       dryRun: r.dryRun,
       createdBy: userId ?? null,
+      // proposed by a tainted run: its tasks start tainted (every irreversible action needs approval)
+      untrustedInput: r.untrustedInput,
       // unchanged: a routine whose assignee was removed, or whose team lost its Lead, still dispatches
       requireAssignee: false,
       requireTeamLead: false,
@@ -80,13 +83,43 @@ export async function runRoutineJob(routineId: string, userId?: string): Promise
   }
 }
 
-/** Called every 30s. Claims due routines atomically (safe with multiple workers). */
-export async function tickRoutines(): Promise<void> {
-  const due = await db.select().from(routines).where(and(eq(routines.enabled, true), lte(routines.nextRunAt, new Date())));
+/**
+ * True while the routine's latest dispatched firing still has a task that has not ended
+ * (routine_runs.status stays "dispatched" until settleRoutineRun sees every task end).
+ */
+export async function previousRunOpen(routineId: string): Promise<boolean> {
+  const [run] = await db
+    .select({ taskIds: routineRuns.taskIds })
+    .from(routineRuns)
+    .where(and(eq(routineRuns.routineId, routineId), eq(routineRuns.status, "dispatched")))
+    .orderBy(desc(routineRuns.startedAt))
+    .limit(1);
+  if (!run?.taskIds.length) return false;
+  const [open] = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(inArray(tasks.id, run.taskIds), notInArray(tasks.status, [...TERMINAL_STATUSES])))
+    .limit(1);
+  return !!open;
+}
+
+/** A firing that did not run: terminal at insert ("missed" / "skipped_overlap"), so settleRoutineRun never touches it. */
+async function recordSkippedRun(r: Routine, status: "missed" | "skipped_overlap", error: string): Promise<void> {
+  await db.insert(routineRuns).values({ routineId: r.id, trigger: "schedule", taskIds: [], status, error });
+}
+
+/**
+ * Called every 30s. Claims due routines atomically (safe with multiple workers), then per firing:
+ * more than ROUTINE_CATCH_UP_MS late (the worker was down) → recorded as "missed", not run (one row however many
+ * firings were missed; next_run_at moves to the next future firing); the previous firing still running and
+ * overlap "skip" → recorded as "skipped_overlap"; otherwise (or overlap "queue") dispatched once.
+ */
+export async function tickRoutines(now: Date = new Date()): Promise<void> {
+  const due = await db.select().from(routines).where(and(eq(routines.enabled, true), lte(routines.nextRunAt, now)));
   for (const r of due) {
     let next: Date;
     try {
-      next = nextCronRun(r.cron, r.timezone);
+      next = nextCronRun(r.cron, r.timezone, now);
     } catch (e) {
       log.error({ err: e, routineId: r.id }, "invalid cron; disabling routine");
       await db.update(routines).set({ enabled: false }).where(eq(routines.id, r.id));
@@ -96,9 +129,25 @@ export async function tickRoutines(): Promise<void> {
       .update(routines)
       .set({ nextRunAt: next })
       // claim: only one worker can move a due routine's next_run_at into the future
-      .where(and(eq(routines.id, r.id), lte(routines.nextRunAt, new Date())))
+      .where(and(eq(routines.id, r.id), lte(routines.nextRunAt, now)))
       .returning({ id: routines.id });
     if (!claimed.length) continue;
+    const scheduledFor = r.nextRunAt!;
+    try {
+      if (now.getTime() - scheduledFor.getTime() > ROUTINE_CATCH_UP_MS) {
+        await recordSkippedRun(r, "missed", `Scheduled for ${scheduledFor.toISOString()}; more than ${ROUTINE_CATCH_UP_MS / 3_600_000} h late, so it was not run.`);
+        log.warn({ routineId: r.id, scheduledFor }, "routine firing missed (too late to catch up)");
+        continue;
+      }
+      if (r.overlap !== "queue" && (await previousRunOpen(r.id))) {
+        await recordSkippedRun(r, "skipped_overlap", "The previous run was still in progress.");
+        log.info({ routineId: r.id }, "routine firing skipped: previous run still in progress");
+        continue;
+      }
+    } catch (e) {
+      log.error({ err: e, routineId: r.id }, "routine policy check failed");
+      continue;
+    }
     try {
       const ids = await dispatchRoutine(r, "schedule");
       log.info({ routineId: r.id, tasks: ids.length }, "routine dispatched");
@@ -110,7 +159,7 @@ export async function tickRoutines(): Promise<void> {
   const missing = await db.select().from(routines).where(and(eq(routines.enabled, true), isNull(routines.nextRunAt)));
   for (const r of missing) {
     try {
-      await db.update(routines).set({ nextRunAt: nextCronRun(r.cron, r.timezone) }).where(eq(routines.id, r.id));
+      await db.update(routines).set({ nextRunAt: nextCronRun(r.cron, r.timezone, now) }).where(eq(routines.id, r.id));
     } catch {
       /* invalid cron handled above next tick */
     }

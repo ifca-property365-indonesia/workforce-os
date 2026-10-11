@@ -177,7 +177,7 @@ export interface ToolMeta {
   class: ToolClass;
   /** credits charged per call, on top of tokens */
   credits: number;
-  category: "knowledge" | "memory" | "clients" | "drafting" | "comms" | "billing" | "team" | "web" | "tasks" | "code";
+  category: "knowledge" | "memory" | "clients" | "drafting" | "comms" | "billing" | "team" | "web" | "tasks" | "code" | "routines";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -192,6 +192,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "draft_email", label: "Draft email", description: "Write an email draft without sending it", class: "reversible", credits: 0.05, category: "drafting" },
   { name: "draft_invoice", label: "Draft invoice", description: "Generate an invoice PDF draft for a client", class: "reversible", credits: 0.1, category: "billing" },
   { name: "create_task", label: "Create task", description: "Create a task on the board (from chat)", class: "reversible", credits: 0.05, category: "tasks" },
+  { name: "propose_routine", label: "Propose routine", description: "Propose a recurring routine (cron schedule + brief); a human approves it before it is created", class: "reversible", credits: 0.05, category: "routines" },
   { name: "delegate_subtask", label: "Delegate subtask", description: "Team lead: assign a subtask to a team member", class: "reversible", credits: 0.05, category: "team" },
   { name: "request_revision", label: "Request revision", description: "Team lead: send a subtask back with feedback", class: "reversible", credits: 0.05, category: "team" },
   { name: "retry_subtask", label: "Retry subtask", description: "Team lead: run a failed subtask again (bounded retries)", class: "reversible", credits: 0.05, category: "team" },
@@ -623,6 +624,10 @@ export interface ChatMessageDTO {
   meta?: MessageMeta;
   /** approvals raised by this (assistant) message */
   approvals?: ChatApprovalDTO[];
+  /** previous message on this branch */
+  parentId?: string | null;
+  /** when this message has siblings (edited / regenerated versions): its position among them */
+  branch?: { index: number; count: number; siblingIds: string[] };
   createdAt: string;
 }
 
@@ -646,7 +651,9 @@ export const QUEUE_MISC = "wfos-misc";
 
 export type RunJob =
   | { kind: "task"; taskId: string; workspaceId: string; resumeNote?: string }
-  | { kind: "chat"; conversationId: string; messageId: string; workspaceId: string };
+  | { kind: "chat"; conversationId: string; messageId: string; workspaceId: string }
+  /** answer this user message again: a new assistant sibling below it, which becomes the active leaf */
+  | { kind: "chat_regenerate"; conversationId: string; userMessageId: string; workspaceId: string };
 
 export type ActionJob =
   | { kind: "execute_approval"; approvalId: string; workspaceId: string }
@@ -656,7 +663,23 @@ export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
   | { kind: "demo"; workspaceId: string; userId: string }
   | { kind: "routine_run"; routineId: string; workspaceId: string; userId?: string }
-  | { kind: "notify"; workspaceId: string; subject: string; text: string; link?: string; approvalId?: string };
+  | NotifyJob;
+
+/**
+ * A notification. `notificationKind` decides per-user channel preferences (missing: sent to everyone, stored as
+ * kind "info"); `employeeId` is the employee it is about (per-user mutes); `userId` targets one member (null = all).
+ */
+export type NotifyJob = {
+  kind: "notify";
+  workspaceId: string;
+  subject: string;
+  text: string;
+  link?: string;
+  approvalId?: string;
+  notificationKind?: NotificationKind;
+  employeeId?: string | null;
+  userId?: string | null;
+};
 
 // ---------------------------------------------------------------------------
 // API input schemas (shared by web route handlers and UI forms)
@@ -714,9 +737,16 @@ export const repositoryInputSchema = z.object({
   token: z.string().trim().min(10).max(500).optional(),
 });
 
+export const ROUTINE_OVERLAP_MODES = ["skip", "queue"] as const;
+export type RoutineOverlap = (typeof ROUTINE_OVERLAP_MODES)[number];
+
 export const routineInputSchema = z.object({
   name: z.string().min(1).max(120),
-  cron: z.string().min(9).max(120),
+  cron: z
+    .string()
+    .min(9)
+    .max(120)
+    .refine((c) => c.trim().split(/\s+/).length === 5, "cron needs exactly 5 fields (minute hour day month weekday)"),
   timezone: z.string().default("Asia/Jakarta"),
   brief: z.string().min(1).max(20000),
   assigneeId: z.string().uuid().nullable().optional(),
@@ -724,14 +754,32 @@ export const routineInputSchema = z.object({
   perClient: z.boolean().default(false),
   dryRun: z.boolean().default(false),
   enabled: z.boolean().default(true),
+  overlap: z.enum(ROUTINE_OVERLAP_MODES).default("skip"),
 });
 
 /**
  * A routine firing (routine_runs.status): "dispatched" while any of its tasks is still open,
  * then "done" when every task finished DONE, else "failed" (also used when dispatch itself failed).
  */
-export const ROUTINE_RUN_STATUSES = ["dispatched", "done", "failed"] as const;
+export const ROUTINE_RUN_STATUSES = ["dispatched", "done", "failed", "missed", "skipped_overlap"] as const;
 export type RoutineRunStatus = (typeof ROUTINE_RUN_STATUSES)[number];
+/** A firing that is more than this late (worker was down) is recorded as missed instead of run. */
+export const ROUTINE_CATCH_UP_MS = 12 * 60 * 60_000;
+
+export const MEMORY_EVENT_ACTIONS = ["create", "update", "delete", "expire", "supersede", "restore"] as const;
+export type MemoryEventAction = (typeof MEMORY_EVENT_ACTIONS)[number];
+/** Nightly tidy changes at most this share of an employee's memories per pass. */
+export const MEMORY_TIDY_MAX_SHARE = 0.2;
+/** Cosine similarity above which two memories are near-duplicates (the older one is superseded). */
+export const MEMORY_NEAR_DUPLICATE = 0.95;
+
+/** Kinds a person can switch per channel in their notification preferences. */
+export const NOTIFICATION_KINDS = ["approval", "task_done", "task_failed", "incident", "routine_failed", "limits", "chat_reply"] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+export const NOTIFICATION_CHANNELS = ["inapp", "email", "telegram", "push"] as const;
+export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
+/** { [kind]: { [channel]: boolean } }; anything missing means "on". */
+export type NotificationChannelPrefs = Partial<Record<NotificationKind, Partial<Record<NotificationChannel, boolean>>>>;
 
 export const clientInputSchema = z.object({
   name: z.string().min(1).max(160),

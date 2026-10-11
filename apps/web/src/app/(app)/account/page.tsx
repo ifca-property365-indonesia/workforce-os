@@ -7,6 +7,7 @@ import { ChangePasswordForm } from "@/components/account/change-password-form";
 import { TwoFactorCard } from "@/components/account/two-factor";
 import { TelegramCard } from "@/components/account/telegram";
 import { PushCard } from "@/components/account/push";
+import { NotificationPrefsCard } from "@/components/account/notification-prefs";
 import { PageHeader } from "@/components/layout/common";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -143,6 +144,7 @@ export default function AccountPage() {
         <Language />
         <TelegramCard />
         <PushCard />
+        <NotificationPrefsCard />
       </div>
     </div>
   );

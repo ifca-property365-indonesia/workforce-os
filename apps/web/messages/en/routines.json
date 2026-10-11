@@ -14,7 +14,8 @@
   "lastRun": "last: {when}",
   "badge": {
     "perClient": "per client",
-    "dryRun": "dry run"
+    "dryRun": "dry run",
+    "queue": "queues when busy"
   },
   "empty": {
     "title": "No routines",
@@ -29,7 +30,8 @@
     "perClient": "One task per client",
     "dryRun": "Dry run",
     "enabled": "Enabled",
-    "gateNote": "Unattended runs obey the same gate: an irreversible action pauses at an approval and notifies the owner."
+    "gateNote": "Unattended runs obey the same gate: an irreversible action pauses at an approval and notifies the owner.",
+    "overlap": "If the previous run is still going"
   },
   "presets": {
     "weeklyMonday": "Every Monday 09:00",
@@ -49,7 +51,26 @@
     "status": {
       "dispatched": "dispatched",
       "done": "done",
-      "failed": "failed"
+      "failed": "failed",
+      "missed": "missed (worker was offline)",
+      "skipped_overlap": "skipped (previous run still going)"
     }
+  },
+  "overlap": {
+    "skip": {
+      "label": "Skip this run",
+      "help": "The firing is recorded as skipped; the next one runs on schedule."
+    },
+    "queue": {
+      "label": "Queue another run",
+      "help": "A new run starts anyway, alongside the one still going."
+    }
+  },
+  "preview": {
+    "nextRuns": "Next runs ({timezone}):",
+    "invalidCron": "This rule is not valid: {detail}",
+    "invalidTimezone": "Unknown time zone “{timezone}”. Use an IANA name such as Asia/Jakarta.",
+    "fiveFields": "A rule has exactly 5 fields (minute hour day month weekday); this one has {count, plural, one {# field} other {# fields}}.",
+    "checking": "Checking the rule…"
   }
 }

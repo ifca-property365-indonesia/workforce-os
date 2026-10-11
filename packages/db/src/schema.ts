@@ -14,8 +14,12 @@ import {
   vector,
   primaryKey,
   date,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type {
+  MemoryEventAction,
+  NotificationChannelPrefs,
+  RoutineOverlap,
   IncidentKind,
   WebhookDeliveryStatus,
   IncidentStatus,
@@ -317,6 +321,10 @@ export const routines = pgTable("routines", {
   perClient: boolean("per_client").notNull().default(false),
   dryRun: boolean("dry_run").notNull().default(false),
   enabled: boolean("enabled").notNull().default(true),
+  /** when the previous firing is still running: skip this one, or queue another run anyway */
+  overlap: text("overlap").$type<RoutineOverlap>().notNull().default("skip"),
+  /** proposed by a tainted run: tasks it creates start tainted */
+  untrustedInput: boolean("untrusted_input").notNull().default(false),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
   createdAt: createdAt(),
@@ -414,6 +422,8 @@ export const conversations = pgTable("conversations", {
   teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
   title: text("title").notNull().default("New chat"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  /** the message the thread currently ends at; edits and regenerations fork branches below it */
+  activeLeafId: uuid("active_leaf_id").references((): AnyPgColumn => messages.id, { onDelete: "set null" }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -423,6 +433,8 @@ export const messages = pgTable(
   {
     id: id(),
     conversationId: uuid("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+    /** previous message on this branch (null for the first message) */
+    parentId: uuid("parent_id").references((): AnyPgColumn => messages.id, { onDelete: "set null" }),
     role: text("role").$type<"user" | "assistant" | "system">().notNull(),
     content: text("content").notNull(),
     employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
@@ -453,7 +465,12 @@ export const memories = pgTable(
     /** saved by a tainted run (or imported): recalled as data, and recalling it taints the run */
     untrusted: boolean("untrusted").notNull().default(false),
     embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
+    /** not recalled after this time (tidy also expires it) */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /** a newer memory replaced this one; superseded memories are not recalled */
+    supersededBy: uuid("superseded_by").references((): AnyPgColumn => memories.id, { onDelete: "set null" }),
     createdAt: createdAt(),
+    updatedAt: updatedAt(),
   },
   (t) => [index("memories_emp").on(t.employeeId)],
 );
@@ -539,6 +556,10 @@ export const auditLog = pgTable(
 export const notifications = pgTable("notifications", {
   id: id(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  /** null = for every member of the workspace */
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  /** the employee it is about (per-user mutes) */
+  employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
   kind: text("kind").notNull(),
   title: text("title").notNull(),
   body: text("body").notNull().default(""),
@@ -703,4 +724,52 @@ export const apiTokens = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("api_tokens_ws_user").on(t.workspaceId, t.userId), uniqueIndex("api_tokens_hash").on(t.tokenHash)],
+);
+
+// ---------------------------------------------------------------------------
+// Memory journal & per-user notifications
+// ---------------------------------------------------------------------------
+
+/** Every change to an employee's memory, with before/after, so a person can undo it. */
+export const memoryEvents = pgTable(
+  "memory_events",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    /** no FK: the journal outlives deleted memories so a delete can be undone */
+    memoryId: uuid("memory_id"),
+    action: text("action").$type<MemoryEventAction>().notNull(),
+    /** agent | user | tidy | import | rejection */
+    actor: text("actor").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    before: jsonb("before").$type<Record<string, unknown> | null>(),
+    after: jsonb("after").$type<Record<string, unknown> | null>(),
+    undoneAt: timestamp("undone_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("memory_events_emp").on(t.employeeId, t.createdAt)],
+);
+
+export const notificationReads = pgTable(
+  "notification_reads",
+  {
+    notificationId: uuid("notification_id").notNull().references(() => notifications.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.notificationId, t.userId] })],
+);
+
+export const notificationPrefs = pgTable(
+  "notification_prefs",
+  {
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** per notification kind, which channels are on (missing = default on) */
+    channels: jsonb("channels").$type<NotificationChannelPrefs>().notNull().default({}),
+    mutedEmployeeIds: jsonb("muted_employee_ids").$type<string[]>().notNull().default([]),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.workspaceId] })],
 );

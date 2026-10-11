@@ -19,7 +19,8 @@
     "bash": "Jalankan perintah",
     "git_push": "Push branch",
     "create_pull_request": "Buka pull request",
-    "handoff_prd": "Serah terima PRD"
+    "handoff_prd": "Serah terima PRD",
+    "create_routine": "Buat rutinitas"
   },
   "email": {
     "to": "Kepada:",
@@ -45,6 +46,7 @@
   "card": {
     "wantsToRun": "{employee} ingin menjalankan <code>{tool}</code>",
     "task": "tugas",
+    "olderVersion": "Dari versi percakapan yang lebih lama",
     "dryRunNotice": "Dry run: menyetujui hanya mencatat apa yang akan terjadi; tidak ada yang benar-benar dikirim.",
     "guardFindings": "Temuan pengaman",
     "guardFindingsCount": "{count} temuan",
@@ -81,5 +83,16 @@
     "noDeveloper": "Belum ada developer yang dipilih: gunakan Edit & Setujui untuk memilih.",
     "developer": "Developer",
     "repository": "Repositori"
+  },
+  "routine": {
+    "rule": "Aturan",
+    "timezone": "Zona waktu",
+    "target": "Ditugaskan ke",
+    "brief": "Brief",
+    "overlap": "Jika masih berjalan",
+    "overlapMode": {
+      "skip": "lewati eksekusi berikutnya",
+      "queue": "antrekan eksekusi baru"
+    }
   }
 }

@@ -1,17 +1,17 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { conversations, db, messages } from "@wfos/db";
-import type { ChatMessageDTO, MessageMeta } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
-import { notFound, route } from "@/lib/server/route";
+import { route } from "@/lib/server/route";
 import { publish, q } from "@/lib/server/queue";
 import { saveDocument } from "@/lib/server/uploads";
-import { parseMentions } from "@/lib/mentions";
-import { teamRoster } from "@/lib/server/teams";
+import { MAX_MESSAGE, checkLeaf, conversationIn, currentLeaf, expectedLeafOf, mentionMeta, messageDto } from "../thread";
 
-/** Send a chat message (multipart: content + optional files). Files are indexed into the knowledge base. */
+/**
+ * Send a chat message (multipart: content + optional files + optional expectedLeafId). Files are indexed into the
+ * knowledge base. The message hangs below the thread's current end and becomes its new end, in one transaction.
+ */
 export const POST = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {
-  const [c] = await db.select().from(conversations).where(and(eq(conversations.id, params.id), eq(conversations.workspaceId, session.workspaceId)));
-  if (!c) notFound();
+  const c = await conversationIn(session.workspaceId, params.id);
   // a JSON (or otherwise non-form) body makes formData() throw: that is the client's mistake, not a 500
   let form: FormData;
   try {
@@ -21,38 +21,35 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
   }
   const content = String(form.get("content") ?? "").trim();
   const files = form.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
+  const expected = expectedLeafOf(form);
   if (!content && !files.length) throw new HttpError(400, "Message is empty", { code: "message_empty" });
-  if (content.length > 20000) throw new HttpError(400, "Message too long", { code: "message_too_long", max: 20000 });
-  const attachments = [];
+  if (content.length > MAX_MESSAGE) throw new HttpError(400, "Message too long", { code: "message_too_long", max: MAX_MESSAGE });
+  // checked before the uploads too, so a stale client does not index files for a message that is refused
+  checkLeaf(expected, await currentLeaf(c));
+  const attachments: { name: string; size: number; documentId?: string }[] = [];
   for (const f of files.slice(0, 5)) {
     const doc = await saveDocument(session.workspaceId, session.userId, f);
     attachments.push({ name: doc.name, size: doc.size, documentId: doc.id });
   }
-  // team chats: who was @mentioned decides who answers (the content itself is stored unchanged)
-  const meta: MessageMeta = {};
-  if (c.teamId && content.includes("@")) {
-    const { mentions, mentionAll } = parseMentions(content, await teamRoster(session.workspaceId, c.teamId));
-    if (mentions.length) meta.mentions = mentions;
-    if (mentionAll) meta.mentionAll = true;
-  }
+  const meta = await mentionMeta(c, session.workspaceId, content);
   // handledAt stays null: the chat run claims this message (and any sent right after it) as one turn.
-  const [m] = await db.insert(messages).values({ conversationId: c.id, role: "user", content: content || "(see attachments)", attachments, meta }).returning();
-  if (c.title === "New chat" && content) {
-    await db.update(conversations).set({ title: content.slice(0, 60) }).where(eq(conversations.id, c.id));
-  } else {
-    await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, c.id));
-  }
-  const dto: ChatMessageDTO = {
-    id: m!.id,
-    conversationId: c.id,
-    role: "user",
-    content: m!.content,
-    attachments,
-    status: m!.status,
-    meta: m!.meta,
-    createdAt: m!.createdAt.toISOString(),
-  };
+  const m = await db.transaction(async (tx) => {
+    const locked = await conversationIn(session.workspaceId, c.id, tx, true);
+    const leaf = await currentLeaf(locked, tx);
+    checkLeaf(expected, leaf);
+    const [row] = await tx
+      .insert(messages)
+      .values({ conversationId: c.id, parentId: leaf, role: "user", content: content || "(see attachments)", attachments, meta })
+      .returning();
+    const title = locked.title === "New chat" && content ? { title: content.slice(0, 60) } : {};
+    await tx
+      .update(conversations)
+      .set({ activeLeafId: row!.id, updatedAt: new Date(), ...title })
+      .where(eq(conversations.id, c.id));
+    return row!;
+  });
+  const dto = messageDto(m);
   await publish(session.workspaceId, { type: "chat.message", conversationId: c.id, message: dto });
-  await q.chat(c.id, m!.id, session.workspaceId);
+  await q.chat(c.id, m.id, session.workspaceId);
   return { message: dto };
 });

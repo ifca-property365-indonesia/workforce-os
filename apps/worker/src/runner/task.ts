@@ -14,7 +14,7 @@ import { msg } from "@wfos/shared/messages";
 import { log } from "../lib/logger";
 import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
-import { buildSystemPrompt, inboxSection, recallMemories, taintFromStoredInput, workspaceDirectory } from "./prompt";
+import { buildSystemPrompt, inboxSection, memoryNotesBlock, recallMemories, recentWorkBrief, taintFromStoredInput, workspaceDirectory } from "./prompt";
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
 import { planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
 import { failTask, setTaskStatus } from "./task-status";
@@ -109,7 +109,7 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   if (!budget.ok) {
     await pauseForBudget(ws.id, emp.id, budget.reason!, taskId);
     await db.update(tasks).set({ error: `Paused: ${budget.reason}` }).where(eq(tasks.id, taskId));
-    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedBudget", { name: emp.name }), text: budget.reason!, link: `/employees/${emp.id}` });
+    await miscQueue.add("notify", { kind: "notify", notificationKind: "limits", employeeId: emp.id, workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedBudget", { name: emp.name }), text: budget.reason!, link: `/employees/${emp.id}` });
     return;
   }
 
@@ -215,17 +215,19 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
       : {}),
   };
 
-  const [mem, directory, context, inbox] = await Promise.all([
+  const [mem, directory, context, inbox, recent] = await Promise.all([
     recallMemories(emp.id, `${task.title}\n${task.brief}`),
     workspaceDirectory(ws.id),
     taskContext(task),
     unreadMessagesFor(emp.id),
+    recentWorkBrief(emp.id, { excludeTaskId: task.id }).catch((e: unknown) => (log.warn({ err: e, taskId }, "recent work brief failed"), "")),
   ]);
 
   // stored content written by a tainted run (or imported) is fenced as data in the prompt and taints this run
   await taintFromStoredInput(ctx, mem, inbox);
 
-  const promptParts = [`# Task: ${task.title}`, task.brief, context && `## Context\n${context}`];
+  // memories and recent work lead the user message (data, not instructions): the system prompt stays stable across runs
+  const promptParts = [memoryNotesBlock(mem), `# Task: ${task.title}`, task.brief, context && `## Context\n${context}`, recent];
   if (inbox.length) promptParts.push(inboxSection(inbox));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(task, team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
@@ -246,7 +248,6 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   const systemPrompt = buildSystemPrompt({
     employee: emp,
     workspaceName: ws.name,
-    memories: mem,
     directory,
     grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
     dryRun: task.dryRun,
@@ -282,7 +283,7 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   if (out.stopped === "budget") {
     await pauseForBudget(ws.id, emp.id, "Budget reached during the run", taskId);
     if (!(await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." }))) return;
-    await miscQueue.add("notify", { kind: "notify", workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedMidTask", { name: emp.name }), text: task.title, link: `/tasks/${task.id}` });
+    await miscQueue.add("notify", { kind: "notify", notificationKind: "limits", employeeId: emp.id, workspaceId: ws.id, subject: msg(ws.defaultLocale, "notify.pausedMidTask", { name: emp.name }), text: task.title, link: `/tasks/${task.id}` });
     return;
   }
   if (out.stopped === "quota") {

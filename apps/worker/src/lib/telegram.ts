@@ -13,25 +13,28 @@ const BUTTON_TTL_MS = 24 * 3_600_000;
 const TZ = process.env.APP_TIME_ZONE || "Asia/Jakarta";
 const SUMMARY_HOUR = Number(process.env.TELEGRAM_SUMMARY_HOUR ?? 8);
 
-async function linkedMembers(workspaceId: string) {
+/** Linked members of the workspace; `only` narrows them to these users (per-user notification preferences). */
+async function linkedMembers(workspaceId: string, only?: string[]) {
+  if (only && !only.length) return [];
   return db
     .select({ userId: users.id, chatId: users.telegramChatId, locale: users.locale, role: members.role })
     .from(members)
     .innerJoin(users, eq(users.id, members.userId))
-    .where(and(eq(members.workspaceId, workspaceId), isNotNull(users.telegramChatId)));
+    .where(and(eq(members.workspaceId, workspaceId), isNotNull(users.telegramChatId), ...(only ? [inArray(members.userId, only)] : [])));
 }
 
 /**
  * Sends a notification to every linked member of the workspace. For an approval, Admins and Owners also get
  * Approve/Reject buttons: each button is a single-use row bound to that user and that approval, and its
- * callback_data is HMAC-signed. Members below Admin get the text only.
+ * callback_data is HMAC-signed. Members below Admin get the text only. `recipients` (user ids) limits the
+ * members reached (the caller applies notification preferences); omitted, every linked member is.
  */
-export async function telegramNotify(workspaceId: string, subject: string, text: string, link?: string, approvalId?: string): Promise<number> {
+export async function telegramNotify(workspaceId: string, subject: string, text: string, link?: string, approvalId?: string, recipients?: string[]): Promise<number> {
   if (!telegramConfigured()) return 0;
   const ws = await getWorkspace(workspaceId);
   const url = link ? `${env.appUrl}${link}` : env.appUrl;
   let sent = 0;
-  for (const m of await linkedMembers(workspaceId)) {
+  for (const m of await linkedMembers(workspaceId, recipients)) {
     const locale = resolveLocale(m.locale, ws.defaultLocale, null);
     const payload: Record<string, unknown> = { chat_id: Number(m.chatId), text: `${subject}\n\n${text}\n\n${msg(locale, "notify.open", { url })}`, disable_web_page_preview: true };
     if (approvalId && hasRole(m.role, "ADMIN")) {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ROUTINE_OVERLAP_MODES, type RoutineOverlap } from "@wfos/shared";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { CalendarClock, ChevronDown, Pencil, Play, Plus, Trash2 } from "lucide-react";
@@ -17,6 +18,8 @@ import { Avatar, EmptyState, PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { useEmployees, useTeams } from "@/lib/hooks";
+import { LiveSchedulePreview } from "@/components/routines/schedule-preview";
+import { cn } from "@/lib/utils";
 
 interface Routine {
   id: string;
@@ -29,11 +32,12 @@ interface Routine {
   perClient: boolean;
   dryRun: boolean;
   enabled: boolean;
+  overlap: RoutineOverlap;
   nextRunAt: string | null;
   lastRunAt: string | null;
 }
 type Form = Omit<Routine, "id" | "nextRunAt" | "lastRunAt">;
-const blank: Form = { name: "", cron: "0 9 * * 1", timezone: "Asia/Jakarta", brief: "", assigneeId: null, teamId: null, perClient: false, dryRun: false, enabled: true };
+const blank: Form = { name: "", cron: "0 9 * * 1", timezone: "Asia/Jakarta", brief: "", assigneeId: null, teamId: null, perClient: false, dryRun: false, enabled: true, overlap: "skip" };
 const PRESETS = [
   { key: "weeklyMonday", cron: "0 9 * * 1" },
   { key: "weekdays", cron: "0 8 * * 1-5" },
@@ -81,6 +85,7 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
               <Input value={f.timezone} onChange={(e) => setF({ ...f, timezone: e.target.value })} />
             </div>
           </div>
+          <LiveSchedulePreview cron={f.cron} timezone={f.timezone} />
           <div className="flex flex-wrap gap-1">
             {PRESETS.map((p) => (
               <Button key={p.cron} type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => setF({ ...f, cron: p.cron })}>
@@ -111,6 +116,18 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
               ))}
             </select>
           </div>
+          <fieldset className="space-y-1.5">
+            <legend className="text-sm font-medium">{t("form.overlap")}</legend>
+            {ROUTINE_OVERLAP_MODES.map((mode) => (
+              <label key={mode} className={cn("flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm", f.overlap === mode && "border-primary bg-primary/5")}>
+                <input type="radio" name="routine-overlap" className="mt-1" checked={f.overlap === mode} onChange={() => setF({ ...f, overlap: mode })} />
+                <span>
+                  <span className="font-medium">{t(`overlap.${mode}.label`)}</span>
+                  <span className="block text-xs text-muted-foreground">{t(`overlap.${mode}.help`)}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <div className="space-y-1.5">
             <Label>{t("form.brief")}</Label>
             <Textarea rows={4} value={f.brief} onChange={(e) => setF({ ...f, brief: e.target.value })} placeholder={t("form.briefPlaceholder", { variable: CLIENT_VAR })} />
@@ -138,6 +155,9 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
   );
 }
 
+/** missed = the worker was down past the catch-up window; skipped_overlap = the previous firing was still running */
+const RUN_STATUS_TONE: Record<string, string> = { failed: "text-destructive", missed: "text-amber-600", skipped_overlap: "text-muted-foreground" };
+
 function History({ id }: { id: string }) {
   const t = useTranslations("routines");
   const f = useFormat();
@@ -163,7 +183,7 @@ function History({ id }: { id: string }) {
             <li key={r.id} className="flex flex-wrap items-center gap-2">
               <span className="text-muted-foreground">{f.dateTime(r.startedAt)}</span>
               <span className="rounded bg-muted px-1.5 text-[11px]">{t.has(`history.trigger.${r.trigger}`) ? t(`history.trigger.${r.trigger}`) : r.trigger}</span>
-              <span className={r.status === "failed" ? "text-destructive" : ""}>{t.has(`history.status.${r.status}`) ? t(`history.status.${r.status}`) : r.status}</span>
+              <span className={RUN_STATUS_TONE[r.status] ?? ""}>{t.has(`history.status.${r.status}`) ? t(`history.status.${r.status}`) : r.status}</span>
               {r.taskIds.map((taskId, i) => (
                 <Link key={taskId} href={`/tasks/${taskId}`} className="text-primary hover:underline">
                   {t("history.taskLink", { n: i + 1 })}
@@ -218,6 +238,7 @@ export default function RoutinesPage() {
                     <code className="rounded bg-muted px-1.5 text-xs">{r.cron}</code>
                     {r.perClient && <span className="rounded bg-sky-500/15 px-1.5 text-xs text-sky-700 dark:text-sky-300">{tr("badge.perClient")}</span>}
                     {r.dryRun && <span className="rounded bg-violet-500/15 px-1.5 text-xs text-violet-700 dark:text-violet-300">{tr("badge.dryRun")}</span>}
+                    {r.overlap === "queue" && <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground">{tr("badge.queue")}</span>}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
@@ -232,7 +253,7 @@ export default function RoutinesPage() {
                   <Button size="sm" variant="outline" onClick={() => run.mutate(r.id)} className="gap-1">
                     <Play className="size-3.5" /> {tr("runNow")}
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => setEdit({ id: r.id, form: { name: r.name, cron: r.cron, timezone: r.timezone, brief: r.brief, assigneeId: r.assigneeId, teamId: r.teamId, perClient: r.perClient, dryRun: r.dryRun, enabled: r.enabled } })} aria-label={tc("edit")}>
+                  <Button size="icon" variant="ghost" onClick={() => setEdit({ id: r.id, form: { name: r.name, cron: r.cron, timezone: r.timezone, brief: r.brief, assigneeId: r.assigneeId, teamId: r.teamId, perClient: r.perClient, dryRun: r.dryRun, enabled: r.enabled, overlap: r.overlap ?? "skip" } })} aria-label={tc("edit")}>
                     <Pencil className="size-4" />
                   </Button>
                   <Button size="icon" variant="ghost" onClick={() => setExpanded(expanded === r.id ? null : r.id)} aria-label={tr("toggleHistory")}>

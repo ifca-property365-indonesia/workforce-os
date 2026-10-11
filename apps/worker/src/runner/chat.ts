@@ -1,6 +1,6 @@
 import { employeeOutputLocale, type MessageMeta, type RoutedBy } from "@wfos/shared";
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, inArray, isNull, not, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { conversations, db, employees, messages, teams } from "@wfos/db";
 import { publish } from "../lib/redis";
 import { log } from "../lib/logger";
@@ -8,7 +8,7 @@ import { getWorkspace } from "../lib/settings";
 import { recordStep } from "../lib/steps";
 import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, type RunContext } from "../tools/registry";
-import { buildSystemPrompt, recallMemories, taintFromStoredInput, workspaceDirectory } from "./prompt";
+import { buildSystemPrompt, memoryNotesBlock, recallMemories, recentWorkBrief, taintFromStoredInput, workspaceDirectory } from "./prompt";
 import { taintRun } from "../guards/content";
 import { escapeData } from "./incidents";
 import { markMessagesUntrusted } from "./taint";
@@ -17,10 +17,10 @@ import { activeQuotaPause } from "../lib/limits";
 import { enqueueTask } from "../lib/redis";
 import { scriptedChatReply } from "../simulation/demo";
 import { errorMessage } from "../lib/errors";
-import { chatMessageDto } from "./chat-turns";
+import { ancestorIds, appendToBranch, branchTranscript, chatMessageDto, insertOnBranch, type Tx } from "./chat-turns";
 import { defaultResponder, loadTeamMembers, resolveResponders, resolveStatic } from "./responders";
 import { acquireEmployeeLease, releaseEmployeeLease } from "../guards/lease";
-import { isKilled } from "../guards/killswitch";
+import { CONVERSATION_EDITED, conversationAbortedSince, isKilled } from "../guards/killswitch";
 import { env } from "../lib/env";
 
 type MessageRow = typeof messages.$inferSelect;
@@ -47,14 +47,120 @@ export const TEAM_LEASE_RETRY = {
   implicit: { attempts: 3, delayMs: 1500 },
 };
 
+/** What claimTurn hands the run: the claimed user messages (branch order), the opening row, where the transcript starts. */
+interface Turn {
+  claimed: MessageRow[];
+  row: MessageRow;
+  /**
+   * the transcript is this message and its ancestors minus the claimed messages (the opening row's parent: the
+   * last claimed message, or a row that landed below it — a teammate's reply, a receipt — before the claim)
+   */
+  transcriptFrom: string | null;
+}
+
+/** Content of a reply stopped because the user edited a message mid-reply (abortConversation). */
+export const EDITED_STOP_TEXT = "(stopped — the message was edited)";
+
 /**
- * Claim every user message of the conversation that no run has answered yet, and open the row of
- * the turn (`open` decides it from the claimed messages), in one transaction: rapid messages
- * coalesce into a single turn. Returns null when there is nothing to claim (an earlier job already
- * folded this message in).
+ * A conversation from before branches (no message has a parent, no active leaf — or a client that inserts
+ * messages without them): link its messages in created_at order, as migration 0023 did, and make the newest the
+ * active leaf. Returns the leaf (null for an empty conversation).
  */
-async function claimTurn(conversationId: string, open: (claimed: MessageRow[]) => Opening): Promise<{ claimed: MessageRow[]; row: MessageRow } | null> {
+async function adoptLinearThread(tx: Tx, conversationId: string): Promise<string | null> {
+  const [tree] = await tx
+    .select({ id: messages.id })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), isNotNull(messages.parentId)))
+    .limit(1);
+  if (!tree) {
+    await tx.execute(sql`
+      UPDATE messages m SET parent_id = p.prev
+      FROM (SELECT id, LAG(id) OVER (ORDER BY created_at, id) AS prev FROM messages WHERE conversation_id = ${conversationId}) p
+      WHERE m.id = p.id AND m.parent_id IS NULL AND p.prev IS NOT NULL`);
+  }
+  const [newest] = await tx
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.conversationId, conversationId))
+    .orderBy(desc(messages.createdAt), desc(messages.id))
+    .limit(1);
+  if (!newest) return null;
+  await tx.update(conversations).set({ activeLeafId: newest.id }).where(eq(conversations.id, conversationId));
+  return newest.id;
+}
+
+/**
+ * Claim every user message of the ACTIVE branch that no run has answered yet, and open the row of the turn
+ * (`open` decides it from the claimed messages), in one transaction: rapid messages coalesce into a single turn.
+ * Unanswered user messages on other branches (an edit the user abandoned for another edit or branch) are marked
+ * handled without a reply. Returns null when there is nothing to claim (an earlier job already folded this
+ * message in).
+ *
+ * The opening row goes below the active leaf, which is the last claimed message or a row below it (a teammate of
+ * an earlier turn replied, or a receipt landed, after the user sent it): the reply stays on the active branch.
+ *
+ * `regenerate`: answer exactly that user message again — a new sibling reply below it. The web moved the leaf to
+ * the user message before enqueueing; the reply becomes the leaf only while it still is (compare-and-set), so a
+ * user who sent a new message meanwhile keeps their leaf and the regenerated reply stays a sibling version. A
+ * regenerate job is idempotent: when a reply to that message created after `enqueuedAt` already exists (a double
+ * click enqueued it twice), it does nothing.
+ *
+ * Every current client sets parentId. A user message stored without a parent is only adopted in a legacy
+ * conversation (no active leaf yet): attached below the newest message when newer than the branch's root. In a
+ * conversation that has a leaf, a parentless message that is not on the active branch is abandoned (handled, no
+ * reply). One whose parent is the active leaf extends the branch even if the leaf was not moved yet.
+ */
+async function claimTurn(
+  conversationId: string,
+  open: (claimed: MessageRow[]) => Opening,
+  regenerate?: { userMessageId: string; enqueuedAt?: Date },
+): Promise<Turn | null> {
   return db.transaction(async (tx) => {
+    // serialises claims of this conversation (and the web's leaf moves) for the length of the claim
+    const [conv] = await tx.select({ leaf: conversations.activeLeafId }).from(conversations).where(eq(conversations.id, conversationId)).for("no key update");
+    if (!conv) return null;
+    const insertOpening = (claimed: MessageRow[], parentId: string) => {
+      const o = open(claimed);
+      return insertOnBranch(
+        o.role === "assistant"
+          ? { conversationId, parentId, role: "assistant", content: "", employeeId: o.employeeId, status: "streaming", meta: { turnMessageIds: claimed.map((m) => m.id), ...o.meta } }
+          : { conversationId, parentId, role: "system", content: o.content, status: "done", meta: o.meta },
+        { tx },
+      );
+    };
+
+    if (regenerate) {
+      const [u] = await tx
+        .select()
+        .from(messages)
+        .where(and(eq(messages.id, regenerate.userMessageId), eq(messages.conversationId, conversationId), eq(messages.role, "user")));
+      if (!u) return null;
+      if (regenerate.enqueuedAt) {
+        // the conversation row is locked: a duplicate job waits here and then sees the first job's reply
+        const [dup] = await tx
+          .select({ id: messages.id })
+          .from(messages)
+          .where(
+            and(
+              eq(messages.parentId, u.id),
+              eq(messages.role, "assistant"),
+              inArray(messages.status, ["streaming", "done"]),
+              gte(messages.createdAt, regenerate.enqueuedAt),
+              sql`${messages.meta}->'turnMessageIds' @> jsonb_build_array(${u.id}::text)`,
+            ),
+          )
+          .limit(1);
+        if (dup) {
+          log.info({ conversationId, userMessageId: u.id, replyId: dup.id }, "chat: duplicate regenerate skipped");
+          return null;
+        }
+      }
+      // a regenerated message is answered here, never again by a normal claim
+      if (!u.handledAt) await tx.update(messages).set({ handledAt: sql`now()` }).where(eq(messages.id, u.id));
+      const row = await insertOpening([u], u.id);
+      return { claimed: [u], row, transcriptFrom: u.parentId };
+    }
+
     // Deploy window: a worker from before turns existed may have answered messages after migration
     // 0013 ran, leaving them unhandled. Its replies are assistant rows without meta.turnMessageIds;
     // a user message older than the latest such reply was answered, so it is marked handled (not
@@ -70,53 +176,58 @@ async function claimTurn(conversationId: string, open: (claimed: MessageRow[]) =
           sql`${messages.createdAt} < (select max(a.created_at) from messages a where a.conversation_id = ${conversationId} and a.role = 'assistant' and not (a.meta ? 'turnMessageIds'))`,
         ),
       );
-    // Concurrent claims serialise on the row locks; the loser re-checks handled_at and skips.
-    const ids = await tx
-      .update(messages)
-      .set({ handledAt: sql`now()` })
-      .where(and(eq(messages.conversationId, conversationId), eq(messages.role, "user"), isNull(messages.handledAt)))
-      .returning({ id: messages.id });
-    if (!ids.length) return null;
-    const claimed = await tx
+    const pending = await tx
       .select()
       .from(messages)
-      .where(inArray(messages.id, ids.map((r) => r.id)))
+      .where(and(eq(messages.conversationId, conversationId), eq(messages.role, "user"), isNull(messages.handledAt)))
       .orderBy(asc(messages.createdAt), asc(messages.id));
-    const o = open(claimed);
-    const [row] = await tx
-      .insert(messages)
-      .values(
-        o.role === "assistant"
-          ? { conversationId, role: "assistant", content: "", employeeId: o.employeeId, status: "streaming", meta: { turnMessageIds: claimed.map((m) => m.id), ...o.meta } }
-          : { conversationId, role: "system", content: o.content, status: "done", meta: o.meta },
-      )
-      .returning();
-    return { claimed, row: row! };
+    if (!pending.length) return null;
+
+    // legacy: a conversation from before branches (no leaf yet) keeps the linear adoption of parentless messages
+    const legacy = conv.leaf === null;
+    let leaf = conv.leaf ?? (await adoptLinearThread(tx, conversationId));
+    const chain = leaf ? await ancestorIds(tx, leaf) : [];
+    const branch = new Set(chain);
+    const [root] = chain.length ? await tx.select({ createdAt: messages.createdAt }).from(messages).where(eq(messages.id, chain.at(-1)!)) : [];
+    const leafBefore = leaf;
+    for (const p of pending) {
+      if (branch.has(p.id)) continue;
+      const extendsLeaf = leaf !== null && p.parentId === leaf;
+      const orphan = legacy && p.parentId === null && (!root || p.createdAt > root.createdAt);
+      if (!extendsLeaf && !orphan) continue; // on another branch: abandoned
+      if (orphan && leaf) await tx.update(messages).set({ parentId: leaf }).where(eq(messages.id, p.id));
+      branch.add(p.id);
+      leaf = p.id;
+    }
+    if (leaf && leaf !== leafBefore) await tx.update(conversations).set({ activeLeafId: leaf }).where(eq(conversations.id, conversationId));
+
+    const handled = await tx
+      .update(messages)
+      .set({ handledAt: sql`now()` })
+      .where(and(inArray(messages.id, pending.map((p) => p.id)), isNull(messages.handledAt)))
+      .returning({ id: messages.id });
+    const handledIds = new Set(handled.map((h) => h.id));
+    const abandoned = pending.filter((p) => handledIds.has(p.id) && !branch.has(p.id));
+    if (abandoned.length) log.info({ conversationId, messageIds: abandoned.map((m) => m.id) }, "chat: unanswered messages on another branch were left unanswered");
+    const onBranch = pending.filter((p) => handledIds.has(p.id) && branch.has(p.id)).map((p) => p.id);
+    if (!onBranch.length) return null;
+    // re-read: the claim set handled_at and may have linked parents; branch order (ancestor first) is the
+    // position on the chain from the (final) leaf
+    const depth = new Map((await ancestorIds(tx, leaf!)).map((id, i) => [id, i]));
+    const claimed = (await tx.select().from(messages).where(inArray(messages.id, onBranch))).sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0));
+    // the leaf is the last claimed message or a row below it (every claimed message is on its chain)
+    const row = await insertOpening(claimed, leaf!);
+    return { claimed, row, transcriptFrom: leaf! };
   });
 }
 
-/**
- * Up to `limit` messages before `firstId`, oldest first, by (created_at, id). The comparison runs
- * in SQL so microsecond timestamps are not truncated to JS milliseconds. Assistant rows still
- * streaming (another run in flight, or one that died mid-reply) are left out.
- */
-async function transcriptBefore(conversationId: string, firstId: string, limit = 20): Promise<MessageRow[]> {
-  const rows = await db
-    .select()
-    .from(messages)
-    .where(
-      and(
-        eq(messages.conversationId, conversationId),
-        sql`(${messages.createdAt}, ${messages.id}) < (select m.created_at, m.id from messages m where m.id = ${firstId})`,
-        not(and(eq(messages.role, "assistant"), eq(messages.status, "streaming"))!),
-      ),
-    )
-    .orderBy(desc(messages.createdAt), desc(messages.id))
-    .limit(limit);
-  return rows.reverse();
-}
-
 const attachmentNames = (ms: MessageRow[]) => ms.flatMap((m) => m.attachments.map((a) => a.name));
+
+/** The branch above the turn: `transcriptFrom` and its ancestors, without the turn's own messages (they are the input). */
+async function turnTranscript(transcriptFrom: string | null, claimed: MessageRow[]): Promise<MessageRow[]> {
+  const own = new Set(claimed.map((m) => m.id));
+  return (await branchTranscript(transcriptFrom)).filter((m) => !own.has(m.id));
+}
 
 /** Rows the transcript shows (approval receipts and user/assistant rows; UI-only notes are left out). */
 const shownInTranscript = (m: MessageRow) => m.role !== "system" || !!m.meta.approvalId;
@@ -175,7 +286,7 @@ async function acquireResponderLease(employeeId: string, leaseId: string, mentio
  * rows are excluded from later transcripts, closed as errors by the runs worker's failed handler
  * (job exhausted / stalled) and, as a backstop, by the reaper after CHAT_TURN_STALE_MS.
  */
-export async function runChat(conversationId: string, userMessageId: string): Promise<void> {
+export async function runChat(conversationId: string, userMessageId: string, opts: { regenerate?: boolean; enqueuedAt?: Date } = {}): Promise<void> {
   const [conv] = await db.select().from(conversations).where(eq(conversations.id, conversationId));
   if (!conv) return;
   const ws = await getWorkspace(conv.workspaceId);
@@ -195,6 +306,8 @@ export async function runChat(conversationId: string, userMessageId: string): Pr
   const byId = new Map<string, EmployeeRow>([...members, first].map((e) => [e.id, e]));
   const defaultId = first.id;
 
+  // an abortConversation (message edited) from now on stops this turn
+  const turnStartedAt = Date.now();
   const turn = await claimTurn(conversationId, (claimed): Opening => {
     if (!team) return { role: "assistant", employeeId: defaultId, meta: {} };
     const r = resolveStatic(team, claimed, members);
@@ -202,13 +315,13 @@ export async function runChat(conversationId: string, userMessageId: string): Pr
     // auto: the default responder holds the turn until the classifier has picked
     if ("auto" in r) return { role: "assistant", employeeId: defaultId, meta: {} };
     return { role: "assistant", employeeId: r.responders[0]!, meta: { routedBy: r.routedBy } };
-  });
+  }, opts.regenerate ? { userMessageId, enqueuedAt: opts.enqueuedAt } : undefined);
   if (!turn) {
     log.debug({ conversationId, userMessageId }, "chat: message already answered in an earlier turn");
     return;
   }
   // From here on the messages are claimed: nothing may throw past this point without closing the turn.
-  const { claimed } = turn;
+  const { claimed, transcriptFrom } = turn;
   let row = turn.row;
   if (row.role === "system") {
     await publishMessage(ws.id, conversationId, row);
@@ -222,7 +335,7 @@ export async function runChat(conversationId: string, userMessageId: string): Pr
   if (team) {
     try {
       const r = await resolveResponders(conv, team, claimed, members, {
-        recentTranscript: async () => formatTranscript(await transcriptBefore(conversationId, claimed[0]!.id), names),
+        recentTranscript: async () => formatTranscript(await turnTranscript(transcriptFrom, claimed), names),
       });
       if ("routedBy" in r) {
         const picked = r.responders.map((id) => byId.get(id)).filter((e): e is EmployeeRow => !!e);
@@ -260,28 +373,42 @@ export async function runChat(conversationId: string, userMessageId: string): Pr
   if (untrustedInput) await recordUntrustedTurn(ws.id, conversationId, order[0]!.id, claimed);
   // the row skipped responders are noted on: the turn's last reply, else its opening row
   let last: MessageRow = row;
+  // the newest row of this turn: the next responder's reply (or busy note) is appended to its branch
+  let tail: MessageRow = row;
   for (let i = 0; i < order.length; i++) {
     const emp = order[i]!;
     if (i > 0 && (await isKilled(ws.id).catch(() => true))) break;
+    if (i > 0 && conversationAbortedSince(conversationId, turnStartedAt)) break; // the user edited a message: the turn stops
     const leaseId = emp.id !== leaseHolder ? `chat-${conversationId}-${randomUUID()}` : null;
     let leased = false;
     try {
       if (leaseId) {
         leased = await acquireResponderLease(emp.id, leaseId, mentioned.has(emp.id));
         if (!leased) {
-          await busyNote(ws.id, conversationId, emp, i === 0 ? row : null, claimed);
+          const note = await busyNote(ws.id, conversationId, emp, i === 0 ? row : tail, i === 0, claimed);
+          if (note) tail = note;
           continue;
         }
       }
       if (i > 0) {
-        [row = row] = await db
-          .insert(messages)
-          .values({ conversationId, role: "assistant", content: "", employeeId: emp.id, status: "streaming", meta: { turnMessageIds: claimed.map((m) => m.id), ...(routedBy ? { routedBy } : {}) } })
-          .returning();
+        // below the turn's newest row — or below the leaf when it moved below that row meanwhile (the user's
+        // follow-up, a receipt), so the reply is not stranded on a hidden side branch
+        row = await appendToBranch(
+          {
+            conversationId,
+            role: "assistant",
+            content: "",
+            employeeId: emp.id,
+            status: "streaming",
+            meta: { turnMessageIds: claimed.map((m) => m.id), ...(routedBy ? { routedBy } : {}) },
+          },
+          tail.id,
+        );
       }
       last = row;
+      tail = row;
       replies.push(row.id);
-      const out = await answer({ ws, emp, conversationId, claimed, assistant: row, names, teamChat, earlier, turnGuard });
+      const out = await answer({ ws, emp, conversationId, claimed, assistant: row, names, teamChat, earlier, turnGuard, transcriptFrom, turnStartedAt });
       if (out.status === "done" && out.content) earlier.push({ name: emp.name, content: out.content, untrusted: turnGuard.tainted });
       if (out.fatal) break;
     } catch (e) {
@@ -327,14 +454,18 @@ async function recordSkipped(workspaceId: string, conversationId: string, target
   }
 }
 
-/** The responder could not get its lease: the turn's opening row becomes the note, or a new system row carries it. */
-async function busyNote(workspaceId: string, conversationId: string, emp: EmployeeRow, opening: MessageRow | null, claimed: MessageRow[]): Promise<void> {
+/**
+ * The responder could not get its lease: the turn's opening row (`isOpening`) becomes the note, or a new system
+ * row appended to the branch of `at` (the turn's newest row; see appendToBranch) carries it. Returns the note row.
+ */
+async function busyNote(workspaceId: string, conversationId: string, emp: EmployeeRow, at: MessageRow, isOpening: boolean, claimed: MessageRow[]): Promise<MessageRow | undefined> {
   const content = busyNoteText(emp.name);
   const meta: MessageMeta = { turnMessageIds: claimed.map((c) => c.id), hint: "busy" };
-  const [m] = opening
-    ? await db.update(messages).set({ role: "system", content, employeeId: emp.id, status: "done", meta }).where(eq(messages.id, opening.id)).returning()
-    : await db.insert(messages).values({ conversationId, role: "system", content, employeeId: emp.id, status: "done", meta }).returning();
+  const [m] = isOpening
+    ? await db.update(messages).set({ role: "system", content, employeeId: emp.id, status: "done", meta }).where(eq(messages.id, at.id)).returning()
+    : [await appendToBranch({ conversationId, role: "system", content, employeeId: emp.id, status: "done", meta }, at.id)];
   if (m) await publishMessage(workspaceId, conversationId, m);
+  return m;
 }
 
 /** Close a row. Never throws: a failed write is logged and retried as a bare status='error'. */
@@ -384,6 +515,10 @@ interface AnswerInput {
   earlier: { name: string; content: string; untrusted?: boolean }[];
   /** taint shared across the responders of one turn (set once any run read injected content) */
   turnGuard?: { tainted: boolean };
+  /** the transcript is this message and its ancestors (the branch above the turn) */
+  transcriptFrom: string | null;
+  /** when the turn started (an abortConversation after it stops the reply) */
+  turnStartedAt: number;
 }
 
 /** One responder's reply into its own row. Never throws: errors close the row as 'error'. */
@@ -451,7 +586,7 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     revisionRequests: [],
   };
 
-  const before = await transcriptBefore(conversationId, claimed[0]!.id);
+  const before = await turnTranscript(input.transcriptFrom, claimed);
   // an earlier untrusted machine-client message, or a reply / receipt of a tainted run, is still in the transcript
   const untrustedBefore = before.filter((m) => shownInTranscript(m) && m.meta.untrusted === true);
   if (!ctx.guard.tainted && untrustedBefore.some((m) => m.role === "user")) {
@@ -474,14 +609,18 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
         input.earlier.some((r) => r.untrusted) ? `\n\n${UNTRUSTED_CHAT_NOTE}` : ""
       }`
     : "";
-  const prompt = `${transcript ? `Conversation so far:\n${transcript}\n\n---\n` : ""}User: ${latestText}${attach}${teammates}`;
+  const turnText = `${transcript ? `Conversation so far:\n${transcript}\n\n---\n` : ""}User: ${latestText}${attach}${teammates}`;
 
-  const mem = await recallMemories(emp.id, latestText);
+  const [mem, recent] = await Promise.all([
+    recallMemories(emp.id, latestText),
+    recentWorkBrief(emp.id, { excludeConversationId: conversationId }).catch((e: unknown) => (log.warn({ err: e, conversationId }, "chat: recent work brief failed"), "")),
+  ]);
   await taintFromStoredInput(ctx, mem);
+  // memories lead the user message and recent work follows it (data, not instructions): the system prompt stays stable
+  const prompt = [memoryNotesBlock(mem), turnText, recent].filter(Boolean).join("\n\n");
   const systemPrompt = buildSystemPrompt({
     employee: emp,
     workspaceName: ws.name,
-    memories: mem,
     directory: await workspaceDirectory(ws.id),
     grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
     dryRun: false,
@@ -500,6 +639,8 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     await publish(ws.id, { type: "chat.delta", conversationId, messageId: assistant.id, text });
   };
 
+  // the user edited a message while this reply was being prepared: it is not written
+  if (conversationAbortedSince(conversationId, input.turnStartedAt)) return { ...(await finish(EDITED_STOP_TEXT, "error")), fatal: true };
   try {
     const out = await runAgent({
       ctx,
@@ -517,6 +658,11 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     });
     if (timer) clearTimeout(timer);
     await flush().catch((e: unknown) => log.warn({ err: e, conversationId }, "chat: delta publish failed"));
+    // stopped because the user edited a message mid-reply: the row stays on its (old) branch, closed as stopped
+    if (out.stopped === "aborted" && out.error === CONVERSATION_EDITED) {
+      for (const id of ctx.createdTaskIds) await enqueueTask(id, ws.id);
+      return { ...(await finish(EDITED_STOP_TEXT, "error")), fatal: true };
+    }
     for (const id of ctx.createdTaskIds) await enqueueTask(id, ws.id);
     if (out.stopped === "budget") await pauseForBudget(ws.id, emp.id, "Budget reached during chat");
     // error / stalled / loop: the reply is an error that keeps whatever partial text the run produced

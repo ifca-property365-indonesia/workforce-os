@@ -76,5 +76,31 @@
     "denied": "The browser blocked notifications. Allow them in the site settings, then try again.",
     "unsupported": "This browser does not support push notifications.",
     "iosHint": "On iPhone and iPad: add Workforce OS to the Home Screen first (Share → Add to Home Screen), then open it from there."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Choose which notifications reach you, and where. Your choices apply to you only, in this workspace.",
+    "saved": "Notification preferences saved",
+    "kind": "Notification",
+    "channel": {
+      "inapp": "In app",
+      "email": "Email",
+      "telegram": "Telegram",
+      "push": "Push"
+    },
+    "kinds": {
+      "approval": "Approval needed",
+      "task_done": "Task finished",
+      "task_failed": "Task failed",
+      "incident": "Incidents",
+      "routine_failed": "Routine failed",
+      "limits": "Subscription limits",
+      "chat_reply": "Chat replies"
+    },
+    "cellLabel": "{kind} by {channel}",
+    "mutedTitle": "Muted employees",
+    "mutedHelp": "You get no notifications about a muted employee on any channel.",
+    "noEmployees": "No employees yet.",
+    "muted": "muted"
   }
 }

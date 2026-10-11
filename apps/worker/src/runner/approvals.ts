@@ -1,3 +1,4 @@
+import { memorySnapshot, recordMemoryEvent } from "../lib/memory-journal";
 import { and, eq } from "drizzle-orm";
 import { approvals, audit, db, memories, messages, tasks, workspaces } from "@wfos/db";
 import type { Deliverable } from "@wfos/db";
@@ -12,7 +13,7 @@ import { errorMessage } from "../lib/errors";
 import { sql } from "drizzle-orm";
 import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
-import { chatMessageDto } from "./chat-turns";
+import { appendToBranch, chatMessageDto } from "./chat-turns";
 import { redactSecrets } from "@wfos/shared/server";
 import { approvalTainted } from "./taint";
 
@@ -56,9 +57,9 @@ async function postChatReceipt(a: ApprovalRow, outcome: { kind: "executed" | "fa
         : outcome.kind === "failed"
           ? msg(locale, "receipt.failed", { title, error: summary })
           : msg(locale, "receipt.rejected", { title }) + (feedback ? `\n${msg(locale, "receipt.feedback", { feedback })}` : "");
-    const [m] = await db
-      .insert(messages)
-      .values({
+    // on the branch of the reply that raised the approval (below the active leaf while that branch is shown)
+    const m = await appendToBranch(
+      {
         conversationId: a.conversationId,
         role: "system",
         content,
@@ -66,9 +67,10 @@ async function postChatReceipt(a: ApprovalRow, outcome: { kind: "executed" | "fa
         handledAt: new Date(),
         // the title (and the tool output) come from a run that handled untrusted content: fenced and tainting later turns
         meta: { approvalId: a.id, ...((await approvalTainted(a)) ? { untrusted: true } : {}) },
-      })
-      .returning();
-    await publish(a.workspaceId, { type: "chat.message", conversationId: a.conversationId, message: chatMessageDto(m!) });
+      },
+      a.messageId ?? null,
+    );
+    await publish(a.workspaceId, { type: "chat.message", conversationId: a.conversationId, message: chatMessageDto(m) });
   } catch (e) {
     log.warn({ err: e, approvalId: a.id, conversationId: a.conversationId }, "chat receipt for approval failed");
   }
@@ -98,7 +100,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
   } else {
     try {
       // the taint mark is read from the payload the run wrote, never from the human-edited copy
-      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId, untrusted: a.payload.untrustedInput === true });
+      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId, approvalId: a.id, untrusted: a.payload.untrustedInput === true });
     } catch (e) {
       result = { ok: false, summary: errorMessage(e) };
     }
@@ -156,7 +158,12 @@ export async function handleRejection(approvalId: string): Promise<void> {
     } catch (e) {
       log.warn({ err: e }, "embedding failed for rejection memory");
     }
-    await db.insert(memories).values({ workspaceId: a.workspaceId, employeeId: a.employeeId, kind: "feedback", source: "rejection", content, embedding });
+    const [m] = await db.insert(memories).values({ workspaceId: a.workspaceId, employeeId: a.employeeId, kind: "feedback", source: "rejection", content, embedding }).returning();
+    if (m) {
+      await recordMemoryEvent({ workspaceId: a.workspaceId, employeeId: a.employeeId, memoryId: m.id, action: "create", actor: "rejection", before: null, after: memorySnapshot(m) }).catch((e) =>
+        log.warn({ err: e }, "memory journal failed for rejection memory"),
+      );
+    }
     await recordStep({ workspaceId: a.workspaceId, taskId: a.taskId, conversationId: a.conversationId, employeeId: a.employeeId, kind: "system", name: "feedback_written_to_memory", output: content });
   }
   await postChatReceipt(a, { kind: "rejected" });

@@ -29,6 +29,10 @@
   "member_not_found": "Member not found.",
   "message_empty": "The message is empty.",
   "message_too_long": "The message is too long (max {max} characters).",
+  "message_not_editable": "Only messages written by a person can be edited.",
+  "message_not_regenerable": "Only a reply to a message can be regenerated.",
+  "reply_in_progress": "A reply is still being written. Wait for it to finish, then try again.",
+  "conversation_changed": "The conversation changed in the meantime. Reload it and try again.",
   "no_files": "No files were uploaded.",
   "not_found": "Not found.",
   "not_invoice_approval": "This approval is not an invoice.",
@@ -97,5 +101,10 @@
   "mcp_reserved_name": "The name {name} is reserved. Choose another name for the MCP server.",
   "mcp_url_not_public": "The MCP server {name} points to a private or local address, which is not allowed here.",
   "package_mcp_url_not_public": "The package's MCP server {name} points to a private, local or unresolvable address ({host}). Remove it from the package or fix its URL.",
-  "mcp_invalid_url": "The MCP server URL must start with http:// or https://."
+  "mcp_invalid_url": "The MCP server URL must start with http:// or https://.",
+  "nothing_to_change": "Nothing to change.",
+  "memory_event_not_found": "This history entry no longer exists.",
+  "memory_event_already_undone": "This change was already undone.",
+  "memory_event_not_undoable": "This change cannot be undone.",
+  "memory_changed_since": "The memory changed after this entry. Undoing it now would also throw away the later change."
 }

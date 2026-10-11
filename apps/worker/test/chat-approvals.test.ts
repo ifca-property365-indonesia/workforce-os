@@ -44,6 +44,34 @@ describe("createApproval", () => {
     expect(notify.link).toBe(`/chat?c=${conv.id}&m=${reply.id}`);
   });
 
+  it("is born expired when the reply that raised it is no longer on the active branch (edited away)", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id);
+    const { conv, reply } = await chat(ws.id, emp.id);
+    // the user edited: a sibling branch is now active and the old reply is off it
+    const [edited] = await db.insert(messages).values({ conversationId: conv.id, role: "user", content: "edited" }).returning();
+    await db.update(conversations).set({ activeLeafId: edited!.id }).where(eq(conversations.id, conv.id));
+    const ctx = runContext(ws, emp, null, { conversationId: conv.id, messageId: reply.id });
+    const id = await createApproval(ctx, "send_email", "Email: Hi", "needs approval", { to: ["a@b.co"] }, []);
+
+    const [row] = await db.select().from(approvals).where(eq(approvals.id, id));
+    expect(row!.status).toBe("EXPIRED");
+    expect(ctx.pendingApprovalIds).not.toContain(id);
+    expect(events().some((e) => e.type === "approval.created")).toBe(false);
+    expect(transport.queued.some((q) => q.name === "notify")).toBe(false);
+  });
+
+  it("stays pending when the reply is on the active branch", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id);
+    const { conv, reply } = await chat(ws.id, emp.id);
+    await db.update(conversations).set({ activeLeafId: reply.id }).where(eq(conversations.id, conv.id));
+    const ctx = runContext(ws, emp, null, { conversationId: conv.id, messageId: reply.id });
+    const id = await createApproval(ctx, "send_email", "Email: Hi", "needs approval", { to: ["a@b.co"] }, []);
+    const [row] = await db.select().from(approvals).where(eq(approvals.id, id));
+    expect(row!.status).toBe("PENDING");
+  });
+
   it("keeps the inbox link and no conversation for a task run", async () => {
     const ws = await makeWorkspace();
     const emp = await makeEmployee(ws.id);

@@ -29,6 +29,10 @@
   "member_not_found": "Anggota tidak ditemukan.",
   "message_empty": "Pesan kosong.",
   "message_too_long": "Pesan terlalu panjang (maks. {max} karakter).",
+  "message_not_editable": "Hanya pesan yang ditulis orang yang bisa diedit.",
+  "message_not_regenerable": "Hanya balasan atas sebuah pesan yang bisa dibuat ulang.",
+  "reply_in_progress": "Balasan masih sedang ditulis. Tunggu hingga selesai, lalu coba lagi.",
+  "conversation_changed": "Percakapan berubah sementara itu. Muat ulang lalu coba lagi.",
   "no_files": "Tidak ada berkas yang diunggah.",
   "not_found": "Tidak ditemukan.",
   "not_invoice_approval": "Persetujuan ini bukan faktur.",
@@ -97,5 +101,10 @@
   "mcp_reserved_name": "Nama {name} sudah dicadangkan. Pilih nama lain untuk server MCP.",
   "mcp_url_not_public": "Server MCP {name} mengarah ke alamat privat atau lokal, yang tidak diizinkan di sini.",
   "package_mcp_url_not_public": "Server MCP {name} dalam paket mengarah ke alamat privat, lokal, atau tidak dapat ditemukan ({host}). Hapus dari paket atau perbaiki URL-nya.",
-  "mcp_invalid_url": "URL server MCP harus diawali http:// atau https://."
+  "mcp_invalid_url": "URL server MCP harus diawali http:// atau https://.",
+  "nothing_to_change": "Tidak ada yang diubah.",
+  "memory_event_not_found": "Entri riwayat ini sudah tidak ada.",
+  "memory_event_already_undone": "Perubahan ini sudah dibatalkan.",
+  "memory_event_not_undoable": "Perubahan ini tidak dapat dibatalkan.",
+  "memory_changed_since": "Memori ini berubah setelah entri ini. Membatalkannya sekarang juga akan membuang perubahan sesudahnya."
 }

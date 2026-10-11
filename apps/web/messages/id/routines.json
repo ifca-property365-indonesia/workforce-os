@@ -14,7 +14,8 @@
   "lastRun": "terakhir: {when}",
   "badge": {
     "perClient": "per klien",
-    "dryRun": "dry run"
+    "dryRun": "dry run",
+    "queue": "antre saat sibuk"
   },
   "empty": {
     "title": "Belum ada rutinitas",
@@ -29,7 +30,8 @@
     "perClient": "Satu tugas per klien",
     "dryRun": "Dry run",
     "enabled": "Aktif",
-    "gateNote": "Eksekusi otomatis mematuhi gerbang yang sama: tindakan yang tidak dapat dibatalkan akan dijeda untuk persetujuan dan pemilik akan diberi tahu."
+    "gateNote": "Eksekusi otomatis mematuhi gerbang yang sama: tindakan yang tidak dapat dibatalkan akan dijeda untuk persetujuan dan pemilik akan diberi tahu.",
+    "overlap": "Jika eksekusi sebelumnya masih berjalan"
   },
   "presets": {
     "weeklyMonday": "Setiap Senin 09.00",
@@ -49,7 +51,26 @@
     "status": {
       "dispatched": "dijalankan",
       "done": "selesai",
-      "failed": "gagal"
+      "failed": "gagal",
+      "missed": "terlewat (worker sedang offline)",
+      "skipped_overlap": "dilewati (eksekusi sebelumnya masih berjalan)"
     }
+  },
+  "overlap": {
+    "skip": {
+      "label": "Lewati eksekusi ini",
+      "help": "Jadwal ini dicatat sebagai dilewati; jadwal berikutnya tetap berjalan sesuai rencana."
+    },
+    "queue": {
+      "label": "Antrekan eksekusi baru",
+      "help": "Eksekusi baru tetap dimulai, berdampingan dengan yang masih berjalan."
+    }
+  },
+  "preview": {
+    "nextRuns": "Jadwal berikutnya ({timezone}):",
+    "invalidCron": "Aturan ini tidak valid: {detail}",
+    "invalidTimezone": "Zona waktu “{timezone}” tidak dikenal. Gunakan nama IANA seperti Asia/Jakarta.",
+    "fiveFields": "Aturan harus terdiri dari tepat 5 bagian (menit jam tanggal bulan hari); aturan ini punya {count} bagian.",
+    "checking": "Memeriksa aturan…"
   }
 }

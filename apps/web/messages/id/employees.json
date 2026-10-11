@@ -22,7 +22,8 @@
       "overview": "Ringkasan",
       "instructions": "Instruksi & replay",
       "tools": "Tool & otonomi",
-      "memory": "Memori"
+      "memory": "Memori",
+      "activity": "Aktivitas"
     },
     "spentToday": "Terpakai hari ini",
     "budgetOf": "/ {budget} kredit",
@@ -91,6 +92,52 @@
       "fact": "fakta",
       "feedback": "masukan",
       "preference": "preferensi"
+    },
+    "showInactive": "Tampilkan yang tidak aktif ({count})",
+    "edit": "Ubah memori",
+    "metaShort": "dari {source} · {when}",
+    "expiresLabel": "Lupakan setelah",
+    "noExpiry": "Tanpa kedaluwarsa",
+    "expiresOn": "kedaluwarsa {date}",
+    "expiredOn": "kedaluwarsa sejak {date}",
+    "untrusted": "tidak tepercaya",
+    "untrustedHelp": "Disimpan oleh eksekusi yang membaca konten luar: dipanggil kembali hanya sebagai data, tidak pernah sebagai instruksi.",
+    "state": {
+      "expired": "kedaluwarsa",
+      "superseded": "digantikan"
+    },
+    "source": {
+      "agent": "karyawan",
+      "user": "seseorang",
+      "rejection": "masukan penolakan",
+      "import": "impor",
+      "tidy": "perapian malam"
+    },
+    "history": {
+      "title": "Riwayat",
+      "empty": "Belum ada perubahan yang tercatat.",
+      "undo": "Batalkan",
+      "undone": "Perubahan dibatalkan",
+      "undoAnyway": "Batalkan saja",
+      "undoneExpiryCleared": "Perubahan dibatalkan. Tanggal kedaluwarsanya sudah lewat, jadi kini tidak kedaluwarsa.",
+      "more": "Perubahan lebih lama",
+      "by": "oleh {actor} · {when}",
+      "undoneAt": "dibatalkan {when}",
+      "action": {
+        "create": "ditambahkan",
+        "update": "diubah",
+        "delete": "dihapus",
+        "expire": "kedaluwarsa",
+        "supersede": "digantikan",
+        "restore": "dipulihkan"
+      },
+      "actor": {
+        "agent": "karyawan",
+        "user": "seseorang",
+        "tidy": "perapian malam",
+        "import": "impor",
+        "rejection": "masukan penolakan"
+      }
     }
   },
   "toolPermissions": {
@@ -263,6 +310,54 @@
       "cap": "Topi",
       "beanie": "Kupluk",
       "headphones": "Headphone"
+    }
+  },
+  "activity": {
+    "loading": "Memuat aktivitas…",
+    "empty": "Belum ada aktivitas.",
+    "error": "Aktivitas tidak dapat dimuat.",
+    "retry": "Coba lagi",
+    "older": "Aktivitas lebih lama",
+    "inTask": "di tugas: {title}",
+    "inChat": "di chat: {title}",
+    "receipt": {
+      "send_email": "Mengirim email ke {to}",
+      "draft_email": "Menyusun draf email ke {to}",
+      "send_invoice": "Mengirim faktur {number}",
+      "draft_invoice": "Menyusun draf faktur",
+      "kb_search": "Mencari di basis pengetahuan",
+      "kb_search_query": "Mencari “{query}” di basis pengetahuan",
+      "memory_search": "Menelusuri memorinya",
+      "memory_save": "Menyimpan sesuatu ke memori",
+      "list_clients": "Melihat daftar klien",
+      "get_client": "Melihat data klien",
+      "list_tasks": "Melihat tugas terbaru",
+      "web_fetch": "Membaca halaman web: {url}",
+      "draft_document": "Menyusun dokumen: {title}",
+      "create_task": "Membuat tugas: {title}",
+      "delegate_subtask": "Mendelegasikan subtugas: {title}",
+      "request_revision": "Mengembalikan subtugas untuk direvisi",
+      "retry_subtask": "Mengulang subtugas yang gagal",
+      "reassign_subtask": "Mengalihkan subtugas yang gagal",
+      "message_teammate": "Mengirim pesan ke rekan tim",
+      "git_push": "Melakukan push branch",
+      "create_pull_request": "Membuka pull request: {title}",
+      "post_webhook": "Mengirim ke webhook",
+      "propose_routine": "Mengusulkan rutinitas: {name}",
+      "tool": "Menggunakan {tool}",
+      "approval": "Meminta persetujuan: {tool}",
+      "gate": "Memeriksa izin untuk {target}",
+      "agent_message": "Mengirim pesan: {name}",
+      "guard": "Pemeriksaan keamanan: {name}",
+      "incident": "Menangani insiden",
+      "repeat": "Berhenti mengulang langkah yang sama",
+      "stopped_stalled": "Dihentikan: eksekusi tidak ada kemajuan",
+      "stopped_loop": "Dihentikan: eksekusi berputar-putar",
+      "llm": "Memikirkannya",
+      "compaction": "Meringkas catatannya",
+      "budget": "Mencapai batas anggaran",
+      "error": "Mengalami galat",
+      "other": "{name}"
     }
   }
 }

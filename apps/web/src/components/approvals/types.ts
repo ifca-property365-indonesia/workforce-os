@@ -14,6 +14,8 @@ export interface Approval {
   decidedAt: string | null;
   employee?: { id: string; name: string; avatar: string; role: string } | null;
   task?: { id: string; title: string; dryRun: boolean; source: string } | null;
+  /** inbox only: raised by a chat message that is not on the conversation's active branch (another version is shown) */
+  olderVersion?: boolean;
 }
 
 export interface Email {

@@ -131,11 +131,19 @@ export async function failTask(task: Pick<Task, "id">, error: string, opts: Fail
   return true;
 }
 
-export async function notifyFinished(task: Pick<Task, "workspaceId" | "id" | "title" | "parentTaskId" | "source">, status: TaskStatus, text: string): Promise<void> {
+export async function notifyFinished(
+  task: Pick<Task, "workspaceId" | "id" | "title" | "parentTaskId" | "source"> & Partial<Pick<Task, "assigneeId" | "deliverables">>,
+  status: TaskStatus,
+  text: string,
+): Promise<void> {
   if (task.parentTaskId || task.source === "replay") return; // only top-level tasks notify humans
+  // a finished task with nothing to show (no result text, no deliverable) is not worth interrupting anyone for
+  if (status === "DONE" && !text.trim() && !task.deliverables?.length) return;
   const locale = await workspaceLocale(task.workspaceId);
   await miscQueue.add("notify", {
     kind: "notify",
+    notificationKind: status === "DONE" ? "task_done" : "task_failed",
+    employeeId: task.assigneeId ?? null,
     workspaceId: task.workspaceId,
     subject: msg(locale, status === "DONE" ? "notify.taskFinished" : "notify.taskFailed", { title: task.title }),
     text: text.slice(0, 1500),
@@ -232,10 +240,11 @@ export async function handleRunJobFailed(job: FailedRunJob): Promise<boolean> {
   // a stalled job (maxStalledCount 0) goes straight to failed whatever its attempt count
   const final = job.attemptsMade >= (job.opts.attempts ?? 1) || /stalled/i.test(job.failedReason ?? "");
   if (!final) return false; // the retry runs (or skips) the task; a stranded RUNNING task is left to the reaper
-  if (job.data.kind === "chat") {
+  if (job.data.kind !== "task") {
     // the turn that claimed this message must not stay 'streaming' forever (the reaper is the backstop)
-    const closed = await closeTurnOfMessage(job.data.messageId);
-    if (closed.length) log.warn({ messageId: job.data.messageId, closed: closed.map((m) => m.id) }, "chat turn of a failed job closed as error");
+    const messageId = job.data.kind === "chat" ? job.data.messageId : job.data.userMessageId;
+    const closed = await closeTurnOfMessage(messageId);
+    if (closed.length) log.warn({ messageId, closed: closed.map((m) => m.id) }, "chat turn of a failed job closed as error");
     return closed.length > 0;
   }
   const [t] = await db.select({ id: tasks.id, status: tasks.status, phase: tasks.phase }).from(tasks).where(eq(tasks.id, job.data.taskId));

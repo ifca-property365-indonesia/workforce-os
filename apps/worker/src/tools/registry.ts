@@ -1,9 +1,11 @@
+import { ancestorIds } from "../runner/chat-turns";
 import { randomUUID } from "node:crypto";
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { createTwoFilesPatch } from "diff";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
+  conversations,
   agentMessages,
   approvals,
   chunks,
@@ -16,6 +18,7 @@ import {
   projects,
   tasks,
   teamMembers,
+  teams,
   TaskInputError,
   type Deliverable,
   type TaskRow,
@@ -28,6 +31,7 @@ import {
   emailPayloadSchema,
   invoicePayloadSchema,
   invoiceTotal,
+  ROUTINE_OVERLAP_MODES,
   webhookPayloadSchema,
   type AllowListEntry,
   type AutonomyLevel,
@@ -41,7 +45,9 @@ import { embedOne, toVectorLiteral } from "../lib/embeddings";
 import { recordStep } from "../lib/steps";
 import { publish, miscQueue } from "../lib/redis";
 import { guardOutput, guardToolResult, type GuardCtx } from "../guards/content";
-import { executeAction } from "./actions";
+import { cronNextRuns, executeAction, formatRunTime, isTimeZone, routineProposalSchema, routineTargetError } from "./actions";
+import { recordMemoryEvent } from "../lib/memory-journal";
+import { recallableMemory } from "../runner/prompt";
 import { exportAgentBranch, type RepoRef } from "../runner/workspace/git";
 import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
@@ -49,6 +55,9 @@ import { log } from "../lib/logger";
 import { recoveryRefusal, type RecoveryRequest } from "../runner/incidents";
 
 export const WFOS_SERVER = "wfos";
+
+/** memory_save expiresAt: at most this far ahead. */
+export const MEMORY_MAX_EXPIRY_MS = 2 * 366 * 86_400_000;
 
 export interface TeamContext {
   teamId: string;
@@ -264,6 +273,10 @@ export async function createApproval(
   payload: Record<string, unknown>,
   guardFindings: unknown[],
 ): Promise<string> {
+  const messageId = ctx.conversationId ? (ctx.messageId ?? null) : null;
+  // A reply whose message was edited or regenerated away while it was still running must not leave an actionable
+  // approval behind: the web expires that branch's approvals, so one raised afterwards is born expired.
+  const stale = messageId ? await offActiveBranch(ctx.conversationId!, messageId) : false;
   const [a] = await db
     .insert(approvals)
     .values({
@@ -277,9 +290,14 @@ export async function createApproval(
       guardFindings,
       // chat runs: the inline card under the assistant message, and the receipt once decided
       conversationId: ctx.conversationId,
-      messageId: ctx.conversationId ? (ctx.messageId ?? null) : null,
+      messageId,
+      ...(stale ? { status: "EXPIRED" as const, feedback: "Superseded by an edited message", decidedAt: new Date() } : {}),
     })
     .returning();
+  if (stale) {
+    await recordStep({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, conversationId: ctx.conversationId, employeeId: ctx.employee.id, kind: "approval", name: `approval_expired:${toolName}`, status: "expired", input: { approvalId: a!.id, reason: "message no longer on the active branch" } }).catch(() => {});
+    return a!.id;
+  }
   ctx.pendingApprovalIds.push(a!.id);
   await recordStep({
     workspaceId: ctx.workspaceId,
@@ -296,6 +314,8 @@ export async function createApproval(
   const locale = await workspaceLocale(ctx.workspaceId);
   await miscQueue.add("notify", {
     kind: "notify",
+    notificationKind: "approval",
+    employeeId: ctx.employee.id,
     workspaceId: ctx.workspaceId,
     subject: msg(locale, "notify.approvalNeeded", { title }),
     text: msg(locale, "notify.approvalNeededText", { employee: ctx.employee.name, role: ctx.employee.role, tool: toolName, reason }),
@@ -433,7 +453,7 @@ export function buildTools(ctx: RunContext) {
         const rows = await db
           .select({ content: memories.content, kind: memories.kind, at: memories.createdAt })
           .from(memories)
-          .where(eq(memories.employeeId, ctx.employee.id))
+          .where(and(eq(memories.employeeId, ctx.employee.id), recallableMemory()))
           .orderBy(sql`${memories.embedding} <=> ${v}::vector`)
           .limit(6);
         return ok(rows.length ? rows.map((r) => `- (${r.kind}, ${r.at.toISOString().slice(0, 10)}) ${r.content}`).join("\n") : "No memories yet.");
@@ -445,14 +465,120 @@ export function buildTools(ctx: RunContext) {
     "memory_save",
     tool(
       "memory_save",
-      "Save a durable fact or preference to your long-term memory (e.g. 'Client X prefers Bahasa Indonesia'). Never store secrets.",
-      { content: z.string().min(3).max(1000), kind: z.enum(["fact", "preference"]).optional() },
-      wrap(ctx, "memory_save", async (a: { content: string; kind?: "fact" | "preference" }) => {
+      "Save a durable fact or preference to your long-term memory (e.g. 'Client X prefers Bahasa Indonesia'). Never store secrets. " +
+        "Optional: expiresAt (ISO date, at most 2 years ahead) for something only true until then; supersedes (id of one of your memories) when this replaces an outdated memory.",
+      {
+        content: z.string().min(3).max(1000),
+        kind: z.enum(["fact", "preference"]).optional(),
+        expiresAt: z.string().min(10).max(40).optional(),
+        supersedes: z.string().uuid().optional(),
+      },
+      wrap(ctx, "memory_save", async (a: { content: string; kind?: "fact" | "preference"; expiresAt?: string; supersedes?: string }) => {
         const { text, findings } = await guardOutput(ctx.guard, "memory_save", a.content);
         if (findings.some((f) => f.severity === "high")) return err("Refused: memory content looks like it contains a secret.");
+        let expiresAt: Date | null = null;
+        if (a.expiresAt) {
+          expiresAt = new Date(a.expiresAt);
+          if (Number.isNaN(expiresAt.getTime())) return err("expiresAt must be an ISO date such as 2026-12-31 or 2026-12-31T17:00:00+07:00.");
+          if (expiresAt.getTime() <= Date.now()) return err("expiresAt must be in the future.");
+          if (expiresAt.getTime() > Date.now() + MEMORY_MAX_EXPIRY_MS) return err("expiresAt can be at most 2 years ahead; leave it out for a lasting memory.");
+        }
+        let old: typeof memories.$inferSelect | undefined;
+        if (a.supersedes) {
+          [old] = await db
+            .select()
+            .from(memories)
+            .where(and(eq(memories.id, a.supersedes), eq(memories.employeeId, ctx.employee.id), eq(memories.workspaceId, ctx.workspaceId)));
+          if (!old) return err("supersedes: no memory of yours has that id (see memory_search).");
+          if (old.supersededBy) return err("supersedes: that memory was already replaced by a newer one.");
+          if (old.kind === "feedback") return err("supersedes: feedback from a human reviewer cannot be replaced; save the new memory without supersedes.");
+          if (ctx.guard.tainted && !old.untrusted) return err("supersedes: this run handled untrusted content, so it cannot replace a trusted memory; save the new memory without supersedes.");
+        }
         const v = await embedOne(text);
-        await db.insert(memories).values({ workspaceId: ctx.workspaceId, employeeId: ctx.employee.id, kind: a.kind ?? "fact", content: text, source: "agent", embedding: v, untrusted: ctx.guard.tainted });
-        return ok("Saved to memory.");
+        const base = { workspaceId: ctx.workspaceId, employeeId: ctx.employee.id, actor: "agent" as const };
+        await db.transaction(async (tx) => {
+          const [m] = await tx
+            .insert(memories)
+            .values({ workspaceId: ctx.workspaceId, employeeId: ctx.employee.id, kind: a.kind ?? "fact", content: text, source: "agent", embedding: v, untrusted: ctx.guard.tainted, expiresAt })
+            .returning();
+          await recordMemoryEvent({ ...base, memoryId: m!.id, action: "create", before: null, after: m! }, tx);
+          if (old) {
+            const [o] = await tx
+              .update(memories)
+              .set({ supersededBy: m!.id, updatedAt: new Date() })
+              .where(and(eq(memories.id, old.id), isNull(memories.supersededBy)))
+              .returning();
+            if (!o) throw new Error("the memory to replace changed meanwhile");
+            await recordMemoryEvent({ ...base, memoryId: o.id, action: "supersede", before: old, after: o }, tx);
+          }
+        });
+        return ok(old ? "Saved to memory; the outdated memory is no longer recalled." : `Saved to memory${expiresAt ? ` until ${expiresAt.toISOString().slice(0, 10)}` : ""}.`);
+      }),
+    ),
+  );
+
+  add(
+    "propose_routine",
+    tool(
+      "propose_routine",
+      "Propose a recurring routine: a brief that runs as a task on a cron schedule (5 fields, e.g. '0 9 * * 1' = Mondays 09:00) in an IANA time zone. " +
+        "Nothing is created until a human approves it. Default assignee: you. overlap: 'skip' (default) skips a firing while the previous one still runs, 'queue' runs it anyway.",
+      {
+        name: z.string().min(1).max(120),
+        cron: z.string().min(9).max(120),
+        timezone: z.string().min(1).max(64),
+        brief: z.string().min(1).max(20000),
+        assigneeId: z.string().uuid().optional(),
+        teamId: z.string().uuid().optional(),
+        overlap: z.enum(ROUTINE_OVERLAP_MODES).optional(),
+      },
+      wrap(ctx, "propose_routine", async (a: { name: string; cron: string; timezone: string; brief: string; assigneeId?: string; teamId?: string; overlap?: "skip" | "queue" }) => {
+        const input = routineProposalSchema.safeParse(a);
+        if (!input.success) return err(`Invalid routine: ${input.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+        const p = input.data;
+        if (!isTimeZone(p.timezone)) return err(`Unknown time zone "${p.timezone}": use an IANA name such as Asia/Jakarta.`);
+        let nextRuns: Date[];
+        try {
+          nextRuns = cronNextRuns(p.cron, p.timezone, 3);
+        } catch (e) {
+          return err(`${(e as Error).message}. Use 5 cron fields: minute hour day-of-month month day-of-week.`);
+        }
+        const assigneeId = p.teamId ? null : (p.assigneeId ?? ctx.employee.id);
+        const teamId = p.teamId ?? null;
+        if (p.assigneeId && p.teamId) return err("Give either assigneeId or teamId, not both.");
+        const refused = await routineTargetError(ctx.workspaceId, assigneeId, teamId);
+        if (refused) return err(`${refused} Use ids from this workspace.`);
+        if (ctx.dryRun || ctx.sandboxed) return ok(`DRY RUN: routine "${p.name}" was NOT proposed (next runs would be ${nextRuns.map((d) => formatRunTime(d, p.timezone)).join(", ")}).`);
+        const { text: brief, findings } = await guardOutput(ctx.guard, "propose_routine brief", p.brief);
+        if (findings.some((f) => f.severity === "high")) return err("Refused: the brief looks like it contains a secret.");
+        const [target] = assigneeId
+          ? await db.select({ name: employees.name }).from(employees).where(eq(employees.id, assigneeId))
+          : await db.select({ name: teams.name }).from(teams).where(eq(teams.id, teamId!));
+        const locale = await workspaceLocale(ctx.workspaceId);
+        const schedule = `${p.cron} (${p.timezone}), next ${formatRunTime(nextRuns[0]!, p.timezone)}`;
+        const id = await createApproval(
+          ctx,
+          "create_routine",
+          msg(locale, "routine.proposalTitle", { name: p.name }),
+          msg(locale, "routine.proposalReason", { employee: ctx.employee.name, schedule }),
+          {
+            name: p.name,
+            cron: p.cron,
+            timezone: p.timezone,
+            brief,
+            assigneeId,
+            teamId,
+            overlap: p.overlap ?? "skip",
+            targetName: target?.name ?? null,
+            nextRuns: nextRuns.map((d) => d.toISOString()),
+            untrustedInput: ctx.guard.tainted,
+          },
+          findings,
+        );
+        return ok(
+          `Routine "${p.name}" proposed for approval (approval id ${id}); it has NOT been created yet. ` +
+            `Next runs once approved: ${nextRuns.map((d) => formatRunTime(d, p.timezone)).join(", ")}. Do not propose it again; mention the pending approval in your summary.`,
+        );
       }),
     ),
   );
@@ -967,4 +1093,16 @@ export async function unreadMessagesFor(employeeId: string) {
     await db.update(agentMessages).set({ readAt: new Date() }).where(inArray(agentMessages.id, rows.map((r) => r.id)));
   }
   return rows;
+}
+
+/** True when the conversation's active branch no longer contains `messageId` (it was edited or regenerated away). */
+async function offActiveBranch(conversationId: string, messageId: string): Promise<boolean> {
+  try {
+    const [c] = await db.select({ leaf: conversations.activeLeafId }).from(conversations).where(eq(conversations.id, conversationId));
+    if (!c?.leaf) return false;
+    const chain = await ancestorIds(db, c.leaf);
+    return !chain.includes(messageId);
+  } catch {
+    return false; // never block an approval on a lookup error: it stays PENDING and a person decides
+  }
 }

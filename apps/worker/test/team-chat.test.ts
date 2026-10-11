@@ -9,7 +9,7 @@ import { ROUTING_MESSAGE_CHARS } from "../src/runner/route-classifier";
 import { setQueryImpl, type QueryFn } from "../src/runner/sdk";
 import { mockRunner, type MockStep } from "../src/runner/mock-sdk";
 import { acquireEmployeeLease, releaseEmployeeLease } from "../src/guards/lease";
-import { makeWorkspace } from "./fixtures";
+import { makeWorkspace, sendUserMessage } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 
 // Capture every chat RunContext (and let a test add allow-listed auto actions) without touching the executor.
@@ -98,8 +98,7 @@ async function makeTeamChat(opts: { mode?: TeamResponderMode; members: { name: s
 }
 
 async function userMessage(conversationId: string, content: string, meta: MessageMeta = {}) {
-  const [m] = await db.insert(messages).values({ conversationId, role: "user", content, meta }).returning();
-  return m!;
+  return sendUserMessage(conversationId, { content, meta });
 }
 
 const rows = (conversationId: string) =>

@@ -16,8 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState } from "@/components/layout/common";
 import { Composer, type MentionCandidate } from "@/components/chat/composer";
 import { MessageItem } from "@/components/chat/message-item";
-import { api } from "@/lib/api";
-import { mergeMessages } from "@/lib/chat-thread";
+import { api, ApiError } from "@/lib/api";
+import { applyRealtimeMessage, mergeMessages } from "@/lib/chat-thread";
 import { useRealtime } from "@/lib/events";
 import { useFormat } from "@/lib/use-format";
 import { useEmployees, useMe, useTeams, type Employee } from "@/lib/hooks";
@@ -29,6 +29,12 @@ interface Conv {
   employeeId: string | null;
   teamId: string | null;
   updatedAt: string;
+}
+/** GET /api/conversations/[id] (and POST …/branch): the active branch only */
+interface Thread {
+  conversation: Conv;
+  messages: Msg[];
+  activeLeafId: string | null;
 }
 interface Msg extends ChatMessageDTO {
   status?: string;
@@ -84,8 +90,22 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
   const key = ["conversation", conv.id];
-  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<{ conversation: Conv; messages: Msg[] }>(`/api/conversations/${conv.id}`) });
-  const [messages, setMessages] = useState<Msg[]>([]);
+  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<Thread>(`/api/conversations/${conv.id}`) });
+  const [messages, setMessagesState] = useState<Msg[]>([]);
+  /**
+   * The rows as last set, read synchronously: realtime events can arrive several per render, and deciding whether
+   * one continues the thread from the rendered `messages` would miss rows an earlier event just added.
+   */
+  const shown = useRef<Msg[]>([]);
+  const setMessages = useCallback((fn: (ms: Msg[]) => Msg[]) => {
+    const next = fn(shown.current);
+    if (next === shown.current) return;
+    shown.current = next;
+    setMessagesState(next);
+  }, []);
+  /** a version switch: the sibling to focus the switcher of once its branch is shown, and how to announce it */
+  const switchFocus = useRef<{ id: string; dir: "prev" | "next" } | null>(null);
+  const [announce, setAnnounce] = useState("");
   const [taskFrom, setTaskFrom] = useState<string | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   /**
@@ -94,6 +114,8 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
    * receipt or hint arrives (or 90 s pass).
    */
   const [awaiting, setAwaiting] = useState(false);
+  /** when a regenerate was asked for: the old reply stays visible until the new one arrives, the composer waits */
+  const [regenAt, setRegenAt] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   /**
@@ -138,9 +160,20 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
 
   useEffect(() => {
     if (data) setMessages((local) => mergeMessages(data.messages.map((m) => ({ ...m, createdAt: String(m.createdAt) })), local));
-  }, [data]);
+  }, [data, setMessages]);
   // layout effect: the scroll lands before paint, so a growing reply never pushes the sentinel out of view
   useLayoutEffect(() => {
+    // after a version switch the row with the switcher is a different message (remounted): keep the keyboard on it
+    const sw = switchFocus.current;
+    if (sw) {
+      const group = document.getElementById(`msg-${sw.id}`)?.querySelector<HTMLElement>("[data-version-switcher]");
+      if (group) {
+        switchFocus.current = null;
+        const buttons = [...group.querySelectorAll<HTMLButtonElement>("button")];
+        const preferred = sw.dir === "prev" ? buttons[0] : buttons.at(-1);
+        (preferred && !preferred.disabled ? preferred : (buttons.find((b) => !b.disabled) ?? group)).focus();
+      }
+    }
     const added = messages.length > shownCount.current;
     const firstPaint = shownCount.current === 0;
     shownCount.current = messages.length;
@@ -173,15 +206,21 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
     }
   }, [messages, data, anchorSeq]);
   const last = messages.at(-1);
+  /** the thread's end as this view knows it: what an edit says it acted on (`expectedLeafId`) */
+  const lastId = useRef<string | null>(null);
+  lastId.current = last?.id ?? null;
   useEffect(() => {
     if (!last) return;
-    const age = Math.max(0, Date.now() - new Date(last.createdAt).getTime());
-    const waiting = last.role === "user" && age < AWAIT_MS;
+    const lastAt = new Date(last.createdAt).getTime();
+    // waiting for the newest user message's reply, or for a regenerated reply newer than everything shown
+    const since = last.role === "user" ? lastAt : regenAt > lastAt ? regenAt : 0;
+    const age = Math.max(0, Date.now() - since);
+    const waiting = since > 0 && age < AWAIT_MS;
     setAwaiting(waiting);
     if (!waiting) return;
     const timer = setTimeout(() => setAwaiting(false), AWAIT_MS - age);
     return () => clearTimeout(timer);
-  }, [last?.id, last?.role, last?.createdAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [last?.id, last?.role, last?.createdAt, regenAt]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!highlight) return;
     const timer = setTimeout(() => setHighlight(null), 4000);
@@ -191,26 +230,38 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
   const refetch = () => void qc.invalidateQueries({ queryKey: key });
   useRealtime((ev) => {
     if (ev.type === "chat.message" && ev.message.conversationId === conv.id) {
+      // decided against the rows as they are now (not as last rendered): see applyRealtimeMessage
+      let again = false;
       setMessages((ms) => {
-        const i = ms.findIndex((m) => m.id === ev.message.id);
-        if (i === -1) return [...ms, ev.message];
-        const copy = [...ms];
-        // keep streamed text if the final message has not arrived yet, and the approvals the fetch attached
-        copy[i] = { ...ev.message, content: ev.message.content || copy[i]!.content, approvals: ev.message.approvals ?? copy[i]!.approvals };
-        return copy;
+        const r = applyRealtimeMessage(ms, ev.message as Msg);
+        again = r.refetch;
+        return r.messages;
       });
+      if (again) refetch();
     }
     if (ev.type === "chat.delta" && ev.conversationId === conv.id) {
-      setMessages((ms) => ms.map((m) => (m.id === ev.messageId ? { ...m, content: m.content + ev.text, status: "streaming" } : m)));
+      setMessages((ms) => (ms.some((m) => m.id === ev.messageId) ? ms.map((m) => (m.id === ev.messageId ? { ...m, content: m.content + ev.text, status: "streaming" } : m)) : ms));
     }
     if (ev.type === "approval.created" && ev.conversationId === conv.id) refetch();
-    if (ev.type === "approval.updated" && messages.some((m) => m.approvals?.some((a) => a.id === ev.approvalId))) refetch();
+    if (ev.type === "approval.updated" && shown.current.some((m) => m.approvals?.some((a) => a.id === ev.approvalId))) refetch();
   });
 
+  /** 409 conversation_changed: someone (or another tab) moved the thread on; show it as it is now */
+  const branchError = (e: unknown) => {
+    if (e instanceof ApiError && e.status === 409 && (e.data as { code?: string } | undefined)?.code === "conversation_changed") {
+      toast(t("conversationChanged"));
+      refetch();
+      return;
+    }
+    toast.error((e as Error).message);
+  };
   const send = useMutation({
     mutationFn: ({ text, files }: { text: string; files: File[] }) => {
       const f = new FormData();
       f.set("content", text);
+      // the message answers what this view shows: if the thread moved on meanwhile (another tab switched versions,
+      // an edit forked it), the server refuses with 409 instead of hanging it below a branch nobody here sees
+      f.set("expectedLeafId", lastId.current ?? "");
       for (const file of files) f.append("files", file);
       return api.form(`/api/conversations/${conv.id}/messages`, f);
     },
@@ -219,14 +270,63 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
       stick.current = true;
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    // the composer keeps the draft whenever the send fails
+    onError: branchError,
   });
+  const afterBranch = () => {
+    stick.current = true;
+    refetch();
+    void qc.invalidateQueries({ queryKey: ["conversations"] });
+  };
+  const edit = useMutation({
+    mutationFn: ({ id, content }: { id: string; content: string }) =>
+      api.patch(`/api/conversations/${conv.id}/messages/${id}`, { content, expectedLeafId: lastId.current }),
+    onSuccess: afterBranch,
+    onError: branchError,
+  });
+  const regenerate = useMutation({
+    mutationFn: (id: string) => api.post(`/api/conversations/${conv.id}/messages/${id}/regenerate`),
+    onSuccess: () => {
+      setRegenAt(Date.now());
+      afterBranch();
+    },
+    onError: branchError,
+  });
+  /**
+   * Version switch. The active leaf is shared: it is stored on the conversation, so every viewer (and the next
+   * message, which hangs below it) follows the switch — there is one "current" thread, not one per person.
+   */
+  const switchTo = useMutation({
+    mutationFn: ({ messageId }: { messageId: string; dir: "prev" | "next" }) => api.post<Thread>(`/api/conversations/${conv.id}/branch`, { messageId }),
+    onMutate: ({ messageId, dir }) => {
+      switchFocus.current = { id: messageId, dir };
+    },
+    // the answer is the new branch: show it straight away (the merge drops the rows of the old one). A refetch
+    // still in flight would land after it with the old branch, so it is cancelled first.
+    onSuccess: async (r, { messageId }) => {
+      await qc.cancelQueries({ queryKey: key });
+      qc.setQueryData(key, r);
+      const b = r.messages.find((m) => m.id === messageId)?.branch;
+      if (b) setAnnounce(t("versions.label", { index: b.index + 1, count: b.count }));
+    },
+    onError: (e) => {
+      switchFocus.current = null;
+      branchError(e);
+    },
+  });
+  const editAsync = edit.mutateAsync;
+  const regenerateMutate = regenerate.mutate;
+  const switchMutate = switchTo.mutate;
+  const onEdit = useCallback((id: string, content: string) => editAsync({ id, content }), [editAsync]);
+  const onRegenerate = useCallback((id: string) => regenerateMutate(id), [regenerateMutate]);
+  const onSwitch = useCallback((id: string, dir: "prev" | "next") => switchMutate({ messageId: id, dir }), [switchMutate]);
 
   const emp = conv.employeeId ? emps?.find((e) => e.id === conv.employeeId) : undefined;
   const team = conv.teamId ? teams?.find((t) => t.id === conv.teamId) : undefined;
   const leadId = emp?.id ?? team?.leadId ?? null;
   const busy = awaiting || messages.some((m) => m.role === "assistant" && (m.status === "streaming" || (m.status === undefined && !m.content)));
   const canDecide = !!me && hasRole(me.role, "ADMIN");
+  const canBranch = !!me && hasRole(me.role, "MEMBER");
   const empById = useMemo(() => new Map((emps ?? []).map((e) => [e.id, e])), [emps]);
   const nameOf = useCallback((id: string) => empById.get(id)?.name, [empById]);
   const members: MentionCandidate[] | null = team
@@ -258,6 +358,12 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
             highlighted={highlight === m.id}
             onMakeTask={setTaskFrom}
             names={nameOf}
+            canBranch={canBranch}
+            busy={busy || regenerate.isPending}
+            switching={switchTo.isPending}
+            onEdit={onEdit}
+            onRegenerate={onRegenerate}
+            onSwitch={onSwitch}
           />
         ))}
         {awaiting && (
@@ -266,6 +372,9 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
           </div>
         )}
         <div ref={bottom} />
+      </div>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announce}
       </div>
       <Composer members={members} busy={busy} sending={send.isPending} onSend={(text, files) => send.mutateAsync({ text, files })} />
       {taskFrom !== null && <TaskFromChat text={taskFrom} employeeId={leadId} onClose={() => setTaskFrom(null)} />}

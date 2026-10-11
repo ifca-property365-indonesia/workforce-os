@@ -146,6 +146,8 @@ async function notifyIncident(incident: Incident, title: string, muted: boolean)
   if (muted) parts.push(msg(locale, "notify.incidentMuted", { limit: INCIDENT_HOURLY_LIMIT }));
   await miscQueue.add("notify", {
     kind: "notify",
+    notificationKind: incident.kind === "routine_failed" ? "routine_failed" : "incident",
+    employeeId: incident.employeeId ?? null,
     workspaceId: incident.workspaceId,
     subject: msg(locale, "notify.incident", { kind, title }),
     text: parts.join("\n\n"),

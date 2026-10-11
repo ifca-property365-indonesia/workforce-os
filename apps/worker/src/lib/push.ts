@@ -32,10 +32,15 @@ export function pushConfigured(): boolean {
   return !!vapid();
 }
 
-/** Web Push to every subscribed device of the workspace's members. Gone subscriptions (404/410) are removed. */
-export async function pushNotify(workspaceId: string, subject: string, text: string, link?: string): Promise<number> {
+/**
+ * Web Push to every subscribed device of the workspace's members (only those in `recipients` when given: the
+ * caller applies notification preferences). Gone subscriptions (404/410) are removed.
+ */
+export async function pushNotify(workspaceId: string, subject: string, text: string, link?: string, recipients?: string[]): Promise<number> {
   if (!pushConfigured()) return 0;
-  const userIds = (await db.select({ id: members.userId }).from(members).where(eq(members.workspaceId, workspaceId))).map((m) => m.id);
+  const memberIds = (await db.select({ id: members.userId }).from(members).where(eq(members.workspaceId, workspaceId))).map((m) => m.id);
+  // recipients outside the workspace are never reached
+  const userIds = recipients ? memberIds.filter((id) => recipients.includes(id)) : memberIds;
   if (!userIds.length) return 0;
   const subs = await db.select().from(pushSubscriptions).where(inArray(pushSubscriptions.userId, userIds));
   const body = JSON.stringify(pushPayload(subject, text, link));

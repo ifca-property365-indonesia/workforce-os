@@ -1,3 +1,4 @@
+import { conversationIn, currentLeaf } from "@/app/api/conversations/[id]/thread";
 import "server-only";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
@@ -272,10 +273,16 @@ export function buildMcpServer(s: ApiTokenSession, opts: McpServerOptions = {}):
         if (mentionAll) meta.mentionAll = true;
       }
       // handledAt stays null: the chat run claims this message (and any sent right after it) as one turn
-      const [m] = await db.insert(messages).values({ conversationId: conv.id, role: "user", content: input.text, attachments: [], meta }).returning();
-      if (conv.title === "New chat") await db.update(conversations).set({ title: input.text.slice(0, 60) }).where(eq(conversations.id, conv.id));
-      else await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, conv.id));
-      const dto: ChatMessageDTO = { id: m!.id, conversationId: conv.id, role: "user", content: m!.content, attachments: [], status: m!.status, meta: m!.meta, createdAt: m!.createdAt.toISOString() };
+      // same as the web composer: the message continues the active branch and becomes its leaf (row-locked)
+      const m = await db.transaction(async (tx) => {
+        const locked = await conversationIn(ws, conv.id, tx, true);
+        const leaf = await currentLeaf(locked, tx);
+        const [row] = await tx.insert(messages).values({ conversationId: conv.id, parentId: leaf, role: "user", content: input.text, attachments: [], meta }).returning();
+        const title = locked.title === "New chat" ? { title: input.text.slice(0, 60) } : {};
+        await tx.update(conversations).set({ activeLeafId: row!.id, updatedAt: new Date(), ...title }).where(eq(conversations.id, conv.id));
+        return row;
+      });
+      const dto: ChatMessageDTO = { id: m!.id, conversationId: conv.id, parentId: m!.parentId, role: "user", content: m!.content, attachments: [], status: m!.status, meta: m!.meta, createdAt: m!.createdAt.toISOString() };
       await publish(ws, { type: "chat.message", conversationId: conv.id, message: dto });
       await q.chat(conv.id, m!.id, ws);
       await audit({

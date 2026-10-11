@@ -16,6 +16,7 @@ import {
 } from "@wfos/shared";
 import { queuePrefix } from "@wfos/shared/runtime";
 import { serverEnv } from "./env";
+import { regenJobId } from "./job-ids";
 
 const g = globalThis as unknown as {
   __wfosRedis?: Redis;
@@ -46,6 +47,9 @@ export const q = {
   task: (taskId: string, workspaceId: string, resumeNote?: string) =>
     queues().runs.add("task", { kind: "task", taskId, workspaceId, resumeNote }, { jobId: `task-${taskId}-${Date.now()}` }),
   chat: (conversationId: string, messageId: string, workspaceId: string) => queues().runs.add("chat", { kind: "chat", conversationId, messageId, workspaceId }),
+  /** answer `userMessageId` again: the worker writes a new reply beside the existing one(s) */
+  chatRegenerate: (conversationId: string, userMessageId: string, workspaceId: string) =>
+    queues().runs.add("chat_regenerate", { kind: "chat_regenerate", conversationId, userMessageId, workspaceId }, { jobId: regenJobId(userMessageId) }),
   action: (job: ActionJob) => queues().actions.add(job.kind, job, { jobId: `${job.kind}-${job.approvalId}` }),
   ingest: (documentId: string, workspaceId: string) => queues().ingest.add("ingest", { kind: "ingest", documentId, workspaceId }),
   misc: (job: MiscJob) => queues().misc.add(job.kind, job),
@@ -55,6 +59,12 @@ export async function publish(workspaceId: string, ev: RealtimeEvent) {
   await redis().publish(channelFor(workspaceId, serverEnv.namespace), JSON.stringify(ev));
 }
 
-export async function control(msg: { type: "kill"; workspaceId: string } | { type: "cancel_task"; taskId: string }) {
+/** Control channel: kill switch, task cancellation, and stopping a conversation's in-flight reply (an edit forked it). */
+export type ControlMessage =
+  | { type: "kill"; workspaceId: string }
+  | { type: "cancel_task"; taskId: string }
+  | { type: "abort_conversation"; conversationId: string };
+
+export async function control(msg: ControlMessage) {
   await redis().publish(controlChannel(serverEnv.namespace), JSON.stringify(msg));
 }

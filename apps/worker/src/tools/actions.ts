@@ -1,4 +1,6 @@
-import { clients, createTask, db, employees, repositories, TaskInputError, workspaces, type TaskRow } from "@wfos/db";
+import { approvals, audit, clients, createTask, db, employees, repositories, routines, TaskInputError, teams, users, workspaces, type TaskRow } from "@wfos/db";
+import { CronExpressionParser } from "cron-parser";
+import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
 import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
@@ -6,6 +8,8 @@ import {
   emailPayloadSchema,
   invoicePayloadSchema,
   invoiceTotal,
+  ROUTINE_OVERLAP_MODES,
+  routineInputSchema,
   webhookPayloadSchema,
   type EmailPayload,
   type InvoicePayload,
@@ -14,11 +18,11 @@ import { decryptSecret, withRetry } from "@wfos/shared/server";
 import { sendMail } from "@wfos/shared/mail";
 import { renderInvoicePdf, formatMoney } from "@wfos/shared/invoice";
 import { msg } from "@wfos/shared/messages";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getExternalMcpServers, getSmtp, getWebhookUrl } from "../lib/settings";
+import { getExternalMcpServers, getSmtp, getWebhookUrl, workspaceLocale } from "../lib/settings";
 
 export interface ActionResult {
   ok: boolean;
@@ -143,6 +147,131 @@ ${String(p.prd ?? "")}`,
   return { ok: true, summary: `Created Developer task "${t.title}" for ${dev.name}`, details: { taskId: t.id } };
 }
 
+// ---------------------------------------------------------------------------
+// Routines proposed by an employee (propose_routine → approval "create_routine" → created here)
+// ---------------------------------------------------------------------------
+
+/** What propose_routine takes, and what an approved create_routine payload must still satisfy. */
+export const routineProposalSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  // the shared rule (exactly 5 fields: minute hour day month weekday), the same one the web's routine form applies
+  cron: z.string().trim().pipe(routineInputSchema.shape.cron),
+  timezone: z.string().trim().min(1).max(64),
+  brief: z.string().trim().min(1).max(20000),
+  assigneeId: z.string().uuid().nullable().optional(),
+  teamId: z.string().uuid().nullable().optional(),
+  overlap: z.enum(ROUTINE_OVERLAP_MODES).optional(),
+});
+export type RoutineProposal = z.infer<typeof routineProposalSchema>;
+
+export function isTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The next `n` firings of a cron expression in a time zone; throws with a readable message when it is invalid. */
+export function cronNextRuns(cron: string, timezone: string, n = 3, from = new Date()): Date[] {
+  if (!isTimeZone(timezone)) throw new Error(`Unknown time zone "${timezone}" (use an IANA name such as Asia/Jakarta)`);
+  let it;
+  try {
+    it = CronExpressionParser.parse(cron, { currentDate: from, tz: timezone });
+  } catch (e) {
+    throw new Error(`Invalid cron expression "${cron}": ${(e as Error).message}`);
+  }
+  return Array.from({ length: n }, () => it.next().toDate());
+}
+
+/** "2026-10-12 09:00 (Asia/Jakarta)": a firing time as people read it in the routine's zone. */
+export function formatRunTime(d: Date, timezone: string): string {
+  const s = new Intl.DateTimeFormat("sv-SE", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+  return `${s} (${timezone})`;
+}
+
+/**
+ * Why a routine's target is refused (null = fine): exactly one of assignee / team, and it must belong to the
+ * workspace (the same rule createTask applies to the tasks the routine will create).
+ */
+export async function routineTargetError(workspaceId: string, assigneeId: string | null | undefined, teamId: string | null | undefined): Promise<string | null> {
+  if (assigneeId && teamId) return "Give either an assignee or a team, not both.";
+  if (!assigneeId && !teamId) return "Assign the routine to an employee or a team.";
+  if (assigneeId) {
+    const [e] = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.id, assigneeId), eq(employees.workspaceId, workspaceId))).limit(1);
+    if (!e) return "Unknown employee: the assignee is not an employee of this workspace.";
+  }
+  if (teamId) {
+    const [t] = await db.select({ id: teams.id }).from(teams).where(and(eq(teams.id, teamId), eq(teams.workspaceId, workspaceId))).limit(1);
+    if (!t) return "Unknown team: the team is not part of this workspace.";
+  }
+  return null;
+}
+
+/** The person who approved the create_routine approval (decided_by), for the audit entry. */
+async function approver(workspaceId: string, context: { approvalId?: string | null; employeeId?: string | null }): Promise<{ id: string; email: string } | null> {
+  const where = context.approvalId
+    ? and(eq(approvals.id, context.approvalId), eq(approvals.workspaceId, workspaceId))
+    : // executeApproval has claimed the row (EXECUTING) before it calls executeAction
+      and(eq(approvals.workspaceId, workspaceId), eq(approvals.toolName, "create_routine"), eq(approvals.status, "EXECUTING"), context.employeeId ? eq(approvals.employeeId, context.employeeId) : undefined);
+  const [a] = await db.select({ decidedBy: approvals.decidedBy }).from(approvals).where(where).orderBy(desc(approvals.decidedAt)).limit(1);
+  if (!a?.decidedBy) return null;
+  const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, a.decidedBy));
+  return u ?? null;
+}
+
+/**
+ * Approved create_routine: re-validate the (possibly edited) payload, then create the routine enabled. A routine
+ * proposed by a tainted run (`context.untrusted`, read from the run's own payload) is marked untrustedInput: a
+ * person approved it, but its brief came from untrusted content, so every task it creates starts tainted.
+ */
+async function doCreateRoutine(
+  workspaceId: string,
+  payload: Record<string, unknown>,
+  context: { approvalId?: string | null; employeeId?: string | null; untrusted?: boolean },
+): Promise<ActionResult> {
+  const parsed = routineProposalSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, summary: `Invalid routine: ${parsed.error.issues.map((i) => `${i.path.join(".") || "payload"}: ${i.message}`).join("; ")}` };
+  const p = parsed.data;
+  let next: Date;
+  try {
+    next = cronNextRuns(p.cron, p.timezone, 1)[0]!;
+  } catch (e) {
+    return { ok: false, summary: (e as Error).message };
+  }
+  const refused = await routineTargetError(workspaceId, p.assigneeId, p.teamId);
+  if (refused) return { ok: false, summary: refused };
+  const [r] = await db
+    .insert(routines)
+    .values({
+      workspaceId,
+      name: p.name,
+      cron: p.cron,
+      timezone: p.timezone,
+      brief: p.brief,
+      assigneeId: p.assigneeId ?? null,
+      teamId: p.teamId ?? null,
+      overlap: p.overlap ?? "skip",
+      enabled: true,
+      untrustedInput: context.untrusted === true,
+      nextRunAt: next,
+    })
+    .returning();
+  const who = await approver(workspaceId, context);
+  await audit({
+    workspaceId,
+    actorUserId: who?.id ?? null,
+    actorLabel: who?.email ?? "approval",
+    action: "routine.created",
+    targetType: "routine",
+    targetId: r!.id,
+    details: { cron: r!.cron, name: r!.name, timezone: r!.timezone, proposedBy: context.employeeId ?? null, approvalId: context.approvalId ?? null, untrustedInput: r!.untrustedInput },
+  });
+  const locale = await workspaceLocale(workspaceId);
+  return { ok: true, summary: msg(locale, "routine.created", { name: r!.name, next: formatRunTime(next, r!.timezone) }), details: { routineId: r!.id, nextRunAt: next.toISOString() } };
+}
+
 async function repoFor(workspaceId: string, repositoryId: unknown): Promise<(RepoRef & { name: string }) | null> {
   if (typeof repositoryId !== "string") return null;
   const [r] = await db.select().from(repositories).where(and(eq(repositories.id, repositoryId), eq(repositories.workspaceId, workspaceId)));
@@ -209,8 +338,11 @@ export async function executeAction(
   workspaceId: string,
   toolName: string,
   payload: Record<string, unknown>,
-  /** untrusted: the run that asked for this action was tainted (approval payload untrustedInput) */
-  context: { taskId?: string | null; employeeId?: string | null; untrusted?: boolean } = {},
+  /**
+   * untrusted: the run that asked for this action was tainted (approval payload untrustedInput);
+   * approvalId: the approval being executed (create_routine audits its approver)
+   */
+  context: { taskId?: string | null; employeeId?: string | null; untrusted?: boolean; approvalId?: string | null } = {},
 ): Promise<ActionResult> {
   switch (toolName) {
     case "bash":
@@ -227,6 +359,8 @@ export async function executeAction(
       return doSendInvoice(workspaceId, invoicePayloadSchema.parse(payload));
     case "post_webhook":
       return doPostWebhook(workspaceId, webhookPayloadSchema.parse(payload));
+    case "create_routine":
+      return doCreateRoutine(workspaceId, payload, context);
     default: {
       if (toolName.startsWith("mcp__")) {
         const [, server, ...rest] = toolName.split("__");

@@ -1,17 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { memo } from "react";
+import { memo, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Check, KanbanSquare, Loader2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, KanbanSquare, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { MAX_RESPONDERS_PER_TURN, type ChatMessageDTO, type RoutedBy } from "@wfos/shared";
 import { ApprovalCard } from "@/components/approvals";
 import { Avatar } from "@/components/layout/common";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import type { Employee } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
 /** The worker's per-turn responder cap (apps/worker MAX_RESPONDERS_PER_TURN); members beyond it are not asked. */
+
+/** shown while the row is hovered or anything in it has keyboard focus; always reachable with Tab */
+const hoverAction =
+  "inline-flex items-center gap-0.5 rounded opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100";
 
 const FALLBACK_REASONS = ["timeout", "error", "low_confidence", "invalid", "lead_unavailable", "killswitch", "demo", "budget"];
 
@@ -61,9 +67,111 @@ function Receipt({ m, author, highlighted, names }: { m: ChatMessageDTO; author:
 }
 
 /**
+ * "‹ 2/3 ›": step through the versions of a message (edits of a user message, regenerated replies). The chat
+ * moves focus to the same control on the version switched to (that row is a different message), and announces
+ * "Version 2 of 3" in a live region.
+ */
+function VersionSwitcher({
+  branch,
+  disabled,
+  onSwitch,
+}: {
+  branch: NonNullable<ChatMessageDTO["branch"]>;
+  disabled: boolean;
+  onSwitch: (messageId: string, dir: "prev" | "next") => void;
+}) {
+  const t = useTranslations("chat");
+  const prev = branch.siblingIds[branch.index - 1];
+  const next = branch.siblingIds[branch.index + 1];
+  const btn = "inline-flex size-5 items-center justify-center rounded hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40";
+  return (
+    <span
+      role="group"
+      data-version-switcher=""
+      tabIndex={-1}
+      aria-label={t("versions.label", { index: branch.index + 1, count: branch.count })}
+      className="inline-flex items-center gap-0.5 tabular-nums focus-visible:outline-none"
+    >
+      <button type="button" className={btn} disabled={disabled || !prev} onClick={() => prev && onSwitch(prev, "prev")} aria-label={t("versions.previous")} title={t("versions.previous")}>
+        <ChevronLeft className="size-3.5" aria-hidden />
+      </button>
+      <span aria-hidden>{t("versions.position", { index: branch.index + 1, count: branch.count })}</span>
+      <button type="button" className={btn} disabled={disabled || !next} onClick={() => next && onSwitch(next, "next")} aria-label={t("versions.next")} title={t("versions.next")}>
+        <ChevronRight className="size-3.5" aria-hidden />
+      </button>
+    </span>
+  );
+}
+
+/** Inline editor for a sent message: Enter or Save sends the new version, Escape (or Cancel) leaves it as it was. */
+function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (text: string) => Promise<unknown>; onCancel: () => void }) {
+  const t = useTranslations("chat");
+  const [text, setText] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const hintId = useId();
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+  const changed = text.trim() && text.trim() !== initial.trim();
+  const save = async () => {
+    if (!changed || saving) return;
+    setSaving(true);
+    try {
+      await onSave(text.trim());
+    } catch {
+      // the caller already told the user; keep the draft so nothing typed is lost
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="w-[min(32rem,85vw)] space-y-1.5 text-left">
+      <Textarea
+        ref={area}
+        value={text}
+        rows={3}
+        aria-label={t("edit.label")}
+        aria-describedby={hintId}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            onCancel();
+          } else if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            void save();
+          }
+        }}
+        disabled={saving}
+      />
+      <div className="flex items-center justify-end gap-2">
+        <span id={hintId} className="mr-auto text-[11px] text-muted-foreground">
+          {t("edit.hint")}
+        </span>
+        <Button type="button" size="sm" variant="ghost" className="h-7" onClick={onCancel} disabled={saving}>
+          {t("edit.cancel")}
+        </Button>
+        <Button type="button" size="sm" className="h-7" onClick={() => void save()} disabled={!changed || saving}>
+          {saving && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+          {t("edit.save")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * One chat message. Memoised: while a reply streams only that row re-renders. Callers keep the props stable
- * (`m` objects are replaced only when that message changes, `author` comes from the query cache, `onMakeTask`
- * and `names` are stable callbacks).
+ * (`m` objects are replaced only when that message changes, `author` comes from the query cache, `onMakeTask`,
+ * `names`, `onEdit`, `onRegenerate` and `onSwitch` are stable callbacks).
+ *
+ * Members get "Edit" on user messages and "Regenerate" on replies (shown on hover and keyboard focus), and every
+ * message with other versions gets a "‹ 2/3 ›" switcher.
  */
 export const MessageItem = memo(function MessageItem({
   m,
@@ -74,6 +182,12 @@ export const MessageItem = memo(function MessageItem({
   highlighted,
   onMakeTask,
   names,
+  canBranch,
+  busy,
+  switching,
+  onEdit,
+  onRegenerate,
+  onSwitch,
 }: {
   m: ChatMessageDTO;
   author: Employee | undefined;
@@ -84,15 +198,34 @@ export const MessageItem = memo(function MessageItem({
   onMakeTask: (text: string) => void;
   /** employee id → name, for the "not asked" note */
   names: (id: string) => string | undefined;
+  /** may edit, regenerate and switch versions (MEMBER and up) */
+  canBranch: boolean;
+  /** a reply is being written: regenerating has to wait (the server refuses it meanwhile) */
+  busy: boolean;
+  /** a version switch is in flight: the switchers wait for it */
+  switching: boolean;
+  onEdit: (messageId: string, content: string) => Promise<unknown>;
+  onRegenerate: (messageId: string) => void;
+  onSwitch: (messageId: string, dir: "prev" | "next") => void;
 }) {
   const t = useTranslations("chat");
   const fmt = useFormat();
+  const [editing, setEditing] = useState(false);
+  const editBtn = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useLayoutEffect(() => {
+    // back on the Edit button after the editor closes, so keyboard users keep their place
+    if (!editing && refocus.current) {
+      refocus.current = false;
+      editBtn.current?.focus();
+    }
+  }, [editing]);
   if (m.role === "system") return <Receipt m={m} author={author} highlighted={highlighted} names={names} />;
   const mine = m.role === "user";
   const chips = !mine ? (m.meta?.chips ?? []) : [];
   const approvals = !mine ? (m.approvals ?? []) : [];
   return (
-    <div id={`msg-${m.id}`} className={cn("flex gap-2", mine && "flex-row-reverse")}>
+    <div id={`msg-${m.id}`} className={cn("group flex gap-2", mine && "flex-row-reverse")}>
       {!mine && <Avatar emoji={author?.avatar ?? fallbackAvatar} size="sm" className="mt-1" />}
       <div className={cn("max-w-[85%] space-y-1", mine && "items-end text-right")}>
         {!mine && teamChat && (author || m.meta?.routedBy) && (
@@ -102,20 +235,34 @@ export const MessageItem = memo(function MessageItem({
             {m.meta?.routedBy && <RoutedByBadge routedBy={m.meta.routedBy} />}
           </div>
         )}
-        <div
-          className={cn(
-            "inline-block whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-left text-sm transition-shadow",
-            mine ? "bg-primary text-primary-foreground" : "bg-muted",
-            highlighted && "ring-2 ring-primary ring-offset-2 ring-offset-card",
-          )}
-        >
-          {m.content || (
-            <span role="status" className="inline-flex">
-              <Loader2 className="size-4 animate-spin" aria-hidden />
-              <span className="sr-only">{author ? t("replyingAs", { name: author.name }) : t("replying")}</span>
-            </span>
-          )}
-        </div>
+        {editing ? (
+          <EditBox
+            initial={m.content}
+            onCancel={() => {
+              refocus.current = true;
+              setEditing(false);
+            }}
+            onSave={async (text) => {
+              await onEdit(m.id, text);
+              setEditing(false);
+            }}
+          />
+        ) : (
+          <div
+            className={cn(
+              "inline-block whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-left text-sm transition-shadow",
+              mine ? "bg-primary text-primary-foreground" : "bg-muted",
+              highlighted && "ring-2 ring-primary ring-offset-2 ring-offset-card",
+            )}
+          >
+            {m.content || (
+              <span role="status" className="inline-flex">
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                <span className="sr-only">{author ? t("replyingAs", { name: author.name }) : t("replying")}</span>
+              </span>
+            )}
+          </div>
+        )}
         {!!m.attachments?.length && (
           <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
             {m.attachments.map((a) => (
@@ -160,6 +307,17 @@ export const MessageItem = memo(function MessageItem({
               <KanbanSquare className="size-3" /> {t("makeTask")}
             </button>
           )}
+          {canBranch && mine && !editing && (
+            <button ref={editBtn} type="button" className={hoverAction} onClick={() => setEditing(true)}>
+              <Pencil className="size-3" aria-hidden /> {t("edit.action")}
+            </button>
+          )}
+          {canBranch && !mine && !busy && m.content && m.status !== "streaming" && (
+            <button type="button" className={hoverAction} onClick={() => onRegenerate(m.id)}>
+              <RefreshCw className="size-3" aria-hidden /> {t("regenerate")}
+            </button>
+          )}
+          {m.branch && m.branch.count > 1 && <VersionSwitcher branch={m.branch} disabled={!canBranch || editing || switching} onSwitch={onSwitch} />}
         </div>
       </div>
     </div>

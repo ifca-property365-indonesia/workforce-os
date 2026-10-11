@@ -55,6 +55,7 @@ export async function recordRateLimit(
     await publish(run.workspaceId, { type: "limits.warning", window: w.type, threshold, resetsAt: w.resetsAt?.toISOString() ?? null });
     await miscQueue.add("notify", {
       kind: "notify",
+      notificationKind: "limits",
       workspaceId: run.workspaceId,
       subject: msg(locale, "notify.limitWarning", { pct, window: windowName(w.type, locale) }),
       text: msg(locale, "notify.limitWarningText", { pct, window: windowName(w.type, locale), resetsAt: when(w.resetsAt, locale) }),
@@ -79,7 +80,7 @@ export async function pauseForQuota(workspaceId: string, until: Date | null, win
   await publish(workspaceId, { type: "quota.paused", until: resume.toISOString(), reason });
   if (!prev?.until || prev.until.getTime() < Date.now()) {
     await audit({ workspaceId, actorLabel: "system", action: "workspace.paused_quota", targetType: "workspace", targetId: workspaceId, details: { window, until: resume.toISOString() } });
-    await miscQueue.add("notify", { kind: "notify", workspaceId, subject: msg(locale, "notify.limitRejected"), text: reason, link: "/dashboard" });
+    await miscQueue.add("notify", { kind: "notify", notificationKind: "limits", workspaceId, subject: msg(locale, "notify.limitRejected"), text: reason, link: "/dashboard" });
   }
 }
 

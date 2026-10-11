@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -49,6 +49,7 @@ import { QuotaBanner } from "@/components/inspector/limits-card";
 import { useTranslations } from "next-intl";
 import { LOCALES, LOCALE_NAMES } from "@wfos/shared";
 import { cn } from "@/lib/utils";
+import { approvalKeys, decidePush, isPushMessage, RecentToasts } from "@/lib/push-toast";
 
 const NAV = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
@@ -147,13 +148,39 @@ function Notifications() {
   const t = useTranslations("nav");
   const f = useFormat();
   const qc = useQueryClient();
+  const router = useRouter();
   const { data } = useQuery({
     queryKey: ["notifications"],
-    queryFn: () => api.get<{ notifications: { id: string; title: string; body: string; link: string | null; createdAt: string; readAt: string | null }[]; unread: number }>("/api/notifications"),
+    queryFn: () => api.get<{ notifications: { id: string; title: string; body: string; link: string | null; createdAt: string; read: boolean }[]; unread: number }>("/api/notifications"),
     refetchInterval: 60_000,
   });
+  const recent = useRef(new RecentToasts());
+  // the service worker offers pushes to visible windows first: a focused one shows a toast and ACKs (no system
+  // notification); otherwise it says no and the system notification shows (see lib/push-toast)
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    const onMessage = (ev: MessageEvent) => {
+      if (!isPushMessage(ev.data)) return;
+      void qc.invalidateQueries({ queryKey: ["notifications"] });
+      const focused = document.visibilityState === "visible" && document.hasFocus();
+      const d = decidePush(ev.data, focused, recent.current);
+      ev.ports[0]?.postMessage({ ack: d.ack });
+      if (d.ack && d.toast) {
+        const { url } = d.toast;
+        toast.info(d.toast.title, { id: d.toast.id, description: d.toast.body, action: { label: t("live.open"), onClick: () => router.push(url) } });
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [qc, router, t]);
   useRealtime((ev) => {
-    if (ev.type === "approval.created") toast.warning(t("live.approvalNeeded", { title: ev.title }), { action: { label: t("live.open"), onClick: () => (location.href = "/approvals") } });
+    if (ev.type === "approval.created") {
+      // one toast per approval, whether its push or its realtime event came first
+      const keys = approvalKeys(ev.approvalId, ev.conversationId);
+      const id = recent.current.find(keys) ?? `approval:${ev.approvalId}`;
+      recent.current.mark(keys, id);
+      toast.warning(t("live.approvalNeeded", { title: ev.title }), { id, action: { label: t("live.open"), onClick: () => (location.href = "/approvals") } });
+    }
     if (ev.type === "task.updated" && ev.status === "FAILED") toast.error(ev.title ? t("live.taskFailedNamed", { title: ev.title }) : t("live.taskFailed"));
     if (ev.type === "demo.stage") toast.info(ev.detail);
     if (ev.type === "employee.updated" && ev.status === "PAUSED_BUDGET") toast.warning(t("live.employeePausedBudget"));
@@ -175,7 +202,7 @@ function Notifications() {
         <div className="max-h-96 overflow-y-auto">
           {!data?.notifications.length && <p className="p-4 text-sm text-muted-foreground">{t("notifications.empty")}</p>}
           {data?.notifications.map((n) => (
-            <Link key={n.id} href={n.link ?? "#"} className={cn("block border-b px-3 py-2 text-sm hover:bg-accent", !n.readAt && "bg-primary/5")}>
+            <Link key={n.id} href={n.link ?? "#"} className={cn("block border-b px-3 py-2 text-sm hover:bg-accent", !n.read && "bg-primary/5")}>
               <div className="font-medium">{n.title}</div>
               <div className="line-clamp-2 text-xs text-muted-foreground">{n.body}</div>
               <div className="mt-0.5 text-[11px] text-muted-foreground">{f.ago(n.createdAt)}</div>

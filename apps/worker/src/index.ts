@@ -15,10 +15,11 @@ import { notify } from "./lib/notify";
 import { runReplay } from "./simulation/replay";
 import { runDemoLifecycle } from "./simulation/demo";
 import { backfillMemoryEmbeddings, runRoutineJob, tickRoutines } from "./scheduler/routines";
-import { abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
+import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { acquireEmployeeLease, releaseEmployeeLease } from "./guards/lease";
 import { handleRunJobFailed } from "./runner/task-status";
 import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
+import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
 import { collectWorkspaces } from "./runner/workspace/gc";
 import { telegramDailySummary } from "./lib/telegram";
 import { writeHeartbeat } from "./lib/heartbeat";
@@ -53,6 +54,7 @@ async function processRun(job: Job<RunJob>, token?: string): Promise<void> {
   }
   try {
     if (job.data.kind === "task") await runTask(job.data.taskId, job.data.resumeNote);
+    else if (job.data.kind === "chat_regenerate") await runChat(job.data.conversationId, job.data.userMessageId, { regenerate: true, enqueuedAt: new Date(job.timestamp) });
     else await runChat(job.data.conversationId, job.data.messageId);
   } finally {
     if (employeeId) await releaseEmployeeLease(employeeId, leaseId);
@@ -77,7 +79,7 @@ const workers = [
       const d = job.data;
       switch (d.kind) {
         case "notify":
-          return notify(d.workspaceId, d.subject, d.text, d.link, d.approvalId);
+          return notify(d);
         case "replay":
           return runReplay(d.replayId);
         case "demo":
@@ -111,6 +113,7 @@ sub.on("message", (_ch, raw) => {
     const msg = JSON.parse(raw) as ControlMessage;
     if (msg.type === "kill") abortWorkspace(msg.workspaceId, "Stopped by kill switch");
     if (msg.type === "cancel_task") abortTask(msg.taskId, "Cancelled by user");
+    if (msg.type === "abort_conversation") abortConversation(msg.conversationId);
   } catch (e) {
     log.warn({ err: e }, "bad control message");
   }
@@ -155,6 +158,8 @@ const heartbeatTimer = setInterval(beat, HEARTBEAT_EVERY_MS);
 beat();
 const summaryTimer = setInterval(() => void telegramDailySummary().catch((e) => log.warn({ err: e }, "telegram summary failed")), 10 * 60_000);
 const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e) => log.warn({ err: e }, "backfill failed")), 120_000);
+// nightly memory tidy at 02:00 APP_TIME_ZONE (checked every 10 min, claimed once per day in Redis)
+const tidyTimer = setInterval(() => void memoryTidyTick().catch((e) => log.warn({ err: e }, "memory tidy failed")), MEMORY_TIDY_CHECK_MS);
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
 log.info(
@@ -167,6 +172,7 @@ async function shutdown(sig: string) {
   clearInterval(schedTimer);
   clearInterval(reapTimer);
   clearInterval(backfillTimer);
+  clearInterval(tidyTimer);
   clearInterval(gcTimer);
   clearInterval(summaryTimer);
   clearInterval(heartbeatTimer);

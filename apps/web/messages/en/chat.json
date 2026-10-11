@@ -63,5 +63,20 @@
   "waitingReply": "Waiting for the reply…",
   "replying": "Writing a reply…",
   "replyingAs": "{name} is writing a reply…",
-  "threadLabel": "Conversation"
+  "threadLabel": "Conversation",
+  "edit": {
+    "action": "Edit",
+    "label": "Edit message",
+    "hint": "Enter to save · Esc to cancel",
+    "save": "Save",
+    "cancel": "Cancel"
+  },
+  "regenerate": "Regenerate",
+  "versions": {
+    "label": "Version {index} of {count}",
+    "previous": "Previous version",
+    "next": "Next version",
+    "position": "{index}/{count}"
+  },
+  "conversationChanged": "The conversation changed — reloaded"
 }

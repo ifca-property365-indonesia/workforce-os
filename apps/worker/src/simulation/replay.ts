@@ -9,7 +9,7 @@ import { getWorkspace } from "../lib/settings";
 import { log } from "../lib/logger";
 import { checkBudget } from "../guards/budget";
 import { grantedToolNames, type RunContext } from "../tools/registry";
-import { buildSystemPrompt, recallMemories, taintFromStoredInput, workspaceDirectory } from "../runner/prompt";
+import { buildSystemPrompt, memoryNotesBlock, recallMemories, taintFromStoredInput, workspaceDirectory } from "../runner/prompt";
 import { runAgent } from "../runner/executor";
 
 /**
@@ -67,14 +67,13 @@ export async function runReplay(replayId: string): Promise<void> {
           employee: emp,
           overrides: rp.proposed,
           workspaceName: ws.name,
-          memories: mem,
           directory: await workspaceDirectory(ws.id),
           grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
           dryRun: true,
           mode: "task",
           outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
         });
-        const out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: `# Task: ${t.title}\n${t.brief}`, creditBudget: budget.remaining, stepName: "replay", maxTurns: 15 });
+        const out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: `${[memoryNotesBlock(mem).trim(), `# Task: ${t.title}\n${t.brief}`].filter(Boolean).join("\n\n")}`, creditBudget: budget.remaining, stepName: "replay", maxTurns: 15 });
         const drafts = ctx.deliverables.map((d) => `### ${d.title}\n${d.content}`).join("\n\n");
         newOutput = [out.text, drafts].filter(Boolean).join("\n\n") || `(no output: ${out.error ?? out.stopped})`;
         credits = out.credits;

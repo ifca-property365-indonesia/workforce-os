@@ -22,7 +22,8 @@
       "overview": "Overview",
       "instructions": "Instructions & replay",
       "tools": "Tools & autonomy",
-      "memory": "Memory"
+      "memory": "Memory",
+      "activity": "Activity"
     },
     "spentToday": "Spent today",
     "budgetOf": "/ {budget} cr",
@@ -91,6 +92,52 @@
       "fact": "fact",
       "feedback": "feedback",
       "preference": "preference"
+    },
+    "showInactive": "Show inactive ({count})",
+    "edit": "Edit memory",
+    "metaShort": "from {source} · {when}",
+    "expiresLabel": "Forget after",
+    "noExpiry": "No expiry",
+    "expiresOn": "expires {date}",
+    "expiredOn": "expired {date}",
+    "untrusted": "untrusted",
+    "untrustedHelp": "Saved by a run that read outside content: recalled as data only, never as instructions.",
+    "state": {
+      "expired": "expired",
+      "superseded": "superseded"
+    },
+    "source": {
+      "agent": "the employee",
+      "user": "a person",
+      "rejection": "rejection feedback",
+      "import": "an import",
+      "tidy": "nightly tidy"
+    },
+    "history": {
+      "title": "History",
+      "empty": "No changes recorded yet.",
+      "undo": "Undo",
+      "undone": "Change undone",
+      "undoAnyway": "Undo anyway",
+      "undoneExpiryCleared": "Change undone. Its expiry date had passed, so it no longer expires.",
+      "more": "Older changes",
+      "by": "by {actor} · {when}",
+      "undoneAt": "undone {when}",
+      "action": {
+        "create": "added",
+        "update": "edited",
+        "delete": "deleted",
+        "expire": "expired",
+        "supersede": "superseded",
+        "restore": "restored"
+      },
+      "actor": {
+        "agent": "the employee",
+        "user": "a person",
+        "tidy": "nightly tidy",
+        "import": "an import",
+        "rejection": "rejection feedback"
+      }
     }
   },
   "toolPermissions": {
@@ -263,6 +310,54 @@
       "cap": "Cap",
       "beanie": "Beanie",
       "headphones": "Headphones"
+    }
+  },
+  "activity": {
+    "loading": "Loading activity…",
+    "empty": "No activity yet.",
+    "error": "Activity could not be loaded.",
+    "retry": "Try again",
+    "older": "Older activity",
+    "inTask": "in task: {title}",
+    "inChat": "in chat: {title}",
+    "receipt": {
+      "send_email": "Sent an email to {to}",
+      "draft_email": "Drafted an email to {to}",
+      "send_invoice": "Sent invoice {number}",
+      "draft_invoice": "Drafted an invoice",
+      "kb_search": "Searched the knowledge base",
+      "kb_search_query": "Searched the knowledge base for “{query}”",
+      "memory_search": "Looked through its memory",
+      "memory_save": "Saved something to memory",
+      "list_clients": "Looked up the client list",
+      "get_client": "Looked up a client",
+      "list_tasks": "Looked at recent tasks",
+      "web_fetch": "Read a web page: {url}",
+      "draft_document": "Drafted a document: {title}",
+      "create_task": "Created a task: {title}",
+      "delegate_subtask": "Delegated a subtask: {title}",
+      "request_revision": "Sent a subtask back for revision",
+      "retry_subtask": "Retried a failed subtask",
+      "reassign_subtask": "Reassigned a failed subtask",
+      "message_teammate": "Messaged a teammate",
+      "git_push": "Pushed a branch",
+      "create_pull_request": "Opened a pull request: {title}",
+      "post_webhook": "Published to a webhook",
+      "propose_routine": "Proposed a routine: {name}",
+      "tool": "Used {tool}",
+      "approval": "Asked for approval: {tool}",
+      "gate": "Checked whether it may use {target}",
+      "agent_message": "Sent a message: {name}",
+      "guard": "Safety check: {name}",
+      "incident": "Handled an incident",
+      "repeat": "Stopped repeating the same step",
+      "stopped_stalled": "Stopped: the run made no progress",
+      "stopped_loop": "Stopped: the run was going in circles",
+      "llm": "Thought it through",
+      "compaction": "Condensed its notes",
+      "budget": "Hit a budget limit",
+      "error": "Ran into an error",
+      "other": "{name}"
     }
   }
 }

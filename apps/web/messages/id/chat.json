@@ -63,5 +63,20 @@
   "waitingReply": "Menunggu balasan…",
   "replying": "Sedang menulis balasan…",
   "replyingAs": "{name} sedang menulis balasan…",
-  "threadLabel": "Percakapan"
+  "threadLabel": "Percakapan",
+  "edit": {
+    "action": "Edit",
+    "label": "Edit pesan",
+    "hint": "Enter untuk menyimpan · Esc untuk batal",
+    "save": "Simpan",
+    "cancel": "Batal"
+  },
+  "regenerate": "Buat ulang",
+  "versions": {
+    "label": "Versi {index} dari {count}",
+    "previous": "Versi sebelumnya",
+    "next": "Versi berikutnya",
+    "position": "{index}/{count}"
+  },
+  "conversationChanged": "Percakapan berubah — dimuat ulang"
 }

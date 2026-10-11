@@ -37,7 +37,11 @@ export async function publish(workspaceId: string, ev: RealtimeEvent): Promise<v
 }
 
 export const CONTROL_CHANNEL = controlChannel(env.namespace);
-export type ControlMessage = { type: "kill"; workspaceId: string } | { type: "cancel_task"; taskId: string };
+export type ControlMessage =
+  | { type: "kill"; workspaceId: string }
+  | { type: "cancel_task"; taskId: string }
+  /** a user edited a message mid-reply: stop the conversation's in-flight chat runs */
+  | { type: "abort_conversation"; conversationId: string };
 
 export async function enqueueTask(taskId: string, workspaceId: string, resumeNote?: string, delayMs = 0): Promise<void> {
   await runsQueue.add("task", { kind: "task", taskId, workspaceId, resumeNote }, { jobId: `task-${taskId}-${Date.now()}`, delay: delayMs });
