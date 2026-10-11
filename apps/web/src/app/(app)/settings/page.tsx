@@ -110,7 +110,7 @@ function ClaudeCredential({ owner }: { owner: boolean }) {
           <div>
             {t("claude.inUse")}{" "}
             {data.effective ? (
-              <span className="text-emerald-600">{data.effective.source === "workspace" ? t("claude.inUseWorkspace") : t("claude.inUseFallback")}</span>
+              <span className="text-success">{data.effective.source === "workspace" ? t("claude.inUseWorkspace") : t("claude.inUseFallback")}</span>
             ) : (
               <span className="text-destructive">{t("claude.inUseNone")}</span>
             )}
@@ -368,7 +368,7 @@ function Notifications({ s }: { s: Settings }) {
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 space-y-1.5">
             <Label htmlFor="notify-webhook">
-              {t("notifications.webhookUrl")} {s.workspace.webhookConfigured && <span className="text-xs text-emerald-600">{t("notifications.configured")}</span>}
+              {t("notifications.webhookUrl")} {s.workspace.webhookConfigured && <span className="text-xs text-success">{t("notifications.configured")}</span>}
             </Label>
             <Input id="notify-webhook" value={hook} onChange={(e) => setHook(e.target.value)} placeholder={t("notifications.webhookPlaceholder")} />
           </div>
@@ -506,9 +506,9 @@ function McpServerRow({
         <code className="font-medium">{server.name}</code>
         {oauth && <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("integrations.oauthBadge")}</span>}
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{server.url}</span>
-        {server.disabled && <span className="text-xs text-amber-600 dark:text-amber-400">{t("integrations.importedDisabled")}</span>}
-        {oauth && server.needsReconnect && <span className="text-xs text-amber-600 dark:text-amber-400">{t("integrations.needsReconnect")}</span>}
-        {!oauth && server.tokenSet && <span className="text-xs text-emerald-600">{t("integrations.tokenSet")}</span>}
+        {server.disabled && <span className="text-xs text-warning">{t("integrations.importedDisabled")}</span>}
+        {oauth && server.needsReconnect && <span className="text-xs text-warning">{t("integrations.needsReconnect")}</span>}
+        {!oauth && server.tokenSet && <span className="text-xs text-success">{t("integrations.tokenSet")}</span>}
         {server.disabled && (
           <Button size="sm" variant="outline" className="gap-1" onClick={onSetUp}>
             <KeyRound className="size-3.5" />
@@ -530,7 +530,7 @@ function McpServerRow({
         </Button>
       </div>
       {test.isSuccess && (
-        <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+        <div className="mt-2 text-xs text-success">
           {t("integrations.testOk", { count: test.data.tools.length, reversible: test.data.tools.filter((x) => x.class === "reversible").length })}
         </div>
       )}

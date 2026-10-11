@@ -5,6 +5,7 @@ import { Plus, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AutonomyBadge, EmptyState, PageHeader } from "@/components/layout/common";
+import { useSignColors } from "@/components/office/employee-sign";
 import { useEmployees, useTemplates } from "@/lib/hooks";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/use-format";
@@ -12,6 +13,7 @@ import { useFormat } from "@/lib/use-format";
 export default function EmployeesPage() {
   const t = useTranslations("employees");
   const ts = useTranslations("status");
+  const colors = useSignColors();
   const f = useFormat();
   const { data: emps } = useEmployees();
   const { data: tpl } = useTemplates();
@@ -37,7 +39,7 @@ export default function EmployeesPage() {
             <Link key={e.id} href={`/employees/${e.id}`}>
               <Card className="h-full transition-shadow hover:shadow-md">
                 <CardContent className="flex gap-3 p-4">
-                  <Avatar emoji={e.avatar} size="lg" />
+                  <Avatar emoji={e.avatar} size="lg" color={colors.get(e.id)} />
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate font-semibold">{e.name}</span>
@@ -48,7 +50,7 @@ export default function EmployeesPage() {
                       <span>
                         {t("list.toolsCount", { count: e.toolPermissions.filter((p) => p.enabled).length })} · {e.model}
                       </span>
-                      <span className={e.status === "ACTIVE" ? "text-emerald-600" : "text-amber-600"}>{ts(`employee.${e.status}`)}</span>
+                      <span className={e.status === "ACTIVE" ? "text-success" : "text-warning"}>{ts(`employee.${e.status}`)}</span>
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {t("list.spentToday", { spent: f.credits(e.spentToday), budget: f.credits(e.dailyBudget) })}

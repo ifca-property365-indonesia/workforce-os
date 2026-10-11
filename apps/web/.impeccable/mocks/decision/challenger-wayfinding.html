@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Workforce OS · Terminal Yellow Wayfinding</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hind:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--y:#ffcc00;--ink:#0e0e0e;--p1:#141414;--p2:#1a1a1a;--p3:#222;--line:#2a2a2a;--tx:#f4f4f2;--tx2:#b4b4ae;--tx3:#85857f;--red:#ff5a4e;--grn:#4fd18b}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--ink);color:var(--tx);font:400 14px/1.45 Hind,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+::selection{background:var(--y);color:#000}
+svg{display:block;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.app{display:grid;grid-template-columns:220px 268px 1fr 300px;height:900px}
+/* nav */
+.nav{background:var(--p1);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:20px 14px}
+.ws{display:flex;align-items:center;gap:10px;padding:0 6px 20px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.ws .mark{width:32px;height:32px;background:#000;display:grid;place-items:center;border-radius:4px;color:#fff}
+.ws b{font-weight:700;font-size:15px;display:block;line-height:1.1}.ws small{color:var(--tx3);font-size:11px}
+.nav a{display:flex;align-items:center;gap:11px;padding:6px;border-radius:6px;color:var(--tx2);text-decoration:none;font-weight:500;font-size:14.5px;margin-bottom:2px}
+.sq{width:28px;height:28px;background:#000;border-radius:4px;display:grid;place-items:center;color:#fff;flex:none}.sq svg{width:16px;height:16px}
+.nav a.on{background:var(--p3);color:var(--tx)}
+.nav a .n{margin-left:auto;background:var(--y);color:#000;font-weight:700;font-size:12px;min-width:22px;height:20px;border-radius:3px;display:grid;place-items:center}
+.kill{margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #5a2622;background:#1c1010;color:#ffb3ab;border-radius:6px;font:600 14px Hind;width:100%;cursor:pointer}
+.kill i{width:12px;height:12px;background:var(--red);border-radius:2px}
+.kill span{margin-left:auto;color:var(--tx3);font-weight:400;font-size:12px}
+/* conversations */
+.convs{background:var(--p2);border-right:1px solid var(--line);padding:20px 14px}
+.convs h2{font-size:20px;font-weight:700;letter-spacing:-.01em;padding:0 6px 12px}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;background:var(--ink);border:1px solid var(--line);border-radius:6px;color:var(--tx3);margin-bottom:14px}.search svg{width:15px}
+.c{display:flex;gap:11px;padding:10px 8px;border-radius:6px;margin-bottom:2px}
+.c.on{background:var(--p3)}
+.av{width:34px;height:34px;border-radius:4px;background:#000;color:#fff;display:grid;place-items:center;font-weight:700;font-size:14px;flex:none}
+.c .t{display:flex;justify-content:space-between;font-weight:600;font-size:14.5px}.c .t em{font-style:normal;color:var(--tx3);font-weight:400;font-size:12px}
+.c p{color:var(--tx3);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+/* chat */
+.chat{display:flex;flex-direction:column;min-width:0;background:var(--ink)}
+.head{height:68px;display:flex;align-items:center;gap:14px;padding:0 28px;border-bottom:1px solid var(--line)}
+.head h1{font-size:22px;font-weight:700;letter-spacing:-.015em}.head .sub{color:var(--tx3);font-size:13px}
+.stack{display:flex;margin-left:6px}.stack .av{width:26px;height:26px;font-size:11px;border:2px solid var(--ink);margin-left:-6px}
+.sel{margin-left:auto;display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--line);border-radius:6px;background:var(--p1);color:var(--tx);font-weight:500}.sel svg{width:14px;color:var(--tx3)}.sel small{color:var(--tx3)}
+/* signature: decision band */
+.band{position:relative;height:56px;background:var(--y);color:#000;display:flex;align-items:stretch}
+.band .lead{display:flex;align-items:center;gap:12px;padding:0 16px 0 14px;font-weight:700;font-size:15px;white-space:nowrap}
+.band .sq svg{width:17px;height:17px}
+.flap{position:relative;flex:1;perspective:500px;overflow:hidden}
+.flap span{position:absolute;inset:0;display:flex;align-items:center;white-space:nowrap;gap:0;font-weight:600;font-size:15.5px;letter-spacing:-.005em;transform-origin:50% 50%;opacity:0;animation:flap 12s cubic-bezier(.16,1,.3,1) infinite;backface-visibility:hidden}
+.flap span b{font-weight:700}.flap span i{font-style:normal;font-weight:400;margin:0 10px;opacity:.55}
+.flap span:nth-child(2){animation-delay:4s}.flap span:nth-child(3){animation-delay:8s}
+.flap::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.14)}
+@keyframes flap{0%{opacity:0;transform:translateY(-60%)}3%{opacity:1;transform:none}31%{opacity:1;transform:none}33.3%{opacity:0;transform:translateY(60%)}100%{opacity:0;transform:translateY(60%)}}
+@media (prefers-reduced-motion:reduce){.flap span{animation:none}.flap span:first-child{opacity:1}}
+.band .go{width:56px;background:#000;color:var(--y);display:grid;place-items:center}.band .go svg{width:22px;height:22px;stroke-width:2.25}
+/* thread */
+.thread{flex:1;padding:24px 28px 0;overflow:hidden;display:flex;flex-direction:column;gap:18px}
+.day{align-self:center;color:var(--tx3);font-size:12px}
+.me{align-self:flex-end;max-width:470px}
+.me .meta,.msg .meta{font-size:12px;color:var(--tx3);margin-bottom:4px}.me .meta{text-align:right}
+.me .bub{background:var(--p3);border-radius:10px;padding:11px 15px;font-size:15px}
+.me .bub b{color:#fff;font-weight:600;background:#333;border-radius:3px;padding:0 4px}
+.msg{display:flex;gap:12px;max-width:640px}
+.msg .meta b{color:var(--tx);font-weight:600;font-size:14px;margin-right:6px}
+.chips{display:flex;gap:8px;margin:2px 0 8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--line);border-radius:4px;font-size:12.5px;color:var(--tx2)}.chip svg{width:13px;color:var(--grn);stroke-width:2.25}
+.msg p{font-size:15px;color:var(--tx)}
+.card{margin-top:12px;border:1px solid var(--line);background:var(--p1);border-radius:10px;overflow:hidden}
+.card .yb{background:var(--y);color:#000;height:42px;display:flex;align-items:center;gap:10px;padding:0 6px;font-weight:700;font-size:14px}
+.card .yb .sq{width:30px;height:30px}.card .yb span{margin-left:auto;margin-right:10px;font-weight:500;font-size:13px}
+.card .bd{padding:16px 18px}
+.card h3{font-size:18px;font-weight:600;letter-spacing:-.01em;margin-bottom:10px}
+.kv{display:grid;grid-template-columns:72px 1fr;gap:4px 10px;font-size:13.5px;margin-bottom:10px}.kv dt{color:var(--tx3)}.kv dd{color:var(--tx)}
+.prev{background:var(--ink);border:1px solid var(--line);border-radius:6px;padding:10px 12px;color:var(--tx2);font-size:13.5px;line-height:1.5}
+.why{display:flex;align-items:center;gap:8px;margin:12px 0 14px;font-size:13.5px;color:#ffb3ab}.why svg{width:15px;color:var(--red)}
+.btns{display:flex;gap:8px}
+.btn{height:40px;padding:0 16px;border-radius:6px;border:1px solid #3a3a3a;background:transparent;color:var(--tx);font:600 14px Hind;display:inline-flex;align-items:center;gap:8px}
+.btn.pri{background:#fff;color:#000;border-color:#fff}.btn.pri svg{width:15px;stroke-width:2.25}
+.typing{display:flex;align-items:center;gap:8px;color:var(--tx3);font-size:13px;padding-left:46px}
+.comp{margin:14px 28px 22px;display:flex;align-items:center;gap:10px;height:52px;padding:0 8px 0 16px;background:var(--p1);border:1px solid var(--line);border-radius:8px;color:var(--tx3);font-size:15px}
+.comp .at{width:34px;height:34px;display:grid;place-items:center;border-radius:5px;color:var(--tx2)}.comp .at svg{width:18px}
+.comp .send{margin-left:auto;width:38px;height:38px;border-radius:6px;background:#fff;color:#000;display:grid;place-items:center}.comp .send svg{width:17px;stroke-width:2.25}
+/* right panel */
+.side{background:var(--p1);border-left:1px solid var(--line);padding:20px 20px;display:flex;flex-direction:column;gap:14px}
+.side h4{font-size:13px;font-weight:600;color:var(--tx2);margin-bottom:2px}
+.stat{background:var(--p2);border-radius:8px;padding:14px 16px;display:flex;align-items:flex-end;gap:14px}
+.big{font-weight:700;font-size:58px;line-height:.82;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stat .lab{font-size:14px;font-weight:500;line-height:1.3}.stat .lab small{display:block;color:var(--tx3);font-weight:400;font-size:12.5px}
+.stat.ap .big{color:var(--y)}.stat.inc .big{color:var(--red)}
+.cost{background:var(--p2);border-radius:8px;padding:14px 16px}
+.cost .v{font-weight:700;font-size:28px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}.cost .v small{font-size:14px;font-weight:400;color:var(--tx3);margin-left:4px}
+.meter{height:6px;background:#2c2c2c;border-radius:3px;margin:10px 0 6px;overflow:hidden}.meter i{display:block;width:28.2%;height:100%;background:#fff}
+.cost p{font-size:12.5px;color:var(--tx3)}
+.mem{display:flex;align-items:center;gap:11px;padding:7px 0;border-bottom:1px solid #202020}
+.mem .av{width:32px;height:32px}.mem b{display:block;font-weight:600;font-size:14px;line-height:1.2}.mem small{color:var(--tx3);font-size:12.5px}
+.st{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2);white-space:nowrap}.st i{width:8px;height:8px;border-radius:2px;background:#555}
+.st.w i{background:#fff}.st.a i{background:var(--y)}.st.x{color:#ffb3ab}.st.x i{background:var(--red)}
+</style>
+</head>
+<body>
+<div class="app">
+<nav class="nav" aria-label="Navigasi utama">
+  <div class="ws"><div class="mark"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M4 20V9l8-5 8 5v11M9 20v-6h6v6"/></svg></div><div><b>CV Sinar Rasa</b><small>data contoh</small></div></div>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/></svg></span>Dasbor</a>
+  <a href="#" class="on"><span class="sq"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg></span>Chat</a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 12h2M13 12h2M9 16h2M13 16h2"/></svg></span>Kantor</a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM9 13l2.5 2.5L16 11"/></svg></span>Persetujuan<span class="n">3</span></a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/></svg></span>Tugas</a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg></span>Rutinitas</a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg></span>Karyawan</a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c.8-3 3-4.5 6-4.5s5.2 1.5 6 4.5M14 15.6c.6-.1 1.3-.1 2-.1 3 0 5.2 1.5 6 4.5"/></svg></span>Tim</a>
+  <a href="#"><span class="sq"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></span>Pengaturan</a>
+  <button class="kill"><i></i>Hentikan semua<span>4 aktif</span></button>
+</nav>
+<aside class="convs">
+  <h2>Percakapan</h2>
+  <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/></svg>Cari percakapan</div>
+  <div class="c on"><div class="av">TK</div><div><div class="t">Tim Keuangan<em>09:13</em></div><p>Sari: Aku siapkan email pengingat…</p></div></div>
+  <div class="c"><div class="av">S</div><div><div class="t">Sari · Keuangan<em>Kemarin</em></div><p>Rekap kas mingguan sudah siap</p></div></div>
+  <div class="c"><div class="av">D</div><div><div class="t">Dewi · Support<em>08:47</em></div><p>Balasan ke pelanggan menunggu</p></div></div>
+  <div class="c"><div class="av">R</div><div><div class="t">Raka · Developer<em>08:51</em></div><p>Deploy berhenti di langkah build</p></div></div>
+  <div class="c"><div class="av">B</div><div><div class="t">Bima · Sales<em>Sen</em></div><p>Daftar prospek Surabaya terkirim</p></div></div>
+</aside>
+<main class="chat">
+  <header class="head">
+    <h1>Tim Keuangan</h1>
+    <div class="stack"><div class="av">S</div><div class="av">B</div><div class="av">D</div><div class="av">R</div></div>
+    <span class="sub">4 anggota</span>
+    <div class="sel"><small>Mode</small>Lead menjawab<svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></div>
+  </header>
+  <div class="band" role="status" aria-label="Keputusan berikutnya">
+    <div class="lead"><span class="sq"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM9 13l2.5 2.5L16 11"/></svg></span>Keputusan berikutnya</div>
+    <div class="flap">
+      <span><b>Setujui email ke Mitra Logistik</b><i>·</i>1/3<i>·</i>4 mnt</span>
+      <span><b>Balasan Dewi ke pelanggan</b><i>·</i>2/3<i>·</i>11 mnt</span>
+      <span><b>Bayar vendor Rp 2.750.000</b><i>·</i>3/3<i>·</i>26 mnt</span>
+    </div>
+    <div class="go"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+  </div>
+  <section class="thread">
+    <div class="day">Hari ini</div>
+    <div class="me"><div class="meta">Rina · Owner · 09:12</div><div class="bub"><b>@Sari</b> tolong tagih invoice PT Mitra Logistik yang lewat jatuh tempo, kirim pengingat yang sopan ya.</div></div>
+    <div class="msg">
+      <div class="av">S</div>
+      <div>
+        <div class="meta"><b>Sari</b>Keuangan · lead · 09:13</div>
+        <div class="chips"><span class="chip"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>Membaca 3 invoice — berhasil</span><span class="chip"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>Mengecek riwayat pembayaran — berhasil</span></div>
+        <p>INV-2026-0187 lewat 14 hari (Rp 18.450.000). Aku siapkan email pengingat, butuh persetujuanmu sebelum terkirim.</p>
+        <div class="card">
+          <div class="yb"><span class="sq"><svg viewBox="0 0 24 24"><path d="M3 6h18v12H3zM3 7l9 6 9-6"/></svg></span>Perlu persetujuanmu · 1 dari 3<span>menunggu 4 mnt</span></div>
+          <div class="bd">
+            <h3>Kirim email ke finance@mitralogistik.co.id</h3>
+            <dl class="kv"><dt>Subjek</dt><dd>Pengingat pembayaran INV-2026-0187</dd><dt>Lampiran</dt><dd>INV-2026-0187.pdf</dd></dl>
+            <div class="prev">Yth. Tim Finance PT Mitra Logistik, kami ingin mengingatkan bahwa invoice INV-2026-0187 senilai Rp 18.450.000 telah jatuh tempo pada 28 September 2026. Mohon konfirmasi jadwal pembayarannya…</div>
+            <div class="why"><svg viewBox="0 0 24 24"><path d="M12 3 2 20h20zM12 10v4M12 17h.01"/></svg>Aksi tidak bisa dibatalkan: email keluar</div>
+            <div class="btns"><button class="btn pri"><svg viewBox="0 0 24 24"><path d="m5 12 4 4 10-10"/></svg>Setujui &amp; kirim</button><button class="btn">Ubah</button><button class="btn">Tolak</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="comp"><span class="at"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1"/></svg></span>Tulis pesan… ketik @ untuk memanggil anggota<span class="send"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span></div>
+</main>
+<aside class="side">
+  <div class="stat ap"><span class="big">3</span><span class="lab">Persetujuan menunggu<small>tertua 26 mnt</small></span></div>
+  <div class="stat inc"><span class="big">1</span><span class="lab">Insiden terbuka<small>Raka · deploy macet 22 mnt</small></span></div>
+  <div class="cost"><h4>Biaya hari ini</h4><div class="v">Rp 42.300<small>/ Rp 150.000</small></div><div class="meter"><i></i></div><p>28% dari batas harian</p></div>
+  <div><h4>Anggota tim</h4>
+    <div class="mem"><div class="av">S</div><div><b>Sari</b><small>Keuangan · lead</small></div><span class="st w"><i></i>sedang menulis</span></div>
+    <div class="mem"><div class="av">B</div><div><b>Bima</b><small>Sales</small></div><span class="st"><i></i>idle</span></div>
+    <div class="mem"><div class="av">D</div><div><b>Dewi</b><small>Support</small></div><span class="st a"><i></i>menunggu persetujuan</span></div>
+    <div class="mem"><div class="av">R</div><div><b>Raka</b><small>Developer</small></div><span class="st x"><i></i>insiden</span></div>
+  </div>
+</aside>
+</div>
+</body>
+</html>

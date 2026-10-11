@@ -15,7 +15,7 @@ export default async function SetupTwoFactorPage() {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
-        <CardTitle className="text-2xl">{t("setup2fa.title")}</CardTitle>
+        <CardTitle className="font-display text-[2.1rem]">{t("setup2fa.title")}</CardTitle>
         <CardDescription>{t("setup2fa.description", { workspace: session.workspaceName })}</CardDescription>
       </CardHeader>
       <CardContent>

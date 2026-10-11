@@ -44,7 +44,7 @@ interface MemoryEvent {
 
 const STATE_TONE: Record<MemoryState, string> = {
   active: "",
-  expired: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  expired: "bg-warning/15 text-warning",
   superseded: "bg-muted text-muted-foreground",
 };
 
@@ -177,7 +177,7 @@ export function MemoryPanel({ employeeId }: { employeeId: string }) {
       {shown.map((m) => (
         <div key={m.id} className={cn("flex items-start gap-3 rounded-lg border p-3", m.state !== "active" && "opacity-70")}>
           <div className="flex flex-col items-start gap-1">
-            <span className={m.kind === "feedback" ? "rounded bg-amber-500/15 px-1.5 text-[11px] uppercase text-amber-700" : "rounded bg-muted px-1.5 text-[11px] uppercase"}>
+            <span className={m.kind === "feedback" ? "rounded bg-warning/15 px-1.5 text-[11px] uppercase text-warning" : "rounded bg-muted px-1.5 text-[11px] uppercase"}>
               {t.has(`memory.kind.${m.kind}`) ? t(`memory.kind.${m.kind}`) : m.kind}
             </span>
             {m.state !== "active" && <span className={cn("rounded px-1.5 text-[11px]", STATE_TONE[m.state])}>{t(`memory.state.${m.state}`)}</span>}

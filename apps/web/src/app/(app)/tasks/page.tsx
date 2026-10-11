@@ -5,10 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { FlaskConical, GitBranch, Plus } from "lucide-react";
+import { FlaskConical, GitBranch, Plus, UsersRound } from "lucide-react";
 import { TASK_STATUSES, type TaskStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Avatar, PageHeader } from "@/components/layout/common";
+import { useSignColors } from "@/components/office/employee-sign";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
 import { api } from "@/lib/api";
 import { STATUS_TONE } from "@/lib/format";
@@ -23,6 +24,7 @@ function Board() {
   const router = useRouter();
   const t = useTranslations("tasks");
   const ts = useTranslations("status");
+  const colors = useSignColors();
   const f = useFormat();
   const [open, setOpen] = useState(false);
   const employeeId = sp.get("employeeId") ?? "";
@@ -96,18 +98,22 @@ function Board() {
                 {items.map((task) => {
                   const a = task.assigneeId ? emp.get(task.assigneeId) : undefined;
                   return (
-                    <Link key={task.id} href={`/tasks/${task.id}`} className="block rounded-lg border bg-card p-2.5 text-sm shadow-xs transition hover:shadow-md">
+                    <Link key={task.id} href={`/tasks/${task.id}`} className="block rounded-xl border bg-card p-3 text-sm transition-colors hover:border-input hover:bg-secondary/40">
                       <div className="line-clamp-3 font-medium">{task.title}</div>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                         {a && (
                           <span className="inline-flex items-center gap-1">
-                            <Avatar emoji={a.avatar} size="sm" className="size-4 text-[10px]" /> {a.name}
+                            <Avatar emoji={a.avatar} size="sm" color={colors.get(a.id)} className="size-5 rounded-md text-[11px]" /> {a.name}
                           </span>
                         )}
-                        {!a && task.teamId && <span>👥 {team.get(task.teamId)?.name}</span>}
+                        {!a && task.teamId && (
+                          <span className="inline-flex items-center gap-1">
+                            <UsersRound className="size-3.5" aria-hidden /> {team.get(task.teamId)?.name}
+                          </span>
+                        )}
                         {task.clientId && <span className="rounded bg-muted px-1">{client.get(task.clientId)?.name}</span>}
                         {task.dryRun && (
-                          <span className="inline-flex items-center gap-0.5 text-violet-600">
+                          <span className="inline-flex items-center gap-0.5 text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]">
                             <FlaskConical className="size-3" /> {t("board.dryRun")}
                           </span>
                         )}
@@ -116,7 +122,7 @@ function Board() {
                             <GitBranch className="size-3" /> {t("board.subtask")}
                           </span>
                         )}
-                        {task.phase === "wait" && <span className="text-sky-600">{t("board.waitingOnSubtasks")}</span>}
+                        {task.phase === "wait" && <span className="text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]">{t("board.waitingOnSubtasks")}</span>}
                       </div>
                       <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
                         <span>{f.ago(task.updatedAt)}</span>

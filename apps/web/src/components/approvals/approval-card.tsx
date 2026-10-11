@@ -7,23 +7,47 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronDown, Clock, FlaskConical, History, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/layout/common";
+import { useSignColors } from "@/components/office/employee-sign";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { PayloadPreview } from "./payload-preview";
 import { resultSummary, type Approval } from "./types";
 
+const DEMO_SUFFIX = " Demo: executes as a dry run.";
+
+/**
+ * The gate writes its reason in English (packages/shared decideGate/screen). The known reasons are shown in the
+ * reader's language; anything else (an older or custom reason) is shown as written.
+ */
+export function useReasonText(): (reason: string) => string {
+  const t = useTranslations("approvals");
+  const ts = useTranslations("status");
+  return (reason) => {
+    const demo = reason.endsWith(DEMO_SUFFIX);
+    const r = demo ? reason.slice(0, -DEMO_SUFFIX.length) : reason;
+    const level = /^Irreversible action requires approval \(autonomy (\w+)\)\.$/.exec(r)?.[1];
+    let text: string | null = null;
+    if (level) text = t("reasons.autonomy", { level: ts.has(`autonomy.${level}`) ? ts(`autonomy.${level}`) : level });
+    else if (r === "Irreversible action outside the Owner allow-list requires approval.") text = t("reasons.allowList");
+    else if (r === "Output guard found possible secrets/PII in the payload.") text = t("reasons.leak");
+    else if (r.startsWith("This run handled untrusted content")) text = t("reasons.taint");
+    if (!text) return reason;
+    return demo ? `${text} ${t("reasons.demoDryRun")}` : text;
+  };
+}
+
 type Decision = { decision: "approve" | "edit_approve" | "reject"; editedPayload?: Record<string, unknown>; feedback?: string };
 
 function statusClass(status: string): string {
-  if (status === "PENDING") return "bg-amber-500/15 text-amber-700";
+  if (status === "PENDING") return "bg-approval text-approval-ink";
   if (status === "REJECTED" || status === "FAILED") return "bg-destructive/15 text-destructive";
   if (status === "EXPIRED") return "bg-muted text-muted-foreground";
-  if (status === "EXECUTING") return "bg-sky-500/15 text-sky-700";
-  return "bg-emerald-500/15 text-emerald-700";
+  if (status === "EXECUTING") return "bg-[var(--sign-biru)]/20 text-foreground";
+  return "bg-success/15 text-success";
 }
 
 type Finding = NonNullable<Approval["guardFindings"]>[number];
@@ -54,7 +78,7 @@ export function GuardFindings({ findings, collapsible = false }: { findings: rea
       ))}
     </ul>
   );
-  const box = cn("rounded-md p-2 text-xs", high ? "border border-destructive/40 bg-destructive/10 text-destructive" : "bg-amber-500/10 text-amber-800 dark:text-amber-300");
+  const box = cn("rounded-lg p-2 text-xs", high ? "border border-destructive/40 bg-destructive/10 text-destructive" : "bg-warning/10 text-warning");
   if (collapsible && !high) {
     return (
       <details className={box}>
@@ -86,6 +110,8 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
   const t = useTranslations("approvals");
   const tc = useTranslations("common");
   const f = useFormat();
+  const colors = useSignColors();
+  const reasonText = useReasonText();
   const pending = a.status === "PENDING";
   const [editing, setEditing] = useState(false);
   const [rejecting, setRejecting] = useState(false);
@@ -121,7 +147,7 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
   const details = (
     <>
       {simulated && (
-        <div className="flex items-center gap-1.5 text-xs text-violet-700 dark:text-violet-300">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]">
           <FlaskConical className="size-3.5" /> {t("card.dryRunNotice")}
         </div>
       )}
@@ -146,7 +172,7 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
       </p>
     );
   } else if (pending) {
-    const size = compact ? "xs" : "sm";
+    const size = "sm";
     actions = rejecting ? (
       <div className="space-y-2">
         <Textarea placeholder={t("card.rejectPlaceholder")} value={feedback} onChange={(e) => setFeedback(e.target.value)} className={cn(compact && "min-h-16 text-xs")} />
@@ -188,19 +214,27 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
   if (compact) {
     const detailsId = `approval-details-${a.id}`;
     return (
-      <div id={a.id} className={cn("rounded-lg border bg-card text-left", pending && "border-amber-500/50", focused && "ring-2 ring-primary")}>
-        <div className="flex items-center gap-2 px-3 py-2">
-          {pending ? <ShieldAlert className="size-4 shrink-0 text-amber-600" /> : <ShieldCheck className="size-4 shrink-0 text-muted-foreground" />}
+      <div id={a.id} className={cn("overflow-hidden rounded-xl border bg-card text-left", pending && "border-approval/50 shadow-[0_22px_40px_-26px_rgb(0_0_0/0.7)]", focused && "ring-2 ring-ring")}>
+        {pending ? (
+          <div className="approval-strip flex items-center gap-2 px-3.5 py-2">
+            <ShieldAlert className="size-4 shrink-0" aria-hidden />
+            <span className="font-display flex-1 text-[1.2rem] tracking-[0.03em]">{t("card.stripPending")}</span>
+            <span className="text-xs font-semibold">{f.ago(a.createdAt)}</span>
+          </div>
+        ) : null}
+        <div className="flex items-start gap-2 px-3.5 pb-2 pt-3">
+          {!pending && <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-medium">{a.title}</div>
-            <div className="truncate text-[11px] text-muted-foreground">
-              {toolLabel} · {f.ago(a.createdAt)}
+            <div className={cn("break-words", pending ? "font-display mb-1 text-[1.45rem] normal-case !leading-[1.08] tracking-[0.005em]" : "text-sm font-semibold")}>{a.title}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {toolLabel}
+              {!pending && <> · {f.ago(a.createdAt)}</>}
             </div>
           </div>
-          <ApprovalStatusPill status={a.status} className="text-[11px]" />
+          {!pending && <ApprovalStatusPill status={a.status} className="text-[11px]" />}
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-expanded={open}
             aria-controls={detailsId}
             aria-label={open ? t("card.hideDetails") : t("card.showDetails")}
@@ -210,24 +244,28 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
             <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
           </button>
         </div>
-        {pending && a.reason && <div className="-mt-1 px-3 pb-2 text-[11px] text-amber-700 dark:text-amber-300">{a.reason}</div>}
+        {pending && a.reason && (
+          <div className="flex items-start gap-1.5 px-3.5 pb-2.5 text-xs font-semibold text-destructive">
+            <ShieldAlert className="mt-px size-3.5 shrink-0" aria-hidden /> {reasonText(a.reason)}
+          </div>
+        )}
         {open && (
-          <div id={detailsId} className="space-y-2 border-t px-3 py-2">
+          <div id={detailsId} className="space-y-2 border-t px-3.5 py-3">
             {details}
           </div>
         )}
         {/* never folded away with the details: always visible, and listed in full right above the buttons when high */}
         {!!a.guardFindings?.length && (
-          <div className="border-t px-3 py-2">
+          <div className="border-t px-3.5 py-2">
             <GuardFindings findings={a.guardFindings} collapsible />
           </div>
         )}
-        {!pending && (a.feedback || summary) && <div className="space-y-0.5 border-t px-3 py-1.5">{outcome}</div>}
+        {!pending && (a.feedback || summary) && <div className="space-y-0.5 border-t px-3.5 py-2">{outcome}</div>}
         {actions && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3.5 py-3">
             <div className="min-w-0 flex-1">{actions}</div>
             {pending && (
-              <Link href={`/approvals?focus=${a.id}`} className="text-[11px] text-primary hover:underline">
+              <Link href={`/approvals?focus=${a.id}`} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
                 {t("card.openInInbox")}
               </Link>
             )}
@@ -239,38 +277,48 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
 
   const who = a.employee ? `${a.employee.name} (${a.employee.role})` : tc("unknown");
   return (
-    <Card id={a.id} className={cn(focused && "ring-2 ring-primary")}>
-      <CardHeader className="flex-row items-start gap-3 space-y-0 pb-3">
-        <Avatar emoji={a.employee?.avatar} />
+    <Card id={a.id} className={cn("gap-0 overflow-hidden py-0", pending && "border-approval/50", focused && "ring-2 ring-ring")}>
+      {pending && (
+        <div className="approval-strip flex items-center gap-2 px-5 py-2.5">
+          <ShieldAlert className="size-4 shrink-0" aria-hidden />
+          <span className="font-display flex-1 text-[1.3rem] tracking-[0.03em]">{t("card.stripPending")}</span>
+          <span className="text-xs font-semibold">{f.ago(a.createdAt)}</span>
+        </div>
+      )}
+      <div className="flex items-start gap-3 px-5 pb-3 pt-4">
+        <Avatar emoji={a.employee?.avatar} color={a.employee ? colors.get(a.employee.id) : undefined} />
         <div className="min-w-0 flex-1">
-          <div className="font-medium">{a.title}</div>
-          <div className="text-xs text-muted-foreground">
-            {t.rich("card.wantsToRun", { employee: who, tool: toolLabel, code: (c) => <span className="font-medium text-foreground">{c}</span> })} · {f.ago(a.createdAt)}
+          <div className={cn("break-words", pending ? "font-display mb-1 text-[1.6rem] normal-case !leading-[1.08] tracking-[0.005em]" : "text-base font-semibold leading-snug")}>{a.title}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {t.rich("card.wantsToRun", { employee: who, tool: toolLabel, code: (c) => <span className="font-medium text-foreground">{c}</span> })}
+            {!pending && <> · {f.ago(a.createdAt)}</>}
             {a.task && (
               <>
                 {" "}
                 · {t("card.task")}{" "}
-                <Link href={`/tasks/${a.task.id}`} className="text-primary hover:underline">
+                <Link href={`/tasks/${a.task.id}`} className="text-primary">
                   {a.task.title}
                 </Link>
               </>
             )}
           </div>
-          <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">{a.reason}</div>
+          <div className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-destructive">
+            <ShieldAlert className="mt-px size-3.5 shrink-0" aria-hidden /> {reasonText(a.reason)}
+          </div>
           {a.olderVersion && (
-            <div className="mt-1">
-              <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+            <div className="mt-1.5">
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                 <History className="size-3" aria-hidden /> {t("card.olderVersion")}
               </span>
             </div>
           )}
         </div>
-        <ApprovalStatusPill status={a.status} />
-      </CardHeader>
-      <CardContent className="space-y-3">
+        {!pending && <ApprovalStatusPill status={a.status} />}
+      </div>
+      <CardContent className="space-y-3 px-5 pb-5">
         {details}
         {outcome}
-        {actions && <div className="space-y-2 border-t pt-3">{actions}</div>}
+        {actions && <div className="space-y-2 border-t pt-4">{actions}</div>}
       </CardContent>
     </Card>
   );

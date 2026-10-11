@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState, PageHeader } from "@/components/layout/common";
+import { useSignColors } from "@/components/office/employee-sign";
 import { api } from "@/lib/api";
 import { hasRole, TEAM_RESPONDER_MODES, type TeamResponderMode } from "@wfos/shared";
 import { useClients, useEmployees, useMe, useTeams, type Team } from "@/lib/hooks";
@@ -113,6 +114,7 @@ function ResponderModePicker({ team, canEdit, saving, onChange }: { team: Team; 
 export default function TeamsPage() {
   const tt = useTranslations("teams");
   const tp = useTranslations("packages");
+  const colors = useSignColors();
   const qc = useQueryClient();
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
@@ -149,7 +151,7 @@ export default function TeamsPage() {
                 className="flex cursor-grab items-center gap-2 rounded-md border bg-card px-2 py-1.5 text-sm active:cursor-grabbing"
               >
                 <GripVertical className="size-3.5 text-muted-foreground" />
-                <Avatar emoji={e.avatar} size="sm" />
+                <Avatar emoji={e.avatar} size="sm" color={colors.get(e.id)} />
                 <span className="flex-1 truncate">{e.name}</span>
                 <span className="text-xs text-muted-foreground">{e.role}</span>
               </div>
@@ -206,10 +208,10 @@ export default function TeamsPage() {
                     if (!e) return null;
                     const lead = t.leadId === id;
                     return (
-                      <div key={id} className={cn("flex items-center gap-2 rounded-full border py-1 pl-1 pr-2 text-sm", lead && "border-amber-500 bg-amber-500/10")}>
-                        <Avatar emoji={e.avatar} size="sm" />
+                      <div key={id} className={cn("flex items-center gap-2 rounded-full border py-1 pl-1 pr-2 text-sm", lead && "border-approval bg-warning/10")}>
+                        <Avatar emoji={e.avatar} size="sm" color={colors.get(e.id)} />
                         {e.name}
-                        <button type="button" title={lead ? tt("lead") : tt("makeLead")} onClick={() => update.mutate({ id: t.id, leadId: id })} className={lead ? "text-amber-600" : "text-muted-foreground hover:text-amber-600"}>
+                        <button type="button" title={lead ? tt("lead") : tt("makeLead")} onClick={() => update.mutate({ id: t.id, leadId: id })} className={lead ? "text-warning" : "text-muted-foreground hover:text-warning"}>
                           <Crown className="size-3.5" />
                         </button>
                         <button
@@ -224,7 +226,7 @@ export default function TeamsPage() {
                     );
                   })}
                 </div>
-                {!t.leadId && t.memberIds.length > 0 && <p className="mt-2 text-xs text-amber-600">{tt("chooseLead")}</p>}
+                {!t.leadId && t.memberIds.length > 0 && <p className="mt-2 text-xs text-warning">{tt("chooseLead")}</p>}
                 <ResponderModePicker
                   team={t}
                   canEdit={isAdmin}

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Workforce OS · Papan Nama Ruko</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800;900&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--g0:#110e15;--g1:#18141d;--g2:#211b27;--g3:#2f2737;--t1:#f7efe6;--t2:#b3a7b9;--t3:#7d7086;--merah:#e8392f;--kuning:#f6b51e;--tosca:#18b3a3;--putih:#fff8ee}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--g0);color:var(--t1);font:14px/1.5 Figtree,sans-serif;font-variant-numeric:tabular-nums}
+::selection{background:var(--kuning);color:#1a1206}
+svg.i{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.app{display:grid;grid-template-columns:76px 1fr 330px;height:900px}
+.rail{background:var(--g1);border-right:1px solid var(--g2);display:flex;flex-direction:column;align-items:center;padding:18px 0;gap:4px}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--merah);display:grid;place-items:center;font:900 22px 'Big Shoulders Display';color:var(--putih);margin-bottom:14px;box-shadow:0 10px 24px -8px #e8392f99}
+.rail a{width:60px;padding:8px 0 7px;border-radius:12px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--t3);font-size:10.5px;font-weight:600;position:relative}
+.rail a.on{background:var(--g2);color:var(--t1)}
+.rail a b{position:absolute;top:4px;right:9px;background:var(--kuning);color:#1a1206;font-size:10px;line-height:16px;min-width:16px;border-radius:8px;text-align:center}
+.rail .kill{margin-top:auto;color:#ff8d84;background:#2a1418}
+.main{display:flex;flex-direction:column;min-width:0}
+.facade{height:178px;background:linear-gradient(#0c0a10,var(--g0));border-bottom:1px solid var(--g2);padding:20px 28px 0;display:grid;grid-template-columns:auto 1fr;gap:26px}
+.place b{font:900 34px/0.95 'Big Shoulders Display';letter-spacing:.01em;text-transform:uppercase;display:block}
+.place span{color:var(--t2);font-size:13px;display:block;margin-top:8px}
+.place .sel{margin-top:14px;display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--g3);background:var(--g1);font-weight:600;font-size:13px}
+.signs{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start}
+.sign{height:96px;border-radius:10px;padding:12px 14px;position:relative;display:flex;flex-direction:column;justify-content:space-between;color:var(--putih)}
+.sign .n{font:900 30px/0.9 'Big Shoulders Display';text-transform:uppercase;letter-spacing:.02em}
+.sign .r{font-size:12px;font-weight:600;opacity:.92;display:flex;justify-content:space-between;gap:8px;white-space:nowrap}
+.lit{box-shadow:inset 0 0 0 1px #ffffff2e,inset 0 -18px 30px -12px #0004,0 26px 34px -18px var(--c)}
+.lit.merah{--c:#e8392fcc;background:radial-gradient(120% 90% at 50% 35%,#ff5a4c,#d52b22)}
+.lit.kuning{--c:#f6b51ecc;background:radial-gradient(120% 90% at 50% 35%,#ffd04e,#e9a40d);color:#2a1a02}
+.off{background:#1d1922;color:#6b6073;box-shadow:inset 0 0 0 1px #2c2533}
+.flick{--c:#18b3a3aa;background:radial-gradient(120% 90% at 50% 35%,#34d0bf,#11998b);box-shadow:inset 0 0 0 1px #ffffff2e,0 26px 34px -18px var(--c);animation:flick 4s steps(1) infinite}
+@keyframes flick{0%,100%{filter:none}8%{filter:brightness(.35) saturate(.4)}10%{filter:none}12%{filter:brightness(.35) saturate(.4)}14%,61%{filter:none}63%{filter:brightness(.4) saturate(.4)}66%{filter:none}}
+.on-air{animation:on 6s cubic-bezier(.16,1,.3,1) infinite}
+@keyframes on{0%,6%{filter:brightness(.3) saturate(.3)}7%{filter:brightness(1.15)}8%{filter:brightness(.5)}10%,100%{filter:none}}
+@media (prefers-reduced-motion:reduce){.flick,.on-air{animation:none}}
+.tag{position:absolute;right:10px;top:10px;font-size:10.5px;font-weight:700;background:#0003;border-radius:6px;padding:1px 7px}
+.body{flex:1;display:grid;grid-template-columns:250px 1fr;min-height:0}
+.convs{border-right:1px solid var(--g2);padding:18px 12px;background:var(--g1)}
+.search{height:36px;border-radius:9px;background:var(--g0);border:1px solid var(--g3);color:var(--t3);display:flex;align-items:center;gap:8px;padding:0 12px;margin-bottom:12px}
+.c{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px}
+.c.on{background:var(--g2)}
+.sq{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font:800 15px 'Big Shoulders Display';color:var(--putih);flex:none}
+.c b{font-weight:600;display:block;line-height:1.25}.c span{display:block;color:var(--t3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.thread{display:flex;flex-direction:column;min-width:0;padding:22px 30px 20px}
+.msgs{flex:1;display:flex;flex-direction:column;gap:18px;overflow:hidden}
+.meta{font-size:12px;color:var(--t3);margin-bottom:6px}
+.me{align-self:flex-end;max-width:520px}.me .meta{text-align:right}
+.me .bub{background:var(--g2);border:1px solid var(--g3);border-radius:14px 14px 4px 14px;padding:11px 15px;font-size:15px}
+.at{color:var(--kuning);font-weight:700}
+.ag{display:grid;grid-template-columns:42px 1fr;max-width:700px}
+.ag .sq{width:32px;height:32px}
+.rc{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 11px;border-radius:8px;background:var(--g1);border:1px solid var(--g2);color:var(--t2);font-size:12.5px;margin:0 6px 6px 0}
+.rc svg{color:var(--tosca);width:14px;height:14px}
+.ag p{font-size:15px;margin:6px 0 14px}
+.card{border-radius:14px;overflow:hidden;background:var(--g1);border:1px solid var(--g3);max-width:620px;box-shadow:0 24px 40px -24px #000}
+.strip{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font:900 19px 'Big Shoulders Display';letter-spacing:.04em;text-transform:uppercase;color:#2a1a02;background:radial-gradient(140% 120% at 50% 30%,#ffd04e,#e9a40d);box-shadow:inset 0 -10px 18px -10px #0003}
+.strip small{font:700 12px Figtree;letter-spacing:0;text-transform:none}
+.cb{padding:16px 18px 18px}
+.cb h3{font:800 24px/1.05 'Big Shoulders Display';letter-spacing:.01em}
+.mail{margin:12px 0;border-radius:10px;background:var(--g0);border:1px solid var(--g2);padding:11px 14px;font-size:13.5px;color:var(--t2)}
+.mail b{display:block;color:var(--t1);margin-bottom:3px}
+.why{display:flex;gap:8px;align-items:center;font-size:13px;color:#ff958b;font-weight:600;margin-bottom:14px}
+.acts{display:flex;gap:8px;align-items:center}
+.btn{height:40px;border-radius:10px;padding:0 16px;font:700 14px Figtree;display:flex;align-items:center;gap:8px;border:1px solid transparent}
+.go{background:var(--putih);color:#17121c}.ed{background:transparent;border-color:var(--g3);color:var(--t1)}.no{background:transparent;color:#ff958b}
+.who{margin-left:auto;font-size:12px;color:var(--t3)}
+.comp{height:54px;border-radius:13px;border:1px solid var(--g3);background:var(--g1);display:flex;align-items:center;padding:0 9px 0 16px;color:var(--t3);margin-top:14px}
+.send{margin-left:auto;width:38px;height:38px;border-radius:10px;background:var(--merah);color:var(--putih);display:grid;place-items:center}
+.ctx{background:var(--g1);border-left:1px solid var(--g2);padding:24px 22px;display:flex;flex-direction:column;gap:22px}
+.ctx h4{font:800 20px 'Big Shoulders Display';text-transform:uppercase;letter-spacing:.03em;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-bottom:1px solid var(--g2)}
+.row span{color:var(--t2)}.row b{font:800 28px/1 'Big Shoulders Display'}
+.bar{height:6px;border-radius:9px;background:var(--g2);margin:10px 0 6px;overflow:hidden}.bar i{display:block;width:28%;height:100%;background:var(--tosca)}
+.fine{font-size:12px;color:var(--t3)}
+.inc{border-radius:12px;background:#2a1418;border:1px solid #5a2228;padding:12px 14px;font-size:13px;color:#ffc4bd}
+.inc b{display:block;color:#ffe2de;margin-bottom:2px}
+.list{display:flex;flex-direction:column;gap:12px}
+.li{display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:center;font-size:13px;line-height:1.35}
+.li span{color:var(--t3);font-size:12px}
+</style></head><body><div class="app">
+<nav class="rail">
+ <div class="logo">W</div>
+ <a><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Dasbor</a>
+ <a class="on"><svg class="i" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>Chat</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-6h6v6"/></svg>Kantor</a>
+ <a><b>3</b><svg class="i" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Setuju</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Tugas</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4"/><path d="M12 8v4l3 2"/></svg>Rutinitas</a>
+ <a><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>Karyawan</a>
+ <a><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.8-3.5 3.3-5.5 6.5-5.5s5.7 2 6.5 5.5"/></svg>Tim</a>
+ <a><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Atur</a>
+ <a class="kill"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Stop</a>
+</nav>
+<div class="main">
+ <header class="facade">
+  <div class="place"><b>Tim Keuangan</b><span>CV Sinar Rasa · data contoh</span><div class="sel">Lead menjawab <svg class="i" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></div>
+  <div class="signs">
+   <div class="sign lit merah on-air"><span class="tag">LEAD</span><span class="n">Sari</span><span class="r">Keuangan <span>sedang menulis</span></span></div>
+   <div class="sign lit kuning"><span class="n">Dewi</span><span class="r">Support <span>menunggu kamu</span></span></div>
+   <div class="sign flick"><span class="n">Raka</span><span class="r">Developer <span>insiden · 22 mnt</span></span></div>
+   <div class="sign off"><span class="n">Bima</span><span class="r">Sales <span>idle</span></span></div>
+  </div>
+ </header>
+ <div class="body">
+  <aside class="convs">
+   <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Cari percakapan</div>
+   <div class="c on"><div class="sq" style="background:var(--merah)">TK</div><div><b>Tim Keuangan</b><span>Sari: butuh persetujuanmu</span></div></div>
+   <div class="c"><div class="sq" style="background:#a8322b">S</div><div><b>Sari · Keuangan</b><span>Rekap kas mingguan siap</span></div></div>
+   <div class="c"><div class="sq" style="background:#b8860f">D</div><div><b>Dewi · Support</b><span>Menunggu persetujuan refund</span></div></div>
+   <div class="c"><div class="sq" style="background:#11857a">R</div><div><b>Raka · Developer</b><span>Deploy macet, diselidiki</span></div></div>
+   <div class="c"><div class="sq" style="background:#33456f">B</div><div><b>Bima · Sales</b><span>Follow-up 4 prospek selesai</span></div></div>
+  </aside>
+  <main class="thread">
+   <div class="msgs">
+    <div class="me"><div class="meta">Rina · Owner · 09:12</div><div class="bub"><span class="at">@Sari</span> tolong tagih invoice PT Mitra Logistik yang lewat jatuh tempo, kirim pengingat yang sopan ya.</div></div>
+    <div class="ag"><div class="sq" style="background:var(--merah)">S</div><div>
+     <div class="meta"><b style="color:var(--t1)">Sari</b> · Keuangan · 09:13</div>
+     <span class="rc"><svg class="i" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>Membaca 3 invoice — berhasil</span><span class="rc"><svg class="i" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>Mengecek riwayat pembayaran — berhasil</span>
+     <p><b>INV-2026-0187</b> lewat 14 hari (<b>Rp 18.450.000</b>). Aku siapkan email pengingat, butuh persetujuanmu sebelum terkirim.</p>
+     <div class="card"><div class="strip">Perlu persetujuan <small>kedaluwarsa dalam 24 jam</small></div>
+      <div class="cb"><h3>Kirim email ke finance@mitralogistik.co.id</h3>
+       <div class="mail"><b>Pengingat pembayaran INV-2026-0187</b>Yth. Tim Keuangan PT Mitra Logistik, kami ingin mengingatkan invoice INV-2026-0187 senilai Rp 18.450.000 yang jatuh tempo 28 September…</div>
+       <div class="why"><svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.2L2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/></svg>Aksi tidak bisa dibatalkan: email keluar</div>
+       <div class="acts"><button class="btn go">Setujui &amp; kirim</button><button class="btn ed">Ubah</button><button class="btn no">Tolak</button><span class="who">hanya admin</span></div></div></div>
+    </div></div>
+   </div>
+   <div class="comp">Tulis pesan… ketik @ untuk memanggil anggota<div class="send"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div></div>
+  </main>
+ </div>
+</div>
+<aside class="ctx">
+ <div><h4>Hari ini</h4>
+  <div class="row"><span>Persetujuan menunggu</span><b style="color:var(--kuning)">3</b></div>
+  <div class="row"><span>Insiden terbuka</span><b style="color:#ff6b5e">1</b></div>
+  <div style="padding-top:12px"><div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">Biaya hari ini</span><b>Rp 42.300</b></div><div class="bar"><i></i></div><div class="fine">dari batas harian Rp 150.000</div></div>
+ </div>
+ <div class="inc"><b>Raka: deploy macet 22 menit</b>Papan Raka berkedip sampai insiden ditangani. Sari diminta meninjau dan mencoba ulang.</div>
+ <div><h4>Antrean persetujuan</h4><div class="list">
+  <div class="li"><div class="sq" style="background:var(--merah)">S</div><div>Email pengingat ke Mitra Logistik<br><span>Sari · 1 mnt lalu</span></div></div>
+  <div class="li"><div class="sq" style="background:#b8860f">D</div><div>Refund Rp 240.000 ke pelanggan #8812<br><span>Dewi · 18 mnt lalu</span></div></div>
+  <div class="li"><div class="sq" style="background:#33456f">B</div><div>Kirim penawaran ke PT Arunika<br><span>Bima · 42 mnt lalu</span></div></div>
+ </div></div>
+</aside>
+</div></body></html>

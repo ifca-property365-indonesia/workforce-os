@@ -24,7 +24,8 @@
     "reasonPlaceholder": "Alasan (dicatat di log audit)",
     "releaseConfirm": "Lepas",
     "engageConfirm": "Hentikan semua",
-    "banner": "Kill switch aktif — semua karyawan dihentikan dan tidak ada tindakan yang bisa dijalankan."
+    "banner": "Kill switch aktif — semua karyawan dihentikan dan tidak ada tindakan yang bisa dijalankan.",
+    "short": "Stop semua"
   },
   "live": {
     "approvalNeeded": "Perlu persetujuan: {title}",
@@ -57,5 +58,19 @@
     "until": "Batas langganan Claude tercapai: antrean kerja dijeda sampai {time}.",
     "resumeNow": "Lanjutkan sekarang",
     "resumed": "{count, plural, =0 {Antrean dilanjutkan} other {Antrean dilanjutkan: # tugas dimulai ulang}}"
-  }
+  },
+  "rail": {
+    "dashboard": "Dasbor",
+    "employees": "Karyawan",
+    "teams": "Tim",
+    "office": "Kantor",
+    "chat": "Obrolan",
+    "tasks": "Tugas",
+    "routines": "Rutinitas",
+    "approvals": "Persetujuan",
+    "clients": "Klien",
+    "knowledge": "Pengetahuan",
+    "settings": "Pengaturan"
+  },
+  "demoChip": "Demo"
 }

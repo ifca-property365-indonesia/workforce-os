@@ -69,7 +69,7 @@ function Highlighted({ text }: { text: string }) {
     <>
       {parts.map((part, i) =>
         i % 2 === 1 ? (
-          <mark key={i} className="rounded bg-amber-200/70 px-0.5 text-foreground dark:bg-amber-500/30">
+          <mark key={i} className="rounded bg-approval/40 px-0.5 text-foreground ">
             {part}
           </mark>
         ) : (
@@ -159,7 +159,7 @@ function PackageContents({ d }: { d: Details }) {
         </details>
       ))}
       {d.skills.map((s) => (
-        <details key={s.slug} className="rounded-md border border-amber-500/40 p-2">
+        <details key={s.slug} className="rounded-md border border-warning/40 p-2">
           <summary className="cursor-pointer font-medium">
             {t("import.skill", { slug: s.slug })}
             {s.as && <span className="font-normal text-muted-foreground"> · {t("import.skillAs", { slug: s.as })}</span>}
@@ -305,7 +305,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
             {pv.warnings.length > 0 && (
               <section>
                 <h3 className="mb-1 flex items-center gap-1.5 font-medium">
-                  <AlertTriangle className="size-4 text-amber-600" /> {t("import.warnings")}
+                  <AlertTriangle className="size-4 text-warning" /> {t("import.warnings")}
                 </h3>
                 <ul className="list-inside list-disc text-muted-foreground">
                   {pv.warnings.map((n, i) => (

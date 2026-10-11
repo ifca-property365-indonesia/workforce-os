@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Workforce OS · Batik Tulis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--n1:#9eaee6;--n2:#4a5ca6;--n3:#26336f;--n4:#19224f;--n5:#111839;--n6:#0b102a;--wax:#f2ead6;--wax2:#d9cfb5;--soga:#dba14f;--abang:#de4d43;--ijo:#56b98c;--ink:#141a3d}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--n6);color:var(--wax);font:14px/1.5 Onest,sans-serif;font-variant-numeric:tabular-nums}
+::selection{background:var(--soga);color:var(--ink)}
+.app{display:grid;grid-template-columns:224px 284px 1fr 316px;height:900px}
+svg.i{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.rail{background:var(--n4);display:flex;flex-direction:column;padding:22px 14px 18px;border-right:1px solid var(--n3)}
+.ws{display:flex;gap:10px;align-items:center;padding:0 8px 22px}
+.mark{width:34px;height:34px;border-radius:10px;background:var(--wax);display:grid;place-items:center}
+.ws b{font:700 15px/1.1 'Bricolage Grotesque';letter-spacing:-.01em;display:block}.ws small{color:var(--n1);font-size:12px}
+.nav a{display:flex;gap:11px;align-items:center;padding:9px 10px;border-radius:9px;color:var(--n1);text-decoration:none;font-weight:500}
+.nav a.on{background:var(--n3);color:var(--wax)}
+.nav .ct{margin-left:auto;background:var(--soga);color:var(--ink);font-weight:700;font-size:12px;border-radius:999px;padding:0 8px;line-height:20px}
+.kill{margin-top:auto;display:flex;gap:10px;align-items:center;justify-content:center;height:42px;border-radius:10px;border:1px solid #6b2b35;color:#ff9d93;background:#2a1430;font-weight:600}
+.convs{background:var(--n5);border-right:1px solid var(--n4);padding:22px 12px}
+.convs h2{font:700 13px/1 Onest;color:var(--n1);padding:0 10px 14px;display:flex;justify-content:space-between;align-items:center}
+.new{font:600 13px Onest;color:var(--wax);background:var(--n3);border:0;border-radius:8px;height:30px;padding:0 12px}
+.search{margin:0 4px 14px;height:38px;border-radius:9px;background:var(--n6);border:1px solid var(--n3);color:var(--n1);display:flex;align-items:center;gap:8px;padding:0 12px}
+.c{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border-radius:10px;margin-bottom:2px}
+.c.on{background:var(--n4)}
+.av{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font:700 14px 'Bricolage Grotesque';color:var(--ink)}
+.c b{font-weight:600;display:block;line-height:1.3}.c span{color:var(--n1);font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c i{font-style:normal;color:var(--n1);font-size:12px}
+.c .due{width:8px;height:8px;border-radius:50%;background:var(--soga)}
+.thread{display:flex;flex-direction:column;min-width:0}
+.th{height:84px;display:flex;align-items:center;gap:16px;padding:0 32px;border-bottom:1px solid var(--n4)}
+.th h1{font:750 28px/1 'Bricolage Grotesque';letter-spacing:-.025em;font-variation-settings:'opsz' 72}
+.th .sub{color:var(--n1);font-size:13px;margin-top:6px}
+.sel{margin-left:auto;display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--n3);background:var(--n5);color:var(--wax);font-weight:500}
+.msgs{flex:1;padding:26px 32px 0;overflow:hidden;display:flex;flex-direction:column;gap:22px}
+.me{align-self:flex-end;max-width:560px}
+.me .bub{background:var(--n3);border-radius:16px 16px 4px 16px;padding:12px 16px;font-size:15px}
+.meta{color:var(--n1);font-size:12px;margin-bottom:6px;display:flex;gap:8px;align-items:center}
+.me .meta{justify-content:flex-end}
+.at{color:var(--soga);font-weight:600}
+.ag{position:relative;display:grid;grid-template-columns:56px 1fr;max-width:760px}
+.ag .av{position:relative;z-index:2}
+.canting{position:absolute;left:0;top:0;width:60px;height:470px;overflow:visible;z-index:1}
+.canting path{fill:none;stroke:var(--wax);stroke-width:1.6;stroke-linecap:round;stroke-dasharray:640;stroke-dashoffset:640;animation:draw 5.5s cubic-bezier(.16,1,.3,1) infinite}
+.canting circle{fill:var(--wax);opacity:0;animation:dot 5.5s infinite;transform-box:fill-box;transform-origin:center}
+.canting circle:nth-of-type(2){animation-delay:.25s}.canting circle:nth-of-type(3){animation-delay:.5s}
+@keyframes draw{0%{stroke-dashoffset:640}45%,88%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+@keyframes dot{0%,20%{opacity:0;transform:scale(.4)}35%,88%{opacity:1;transform:none}100%{opacity:0}}
+.rc{display:flex;align-items:center;gap:9px;height:32px;color:var(--n1);font-size:13px}
+.rc svg{color:var(--ijo)}.rc em{font-style:normal;color:var(--wax)}
+.ag p{font-size:15px;margin:10px 0 16px;max-width:600px}
+.ag p b{font-weight:650}
+.resist{background:var(--wax);color:var(--ink);border-radius:14px;padding:18px 20px;max-width:600px;box-shadow:0 18px 40px -18px #000c,0 2px 0 #fff6 inset;position:relative}
+.resist .hd{display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:650;color:#7a4b12}
+.resist .hd .pill{background:#f4d29a;border-radius:999px;padding:2px 10px}
+.resist h3{font:700 19px/1.25 'Bricolage Grotesque';letter-spacing:-.015em;margin:10px 0 12px}
+.mail{background:#fff9ea;border:1px solid var(--wax2);border-radius:10px;padding:11px 14px;font-size:13.5px;color:#2d3360}
+.mail b{display:block;color:var(--ink);margin-bottom:3px}
+.why{display:flex;gap:8px;align-items:center;margin:12px 0 14px;font-size:13px;color:#8d2d27;font-weight:550}
+.acts{display:flex;gap:8px}
+.btn{white-space:nowrap;height:40px;border-radius:10px;padding:0 16px;font:600 14px Onest;border:1px solid transparent;display:flex;align-items:center;gap:8px}
+.go{background:var(--ink);color:var(--wax)}.ed{background:transparent;border-color:#bfb393;color:var(--ink)}.no{background:transparent;color:#8d2d27}
+.who{margin-left:auto;align-self:center;font-size:12px;color:#6c6650;max-width:140px;text-align:right;line-height:1.3}
+.comp{margin:18px 32px 22px;height:56px;border-radius:14px;border:1px solid var(--n3);background:var(--n5);display:flex;align-items:center;gap:12px;padding:0 10px 0 18px;color:var(--n1)}
+.send{margin-left:auto;width:38px;height:38px;border-radius:10px;background:var(--wax);color:var(--ink);display:grid;place-items:center}
+.ctx{background:var(--n5);border-left:1px solid var(--n4);padding:26px 22px;display:flex;flex-direction:column;gap:26px}
+.ctx h4{font:700 13px Onest;color:var(--n1);margin-bottom:12px;display:flex;justify-content:space-between}
+.mb{display:grid;grid-template-columns:34px 1fr;gap:11px;align-items:center;padding:7px 0}
+.mb .av{width:34px;height:34px;border-radius:10px;font-size:13px}
+.mb b{font-weight:600;display:block;line-height:1.3}.mb span{font-size:12.5px;color:var(--n1)}
+.st{display:inline-flex;align-items:center;gap:6px}.st::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.k{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--n4)}
+.k span{color:var(--n1)}.k b{font:700 22px 'Bricolage Grotesque';letter-spacing:-.02em}
+.inc{background:#2b1533;border:1px solid #5a2433;border-radius:12px;padding:12px 14px;font-size:13px;color:#ffc2bb}
+.inc b{display:block;color:#ffddd8;font-weight:600;margin-bottom:2px}
+.bar{height:6px;border-radius:9px;background:var(--n4);margin-top:10px;overflow:hidden}.bar i{display:block;width:28%;height:100%;background:var(--wax);border-radius:9px}
+.fine{font-size:12px;color:var(--n1);margin-top:8px}
+</style></head><body><div class="app">
+<aside class="rail">
+ <div class="ws"><div class="mark"><svg class="i" viewBox="0 0 24 24" style="color:var(--ink)"><path d="M4 18c3-8 5-8 8 0s5 8 8 0"/><circle cx="12" cy="6" r="1.6" fill="currentColor"/></svg></div><div><b>CV Sinar Rasa</b><small>Workforce OS · data contoh</small></div></div>
+ <nav class="nav">
+  <a><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Dasbor</a>
+  <a class="on"><svg class="i" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>Chat</a>
+  <a><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>Kantor</a>
+  <a><svg class="i" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4-3 7.5-7 9-4-1.5-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Persetujuan<span class="ct">3</span></a>
+  <a><svg class="i" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>Tugas</a>
+  <a><svg class="i" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4"/><path d="M12 8v4l3 2"/></svg>Rutinitas</a>
+  <a><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>Karyawan</a>
+  <a><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><circle cx="17" cy="9" r="2.5"/><path d="M2.5 20c.8-3.5 3.3-5.5 6.5-5.5s5.7 2 6.5 5.5M16 14.5c3 0 5 1.8 5.5 4.5"/></svg>Tim</a>
+  <a><svg class="i" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Pengaturan</a>
+ </nav>
+ <div class="kill"><svg class="i" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Hentikan semua</div>
+</aside>
+<section class="convs">
+ <h2>Percakapan <button class="new">+ Baru</button></h2>
+ <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/></svg>Cari percakapan</div>
+ <div class="c on"><div class="av" style="background:var(--wax)">TK</div><div><b>Tim Keuangan</b><span>Sari: butuh persetujuanmu…</span></div><div class="due"></div></div>
+ <div class="c"><div class="av" style="background:#f0a7a0">S</div><div><b>Sari · Keuangan</b><span>Rekap kas mingguan siap</span></div><i>08:40</i></div>
+ <div class="c"><div class="av" style="background:#f4c983">D</div><div><b>Dewi · Support</b><span>Menunggu persetujuan refund</span></div><div class="due"></div></div>
+ <div class="c"><div class="av" style="background:#9fd9bf">R</div><div><b>Raka · Developer</b><span>Deploy macet, sedang diselidiki</span></div><i>08:51</i></div>
+ <div class="c"><div class="av" style="background:#a9b8f0">B</div><div><b>Bima · Sales</b><span>Follow-up 4 prospek selesai</span></div><i>Kmrn</i></div>
+</section>
+<main class="thread">
+ <header class="th"><div><h1>Tim Keuangan</h1><div class="sub">4 anggota · Sari memimpin · pesan baru dijawab oleh lead</div></div>
+  <div class="sel">Lead menjawab <svg class="i" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></div></header>
+ <div class="msgs">
+  <div class="me"><div class="meta">Rina · Owner · 09:12</div><div class="bub"><span class="at">@Sari</span> tolong tagih invoice PT Mitra Logistik yang lewat jatuh tempo, kirim pengingat yang sopan ya.</div></div>
+  <div class="ag">
+   <svg class="canting" viewBox="0 0 60 470"><path d="M18 40 C10 52 26 62 18 76 S10 100 18 112 S26 140 18 160 C12 176 14 196 30 206 C44 214 52 218 60 220"/><circle cx="18" cy="58" r="3"/><circle cx="18" cy="94" r="3"/><circle cx="60" cy="220" r="4.5"/></svg>
+   <div class="av" style="background:#f0a7a0">S</div>
+   <div><div class="meta" style="height:36px"><b style="color:var(--wax);font-weight:600">Sari</b> Keuangan · lead · 09:13</div>
+    <div class="rc"><svg class="i" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg><em>Membaca 3 invoice</em> — berhasil</div>
+    <div class="rc"><svg class="i" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg><em>Mengecek riwayat pembayaran</em> — berhasil</div>
+    <p><b>INV-2026-0187</b> lewat 14 hari (<b>Rp 18.450.000</b>). Aku siapkan email pengingat, butuh persetujuanmu sebelum terkirim.</p>
+    <div class="resist">
+     <div class="hd"><span class="pill">Menunggu persetujuanmu</span>dibuat 09:13 · kedaluwarsa dalam 24 jam</div>
+     <h3>Kirim email ke finance@mitralogistik.co.id</h3>
+     <div class="mail"><b>Pengingat pembayaran INV-2026-0187</b>Yth. Tim Keuangan PT Mitra Logistik, kami ingin mengingatkan invoice INV-2026-0187 senilai Rp 18.450.000 yang jatuh tempo 28 September…</div>
+     <div class="why"><svg class="i" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 4.2L2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/></svg>Aksi tidak bisa dibatalkan: email keluar</div>
+     <div class="acts"><button class="btn go"><svg class="i" viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>Setujui &amp; kirim</button><button class="btn ed">Ubah</button><button class="btn no">Tolak</button><span class="who">Hanya admin yang bisa memutuskan</span></div>
+    </div>
+   </div>
+  </div>
+ </div>
+ <div class="comp">Tulis pesan… ketik @ untuk memanggil anggota<div class="send"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div></div>
+</main>
+<aside class="ctx">
+ <div><h4>Anggota tim <span>4</span></h4>
+  <div class="mb"><div class="av" style="background:#f0a7a0">S</div><div><b>Sari</b><span class="st" style="color:var(--wax)">sedang menulis</span></div></div>
+  <div class="mb"><div class="av" style="background:#f4c983">D</div><div><b>Dewi</b><span class="st" style="color:var(--soga)">menunggu persetujuan</span></div></div>
+  <div class="mb"><div class="av" style="background:#9fd9bf">R</div><div><b>Raka</b><span class="st" style="color:#ff8a80">insiden · deploy macet 22 mnt</span></div></div>
+  <div class="mb"><div class="av" style="background:#a9b8f0">B</div><div><b>Bima</b><span class="st" style="color:var(--n2)">idle</span></div></div>
+ </div>
+ <div><h4>Hari ini</h4>
+  <div class="k"><span>Persetujuan menunggu</span><b style="color:var(--soga)">3</b></div>
+  <div class="k"><span>Insiden terbuka</span><b style="color:#ff8a80">1</b></div>
+  <div style="padding-top:12px"><div style="display:flex;justify-content:space-between"><span style="color:var(--n1)">Biaya hari ini</span><b>Rp 42.300</b></div><div class="bar"><i></i></div><div class="fine">dari batas harian Rp 150.000</div></div>
+ </div>
+ <div class="inc"><b>Raka: deploy macet 22 menit</b>Watchdog menghentikan run. Sari diminta meninjau dan mencoba ulang.</div>
+</aside>
+</div></body></html>

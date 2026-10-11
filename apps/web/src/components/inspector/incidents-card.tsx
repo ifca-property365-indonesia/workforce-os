@@ -23,11 +23,11 @@ export interface IncidentRow {
 }
 
 const STATUS_TONE: Record<IncidentStatus, string> = {
-  open: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  handling: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  open: "bg-warning/15 text-warning",
+  handling: "bg-[var(--sign-biru)]/15 text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]",
   escalated: "bg-destructive/10 text-destructive",
   muted: "bg-muted text-muted-foreground",
-  resolved: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  resolved: "bg-success/15 text-success",
 };
 
 /** Runs that failed, stalled, looped or could not start, and who is on them: the team lead, or you. */
@@ -53,7 +53,7 @@ export function IncidentsCard() {
       <CardContent>
         {data && !rows.length && (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <CheckCircle2 className="size-4 text-emerald-600" /> {t("incidents.empty")}
+            <CheckCircle2 className="size-4 text-success" /> {t("incidents.empty")}
           </p>
         )}
         <ul className="divide-y">
@@ -65,15 +65,15 @@ export function IncidentsCard() {
               <span className="font-medium">{t(`incidents.kind.${i.kind}`)}</span>
               <span className={cn("rounded px-1.5 py-0.5 text-[11px]", STATUS_TONE[i.status])}>{t(`incidents.status.${i.status}`)}</span>
               {i.task ? (
-                <Link href={`/tasks/${i.task.id}`} className="min-w-0 flex-1 truncate text-primary hover:underline">
+                <Link href={`/tasks/${i.task.id}`} className="order-first min-w-0 basis-full break-words sm:order-none sm:basis-0 sm:flex-1 sm:truncate text-primary hover:underline">
                   {i.task.title}
                 </Link>
               ) : i.routineId ? (
-                <Link href="/routines" className="min-w-0 flex-1 truncate text-primary hover:underline">
+                <Link href="/routines" className="order-first min-w-0 basis-full break-words sm:order-none sm:basis-0 sm:flex-1 sm:truncate text-primary hover:underline">
                   {i.summary || t("incidents.routine")}
                 </Link>
               ) : (
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">{i.summary || t("incidents.noTask")}</span>
+                <span className="order-first min-w-0 basis-full break-words sm:order-none sm:basis-0 sm:flex-1 sm:truncate text-muted-foreground">{i.summary || t("incidents.noTask")}</span>
               )}
               <span className={cn("text-xs", lead ? "text-muted-foreground" : "font-medium text-destructive")}>
                 {lead ? t("incidents.handledBy", { name: lead.name }) : t("incidents.needsYou")}

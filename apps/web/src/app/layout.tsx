@@ -1,12 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Big_Shoulders, Figtree } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
 import { Providers } from "./providers";
 import { RegisterServiceWorker } from "@/components/pwa/register";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const figtree = Figtree({ subsets: ["latin"], variable: "--font-figtree" });
+// sign-painter capitals for titles and the employee signs (see globals.css font-display)
+const shoulders = Big_Shoulders({ subsets: ["latin"], variable: "--font-shoulders", axes: ["opsz"] });
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("common");
@@ -19,14 +21,15 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export const viewport: Viewport = { themeColor: "#3a4bc4" };
+export const viewport: Viewport = { themeColor: "#110e15" };
 
-const themeScript = `try{var t=localStorage.getItem('wfos-theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme: dark)').matches))document.documentElement.classList.add('dark')}catch(e){}`;
+// night (dark) is the default; only an explicit choice of the day theme turns it off
+const themeScript = `try{if(localStorage.getItem('wfos-theme')==='light')document.documentElement.classList.remove('dark')}catch(e){}`;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const locale = await getLocale();
   return (
-    <html lang={locale} suppressHydrationWarning className={inter.variable}>
+    <html lang={locale} suppressHydrationWarning className={`${figtree.variable} ${shoulders.variable} dark`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>

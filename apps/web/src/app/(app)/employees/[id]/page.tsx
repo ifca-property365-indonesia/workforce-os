@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
+import { useSignColors } from "@/components/office/employee-sign";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { LookEditor } from "@/components/employees/look-editor";
 import { MemoryPanel } from "@/components/employees/memory-panel";
@@ -418,6 +419,7 @@ export default function EmployeePage({ params }: P) {
   const archive = useMutation({ mutationFn: () => api.del(`/api/employees/${id}`), onSuccess: () => (location.href = "/employees") });
   const { data: me } = useMe();
   const [k, setK] = useState(0);
+  const colors = useSignColors();
   useEffect(() => {
     setK((x) => x + 1);
   }, [data?.instructionsVersion, data?.autonomyLevel]);
@@ -426,11 +428,11 @@ export default function EmployeePage({ params }: P) {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar emoji={e.avatar} size="lg" />
-        <div className="flex-1">
-          <h1 className="text-2xl font-semibold">{e.name}</h1>
+        <Avatar emoji={e.avatar} size="lg" color={colors.get(e.id)} />
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-[2.6rem]">{e.name}</h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            {e.role} · {e.model} · <AutonomyBadge level={e.autonomyLevel} /> · <span className={e.status === "ACTIVE" ? "text-emerald-600" : "text-amber-600"}>{ts(`employee.${e.status}`)}</span>
+            {e.role} · {e.model} · <AutonomyBadge level={e.autonomyLevel} /> · <span className={e.status === "ACTIVE" ? "text-success" : "text-warning"}>{ts(`employee.${e.status}`)}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -455,7 +457,7 @@ export default function EmployeePage({ params }: P) {
         </div>
       </div>
       {e.status === "PAUSED_BUDGET" && (
-        <div className="rounded-md bg-amber-500/15 p-3 text-sm text-amber-800 dark:text-amber-200">
+        <div className="rounded-md bg-warning/15 p-3 text-sm text-warning">
           {t("detail.pausedBudget")}
         </div>
       )}

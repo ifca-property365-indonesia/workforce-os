@@ -69,7 +69,7 @@ export default function OfficePage() {
         description={t("description")}
         actions={
           <div className="flex items-center gap-3">
-            <span className={cn("text-xs", live ? "text-emerald-600" : "text-muted-foreground")}>{live ? t("live") : t("offline")}</span>
+            <span className={cn("text-xs", live ? "text-success" : "text-muted-foreground")}>{live ? t("live") : t("offline")}</span>
             <div role="group" aria-label={t("viewLabel")} className="inline-flex rounded-md border p-0.5">
               {(["2d", "3d"] as const).map((v) => (
                 <button
@@ -112,7 +112,7 @@ export default function OfficePage() {
         <ul id="office-people" className="grid gap-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
           {people.map((p) => (
             <li key={p.id}>
-              <Link href={p.task ? `/tasks/${p.task.id}` : `/employees/${p.id}`} className={cn("block truncate rounded px-2 py-1 hover:bg-accent", p.activity === "waiting" && "font-medium text-amber-600")}>
+              <Link href={p.task ? `/tasks/${p.task.id}` : `/employees/${p.id}`} className={cn("block truncate rounded px-2 py-1 hover:bg-accent", p.activity === "waiting" && "font-medium text-warning")}>
                 <span aria-hidden="true" className="mr-1">
                   {p.avatar}
                 </span>

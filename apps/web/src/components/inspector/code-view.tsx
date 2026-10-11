@@ -92,7 +92,7 @@ export function CodeDiff({ diff, truncated }: { diff: string; truncated?: boolea
               className={cn("flex w-full items-center gap-2 rounded px-2 py-1 text-left font-mono hover:bg-accent", f.path === file.path && "bg-accent")}
             >
               <span className="min-w-0 flex-1 truncate">{f.path}</span>
-              <span className="text-emerald-600">+{f.added}</span>
+              <span className="text-success">+{f.added}</span>
               <span className="text-destructive">-{f.removed}</span>
             </button>
           </li>
@@ -104,7 +104,7 @@ export function CodeDiff({ diff, truncated }: { diff: string; truncated?: boolea
           <div key={i}>
             <div className="sticky top-0 bg-muted px-3 py-1 text-muted-foreground">{h.header}</div>
             {h.lines.map((l, j) => (
-              <div key={j} className={cn("whitespace-pre px-3", l.kind === "+" && "bg-emerald-500/10", l.kind === "-" && "bg-red-500/10")}>
+              <div key={j} className={cn("whitespace-pre px-3", l.kind === "+" && "bg-success/10", l.kind === "-" && "bg-destructive/10")}>
                 <span className="mr-2 select-none text-muted-foreground">{l.kind}</span>
                 <span dangerouslySetInnerHTML={{ __html: highlight(l.text, lang) }} />
               </div>

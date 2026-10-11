@@ -24,7 +24,8 @@
     "reasonPlaceholder": "Reason (written to the audit log)",
     "releaseConfirm": "Release",
     "engageConfirm": "Stop everything",
-    "banner": "Kill switch engaged — all employees are stopped and no actions can execute."
+    "banner": "Kill switch engaged — all employees are stopped and no actions can execute.",
+    "short": "Stop all"
   },
   "live": {
     "approvalNeeded": "Approval needed: {title}",
@@ -57,5 +58,19 @@
     "until": "Claude subscription limit reached: the work queue is paused until {time}.",
     "resumeNow": "Resume now",
     "resumed": "{count, plural, =0 {Queue resumed} one {Queue resumed: # task restarted} other {Queue resumed: # tasks restarted}}"
-  }
+  },
+  "rail": {
+    "dashboard": "Home",
+    "employees": "Staff",
+    "teams": "Teams",
+    "office": "Office",
+    "chat": "Chat",
+    "tasks": "Tasks",
+    "routines": "Routines",
+    "approvals": "Approvals",
+    "clients": "Clients",
+    "knowledge": "Knowledge",
+    "settings": "Settings"
+  },
+  "demoChip": "Demo"
 }

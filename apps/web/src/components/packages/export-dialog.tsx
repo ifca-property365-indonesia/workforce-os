@@ -98,7 +98,7 @@ export function ExportDialog({ selection, name, onClose }: { selection: Selectio
               </section>
               <section>
                 <h3 className="mb-1 flex items-center gap-1.5 font-medium">
-                  <ShieldCheck className="size-4 text-emerald-600" /> {t("export.redactions", { count: report.redactions.length })}
+                  <ShieldCheck className="size-4 text-success" /> {t("export.redactions", { count: report.redactions.length })}
                 </h3>
                 {report.redactions.length ? (
                   <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-md border p-2 font-mono text-xs">

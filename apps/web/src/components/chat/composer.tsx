@@ -119,7 +119,7 @@ export function Composer({
 
   return (
     <form
-      className="border-t p-3"
+      className="border-t bg-card p-3 sm:px-5 sm:py-4"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -128,7 +128,7 @@ export function Composer({
       {!!files.length && (
         <div className="mb-2 flex flex-wrap gap-1">
           {files.map((f, i) => (
-            <span key={`${f.name}-${f.size}-${i}`} className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs">
+            <span key={`${f.name}-${f.size}-${i}`} className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs">
               {f.name}
               <button type="button" onClick={() => setFiles((cur) => cur.filter((x) => x !== f))} aria-label={t("removeFile")}>
                 <X className="size-3" />
@@ -151,19 +151,19 @@ export function Composer({
             e.target.value = "";
           }}
         />
-        <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} aria-label={t("attachFiles")}>
+        <Button type="button" size="icon-lg" variant="ghost" onClick={() => fileRef.current?.click()} aria-label={t("attachFiles")}>
           <Paperclip className="size-4" />
         </Button>
         <div className="relative min-w-0 flex-1">
           {open && (
-            <ul ref={listRef} id={listId} role="listbox" aria-label={t("mention.listLabel")} className="absolute bottom-full left-0 z-20 mb-1 max-h-64 w-72 max-w-full overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+            <ul ref={listRef} id={listId} role="listbox" aria-label={t("mention.listLabel")} className="absolute bottom-full left-0 z-20 mb-1 max-h-64 w-72 max-w-full overflow-auto rounded-xl border bg-popover p-1 text-popover-foreground shadow-[0_18px_40px_-20px_rgb(0_0_0/0.6)]">
               {options.map((o, i) => (
                 <li
                   key={o.key}
                   id={`${listId}-${i}`}
                   role="option"
                   aria-selected={i === current}
-                  className={cn("flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm", i === current && "bg-accent text-accent-foreground")}
+                  className={cn("flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm", i === current && "bg-accent text-accent-foreground")}
                   onMouseEnter={() => setIndex(i)}
                   // mousedown keeps the focus in the textarea
                   onMouseDown={(e) => {
@@ -232,10 +232,10 @@ export function Composer({
               }
             }}
             placeholder={busy ? t("placeholderBusy") : members ? t("placeholderTeam") : t("placeholder")}
-            className="max-h-40 min-h-10 resize-none"
+            className="max-h-40 min-h-11 resize-none rounded-xl text-[15px]"
           />
         </div>
-        <Button type="submit" size="icon" disabled={sending || !canSend} aria-label={t("send")}>
+        <Button type="submit" size="icon-lg" disabled={sending || !canSend} aria-label={t("send")} className="sign rounded-xl hover:brightness-110" data-state="lit">
           <Send className="size-4" />
         </Button>
       </div>

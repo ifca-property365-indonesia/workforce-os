@@ -65,7 +65,7 @@ function ClassBadge({ cls }: { cls: ToolClass }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-        irreversible ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        irreversible ? "bg-destructive/10 text-destructive" : "bg-success/10 text-success",
       )}
     >
       {irreversible ? <Lock className="size-3" /> : <Unlock className="size-3" />}
@@ -154,7 +154,7 @@ function McpToolsPanel({
   return (
     <div className="space-y-3 border-t bg-muted/30 p-3 sm:pl-14">
       <p className="text-xs text-muted-foreground">{t("toolPermissions.disabledWins")}</p>
-      {!granted && <p className="text-xs text-amber-700 dark:text-amber-300">{t("toolPermissions.serverNotGranted")}</p>}
+      {!granted && <p className="text-xs text-warning">{t("toolPermissions.serverNotGranted")}</p>}
       {isLoading && <p className="text-xs text-muted-foreground">{t("toolPermissions.loadingTools")}</p>}
       {error && (
         <div className="flex flex-wrap items-center gap-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">

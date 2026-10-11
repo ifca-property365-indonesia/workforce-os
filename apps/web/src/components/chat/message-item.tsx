@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { memo, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Check, ChevronLeft, ChevronRight, KanbanSquare, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, KanbanSquare, Loader2, Paperclip, Pencil, RefreshCw } from "lucide-react";
 import { MAX_RESPONDERS_PER_TURN, type ChatMessageDTO, type RoutedBy } from "@wfos/shared";
 import { ApprovalCard } from "@/components/approvals";
 import { Avatar } from "@/components/layout/common";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Employee } from "@/lib/hooks";
+import type { SignColor } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +35,7 @@ export function RoutedByBadge({ routedBy }: { routedBy: RoutedBy }) {
     text = t("routed.fallback", { reason: t(`routed.reasons.${reason}`) });
   }
   if (!text) return null;
-  return <span className={cn("rounded-full px-1.5 py-px text-[10px] font-medium", routedBy.mode === "fallback" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground")}>{text}</span>;
+  return <span className={cn("rounded-full px-1.5 py-px text-[10px] font-medium", routedBy.mode === "fallback" ? "bg-warning/15 text-warning" : "bg-muted text-muted-foreground")}>{text}</span>;
 }
 
 /** "N teammates not asked (limit 5 per message)" under the turn's last reply, with their names on hover. */
@@ -58,7 +59,7 @@ function Receipt({ m, author, highlighted, names }: { m: ChatMessageDTO; author:
   else if (m.meta?.hint === "busy") text = author ? t("hints.busy", { name: author.name }) : t("hints.busyUnknown");
   return (
     <div id={`msg-${m.id}`} className="flex flex-col items-center gap-0.5">
-      <div className={cn("max-w-[85%] rounded-full bg-muted/60 px-3 py-1 text-center text-xs text-muted-foreground transition-shadow", highlighted && "ring-2 ring-primary")}>
+      <div className={cn("max-w-[85%] rounded-full border bg-card px-3 py-1 text-center text-xs text-muted-foreground transition-shadow", highlighted && "ring-2 ring-ring")}>
         {text} <span className="text-[10px] opacity-70">· {fmt.ago(m.createdAt)}</span>
       </div>
       <SkippedNote ids={m.meta?.skippedResponders ?? []} names={names} />
@@ -176,6 +177,7 @@ function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (text
 export const MessageItem = memo(function MessageItem({
   m,
   author,
+  color,
   fallbackAvatar,
   teamChat,
   canDecide,
@@ -191,6 +193,8 @@ export const MessageItem = memo(function MessageItem({
 }: {
   m: ChatMessageDTO;
   author: Employee | undefined;
+  /** the author's sign colour (tints the avatar) */
+  color?: SignColor;
   fallbackAvatar: string | undefined;
   teamChat: boolean;
   canDecide: boolean;
@@ -225,12 +229,12 @@ export const MessageItem = memo(function MessageItem({
   const chips = !mine ? (m.meta?.chips ?? []) : [];
   const approvals = !mine ? (m.approvals ?? []) : [];
   return (
-    <div id={`msg-${m.id}`} className={cn("group flex gap-2", mine && "flex-row-reverse")}>
-      {!mine && <Avatar emoji={author?.avatar ?? fallbackAvatar} size="sm" className="mt-1" />}
-      <div className={cn("max-w-[85%] space-y-1", mine && "items-end text-right")}>
-        {!mine && teamChat && (author || m.meta?.routedBy) && (
-          <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-            {author && <span className="font-medium text-foreground">{author.name}</span>}
+    <div id={`msg-${m.id}`} className={cn("group flex gap-3", mine && "flex-row-reverse")}>
+      {!mine && <Avatar emoji={author?.avatar ?? fallbackAvatar} color={color} className="mt-0.5" />}
+      <div className={cn("min-w-0 max-w-[min(46rem,88%)] space-y-1.5", mine && "items-end text-right")}>
+        {!mine && (author || m.meta?.routedBy) && (teamChat || author) && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {author && <span className="font-semibold text-foreground">{author.name}</span>}
             {author && <span className="text-muted-foreground">{author.role}</span>}
             {m.meta?.routedBy && <RoutedByBadge routedBy={m.meta.routedBy} />}
           </div>
@@ -250,9 +254,9 @@ export const MessageItem = memo(function MessageItem({
         ) : (
           <div
             className={cn(
-              "inline-block whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-left text-sm transition-shadow",
-              mine ? "bg-primary text-primary-foreground" : "bg-muted",
-              highlighted && "ring-2 ring-primary ring-offset-2 ring-offset-card",
+              "inline-block whitespace-pre-wrap break-words text-left text-[15px] leading-relaxed transition-shadow",
+              mine ? "rounded-2xl rounded-br-md border bg-secondary px-3.5 py-2.5" : "-mx-2 rounded-xl px-2 py-0.5",
+              highlighted && "ring-2 ring-ring ring-offset-2 ring-offset-background",
             )}
           >
             {m.content || (
@@ -266,8 +270,8 @@ export const MessageItem = memo(function MessageItem({
         {!!m.attachments?.length && (
           <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
             {m.attachments.map((a) => (
-              <span key={a.name} className="rounded border px-1.5 py-0.5">
-                📎 {a.name}
+              <span key={a.name} className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5">
+                <Paperclip className="size-3" aria-hidden /> {a.name}
               </span>
             ))}
           </div>
@@ -275,15 +279,15 @@ export const MessageItem = memo(function MessageItem({
         {!!chips.length && (
           <div className="flex flex-wrap gap-1">
             {chips.map((c, i) => (
-              <span key={`${c.tool}-${i}`} className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-800 dark:text-emerald-300">
-                <Check className="size-3" />
+              <span key={`${c.tool}-${i}`} className="inline-flex items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
+                <Check className="size-3.5" aria-hidden />
                 {t("chip", { label: c.label })}
               </span>
             ))}
           </div>
         )}
         {!!approvals.length && (
-          <div className="w-[min(32rem,100%)] space-y-2 pt-1">
+          <div className="w-[min(36rem,100%)] space-y-2 pt-1.5">
             {approvals.map((a) => (
               <ApprovalCard key={a.id} a={a} compact readOnly={!canDecide} />
             ))}
@@ -293,7 +297,7 @@ export const MessageItem = memo(function MessageItem({
         <div className={cn("flex items-center gap-2 text-[11px] text-muted-foreground", mine && "justify-end")}>
           {fmt.ago(m.createdAt)}
           {m.taskId && (
-            <Link href={`/tasks/${m.taskId}`} className="text-primary hover:underline">
+            <Link href={`/tasks/${m.taskId}`} className="text-foreground underline underline-offset-2">
               {t("taskCreatedLink")}
             </Link>
           )}

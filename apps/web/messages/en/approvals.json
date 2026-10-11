@@ -69,7 +69,8 @@
     "waitingForAdmin": "Waiting for an admin to decide",
     "showDetails": "Show details",
     "hideDetails": "Hide details",
-    "openInInbox": "Open in Approvals"
+    "openInInbox": "Open in Approvals",
+    "stripPending": "Needs your approval"
   },
   "bash": {
     "runsWhere": "Runs exactly this command in the employee's sandbox (same workspace, no host access, allow-listed network only, git hooks disabled)."
@@ -104,5 +105,12 @@
     "savedAs": "Approving saves it in Settings → Skills, where you can switch it off, edit or delete it.",
     "target": "For {name}",
     "slug": "Name"
+  },
+  "reasons": {
+    "autonomy": "Irreversible action: needs your approval (autonomy {level}).",
+    "allowList": "Irreversible action outside the Owner allow-list: needs your approval.",
+    "leak": "The output guard found possible secrets or personal data in the payload.",
+    "taint": "This run handled untrusted content (external input, a web page or tool output), so irreversible actions need approval.",
+    "demoDryRun": "Demo: runs as a dry run."
   }
 }

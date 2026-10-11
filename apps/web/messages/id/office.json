@@ -32,5 +32,8 @@
   "openTask": "Buka tugas",
   "openEmployee": "Buka karyawan",
   "noWebgl": "3D tidak tersedia di browser ini. Menampilkan tampilan 2D.",
-  "reception": "Resepsionis"
+  "reception": "Resepsionis",
+  "facade": "Papan nama karyawan",
+  "incident": "insiden",
+  "lead": "LEAD"
 }

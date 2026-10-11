@@ -78,9 +78,9 @@ export function createFormatter(locale: string, timeZone: string, now: () => num
 
 export const STATUS_TONE: Record<TaskStatus, string> = {
   QUEUED: "bg-secondary text-secondary-foreground",
-  RUNNING: "bg-primary/15 text-primary",
-  AWAITING_APPROVAL: "bg-warning/20 text-amber-700 dark:text-amber-300",
-  DONE: "bg-success/15 text-emerald-700 dark:text-emerald-300",
+  RUNNING: "bg-[color-mix(in_srgb,var(--sign-biru)_22%,transparent)] text-foreground",
+  AWAITING_APPROVAL: "bg-approval/90 text-approval-ink",
+  DONE: "bg-success/15 text-success",
   FAILED: "bg-destructive/15 text-destructive",
   CANCELLED: "bg-muted text-muted-foreground",
 };

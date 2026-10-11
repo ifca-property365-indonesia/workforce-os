@@ -56,5 +56,16 @@
       "escalated": "escalated",
       "muted": "muted"
     }
-  }
+  },
+  "office": {
+    "title": "The office",
+    "open": "Open the office",
+    "empty": "No employees yet. Hire one and their sign goes up here."
+  },
+  "waiting": {
+    "title": "Waiting for your approval",
+    "empty": "Nothing is waiting for you.",
+    "all": "Open the approvals inbox"
+  },
+  "numbers": "This month in numbers"
 }

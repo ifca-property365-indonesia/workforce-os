@@ -419,7 +419,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
       a.card = !!p.task;
       a.tag.replaceChildren();
       if (p.task) {
-        a.tag.className = `pointer-events-auto absolute left-0 top-0 max-w-64 min-w-40 origin-bottom cursor-pointer rounded-lg bg-[#17151d] px-2.5 pb-1.5 pt-1 text-white shadow-lg ${act === "waiting" ? "ring-2 ring-amber-400" : ""}`;
+        a.tag.className = `pointer-events-auto absolute left-0 top-0 max-w-64 min-w-40 origin-bottom cursor-pointer rounded-lg bg-[#17151d] px-2.5 pb-1.5 pt-1 text-white shadow-lg ${act === "waiting" ? "ring-2 ring-[var(--approval)]" : ""}`;
         a.tag.append(node("div", "truncate text-[10.5px] text-white/60", room ? `${p.name} · ${room}` : p.name));
         a.tag.append(node("div", "line-clamp-2 text-[14px] font-bold leading-tight", p.task.title || activityText));
         const meta = node("div", "mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10.5px] text-white/60");
@@ -427,7 +427,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
         st.style.color = STATUS_COLOR[act];
         st.append(
           act === "waiting"
-            ? node("span", "grid size-3 place-items-center rounded-full bg-amber-400 text-[9px] font-black text-[#17151d]", "!")
+            ? node("span", "grid size-3 place-items-center rounded-full bg-[var(--approval)] text-[9px] font-black text-[#17151d]", "!")
             : node("span", `size-2.5 rounded-full border-[1.6px] border-current border-r-transparent ${reducedMotion ? "" : "animate-spin"}`),
           activityText,
         );

@@ -149,7 +149,7 @@ export function SkillApprovalPreview({ p }: { p: Record<string, unknown> }) {
       <div className="font-medium">{t("skill.proposed", { slug: str(p.slug) })}</div>
       {str(p.employeeName) && <div className="text-xs text-muted-foreground">{t("skill.target", { name: str(p.employeeName) })}</div>}
       {!!p.untrustedInput && (
-        <div className="flex gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-200">
+        <div className="flex gap-2 rounded-md border border-warning/50 bg-warning/10 p-2 text-xs text-warning">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" />
           <span>{t("skill.untrusted")}</span>
         </div>

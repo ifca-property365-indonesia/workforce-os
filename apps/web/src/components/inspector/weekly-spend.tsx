@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/use-format";
+import { useSignColors } from "@/components/office/employee-sign";
 
 interface Row {
   week: string;
@@ -28,11 +29,13 @@ export function WeeklySpendChart({ rows, employees }: { rows: Row[]; employees: 
     const d = new Date(w);
     return Number.isNaN(d.getTime()) ? w : weekFmt.format(d);
   };
+  // each employee keeps their sign colour, so the chart reads like the office street
+  const colors = useSignColors();
   const { weeks, series, max } = useMemo(() => {
     const ordered = [...employees].sort((a, b) => a.id.localeCompare(b.id));
     const named = ordered.slice(0, SLOTS);
     const series = [
-      ...named.map((e, i) => ({ id: e.id, name: e.name, color: `var(--series-${i + 1})` })),
+      ...named.map((e, i) => ({ id: e.id, name: e.name, color: colors.has(e.id) ? `var(--sign-${colors.get(e.id)})` : `var(--series-${i + 1})` })),
       ...(ordered.length > SLOTS || rows.some((r) => !r.employeeId) ? [{ id: "__other", name: otherLabel, color: "var(--series-other)" }] : []),
     ];
     const keyOf = (id: string | null) => (id && named.some((n) => n.id === id) ? id : "__other");
@@ -46,9 +49,10 @@ export function WeeklySpendChart({ rows, employees }: { rows: Row[]; employees: 
     const data = weeks.map((w) => ({ week: w, values: series.map((s) => byWeek.get(w)?.get(s.id) ?? 0) }));
     const max = Math.max(1, ...data.map((d) => d.values.reduce((a, b) => a + b, 0)));
     return { weeks: data, series, max };
-  }, [rows, employees, otherLabel]);
+  }, [rows, employees, otherLabel, colors]);
 
-  if (!weeks.length) return <p className="py-10 text-center text-sm text-muted-foreground">{t("weeklySpend.empty")}</p>;
+  // weeks with no spend at all draw an empty plot: say so instead
+  if (!weeks.length || weeks.every((w) => w.values.every((v) => v === 0))) return <p className="py-10 text-center text-sm text-muted-foreground">{t("weeklySpend.empty")}</p>;
   const hovered = weeks.find((w) => w.week === hover?.week);
 
   return (

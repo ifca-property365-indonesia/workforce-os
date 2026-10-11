@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8"><title>Workforce OS — Tim Keuangan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#1d1730;--ink2:#251d3b;--ink3:#2f2649;--line:#3a3058;--txt:#f4eefc;--mut:#b7abd0;--dim:#8a7fa6;
+--sari:#ff6b8b;--bima:#4aa3ff;--dewi:#ffb84a;--raka:#3ccf91;--crit:#ff5d5d;
+--p-pink:#ffe3ec;--p-blue:#e3f0ff;--p-sun:#fff1d6;--p-mint:#e2f7ec;--plate:#2a2140}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--ink);color:var(--txt);font:500 14px/1.45 Nunito,system-ui,sans-serif}
+::selection{background:var(--sari);color:#2b0d17}
+.app{display:grid;grid-template-columns:216px 256px 1fr 296px;height:900px}
+.disp{font-family:"Baloo 2",Nunito,sans-serif}
+/* nav */
+.nav{background:#17122a;border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column;gap:4px}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px}
+.mark{width:34px;height:34px;border-radius:12px;background:var(--p-pink);display:grid;place-items:center;color:#5a1b2c;font:800 18px "Baloo 2";box-shadow:0 0 0 2px #fff inset}
+.brand b{font:700 17px/1 "Baloo 2";display:block}.brand small{color:var(--dim);font-size:11.5px}
+.ni{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:12px;color:var(--mut);font-weight:700;font-size:14px}
+.ni svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ni.on{background:var(--ink3);color:var(--txt)}
+.ni .ct{margin-left:auto;background:var(--dewi);color:#3d2600;font:800 11.5px/1 Nunito;padding:4px 7px;border-radius:99px}
+.kill{margin-top:auto;display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid #6b2b3a;border-radius:14px;color:#ffc4cc;font-weight:800;background:#2a1524}
+.kill i{width:30px;height:18px;border-radius:99px;background:#4a2232;position:relative}.kill i:after{content:"";position:absolute;left:3px;top:3px;width:12px;height:12px;border-radius:50%;background:#ff8f9f}
+.owner{display:flex;gap:10px;align-items:center;padding:12px 8px 0;color:var(--mut);font-size:12.5px}.owner span{width:28px;height:28px;border-radius:50%;background:#efe6ff;color:#3b2a66;display:grid;place-items:center;font:800 13px Nunito}
+/* conversations */
+.convs{background:var(--ink2);border-right:1px solid var(--line);padding:20px 12px}
+.convs h2{font:700 20px/1 "Baloo 2";padding:0 8px 14px}
+.search{display:flex;align-items:center;gap:8px;height:38px;padding:0 12px;border-radius:12px;background:var(--ink);border:1px solid var(--line);color:var(--dim);margin-bottom:14px}
+.search svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8}
+.cv{display:flex;gap:11px;align-items:center;padding:10px 8px;border-radius:14px;margin-bottom:2px}
+.cv.on{background:var(--ink3)}
+.av{flex:none;width:38px;height:38px;border-radius:13px;display:grid;place-items:center;font:800 18px/1 "Baloo 2";box-shadow:0 0 0 2px #fff;color:#2b2340}
+.cv b{font-weight:800;font-size:14px;display:block}.cv small{color:var(--dim);font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:150px}
+.team4{display:grid;grid-template-columns:1fr 1fr;width:38px;height:38px;gap:2px;flex:none}.team4 i{border-radius:6px}
+/* chat */
+.chat{display:flex;flex-direction:column;min-width:0}
+.head{display:flex;align-items:center;gap:14px;padding:16px 26px 12px}
+.head h1{font:700 24px/1.1 "Baloo 2"}.head p{color:var(--dim);font-size:12.5px}
+.mode{margin-left:auto;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border:1px solid var(--line);border-radius:11px;color:var(--mut);font-weight:700;font-size:13px}
+.mode svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+.roster{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:6px 26px 16px;border-bottom:1px solid var(--line)}
+.cell{position:relative;display:flex;flex-direction:column;gap:9px;align-items:flex-start;padding:12px 13px;border-radius:16px;background:var(--plate);border:1px solid var(--line)}
+.cell .pt{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font:800 23px/1 "Baloo 2";color:#2b2340;box-shadow:0 0 0 3px #fff;flex:none}
+.cell b{font:700 17px/1 "Baloo 2";display:block}.cell .rl{font-size:12px;color:var(--mut);font-weight:700}
+.cell .nt{font-size:11.5px;color:var(--dim);line-height:1.3;margin-top:3px}
+.cell .st{position:absolute;top:10px;right:11px;font-size:11px;font-weight:800;display:flex;align-items:center;gap:5px}
+.rank{position:absolute;left:-6px;top:-7px;width:22px;height:22px;border-radius:50%;background:#fff;color:#2b2340;font:800 12px/22px "Baloo 2";text-align:center}
+.cell.sari{animation:focus 4.8s cubic-bezier(.16,1,.3,1) infinite;border-color:transparent}
+.cell.sari b,.cell.sari .rl,.cell.sari .nt,.cell.sari .st{color:#3b0d1b}
+@keyframes focus{0%,100%{transform:translateY(0);background:var(--sari)}6%{transform:translateY(-7px) scale(1.015)}12%{transform:translateY(0)}16%{transform:translateY(-2px)}20%{transform:translateY(0)}}
+.cell.sari .pt{background:var(--p-pink)}
+.cell.bima{opacity:.62}.cell.bima .pt{background:var(--p-blue);filter:saturate(.4)}
+.cell.dewi .pt{background:var(--p-sun)}.cell.raka .pt{background:var(--p-mint)}
+.cell.raka .st{color:#ffb3b3}.dot{width:7px;height:7px;border-radius:50%}
+.thread{flex:1;padding:18px 26px 0;display:flex;flex-direction:column;gap:16px;overflow:hidden}
+.msg{display:flex;gap:12px;max-width:760px}
+.msg.me{align-self:flex-end;flex-direction:row-reverse}
+.bub{padding:11px 15px;border-radius:18px;background:var(--ink3);line-height:1.5}
+.me .bub{background:#efe6ff;color:#2b1f4a;border-bottom-right-radius:6px}
+.me .bub em{font-style:normal;font-weight:800;color:#c2224d}
+.who{display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;color:var(--dim)}
+.plate{font:700 14px/1 "Baloo 2";padding:5px 10px 3px;border-radius:99px;color:#3b0d1b;background:var(--sari)}
+.chips{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#bfeed6;background:#1f3a33;padding:5px 11px 5px 8px;border-radius:99px}
+.chip svg{width:13px;height:13px;stroke:#3ccf91;fill:none;stroke-width:2.6}
+.ap{margin-top:10px;width:560px;border-radius:18px;background:#fbf6ff;color:#2b2340;overflow:hidden;box-shadow:0 14px 34px -12px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.25)}
+.ap .hd{background:var(--sari);display:flex;align-items:center;gap:10px;padding:11px 16px;color:#3b0d1b}
+.ap .hd .av{width:28px;height:28px;border-radius:10px;font-size:15px;background:var(--p-pink)}
+.ap .hd b{font:700 16px/1.1 "Baloo 2"}.ap .hd span{margin-left:auto;font-size:12px;font-weight:800;background:#ffffffb0;padding:4px 9px;border-radius:99px}
+.ap .bd{padding:14px 16px 4px}
+.kv{display:grid;grid-template-columns:62px 1fr;gap:4px 10px;font-size:13px}.kv dt{color:#7c6f99;font-weight:700}.kv dd{font-weight:700}
+.prev{margin:10px 0 0;padding:10px 12px;background:#f0e8fb;border-radius:12px;font-size:13px;color:#4a3f66;line-height:1.5}
+.why{display:flex;gap:8px;align-items:center;margin:11px 0 0;font-size:12.5px;font-weight:800;color:#a3311a}
+.why svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+.act{display:flex;gap:8px;padding:12px 16px 15px}
+.btn{height:38px;padding:0 16px;border-radius:12px;font:800 13.5px/38px Nunito;border:1px solid #d9cdee;color:#3b2a66;background:#fff}
+.btn.pri{background:#2b2340;color:#fff;border-color:#2b2340;padding:0 18px}.btn.no{margin-left:auto;color:#b4234a;border-color:#f3c3d0}
+.comp{margin:14px 26px 18px;display:flex;align-items:center;gap:12px;height:54px;padding:0 10px 0 18px;border-radius:16px;background:var(--ink2);border:1px solid var(--line);color:var(--dim)}
+.comp .send{margin-left:auto;width:38px;height:38px;border-radius:12px;background:var(--sari);display:grid;place-items:center}
+.comp svg{width:17px;height:17px;stroke:#3b0d1b;fill:none;stroke-width:2.2}
+.typing{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--mut);font-weight:700}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--sari);animation:t 1.2s infinite}.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes t{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+/* side */
+.side{background:var(--ink2);border-left:1px solid var(--line);padding:22px 18px;display:flex;flex-direction:column;gap:14px}
+.side h3{font:700 18px/1 "Baloo 2";margin-bottom:2px}
+.stat{padding:14px 15px;border-radius:16px;background:var(--plate);border:1px solid var(--line)}
+.stat .l{font-size:12.5px;color:var(--mut);font-weight:700}.stat .v{font:800 30px/1.1 "Baloo 2";margin-top:2px;font-variant-numeric:tabular-nums}
+.stat .s{font-size:12.5px;color:var(--dim);margin-top:2px}
+.stat.warn .v{color:var(--dewi)}.stat.crit .v{color:#ff8d8d}
+.bar{height:8px;border-radius:99px;background:var(--ink);margin-top:10px;overflow:hidden}.bar i{display:block;height:100%;width:28%;background:var(--raka);border-radius:99px}
+.inc{display:flex;gap:10px;align-items:center;margin-top:10px;padding:9px 10px;background:#3a1d2a;border-radius:12px;font-size:12.5px;color:#ffd0d0;font-weight:700}
+.inc .av{width:28px;height:28px;border-radius:9px;font-size:14px;background:var(--p-mint)}
+.lk{margin-top:8px;font-size:12.5px;font-weight:800;color:#c9b8ff;text-decoration:underline;text-underline-offset:3px}
+.demo{margin-top:auto;font-size:11.5px;color:var(--dim)}
+</style></head><body><div class="app">
+<nav class="nav" aria-label="Navigasi utama">
+<div class="brand"><div class="mark">W</div><div><b>Workforce OS</b><small>CV Sinar Rasa · data contoh</small></div></div>
+<a class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></svg>Dasbor</a>
+<a class="ni on"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>Chat</a>
+<a class="ni"><svg viewBox="0 0 24 24"><path d="M3 10l9-6 9 6v10H3z"/><path d="M9 20v-6h6v6"/></svg>Kantor</a>
+<a class="ni"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>Persetujuan<span class="ct">3</span></a>
+<a class="ni"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>Tugas</a>
+<a class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Rutinitas</a>
+<a class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg>Karyawan</a>
+<a class="ni"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M2 20c1-3 3-5 6-5s5 2 6 5M14 15c3 0 6 2 8 5"/></svg>Tim</a>
+<a class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Pengaturan</a>
+<div class="kill" role="switch" aria-checked="false"><i></i>Hentikan semua</div>
+<div class="owner"><span>R</span>Rina · Owner</div>
+</nav>
+<aside class="convs"><h2>Percakapan</h2>
+<div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Cari percakapan</div>
+<div class="cv on"><div class="team4"><i style="background:var(--sari)"></i><i style="background:var(--bima)"></i><i style="background:var(--dewi)"></i><i style="background:var(--raka)"></i></div><div><b>Tim Keuangan</b><small>Sari: Aku siapkan email pengingat…</small></div></div>
+<div class="cv"><div class="av" style="background:var(--p-pink)">S</div><div><b>Sari · Keuangan</b><small>Rekap kas minggu ini sudah siap</small></div></div>
+<div class="cv"><div class="av" style="background:var(--p-sun)">D</div><div><b>Dewi · Support</b><small>Menunggu persetujuan balasan tiket</small></div></div>
+<div class="cv"><div class="av" style="background:var(--p-mint)">R</div><div><b>Raka · Developer</b><small>Deploy macet di tahap build</small></div></div>
+<div class="cv"><div class="av" style="background:var(--p-blue)">B</div><div><b>Bima · Sales</b><small>Penawaran PT Arta dikirim kemarin</small></div></div>
+</aside>
+<main class="chat">
+<div class="head"><div><h1>Tim Keuangan</h1><p>4 anggota · Sari memimpin</p></div><div class="mode"><svg viewBox="0 0 24 24"><path d="M4 7h16M7 12h10M10 17h4"/></svg>Lead menjawab</div></div>
+<div class="roster" aria-label="Anggota tim">
+<div class="cell sari"><span class="rank">1</span><div class="pt">S</div><div><b>Sari</b><div class="rl">Keuangan · lead · bergabung 3 Mar</div><div class="nt">teliti soal angka, suka spreadsheet rapi</div></div><span class="st"><i class="dot" style="background:#3b0d1b"></i>menulis</span></div>
+<div class="cell bima"><span class="rank">2</span><div class="pt">B</div><div><b>Bima</b><div class="rl">Sales · bergabung 11 Mar</div><div class="nt">cepat balas, suka nego</div></div><span class="st" style="color:var(--dim)">idle</span></div>
+<div class="cell dewi"><span class="rank">3</span><div class="pt">D</div><div><b>Dewi</b><div class="rl">Support · bergabung 2 Apr</div><div class="nt">sabar, hafal semua FAQ</div></div><span class="st" style="color:var(--dewi)"><i class="dot" style="background:var(--dewi)"></i>menunggu</span></div>
+<div class="cell raka"><span class="rank">4</span><div class="pt">R</div><div><b>Raka</b><div class="rl">Developer · bergabung 20 Apr</div><div class="nt">suka log, benci deploy hari Jumat</div></div><span class="st"><i class="dot" style="background:var(--crit)"></i>insiden</span></div>
+</div>
+<div class="thread">
+<div class="msg me"><div><div class="who" style="justify-content:flex-end">Rina · 09:12</div><div class="bub"><em>@Sari</em> tolong tagih invoice PT Mitra Logistik yang lewat jatuh tempo, kirim pengingat yang sopan ya.</div></div></div>
+<div class="msg"><div class="av" style="background:var(--p-pink);width:40px;height:40px">S</div><div>
+<div class="who"><span class="plate">Sari</span>Keuangan · 09:13</div>
+<div class="chips"><span class="chip"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>Membaca 3 invoice — berhasil</span><span class="chip"><svg viewBox="0 0 24 24"><path d="M5 12l4 4 10-10"/></svg>Mengecek riwayat pembayaran — berhasil</span></div>
+<div class="bub">INV-2026-0187 lewat 14 hari (Rp 18.450.000). Aku siapkan email pengingat, butuh persetujuanmu sebelum terkirim.</div>
+<div class="ap" role="group" aria-label="Persetujuan email">
+<div class="hd"><div class="av">S</div><b>Kirim email ke finance@mitralogistik.co.id</b><span>Menunggu kamu</span></div>
+<div class="bd"><dl class="kv"><dt>Subjek</dt><dd>Pengingat pembayaran INV-2026-0187</dd><dt>Nilai</dt><dd>Rp 18.450.000 · jatuh tempo 28 Sep</dd></dl>
+<p class="prev">Yth. Tim Keuangan PT Mitra Logistik, kami ingin mengingatkan bahwa invoice INV-2026-0187 senilai Rp 18.450.000 telah melewati jatuh tempo pada 28 September…</p>
+<p class="why"><svg viewBox="0 0 24 24"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/></svg>Aksi tidak bisa dibatalkan: email keluar</p></div>
+<div class="act"><button class="btn pri">Setujui &amp; kirim</button><button class="btn">Ubah</button><button class="btn no">Tolak</button></div>
+</div></div></div>
+<div class="typing"><i></i><i></i><i></i>Sari sedang menulis catatan follow-up…</div>
+</div>
+<div class="comp">Tulis pesan… ketik @ untuk memanggil anggota<span class="send"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg></span></div>
+</main>
+<aside class="side"><h3>Hari ini</h3>
+<div class="stat warn"><div class="l">Persetujuan menunggu</div><div class="v">3</div><div class="s">tertua 18 menit lalu · Dewi, Sari</div><div class="lk">Buka antrean persetujuan</div></div>
+<div class="stat crit"><div class="l">Insiden terbuka</div><div class="v">1</div><div class="inc"><div class="av">R</div>Raka: deploy macet 22 mnt</div></div>
+<div class="stat"><div class="l">Biaya hari ini</div><div class="v">Rp 42.300</div><div class="s">dari batas Rp 150.000</div><div class="bar"><i></i></div></div>
+<p class="demo">Semua angka di layar ini adalah data contoh.</p>
+</aside>
+</div></body></html>

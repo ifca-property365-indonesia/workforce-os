@@ -96,9 +96,9 @@ function LoginForm() {
 
   if (step === "2fa") {
     return (
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm rounded-2xl">
         <CardHeader>
-          <CardTitle className="text-2xl">{t("login.twoFactorTitle")}</CardTitle>
+          <CardTitle className="font-display text-[2.1rem]">{t("login.twoFactorTitle")}</CardTitle>
           <CardDescription>{t("login.twoFactorDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -109,9 +109,9 @@ function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full max-w-sm rounded-2xl">
       <CardHeader>
-        <CardTitle className="text-2xl">{t("login.title")}</CardTitle>
+        <CardTitle className="font-display text-[2.1rem]">{t("login.title")}</CardTitle>
         <CardDescription>{t("login.description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

@@ -84,7 +84,7 @@ export default function KnowledgePage() {
                       {d.error && <span className="text-destructive"> · {d.error}</span>}
                     </div>
                   </div>
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs", d.status === "indexed" ? "bg-emerald-500/15 text-emerald-700" : d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-amber-500/15 text-amber-700")}>{t.has(`status.${d.status}`) ? t(`status.${d.status}`) : d.status}</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs", d.status === "indexed" ? "bg-success/15 text-success" : d.status === "failed" ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning")}>{t.has(`status.${d.status}`) ? t(`status.${d.status}`) : d.status}</span>
                   <Button size="icon" variant="ghost" onClick={() => reindex.mutate(d.id)} aria-label={t("reindex")}>
                     <RefreshCw className="size-4" />
                   </Button>

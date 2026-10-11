@@ -40,7 +40,7 @@ export function EmployeeSkillsCard({ employeeId, admin }: { employeeId: string; 
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <p className={active ? "text-xs text-emerald-700 dark:text-emerald-300" : "text-xs text-muted-foreground"}>{active ? t("employee.toolActive") : t("employee.toolInactive")}</p>
+        <p className={active ? "text-xs text-success" : "text-xs text-muted-foreground"}>{active ? t("employee.toolActive") : t("employee.toolInactive")}</p>
         {all && !all.length && <p className="text-muted-foreground">{t("employee.none")}</p>}
         <ul className="space-y-2">
           {all?.map((s) => (

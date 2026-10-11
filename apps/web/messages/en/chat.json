@@ -78,5 +78,17 @@
     "next": "Next version",
     "position": "{index}/{count}"
   },
-  "conversationChanged": "The conversation changed — reloaded"
+  "conversationChanged": "The conversation changed — reloaded",
+  "context": {
+    "title": "Today",
+    "approvals": "Waiting for approval",
+    "noApprovals": "Nothing is waiting for you.",
+    "incidents": "Open incidents",
+    "noIncidents": "No open incidents.",
+    "openInbox": "Open the approvals inbox",
+    "members": "{count, plural, one {# member} other {# members}}",
+    "cost": "Spent today",
+    "ofCap": "of the daily cap {cap}"
+  },
+  "conversations": "Conversations"
 }

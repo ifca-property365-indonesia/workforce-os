@@ -1,0 +1,1001 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-11T18:42:20+00:00",
+  "title": "Design System: Workforce OS",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Ruko Night",
+        "canonical": "#110e15",
+        "oklch": "oklch(17.1% 0.015 304.4)",
+        "tonalRamp": [
+          "#0d0a10",
+          "#27232b",
+          "#444049",
+          "#635f68",
+          "#84808a",
+          "#a7a3ad",
+          "#cbc7d1",
+          "#f1ecf7"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Shopfront",
+        "canonical": "#18141d",
+        "oklch": "oklch(20.0% 0.019 305.0)",
+        "tonalRamp": [
+          "#0d0912",
+          "#27232c",
+          "#44404a",
+          "#645f6a",
+          "#85808c",
+          "#a8a2af",
+          "#ccc6d3",
+          "#f1ecf9"
+        ]
+      },
+      "popover": {
+        "role": "neutral",
+        "displayName": "Popover",
+        "canonical": "#1e1924",
+        "oklch": "oklch(22.4% 0.022 305.4)",
+        "tonalRamp": [
+          "#0d0913",
+          "#28222e",
+          "#453f4c",
+          "#645e6c",
+          "#857f8d",
+          "#a8a2b0",
+          "#ccc6d5",
+          "#f2ebfb"
+        ]
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Awning",
+        "canonical": "#211b27",
+        "oklch": "oklch(23.5% 0.024 307.3)",
+        "tonalRamp": [
+          "#0e0813",
+          "#28222e",
+          "#453f4c",
+          "#655e6c",
+          "#867f8e",
+          "#a9a1b1",
+          "#cdc5d6",
+          "#f3ebfc"
+        ]
+      },
+      "accent": {
+        "role": "neutral",
+        "displayName": "Accent",
+        "canonical": "#2a2231",
+        "oklch": "oklch(26.8% 0.030 308.7)",
+        "tonalRamp": [
+          "#0f0815",
+          "#292130",
+          "#463e4e",
+          "#665d6e",
+          "#877e90",
+          "#aaa0b4",
+          "#cfc4d8",
+          "#f4eafe"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Kerb Line",
+        "canonical": "#2f2737",
+        "oklch": "oklch(28.9% 0.031 307.3)",
+        "tonalRamp": [
+          "#0f0815",
+          "#292131",
+          "#463e4f",
+          "#665d6f",
+          "#877e91",
+          "#aaa0b4",
+          "#cec4d9",
+          "#f4eafe"
+        ]
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Input Edge",
+        "canonical": "#3a3043",
+        "oklch": "oklch(32.8% 0.035 308.4)",
+        "tonalRamp": [
+          "#0f0716",
+          "#2a2032",
+          "#473d51",
+          "#675c71",
+          "#887d93",
+          "#ab9fb7",
+          "#d0c3db",
+          "#f4e9ff"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Lamp Cream",
+        "canonical": "#f7efe6",
+        "oklch": "oklch(95.6% 0.015 70.9)",
+        "tonalRamp": [
+          "#0f0a05",
+          "#2a241d",
+          "#47413a",
+          "#676058",
+          "#888179",
+          "#aba49b",
+          "#cfc8bf",
+          "#f5ede4"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Dusk Mauve",
+        "canonical": "#b3a7b9",
+        "oklch": "oklch(74.4% 0.029 314.6)",
+        "tonalRamp": [
+          "#100713",
+          "#2a212f",
+          "#483e4d",
+          "#675d6d",
+          "#897d8f",
+          "#aca0b2",
+          "#d0c4d6",
+          "#f6e9fc"
+        ]
+      },
+      "primary": {
+        "role": "neutral",
+        "displayName": "Cream Plate",
+        "canonical": "#fff3e4",
+        "oklch": "oklch(97.0% 0.024 73.6)",
+        "tonalRamp": [
+          "#110902",
+          "#2c2318",
+          "#4a4034",
+          "#6a5f53",
+          "#8b8073",
+          "#aea395",
+          "#d3c7b9",
+          "#f8edde"
+        ]
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Cream Plate Ink",
+        "canonical": "#17121c",
+        "oklch": "oklch(19.3% 0.021 307.2)",
+        "tonalRamp": [
+          "#0d0912",
+          "#28222d",
+          "#453f4b",
+          "#645e6b",
+          "#867f8d",
+          "#a8a2b0",
+          "#cdc6d4",
+          "#f2ebfa"
+        ]
+      },
+      "destructive": {
+        "role": "tertiary",
+        "displayName": "Incident Red",
+        "canonical": "#ff5a4c",
+        "oklch": "oklch(68.6% 0.203 28.4)",
+        "tonalRamp": [
+          "#1f0000",
+          "#4c0303",
+          "#7f0808",
+          "#b51212",
+          "#e23e33",
+          "#fb7768",
+          "#feb3a8",
+          "#ffe9e5"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Done Tosca-Green",
+        "canonical": "#3fd0a0",
+        "oklch": "oklch(76.9% 0.141 166.4)",
+        "tonalRamp": [
+          "#000f08",
+          "#022d1f",
+          "#054e39",
+          "#0d7255",
+          "#169972",
+          "#27c091",
+          "#5ae6b5",
+          "#c1ffe4"
+        ]
+      },
+      "ring": {
+        "role": "primary",
+        "displayName": "Persetujuan Amber (ring)",
+        "canonical": "#f6b51e",
+        "oklch": "oklch(81.2% 0.162 81.4)",
+        "tonalRamp": [
+          "#120900",
+          "#322202",
+          "#563d05",
+          "#7d5b0d",
+          "#a87900",
+          "#d39a0f",
+          "#febd2c",
+          "#ffeccb"
+        ]
+      },
+      "sign-off-panel": {
+        "role": "neutral",
+        "displayName": "Dark Acrylic",
+        "canonical": "#1d1922",
+        "oklch": "oklch(22.2% 0.018 305.1)",
+        "tonalRamp": [
+          "#0d0911",
+          "#27232c",
+          "#44404a",
+          "#635f6a",
+          "#85808b",
+          "#a8a2ae",
+          "#ccc6d3",
+          "#f1ecf9"
+        ]
+      },
+      "sign-off-edge": {
+        "role": "neutral",
+        "displayName": "Dark Acrylic Edge",
+        "canonical": "#2c2533",
+        "oklch": "oklch(27.8% 0.027 307.4)",
+        "tonalRamp": [
+          "#0e0814",
+          "#29222f",
+          "#463e4d",
+          "#655d6e",
+          "#877e8f",
+          "#a9a1b3",
+          "#cec5d7",
+          "#f3eafd"
+        ]
+      },
+      "day-background": {
+        "role": "neutral",
+        "displayName": "Cool Concrete",
+        "canonical": "#f3f1f4",
+        "oklch": "oklch(96.1% 0.004 314.8)",
+        "tonalRamp": [
+          "#0c0b0c",
+          "#262427",
+          "#434144",
+          "#626063",
+          "#838184",
+          "#a6a4a7",
+          "#cac8cb",
+          "#efeef0"
+        ]
+      },
+      "day-card": {
+        "role": "neutral",
+        "displayName": "Day Card",
+        "canonical": "#ffffff",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "day-secondary": {
+        "role": "neutral",
+        "displayName": "Pale Awning",
+        "canonical": "#e9e5ec",
+        "oklch": "oklch(92.7% 0.010 311.2)",
+        "tonalRamp": [
+          "#0d0a0e",
+          "#272429",
+          "#444046",
+          "#636066",
+          "#848187",
+          "#a7a3aa",
+          "#cbc7ce",
+          "#f1edf4"
+        ]
+      },
+      "day-muted": {
+        "role": "neutral",
+        "displayName": "Pale Awning (muted)",
+        "canonical": "#ebe7ee",
+        "oklch": "oklch(93.3% 0.010 311.2)",
+        "tonalRamp": [
+          "#0d0a0e",
+          "#272429",
+          "#444046",
+          "#636066",
+          "#848187",
+          "#a7a3aa",
+          "#cbc7ce",
+          "#f1edf4"
+        ]
+      },
+      "day-accent": {
+        "role": "neutral",
+        "displayName": "Pale Awning (accent)",
+        "canonical": "#e4dfe8",
+        "oklch": "oklch(91.0% 0.013 310.5)",
+        "tonalRamp": [
+          "#0d0a0f",
+          "#27232a",
+          "#444047",
+          "#645f67",
+          "#858088",
+          "#a8a3ab",
+          "#ccc7d0",
+          "#f1ecf5"
+        ]
+      },
+      "day-border": {
+        "role": "neutral",
+        "displayName": "Day Kerb",
+        "canonical": "#dcd5e0",
+        "oklch": "oklch(88.2% 0.017 313.6)",
+        "tonalRamp": [
+          "#0e0910",
+          "#28232b",
+          "#453f48",
+          "#655f68",
+          "#86808a",
+          "#a9a2ad",
+          "#cdc6d1",
+          "#f3ebf7"
+        ]
+      },
+      "day-input": {
+        "role": "neutral",
+        "displayName": "Day Kerb (input)",
+        "canonical": "#d3cbd8",
+        "oklch": "oklch(85.2% 0.020 312.8)",
+        "tonalRamp": [
+          "#0e0911",
+          "#28222c",
+          "#463f4a",
+          "#655e69",
+          "#867f8b",
+          "#a9a2ae",
+          "#cec6d3",
+          "#f3ebf8"
+        ]
+      },
+      "day-foreground": {
+        "role": "neutral",
+        "displayName": "Day Ink",
+        "canonical": "#1b1620",
+        "oklch": "oklch(21.1% 0.021 307.4)",
+        "tonalRamp": [
+          "#0d0912",
+          "#28222d",
+          "#453f4b",
+          "#645e6b",
+          "#867f8c",
+          "#a8a2af",
+          "#cdc6d4",
+          "#f2ebfa"
+        ]
+      },
+      "day-muted-foreground": {
+        "role": "neutral",
+        "displayName": "Day Mauve",
+        "canonical": "#5c5165",
+        "oklch": "oklch(45.3% 0.035 309.7)",
+        "tonalRamp": [
+          "#100716",
+          "#2a2032",
+          "#483d50",
+          "#675c70",
+          "#897d92",
+          "#ac9fb6",
+          "#d0c3db",
+          "#f5e9ff"
+        ]
+      },
+      "day-primary-foreground": {
+        "role": "neutral",
+        "displayName": "Day Plate Lettering",
+        "canonical": "#fff8ee",
+        "oklch": "oklch(98.2% 0.015 77.1)",
+        "tonalRamp": [
+          "#0f0a05",
+          "#29241d",
+          "#474139",
+          "#666058",
+          "#888178",
+          "#aaa49b",
+          "#cfc8be",
+          "#f4ede3"
+        ]
+      },
+      "day-destructive": {
+        "role": "tertiary",
+        "displayName": "Incident Red (day)",
+        "canonical": "#cf2c22",
+        "oklch": "oklch(55.7% 0.200 28.9)",
+        "tonalRamp": [
+          "#1f0000",
+          "#4d0000",
+          "#810101",
+          "#b80505",
+          "#e14033",
+          "#fe7464",
+          "#fdb4a8",
+          "#ffe9e5"
+        ]
+      },
+      "day-success": {
+        "role": "tertiary",
+        "displayName": "Done Green (day)",
+        "canonical": "#12795a",
+        "oklch": "oklch(51.3% 0.101 166.5)",
+        "tonalRamp": [
+          "#000f08",
+          "#002d1f",
+          "#004f39",
+          "#037354",
+          "#399575",
+          "#60b997",
+          "#85debb",
+          "#c2fee4"
+        ]
+      },
+      "day-warning": {
+        "role": "tertiary",
+        "displayName": "Warning Ochre (day)",
+        "canonical": "#9a6700",
+        "oklch": "oklch(55.4% 0.117 75.0)",
+        "tonalRamp": [
+          "#130900",
+          "#342101",
+          "#5a3b04",
+          "#82580a",
+          "#ab7720",
+          "#d09a49",
+          "#f6be6e",
+          "#ffebd2"
+        ]
+      },
+      "day-ring": {
+        "role": "primary",
+        "displayName": "Day Ring Ochre",
+        "canonical": "#c48a00",
+        "oklch": "oklch(67.4% 0.140 78.8)",
+        "tonalRamp": [
+          "#120900",
+          "#332102",
+          "#573c05",
+          "#7f590d",
+          "#a97816",
+          "#d49924",
+          "#fabd52",
+          "#feeccf"
+        ]
+      },
+      "sign-merah": {
+        "role": "secondary",
+        "displayName": "Merah",
+        "canonical": "#d42a20",
+        "oklch": "oklch(56.5% 0.206 29.0)",
+        "tonalRamp": [
+          "#1f0000",
+          "#4c0201",
+          "#800504",
+          "#b60e0a",
+          "#e33c2f",
+          "#fd7665",
+          "#ffb3a7",
+          "#fee9e5"
+        ]
+      },
+      "sign-kuning": {
+        "role": "secondary",
+        "displayName": "Kuning",
+        "canonical": "#f6b51e",
+        "oklch": "oklch(81.2% 0.162 81.4)",
+        "tonalRamp": [
+          "#120900",
+          "#322202",
+          "#563d05",
+          "#7d5b0d",
+          "#a87900",
+          "#d39a0f",
+          "#febd2c",
+          "#ffeccb"
+        ]
+      },
+      "sign-tosca": {
+        "role": "secondary",
+        "displayName": "Tosca",
+        "canonical": "#19b3a4",
+        "oklch": "oklch(69.1% 0.118 184.1)",
+        "tonalRamp": [
+          "#000f0c",
+          "#032c27",
+          "#084d46",
+          "#017167",
+          "#04978a",
+          "#2cbdae",
+          "#5ee2d2",
+          "#b9fff4"
+        ]
+      },
+      "sign-biru": {
+        "role": "secondary",
+        "displayName": "Biru",
+        "canonical": "#3561d6",
+        "oklch": "oklch(53.1% 0.187 265.0)",
+        "tonalRamp": [
+          "#000134",
+          "#030379",
+          "#0f30a3",
+          "#2b55c9",
+          "#4a79f0",
+          "#7ba2fb",
+          "#b0c9fd",
+          "#e7effe"
+        ]
+      },
+      "sign-hijau": {
+        "role": "secondary",
+        "displayName": "Hijau",
+        "canonical": "#45ad55",
+        "oklch": "oklch(66.6% 0.158 146.4)",
+        "tonalRamp": [
+          "#001002",
+          "#022e0b",
+          "#055119",
+          "#0e7529",
+          "#2f9a43",
+          "#58bf66",
+          "#7ee489",
+          "#caffcd"
+        ]
+      },
+      "sign-oranye": {
+        "role": "secondary",
+        "displayName": "Oranye",
+        "canonical": "#ee7418",
+        "oklch": "oklch(69.1% 0.175 50.0)",
+        "tonalRamp": [
+          "#180600",
+          "#3f1800",
+          "#6a2e00",
+          "#994603",
+          "#ca5f07",
+          "#f97e28",
+          "#feb68e",
+          "#ffeade"
+        ]
+      },
+      "sign-ungu": {
+        "role": "secondary",
+        "displayName": "Ungu",
+        "canonical": "#8752d4",
+        "oklch": "oklch(56.3% 0.192 298.9)",
+        "tonalRamp": [
+          "#110027",
+          "#31015e",
+          "#540e97",
+          "#733bbc",
+          "#9460e3",
+          "#b48bfd",
+          "#d1bcfe",
+          "#f1ebff"
+        ]
+      },
+      "sign-magenta": {
+        "role": "secondary",
+        "displayName": "Magenta",
+        "canonical": "#c02f7c",
+        "oklch": "oklch(55.3% 0.193 353.0)",
+        "tonalRamp": [
+          "#1d000d",
+          "#490029",
+          "#770949",
+          "#ab146a",
+          "#d3428c",
+          "#fc69af",
+          "#ffadcf",
+          "#fee7f0"
+        ]
+      },
+      "sign-ink-light": {
+        "role": "neutral",
+        "displayName": "Sign Lettering Cream",
+        "canonical": "#fff8ee",
+        "oklch": "oklch(98.2% 0.015 77.1)",
+        "tonalRamp": [
+          "#0f0a05",
+          "#29241d",
+          "#474139",
+          "#666058",
+          "#888178",
+          "#aaa49b",
+          "#cfc8be",
+          "#f4ede3"
+        ]
+      },
+      "sign-ink-dark": {
+        "role": "neutral",
+        "displayName": "Sign Lettering Dark",
+        "canonical": "#2a1a02",
+        "oklch": "oklch(23.3% 0.046 75.1)",
+        "tonalRamp": [
+          "#130900",
+          "#322108",
+          "#503f25",
+          "#715e44",
+          "#937f64",
+          "#b6a286",
+          "#dbc6a9",
+          "#feebd2"
+        ]
+      },
+      "approval": {
+        "role": "primary",
+        "displayName": "Persetujuan Amber",
+        "canonical": "#f6b51e",
+        "oklch": "oklch(81.2% 0.162 81.4)",
+        "tonalRamp": [
+          "#120900",
+          "#322202",
+          "#563d05",
+          "#7d5b0d",
+          "#a87900",
+          "#d39a0f",
+          "#febd2c",
+          "#ffeccb"
+        ]
+      },
+      "approval-hi": {
+        "role": "primary",
+        "displayName": "Persetujuan Amber (lightbox centre)",
+        "canonical": "#ffd04e",
+        "oklch": "oklch(87.6% 0.152 88.6)",
+        "tonalRamp": [
+          "#100a00",
+          "#2f2302",
+          "#523f05",
+          "#795d00",
+          "#a17d02",
+          "#ca9f11",
+          "#f1c33e",
+          "#feedc3"
+        ]
+      },
+      "approval-ink": {
+        "role": "primary",
+        "displayName": "Persetujuan Ink",
+        "canonical": "#2a1a02",
+        "oklch": "oklch(23.3% 0.046 75.1)",
+        "tonalRamp": [
+          "#130900",
+          "#322108",
+          "#503f25",
+          "#715e44",
+          "#937f64",
+          "#b6a286",
+          "#dbc6a9",
+          "#feebd2"
+        ]
+      },
+      "series-other": {
+        "role": "neutral",
+        "displayName": "Series Other Grey",
+        "canonical": "#8c8194",
+        "oklch": "oklch(61.9% 0.031 311.1)",
+        "tonalRamp": [
+          "#0f0715",
+          "#2a2130",
+          "#473d4e",
+          "#675c6e",
+          "#887d90",
+          "#aba0b4",
+          "#d0c4d8",
+          "#f5e9fe"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles, one per page. Uppercase."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section and panel titles (1.6-2rem). Uppercase."
+      },
+      "sign-name": {
+        "displayName": "Sign Name",
+        "purpose": "Employee name on a sign: 2.1 / 1.85 / 1.35rem for lg / md / sm. Uppercase."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "Big counts and money; 2.1rem on phones, 2.6rem up. Uppercase, tabular."
+      },
+      "strip": {
+        "displayName": "Strip",
+        "purpose": "The amber approval strip label (1.2-1.45rem). Uppercase."
+      },
+      "approval-title": {
+        "displayName": "Approval Title",
+        "purpose": "Pending approval title; the one mixed-case use of the display face."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, names in lists."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All UI text; descriptions capped at 70ch."
+      },
+      "body-chat": {
+        "displayName": "Chat Body",
+        "purpose": "Message text in chat threads."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Metadata, badges, sign role/status lines. Sentence case."
+      },
+      "label-rail": {
+        "displayName": "Rail Label",
+        "purpose": "Labels under icons in the desktop rail."
+      }
+    },
+    "shadows": [
+      {
+        "name": "sign-light",
+        "value": "inset 0 0 0 1px rgb(255 255 255 / 0.2), inset 0 -16px 26px -14px rgb(0 0 0 / 0.28), 0 22px 30px -18px color-mix(in srgb, var(--sign) 75%, transparent)",
+        "purpose": "Every lit sign: edge highlight, darker lower edge, coloured light cast downward."
+      },
+      {
+        "name": "sign-fill",
+        "value": "radial-gradient(120% 95% at 50% 32%, color-mix(in srgb, var(--sign) 78%, white), var(--sign) 62%, color-mix(in srgb, var(--sign) 84%, black))",
+        "purpose": "Acrylic inner luminance of a lit sign (background, paired with sign-light)."
+      },
+      {
+        "name": "sign-off-night",
+        "value": "inset 0 0 0 1px #2c2533",
+        "purpose": "Unlit sign at night; no outer shadow."
+      },
+      {
+        "name": "sign-off-day",
+        "value": "inset 0 0 0 1px color-mix(in srgb, var(--sign) 32%, transparent)",
+        "purpose": "Unlit sign by day; no outer shadow."
+      },
+      {
+        "name": "approval-strip",
+        "value": "inset 0 -10px 18px -10px rgb(0 0 0 / 0.2)",
+        "purpose": "Amber lightbox strip (over radial-gradient(140% 120% at 50% 30%, var(--approval-hi), var(--approval) 70%))."
+      },
+      {
+        "name": "pending-lift",
+        "value": "0 22px 40px -26px rgb(0 0 0 / 0.7)",
+        "purpose": "Chat approval card while pending."
+      },
+      {
+        "name": "floating-list",
+        "value": "0 18px 40px -20px rgb(0 0 0 / 0.6)",
+        "purpose": "The @-mention list over the composer."
+      },
+      {
+        "name": "avatar-tint",
+        "value": "inset 0 0 0 1px color-mix(in srgb, var(--sign) 45%, transparent)",
+        "purpose": "Employee avatar tile edge over a 26% sign-colour fill."
+      },
+      {
+        "name": "focus-control",
+        "value": "0 0 0 3px color-mix(in srgb, var(--ring) 50%, transparent)",
+        "purpose": "Focus ring on buttons, inputs, selects, tabs (plus border in ring colour)."
+      },
+      {
+        "name": "focus-sign",
+        "value": "0 0 0 2px var(--background), 0 0 0 4px var(--ring)",
+        "purpose": "Focus ring on a sign: 2px ring offset 2px from the ground."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-sign",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Sign filter/box-shadow transitions (0.6s) and the flicker-on curve."
+      },
+      {
+        "name": "sign-transition",
+        "value": "filter 0.6s, box-shadow 0.6s",
+        "purpose": "A sign settling between lit and off."
+      },
+      {
+        "name": "sign-on",
+        "value": "1.4s cubic-bezier(0.16, 1, 0.3, 1) 1",
+        "purpose": "One flicker-on when a sign goes from off to lit (run start). Keyframes: dim 0-14%, flash 16%, dip 20%, steady 26%+."
+      },
+      {
+        "name": "sign-fault",
+        "value": "4s steps(1) infinite",
+        "purpose": "Stepped flicker while an incident is open. Two quick drops near 8-12%, one near 63%."
+      },
+      {
+        "name": "press",
+        "value": "translateY(1px)",
+        "purpose": "Button active state."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation: none; transition: none",
+        "purpose": "prefers-reduced-motion: no flicker, no sign transitions; state shown by lit/unlit plus text."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px",
+        "purpose": "Gutters 24px; md facade in chat; stacked page header goes inline."
+      },
+      {
+        "name": "md",
+        "value": "768px",
+        "purpose": "Chat shows list and thread side by side (17rem + fluid)."
+      },
+      {
+        "name": "lg",
+        "value": "1024px",
+        "purpose": "Icon rail appears (100px); gutters 32px; dashboard two-column grids."
+      },
+      {
+        "name": "xl",
+        "value": "1280px",
+        "purpose": "Chat context panel (19rem); numbers band goes four-up."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Cream plate on the night street (Day Ink plate by day). The main action: Approve, Save.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 16 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path d=\"m9 12 2 2 4-4\"/></svg> Setujui</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border-radius: 10px; font-family: Figtree, ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 1px solid transparent; transition: color 0.15s, background-color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s; background: var(--primary, #fff3e4); color: var(--primary-foreground, #17121c); } .ds-btn-primary:hover { background: color-mix(in srgb, var(--primary, #fff3e4) 90%, transparent); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: none; border-color: var(--ring, #f6b51e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring, #f6b51e) 50%, transparent); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action everywhere: 1px input-edge stroke, fills with accent on hover.",
+      "html": "<button class=\"ds-btn-outline\">Jalankan demo</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 8px 16px; border-radius: 10px; font-family: Figtree, ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; border: 1px solid transparent; transition: color 0.15s, background-color 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.15s; background: transparent; color: var(--foreground, #f7efe6); border-color: var(--input, #3a3043); } .ds-btn-outline:hover { background: var(--accent, #2a2231); } .ds-btn-outline:active { transform: translateY(1px); } .ds-btn-outline:focus-visible { outline: none; border-color: var(--ring, #f6b51e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring, #f6b51e) 50%, transparent); }"
+    },
+    {
+      "name": "Send Button (sign)",
+      "kind": "button",
+      "refersTo": "button-send",
+      "description": "The composer's send: the one control that wears the lit Merah sign material.",
+      "html": "<button class=\"ds-btn-send\" aria-label=\"Kirim\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z\"/><path d=\"m21.854 2.147-10.94 10.939\"/></svg></button>",
+      "css": ".ds-btn-send { --sign: var(--sign-merah, #d42a20); --sign-ink: #fff8ee; position: relative; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; border-radius: 10px; color: var(--sign-ink); text-decoration: none; background: radial-gradient(120% 95% at 50% 32%, color-mix(in srgb, var(--sign) 78%, white), var(--sign) 62%, color-mix(in srgb, var(--sign) 84%, black)); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), inset 0 -16px 26px -14px rgb(0 0 0 / 0.28), 0 22px 30px -18px color-mix(in srgb, var(--sign) 75%, transparent); transition: filter 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1); flex-direction: row; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 16px; border: 0; cursor: pointer; } .ds-btn-send:hover { filter: brightness(1.1); } .ds-btn-send:active { transform: translateY(1px); } .ds-btn-send:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--background, #110e15), 0 0 0 4px var(--ring, #f6b51e); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "40px field, 10px corners, input-edge stroke; amber ring and caret on focus.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Nama karyawan</span><input class=\"ds-input\" placeholder=\"mis. Dewi\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; font-family: Figtree, ui-sans-serif, system-ui, sans-serif; } .ds-field-label { font-size: 14px; font-weight: 600; color: var(--foreground, #f7efe6); } .ds-input { height: 40px; width: 260px; padding: 4px 12px; border-radius: 10px; border: 1px solid var(--input, #3a3043); background: color-mix(in srgb, var(--background, #110e15) 70%, transparent); color: var(--foreground, #f7efe6); font: 400 14px/1.43 Figtree, ui-sans-serif, system-ui, sans-serif; caret-color: var(--ring, #f6b51e); transition: border-color 0.15s, box-shadow 0.15s; } .ds-input::placeholder { color: var(--muted-foreground, #b3a7b9); } .ds-input:focus-visible { outline: none; border-color: var(--ring, #f6b51e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring, #f6b51e) 50%, transparent); }"
+    },
+    {
+      "name": "Icon Rail Item",
+      "kind": "nav",
+      "refersTo": "nav-rail-item",
+      "description": "Desktop rail: icon over an 11px label, 88px wide; active on Awning; amber count for approvals.",
+      "html": "<nav class=\"ds-rail\"><a class=\"ds-rail-item\" aria-current=\"page\" href=\"#\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\"/></svg><span>Dasbor</span></a><a class=\"ds-rail-item\" href=\"#\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path d=\"m9 12 2 2 4-4\"/></svg><span>Persetujuan</span><span class=\"ds-rail-count\">3</span></a></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100px; padding: 16px 0; background: var(--card, #18141d); border-right: 1px solid var(--border, #2f2737); } .ds-rail-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; width: 88px; padding: 8px 4px 6px; border-radius: 16px; font: 600 11px/1.25 Figtree, ui-sans-serif, system-ui, sans-serif; color: var(--muted-foreground, #b3a7b9); text-decoration: none; transition: color 0.15s, background-color 0.15s; } .ds-rail-item:hover { background: color-mix(in srgb, var(--secondary, #211b27) 60%, transparent); color: var(--foreground, #f7efe6); } .ds-rail-item[aria-current=page] { background: var(--secondary, #211b27); color: var(--foreground, #f7efe6); } .ds-rail-item:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring, #f6b51e) 50%, transparent); } .ds-rail-count { position: absolute; right: 10px; top: 4px; min-width: 16px; padding: 0 4px; border-radius: 9999px; background: var(--approval, #f6b51e); color: var(--approval-ink, #2a1a02); font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; }"
+    },
+    {
+      "name": "Status Badges",
+      "kind": "chip",
+      "refersTo": "status-badge",
+      "description": "Task status pills: amber only for awaiting approval; biru tint while running.",
+      "html": "<div class=\"ds-badges\"><span class=\"ds-badge ds-badge-queued\">Dalam antrean</span><span class=\"ds-badge ds-badge-running\"><i></i>Berjalan</span><span class=\"ds-badge ds-badge-awaiting\">Menunggu persetujuan</span><span class=\"ds-badge ds-badge-done\">Selesai</span><span class=\"ds-badge ds-badge-failed\">Gagal</span></div>",
+      "css": ".ds-badges { display: flex; flex-wrap: wrap; gap: 8px; } .ds-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font: 500 12px/1.33 Figtree, ui-sans-serif, system-ui, sans-serif; } .ds-badge i { width: 6px; height: 6px; border-radius: 9999px; background: currentColor; } .ds-badge-queued { background: var(--secondary, #211b27); color: var(--foreground, #f7efe6); } .ds-badge-running { background: color-mix(in srgb, var(--sign-biru, #3561d6) 22%, transparent); color: var(--foreground, #f7efe6); } .ds-badge-awaiting { background: color-mix(in srgb, var(--approval, #f6b51e) 90%, transparent); color: var(--approval-ink, #2a1a02); } .ds-badge-done { background: color-mix(in srgb, var(--success, #3fd0a0) 15%, transparent); color: var(--success, #3fd0a0); } .ds-badge-failed { background: color-mix(in srgb, var(--destructive, #ff5a4c) 15%, transparent); color: var(--destructive, #ff5a4c); }"
+    },
+    {
+      "name": "Panel / Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Shopfront panel: 16px corners, 1px kerb border, no shadow at rest; display-face headline.",
+      "html": "<section class=\"ds-panel\"><h2 class=\"ds-panel-title\">Kantor</h2><p class=\"ds-panel-meta\">4 karyawan: 1 bekerja, 1 menunggu persetujuan, 2 santai.</p></section>",
+      "css": ".ds-panel { width: 320px; padding: 20px; border-radius: 16px; border: 1px solid var(--border, #2f2737); background: var(--card, #18141d); color: var(--foreground, #f7efe6); } .ds-panel-title { margin: 0; font-size: 1.9rem; font-family: var(--font-shoulders, 'Big Shoulders'), 'Big Shoulders', 'Arial Narrow', ui-sans-serif, sans-serif; font-variation-settings: 'opsz' 72; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; line-height: 0.95; } .ds-panel-meta { margin: 6px 0 0; font: 400 14px/1.43 Figtree, ui-sans-serif, system-ui, sans-serif; color: var(--muted-foreground, #b3a7b9); }"
+    },
+    {
+      "name": "Employee Sign",
+      "kind": "custom",
+      "refersTo": "employee-sign-lg",
+      "description": "Signature: an employee as a backlit acrylic sign. Lit (working), fault (incident, flickers), off (idle). Status always written out.",
+      "html": "<div class=\"ds-street\"><a href=\"#\" class=\"ds-sign\" data-state=\"lit\" style=\"--sign: var(--sign-tosca, #19b3a4); --sign-ink: #2a1a02;\" aria-label=\"Pratama, Project Manager: berpikir\"><span class=\"ds-sign-name\">Pratama</span><span class=\"ds-sign-foot\"><span>Project Manager</span><span>berpikir</span></span></a><a href=\"#\" class=\"ds-sign\" data-state=\"fault\" style=\"--sign: var(--sign-biru, #3561d6); --sign-ink: #fff8ee;\" aria-label=\"Fajar, Finance &amp; Billing: insiden\"><span class=\"ds-sign-name\">Fajar</span><span class=\"ds-sign-foot\"><span>Finance &amp; Billing</span><span>insiden</span></span></a><a href=\"#\" class=\"ds-sign\" data-state=\"off\" style=\"--sign: var(--sign-magenta, #c02f7c); --sign-ink: #fff8ee;\" aria-label=\"Dewi, Developer: santai\"><span class=\"ds-sign-name\">Dewi</span><span class=\"ds-sign-foot\"><span>Developer</span><span>santai</span></span></a></div>",
+      "css": ".ds-street { display: flex; gap: 12px; padding: 4px 0 20px; background: var(--background, #110e15); } .ds-sign { position: relative; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; border-radius: 10px; color: var(--sign-ink); text-decoration: none; background: radial-gradient(120% 95% at 50% 32%, color-mix(in srgb, var(--sign) 78%, white), var(--sign) 62%, color-mix(in srgb, var(--sign) 84%, black)); box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2), inset 0 -16px 26px -14px rgb(0 0 0 / 0.28), 0 22px 30px -18px color-mix(in srgb, var(--sign) 75%, transparent); transition: filter 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1); height: 112px; min-width: 184px; padding: 14px; outline: none; } .ds-sign:hover { filter: brightness(1.06); } .ds-sign:focus-visible { box-shadow: 0 0 0 2px var(--background, #110e15), 0 0 0 4px var(--ring, #f6b51e); } .ds-sign-name { display: block; font-size: 2.1rem; font-family: var(--font-shoulders, 'Big Shoulders'), 'Big Shoulders', 'Arial Narrow', ui-sans-serif, sans-serif; font-variation-settings: 'opsz' 72; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; line-height: 0.95; } .ds-sign-foot { display: flex; justify-content: space-between; gap: 8px; font: 600 12px/1.25 Figtree, ui-sans-serif, system-ui, sans-serif; } .ds-sign[data-state=fault] { animation: ds-sign-fault 4s steps(1) infinite; } .ds-sign[data-state=off] { color: color-mix(in srgb, var(--sign) 45%, #d8cfdc); background: #1d1922; box-shadow: inset 0 0 0 1px #2c2533; } @keyframes ds-sign-fault { 0%, 100% { filter: none; } 8% { filter: brightness(0.35) saturate(0.4); } 10% { filter: none; } 12% { filter: brightness(0.35) saturate(0.4); } 14%, 61% { filter: none; } 63% { filter: brightness(0.4) saturate(0.4); } 66% { filter: none; } } @media (prefers-reduced-motion: reduce) { .ds-sign { animation: none !important; transition: none; } }"
+    },
+    {
+      "name": "Approval Card",
+      "kind": "custom",
+      "refersTo": "approval-strip",
+      "description": "Signature: every pending approval opens with the amber lightbox strip; title in mixed-case display; reason in red; Approve / Edit & approve / Reject.",
+      "html": "<article class=\"ds-approval\"><header class=\"ds-approval-strip\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path d=\"M12 8v4\"/><path d=\"M12 16h.01\"/></svg><span class=\"ds-approval-strip-label\">Perlu persetujuan</span><span class=\"ds-approval-age\">12 mnt lalu</span></header><div class=\"ds-approval-body\"><div class=\"ds-approval-title\">Email: Pengingat pembayaran INV-2026-0187 ke PT Mitra Logistik</div><div class=\"ds-approval-tool\">Kirim email</div><div class=\"ds-approval-reason\">Aksi tidak bisa dibatalkan: butuh persetujuanmu.</div></div><footer class=\"ds-approval-actions\"><button class=\"ds-a-btn ds-a-approve\">Setujui</button><button class=\"ds-a-btn ds-a-outline\">Edit &amp; setujui</button><button class=\"ds-a-btn ds-a-outline ds-a-reject\">Tolak</button></footer></article>",
+      "css": ".ds-approval { width: 440px; overflow: hidden; border-radius: 16px; border: 1px solid color-mix(in srgb, var(--approval, #f6b51e) 50%, transparent); background: var(--card, #18141d); color: var(--foreground, #f7efe6); box-shadow: 0 22px 40px -26px rgb(0 0 0 / 0.7); font-family: Figtree, ui-sans-serif, system-ui, sans-serif; } .ds-approval-strip { display: flex; align-items: center; gap: 8px; padding: 8px 14px; color: var(--approval-ink, #2a1a02); background: radial-gradient(140% 120% at 50% 30%, var(--approval-hi, #ffd04e), var(--approval, #f6b51e) 70%); box-shadow: inset 0 -10px 18px -10px rgb(0 0 0 / 0.2); } .ds-approval-strip-label { flex: 1; font-size: 1.2rem; font-family: var(--font-shoulders, 'Big Shoulders'), 'Big Shoulders', 'Arial Narrow', ui-sans-serif, sans-serif; font-variation-settings: 'opsz' 72; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; line-height: 0.95; letter-spacing: 0.03em; } .ds-approval-age { font-size: 12px; font-weight: 600; } .ds-approval-body { padding: 12px 14px 10px; } .ds-approval-title { font-family: var(--font-shoulders, 'Big Shoulders'), 'Big Shoulders', 'Arial Narrow', ui-sans-serif, sans-serif; font-variation-settings: 'opsz' 72; font-weight: 800; text-transform: uppercase; letter-spacing: 0.01em; line-height: 0.95; text-transform: none; font-size: 1.45rem; line-height: 1.08; letter-spacing: 0.005em; margin-bottom: 4px; } .ds-approval-tool { font-size: 12px; color: var(--muted-foreground, #b3a7b9); } .ds-approval-reason { margin-top: 8px; font-size: 12px; font-weight: 600; color: var(--destructive, #ff5a4c); } .ds-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border, #2f2737); } .ds-a-btn { height: 32px; padding: 0 12px; border-radius: 12px; font: 600 14px/1 Figtree, ui-sans-serif, system-ui, sans-serif; cursor: pointer; border: 1px solid transparent; transition: background-color 0.15s, transform 0.15s; } .ds-a-btn:active { transform: translateY(1px); } .ds-a-btn:focus-visible { outline: none; border-color: var(--ring, #f6b51e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring, #f6b51e) 50%, transparent); } .ds-a-approve { background: var(--primary, #fff3e4); color: var(--primary-foreground, #17121c); } .ds-a-approve:hover { background: color-mix(in srgb, var(--primary, #fff3e4) 90%, transparent); } .ds-a-outline { background: transparent; color: var(--foreground, #f7efe6); border-color: var(--input, #3a3043); } .ds-a-outline:hover { background: var(--accent, #2a2231); } .ds-a-reject { color: var(--destructive, #ff5a4c); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Papan Nama Ruko",
+    "overview": "The office is a row of Indonesian shophouses at night, and every AI employee is one backlit acrylic sign on that street. A sign is lit while its employee works, flickers on once when a run starts, flickers on and off while an incident is open, and goes dark when the employee is idle or paused. The owner should be able to read the whole office from across the street: which signs are lit, which one is faulting, and whether the amber \"PERLU PERSETUJUAN\" strip is showing. Everything else in the interface is the street around those signs. It is a quiet, neutral warm dark that lets the signs carry all the colour.\n\nThe material is flat, saturated acrylic, not neon. A lit panel is brighter at its centre and darker at its lower edge, has a 1px inner highlight, and casts a soft coloured light on the ground below it. Headings, sign names and big numbers are condensed sign-painter capitals. Body text and controls are a friendly, plain humanist sans with tabular numerals, at medium-dense app density. The controls are the standard shadcn/Radix set, re-cut to this world's radii and weights. They are never dressed up as signs, except for the one control that sends work out (the chat send button).\n\nDark (night) is the default theme. Light (day) is the same street by daylight. Grounds turn into cool concrete, unlit signs keep their colour as a pale tint, and lit signs keep their acrylic gradient. The previous restrained direction (warm graphite and paper, one amber accent, an editorial serif, hairlines, minimal motion) was rejected as too basic and stiff. This system is deliberately louder.",
+    "keyCharacteristics": [
+      "Employees are rendered as acrylic lightbox signs, and the sign state (lit, starting, fault, off) is the office's live status.",
+      "The ground is a neutral warm dark. Only the signs, the approval amber and semantic state carry colour.",
+      "Big Shoulders capitals do the shouting (titles, names, numbers). Figtree does the talking (UI, body, data).",
+      "One amber means \"needs your decision\", everywhere: the approval strip, the rail badge, the awaiting-approval pill and the focus ring.",
+      "State is never carried by light or motion alone. Every sign also writes its status as text, and reduced motion removes the flicker."
+    ],
+    "rules": [
+      {
+        "name": "The Signs Carry the Colour Rule",
+        "body": "Grounds, cards, borders and text stay inside the neutral warm-dark ramp (background → card → secondary → border). Saturated colour appears only as an employee's sign colour, the approval amber, or a semantic state. A blue card or a gradient page background breaks the street.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Amber Rule",
+        "body": "A solid Persetujuan Amber surface means a human decision is pending, and nothing else. Do not use it for highlights, promotions or \"new\" badges.",
+        "section": "colors"
+      },
+      {
+        "name": "The Dealt Colour Rule",
+        "body": "An employee's colour always comes from `signColors()` over the whole workspace (archived employees included), never from a per-page pick. The same person is the same colour on every sign, avatar and chart series.",
+        "section": "colors"
+      },
+      {
+        "name": "The Sign-Painter Capitals Rule",
+        "body": "Big Shoulders is used only for names, titles and numbers, always at weight 800 and uppercase (the pending-approval title is the single mixed-case exception). Figtree is used for every sentence. A paragraph, button label or form label set in the display face is wrong.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "`tabular-nums` is set on `body`, so credits, counts and times line up in every list and table. Do not switch it off locally.",
+        "section": "typography"
+      },
+      {
+        "name": "The Light Falls Down Rule",
+        "body": "A coloured shadow is only ever the light cast of a lit sign, offset downward (y +22px, spread −18px). It never forms a halo all around, a glow edge or a neon outline, and it never appears under an unlit sign or a plain card.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do show employees as `<EmployeeSign>` in their dealt acrylic colour whenever their live state matters (facades, office rows). Use the tinted avatar tile in lists.",
+      "Do put the amber lightbox strip at the top of every pending approval, wherever it appears (inbox, chat, dashboard).",
+      "Do write state out as text next to any light or colour cue. Signs carry \"bekerja / santai / insiden\", and badges carry their label.",
+      "Do set titles, sign names and big numbers in Big Shoulders 800 uppercase at `opsz` 72, and everything else in Figtree with tabular numerals.",
+      "Do keep grounds inside the four-step warm-dark ramp (background, card, secondary, border), with 1px Kerb Line borders and 16px panel corners.",
+      "Do pair every claim an employee makes in chat with a receipt chip.",
+      "Do honour `prefers-reduced-motion`. No flicker and no sign transitions: state is shown by lit/unlit plus text.",
+      "Do derive light mode from the same roles (`day-*`). It is the street by day, not a separate palette."
+    ],
+    "donts": [
+      "Don't render signs as neon tubes, glow edges or halos. A sign is flat acrylic with an inner gradient and a downward light cast.",
+      "Don't use solid Persetujuan Amber for anything except a pending human decision.",
+      "Don't colour grounds, cards or page backgrounds with the acrylic set, or put gradients on surfaces other than signs and the approval strip.",
+      "Don't pick an employee's colour by hand on one page. Always deal it with `signColors()` across the workspace.",
+      "Don't dress ordinary controls (tabs, selects, inputs, outline buttons) in the sign material. The send button is the one exception.",
+      "Don't set sentences, button labels or form labels in the display face.",
+      "Don't return to the rejected restrained look: graphite and paper, a lone amber accent on an otherwise colourless UI, an editorial serif, hairline-only structure."
+    ]
+  }
+}

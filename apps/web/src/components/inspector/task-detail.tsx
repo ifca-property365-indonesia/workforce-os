@@ -116,9 +116,9 @@ export function DiffView({ diff }: { diff: string }) {
           <div
             key={i}
             className={cn(
-              l.startsWith("+") && !l.startsWith("+++") && "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
-              l.startsWith("-") && !l.startsWith("---") && "bg-red-500/15 text-red-800 dark:text-red-300",
-              l.startsWith("@@") && "text-sky-600",
+              l.startsWith("+") && !l.startsWith("+++") && "bg-success/15 text-success",
+              l.startsWith("-") && !l.startsWith("---") && "bg-destructive/15 text-destructive",
+              l.startsWith("@@") && "text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]",
             )}
           >
             {l || " "}
@@ -188,7 +188,7 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
                 className={cn(
                   "absolute -left-[23px] top-2 flex size-4 items-center justify-center rounded-full border bg-background",
                   bad && "border-destructive text-destructive",
-                  warn && "border-amber-500 text-amber-600",
+                  warn && "border-approval text-warning",
                 )}
               >
                 <Icon className="size-2.5" />
@@ -208,7 +208,7 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
                   </span>
                 )}
                 {s.status !== "ok" && (
-                  <span className={cn("text-xs", bad ? "text-destructive" : warn ? "text-amber-600" : "text-muted-foreground")}>
+                  <span className={cn("text-xs", bad ? "text-destructive" : warn ? "text-warning" : "text-muted-foreground")}>
                     {t.has(`stepStatus.${s.status}`) ? t(`stepStatus.${s.status}`) : s.status}
                   </span>
                 )}
@@ -260,10 +260,10 @@ export function Deliverables({ items }: { items: Deliverable[] }) {
       {items.map((d) => (
         <div key={d.id} className="rounded-lg border">
           <button type="button" onClick={() => setOpen(open === d.id ? null : d.id)} className="flex w-full items-center gap-2 p-3 text-left text-sm">
-            {d.kind === "simulated_action" ? <FlaskConical className="size-4 text-violet-600" /> : <FileText className="size-4 text-muted-foreground" />}
+            {d.kind === "simulated_action" ? <FlaskConical className="size-4 text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]" /> : <FileText className="size-4 text-muted-foreground" />}
             <span className="flex-1 font-medium">{d.title}</span>
             <span className="rounded bg-muted px-1.5 text-[11px] uppercase">{t.has(`deliverableKind.${d.kind}`) ? t(`deliverableKind.${d.kind}`) : d.kind.replaceAll("_", " ")}</span>
-            {d.diff && <span className="rounded bg-sky-500/15 px-1.5 text-[11px] text-sky-700 dark:text-sky-300">{t("deliverables.newVersion")}</span>}
+            {d.diff && <span className="rounded bg-[var(--sign-biru)]/15 px-1.5 text-[11px] text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]">{t("deliverables.newVersion")}</span>}
             <span className="text-xs text-muted-foreground">{f.ago(d.createdAt)}</span>
           </button>
           {open === d.id && (
@@ -343,7 +343,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           <h2 className={cn("font-semibold", compact ? "text-lg" : "text-xl")}>{task.title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge status={task.status} />
-            {task.dryRun && <span className="rounded-full bg-violet-500/15 px-2 py-0.5 font-medium text-violet-700 dark:text-violet-300">{t("task.dryRun")}</span>}
+            {task.dryRun && <span className="rounded-full bg-[var(--sign-ungu)]/15 px-2 py-0.5 font-medium text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]">{t("task.dryRun")}</span>}
             {task.phase && task.teamId && <span className="rounded-full bg-muted px-2 py-0.5">{t("task.team", { phase: task.phase })}</span>}
             {assignee && (
               <span className="inline-flex items-center gap-1">
@@ -414,7 +414,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
                 {approvals.map((a) => (
                   <Link key={a.id} href={`/approvals?focus=${a.id}`} className="flex items-center justify-between rounded px-2 py-1 text-sm hover:bg-accent">
                     <span className="truncate">{a.title}</span>
-                    <span className={cn("text-xs font-medium", a.status === "PENDING" ? "text-amber-600" : a.status === "REJECTED" || a.status === "FAILED" ? "text-destructive" : "text-emerald-600")}>
+                    <span className={cn("text-xs font-medium", a.status === "PENDING" ? "text-warning" : a.status === "REJECTED" || a.status === "FAILED" ? "text-destructive" : "text-success")}>
                       {ts(`approval.${a.status}`)}
                     </span>
                   </Link>

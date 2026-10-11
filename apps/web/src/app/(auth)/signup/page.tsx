@@ -40,9 +40,9 @@ export default function SignupPage() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full max-w-sm rounded-2xl">
       <CardHeader>
-        <CardTitle className="text-2xl">{t("signup.title")}</CardTitle>
+        <CardTitle className="font-display text-[2.1rem]">{t("signup.title")}</CardTitle>
         <CardDescription>{t("signup.description")}</CardDescription>
       </CardHeader>
       <CardContent>

@@ -25,7 +25,6 @@ import {
   ShieldCheck,
   UserRound,
   Sun,
-  Users,
   UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -65,7 +64,11 @@ const NAV = [
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
 
-function Nav({ onNavigate }: { onNavigate?: () => void }) {
+/**
+ * `rail`: the desktop icon rail (icon over a short label, like the shop signs' row); `list`: the phone menu.
+ * The approvals count is the one number the rail always shows.
+ */
+function Nav({ onNavigate, layout }: { onNavigate?: () => void; layout: "rail" | "list" }) {
   const t = useTranslations("nav");
   const path = usePathname();
   const { data } = useQuery({
@@ -73,22 +76,46 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
     queryFn: () => api.get<{ approvals: unknown[] }>("/api/approvals?status=PENDING").then((r) => r.approvals.length),
   });
   return (
-    <nav className="space-y-0.5">
+    <nav className={layout === "rail" ? "flex flex-col items-center gap-1" : "space-y-0.5"}>
       {NAV.map((n) => {
         const active = path === n.href || path.startsWith(`${n.href}/`);
+        const count = "badge" in n && !!data ? data : 0;
+        if (layout === "rail")
+          return (
+            <Link
+              key={n.href}
+              href={n.href}
+              title={t(`items.${n.key}`)}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "relative flex w-[5.5rem] flex-col items-center gap-1 rounded-xl px-1 pb-1.5 pt-2 text-[11px] font-semibold leading-tight transition-colors",
+                active ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+            >
+              <n.icon className="size-[18px]" aria-hidden />
+              <span className="max-w-full truncate">{t(`rail.${n.key}`)}</span>
+              {!!count && (
+                <span className="absolute right-2.5 top-1 min-w-4 rounded-full bg-approval px-1 text-center text-[10px] font-bold leading-4 text-approval-ink">
+                  <span className="sr-only">{t(`items.${n.key}`)}: </span>
+                  {count}
+                </span>
+              )}
+            </Link>
+          );
         return (
           <Link
             key={n.href}
             href={n.href}
             onClick={onNavigate}
+            aria-current={active ? "page" : undefined}
             className={cn(
-              "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
-              active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              "flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition-colors",
+              active ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
             )}
           >
-            <n.icon className="size-4" />
+            <n.icon className="size-[18px]" aria-hidden />
             <span className="flex-1">{t(`items.${n.key}`)}</span>
-            {"badge" in n && !!data && <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">{data}</span>}
+            {!!count && <span className="rounded-full bg-approval px-2 text-xs font-bold leading-5 text-approval-ink">{count}</span>}
           </Link>
         );
       })}
@@ -96,7 +123,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function KillSwitch() {
+function KillSwitch({ placement }: { placement: "rail" | "header" }) {
   const t = useTranslations("nav");
   const tc = useTranslations("common");
   const qc = useQueryClient();
@@ -117,10 +144,25 @@ function KillSwitch() {
   if (me && me.role !== "OWNER" && me.role !== "ADMIN") return null;
   return (
     <>
-      <Button size="sm" variant={engaged ? "default" : "destructive"} onClick={() => setOpen(true)} className="gap-1.5">
-        <OctagonX className="size-4" />
-        <span className="hidden sm:inline">{engaged ? t("killSwitch.release") : t("killSwitch.button")}</span>
-      </Button>
+      {placement === "rail" ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title={engaged ? t("killSwitch.release") : t("killSwitch.button")}
+          className={cn(
+            "flex w-[5.5rem] flex-col items-center gap-1 rounded-xl px-1 pb-1.5 pt-2 text-[11px] font-semibold leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            engaged ? "bg-destructive text-white" : "bg-destructive/12 text-destructive hover:bg-destructive/20",
+          )}
+        >
+          <OctagonX className="size-[18px]" aria-hidden />
+          {engaged ? t("killSwitch.releaseConfirm") : t("killSwitch.short")}
+        </button>
+      ) : (
+        <Button size="sm" variant={engaged ? "default" : "destructive"} onClick={() => setOpen(true)} className="gap-1.5">
+          <OctagonX className="size-4" />
+          <span className="hidden sm:inline">{engaged ? t("killSwitch.release") : t("killSwitch.button")}</span>
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
@@ -194,7 +236,7 @@ function Notifications() {
       <PopoverTrigger asChild>
         <Button size="icon" variant="ghost" className="relative" aria-label={t("notifications.title")}>
           <Bell className="size-4" />
-          {!!data?.unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-destructive" />}
+          {!!data?.unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-approval" />}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
@@ -243,55 +285,79 @@ function Shell({ children }: { children: ReactNode }) {
   const { data: me } = useMe();
   const live = useRealtimeStatus();
   const [mobile, setMobile] = useState(false);
+  // full-height pages (chat) size themselves to the viewport minus this: the header plus whatever banners show
+  const chrome = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = chrome.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => document.documentElement.style.setProperty("--chrome", `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
-  const sidebar = (
-    <div className="flex h-full flex-col gap-4 p-3">
-      <Link href="/dashboard" className="flex items-center gap-2 px-2 pt-1 font-semibold">
-        <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <Bot className="size-4" />
-        </span>
-        Workforce OS
-      </Link>
-      <Nav onNavigate={() => setMobile(false)} />
-      <div className="mt-auto space-y-2 rounded-lg border bg-card p-3 text-xs">
-        <div className="flex items-center gap-1.5 font-medium">
-          <Users className="size-3.5" /> {me?.workspace.name ?? "…"}
-        </div>
-        <Link href="/account" onClick={() => setMobile(false)} className="block text-muted-foreground hover:text-foreground">
-          <span className="block truncate font-medium text-foreground">{me?.user.name}</span>
-          <span className="block truncate">
-            {me?.user.email} · {me ? ts(`role.${me.role}`) : ""}
-          </span>
-        </Link>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <span className={cn("size-2 rounded-full", live ? "bg-emerald-500" : "bg-zinc-400")} /> {live ? t("live.connected") : t("live.connecting")}
-        </div>
-      </div>
-    </div>
+  const brand = (
+    <Link href="/dashboard" aria-label="Workforce OS" className="sign flex size-11 items-center justify-center rounded-xl" data-state="lit">
+      <span className="font-display text-[1.45rem]" aria-hidden>
+        {/* i18n-ignore: the brand mark, not a word */}
+        W
+      </span>
+    </Link>
+  );
+  const liveDot = (
+    <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground" role="status">
+      <span className={cn("size-2 rounded-full", live ? "bg-success" : "bg-muted-foreground/50")} aria-hidden /> {live ? t("live.connected") : t("live.connecting")}
+    </span>
   );
 
   return (
     <div className="flex min-h-screen">
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r bg-sidebar lg:block">{sidebar}</aside>
+      <aside className="sticky top-0 hidden h-screen w-[6.25rem] shrink-0 flex-col items-center gap-4 overflow-y-auto border-r bg-sidebar py-4 [scrollbar-width:none] lg:flex">
+        {brand}
+        <Nav layout="rail" />
+        <div className="mt-auto flex flex-col items-center gap-3">
+          <KillSwitch placement="rail" />
+          <span className={cn("size-2 rounded-full", live ? "bg-success" : "bg-muted-foreground/50")} title={live ? t("live.connected") : t("live.connecting")} aria-hidden />
+        </div>
+      </aside>
       <Sheet open={mobile} onOpenChange={setMobile}>
-        <SheetContent side="left" className="w-64 bg-sidebar p-0">
+        <SheetContent side="left" className="w-72 bg-sidebar p-0">
           <SheetTitle className="sr-only">{t("navigation")}</SheetTitle>
-          {sidebar}
+          <div className="flex h-full flex-col gap-5 overflow-y-auto p-4">
+            <div className="flex items-center gap-3">
+              {brand}
+              <div className="min-w-0">
+                <div className="font-display truncate text-xl">{me?.workspace.name ?? "Workforce OS"}</div>
+                {liveDot}
+              </div>
+            </div>
+            <Nav layout="list" onNavigate={() => setMobile(false)} />
+            <Link href="/account" onClick={() => setMobile(false)} className="mt-auto block rounded-xl bg-secondary/60 p-3 text-xs text-muted-foreground hover:text-foreground">
+              <span className="block truncate text-sm font-semibold text-foreground">{me?.user.name}</span>
+              <span className="block truncate">
+                {me?.user.email} · {me ? ts(`role.${me.role}`) : ""}
+              </span>
+            </Link>
+          </div>
         </SheetContent>
       </Sheet>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/85 px-4 backdrop-blur">
+        <div ref={chrome} className="sticky top-0 z-30">
+        <header className="flex h-14 items-center gap-2 border-b bg-background px-4 sm:px-6 lg:px-8">
           <Button size="icon" variant="ghost" className="lg:hidden" onClick={() => setMobile(true)} aria-label={t("menu")}>
             <Menu className="size-5" />
           </Button>
-          <div className="flex-1" />
-          <KillSwitch />
+          <div className="min-w-0 flex-1">
+            <span className="font-display block truncate text-xl">{me?.workspace.name ?? ""}</span>
+          </div>
+          <div className="lg:hidden">
+            <KillSwitch placement="header" />
+          </div>
           <Notifications />
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" variant="ghost" className="rounded-full" aria-label={t("accountMenu")}>
-                <span className="flex size-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold text-foreground ring-1 ring-border">
                   {(me?.user.name ?? "?").trim().charAt(0).toUpperCase()}
                 </span>
               </Button>
@@ -340,20 +406,21 @@ function Shell({ children }: { children: ReactNode }) {
         </header>
         <QuotaBanner />
         {me?.workspace.killSwitch && (
-          <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-medium text-white">
+          <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-semibold text-white sm:px-6 lg:px-8">
             <OctagonX className="size-4" /> {t("killSwitch.banner")}
           </div>
         )}
         {me?.workspace.demoMode && (
-          <div className="flex flex-wrap items-center gap-2 bg-violet-600 px-4 py-1.5 text-sm text-white">
-            <CheckCircle2 className="size-4" /> {t("demoBanner")}
-            <Link href="/settings" className="underline underline-offset-2">
+          <div className="flex items-center gap-2 border-b bg-secondary px-4 py-1.5 text-sm sm:px-6 lg:px-8">
+            <span className="shrink-0 rounded-md bg-[var(--sign-ungu)] px-1.5 text-xs font-bold leading-5 text-white">{t("demoChip")}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{t("demoBanner")}</span>
+            <Link href="/settings" className="shrink-0 font-semibold underline underline-offset-2">
               {t("turnOff")}
             </Link>
           </div>
         )}
         {me && !me.claude.credentialPresent && !me.workspace.demoMode && (
-          <div className="bg-amber-500/15 px-4 py-1.5 text-sm text-amber-800 dark:text-amber-200">
+          <div className="bg-warning/15 px-4 py-1.5 text-sm text-warning sm:px-6 lg:px-8">
             {t.rich("noCredentialBanner", {
               link: (c) => (
                 <Link href="/settings" className="underline underline-offset-2">
@@ -363,7 +430,8 @@ function Shell({ children }: { children: ReactNode }) {
             })}
           </div>
         )}
-        <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">{children}</main>
+        </div>
+        <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
       </div>
     </div>
   );

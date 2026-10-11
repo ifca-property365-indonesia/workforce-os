@@ -12,9 +12,9 @@ export default async function ChangePasswordPage() {
   if (!session.mustChangePassword) redirect("/dashboard");
   const t = await getTranslations("auth");
   return (
-    <Card className="w-full max-w-sm">
+    <Card className="w-full max-w-sm rounded-2xl">
       <CardHeader>
-        <CardTitle className="text-2xl">{t("changePassword.title")}</CardTitle>
+        <CardTitle className="font-display text-[2.1rem]">{t("changePassword.title")}</CardTitle>
         <CardDescription>{t("changePassword.description", { email: session.email })}</CardDescription>
       </CardHeader>
       <CardContent>

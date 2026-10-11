@@ -85,8 +85,8 @@ function ClientDialog({ client, onClose }: { client?: Client; onClose: () => voi
 
 const HEALTH_TONE: Record<Client["projects"][number]["health"], string> = {
   late: "bg-destructive/15 text-destructive",
-  at_risk: "bg-amber-500/20 text-amber-700 dark:text-amber-300",
-  on_track: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+  at_risk: "bg-warning/20 text-warning",
+  on_track: "bg-success/15 text-success",
   done: "bg-muted text-muted-foreground",
 };
 

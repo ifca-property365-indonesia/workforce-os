@@ -157,7 +157,7 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
 }
 
 /** missed = the worker was down past the catch-up window; skipped_overlap = the previous firing was still running */
-const RUN_STATUS_TONE: Record<string, string> = { failed: "text-destructive", missed: "text-amber-600", skipped_overlap: "text-muted-foreground" };
+const RUN_STATUS_TONE: Record<string, string> = { failed: "text-destructive", missed: "text-warning", skipped_overlap: "text-muted-foreground" };
 
 function History({ id }: { id: string }) {
   const t = useTranslations("routines");
@@ -237,8 +237,8 @@ export default function RoutinesPage() {
                   <div className="flex flex-wrap items-center gap-2 font-medium">
                     {r.name}
                     <code className="rounded bg-muted px-1.5 text-xs">{r.cron}</code>
-                    {r.perClient && <span className="rounded bg-sky-500/15 px-1.5 text-xs text-sky-700 dark:text-sky-300">{tr("badge.perClient")}</span>}
-                    {r.dryRun && <span className="rounded bg-violet-500/15 px-1.5 text-xs text-violet-700 dark:text-violet-300">{tr("badge.dryRun")}</span>}
+                    {r.perClient && <span className="rounded bg-[var(--sign-biru)]/15 px-1.5 text-xs text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]">{tr("badge.perClient")}</span>}
+                    {r.dryRun && <span className="rounded bg-[var(--sign-ungu)]/15 px-1.5 text-xs text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]">{tr("badge.dryRun")}</span>}
                     {r.overlap === "queue" && <span className="rounded bg-muted px-1.5 text-xs text-muted-foreground">{tr("badge.queue")}</span>}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

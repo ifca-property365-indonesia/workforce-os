@@ -308,7 +308,7 @@ export function WebhooksSettings({ owner, admin }: { owner: boolean; admin: bool
           </DialogHeader>
           {revealed && (
             <div className="min-w-0 space-y-3 text-sm">
-              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">{t("secretOnce")}</p>
+              <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">{t("secretOnce")}</p>
               <SecretRow label={t("url")} value={revealed.url} copyLabel={tc("copy")} copied={tc("copied")} />
               <SecretRow label={t("secret")} value={revealed.secret} copyLabel={tc("copy")} copied={tc("copied")} />
               <div role="group" aria-labelledby="webhook-example-label" className="space-y-1.5">

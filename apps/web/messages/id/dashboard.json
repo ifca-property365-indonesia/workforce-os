@@ -1,5 +1,5 @@
 {
-  "title": "Dashboard",
+  "title": "Dasbor",
   "description": "Hasil kerja, biaya, dan pengawasan seluruh tenaga kerja AI Anda (1 kredit = $0,01).",
   "runDemo": "Jalankan demo",
   "demoStarted": "Demo dimulai — pantau papan tugas dan persetujuan.",
@@ -56,5 +56,16 @@
       "escalated": "dieskalasi",
       "muted": "dibisukan"
     }
-  }
+  },
+  "office": {
+    "title": "Kantor",
+    "open": "Buka kantor",
+    "empty": "Belum ada karyawan. Rekrut satu dan papan namanya akan muncul di sini."
+  },
+  "waiting": {
+    "title": "Menunggu persetujuanmu",
+    "empty": "Tidak ada yang menunggumu.",
+    "all": "Buka antrean persetujuan"
+  },
+  "numbers": "Angka bulan ini"
 }

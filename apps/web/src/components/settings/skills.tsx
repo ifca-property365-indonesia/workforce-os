@@ -42,9 +42,9 @@ const UPLOAD_MAX = SKILL_BODY_MAX + 8 * 1024;
 
 const SOURCE_TONE: Record<SkillSource, string> = {
   user: "",
-  learned: "border-sky-500/40 text-sky-700 dark:text-sky-300",
-  import: "border-violet-500/40 text-violet-700 dark:text-violet-300",
-  builtin: "border-emerald-500/40 text-emerald-700 dark:text-emerald-300",
+  learned: "border-[var(--sign-biru)]/40 text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]",
+  import: "border-[var(--sign-ungu)]/40 text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]",
+  builtin: "border-success/40 text-success",
 };
 
 export function SkillSourceBadge({ source }: { source: SkillSource }) {
@@ -59,7 +59,7 @@ export function SkillSourceBadge({ source }: { source: SkillSource }) {
 export function UntrustedBadge() {
   const t = useTranslations("skills");
   return (
-    <Badge variant="outline" className="border-amber-500/50 text-amber-700 dark:text-amber-300" title={t("untrustedHelp")}>
+    <Badge variant="outline" className="border-warning/50 text-warning" title={t("untrustedHelp")}>
       <ShieldAlert /> {t("untrusted")}
     </Badge>
   );
@@ -143,7 +143,7 @@ function SkillEditor({ state, onClose }: { state: EditorState; onClose: () => vo
             {existing.untrusted && <UntrustedBadge />}
           </div>
         )}
-        {existing?.untrusted && !readOnly && <p className="text-xs text-amber-700 dark:text-amber-300">{t("editor.untrustedKept")}</p>}
+        {existing?.untrusted && !readOnly && <p className="text-xs text-warning">{t("editor.untrustedKept")}</p>}
         {state.kind === "new" && (
           <div className="inline-flex w-fit rounded-md border p-0.5 text-sm">
             {(["form", "markdown"] as const).map((m) => (
@@ -160,7 +160,7 @@ function SkillEditor({ state, onClose }: { state: EditorState; onClose: () => vo
             <p className="text-xs text-muted-foreground">{t("editor.markdownHelp")}</p>
             {parsed &&
               (parsed.ok ? (
-                <p className="text-xs text-emerald-700 dark:text-emerald-300">{t("editor.parsed", { slug: parsed.name, description: parsed.description })}</p>
+                <p className="text-xs text-success">{t("editor.parsed", { slug: parsed.name, description: parsed.description })}</p>
               ) : (
                 <p className="text-xs text-destructive">{t("editor.parseError", { reason: parsed.error, line: parsed.line ?? 0 })}</p>
               ))}

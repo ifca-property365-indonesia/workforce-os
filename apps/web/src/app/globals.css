@@ -3,58 +3,80 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Papan Nama Ruko. The office is a row of shops at night: every AI employee is a backlit acrylic sign
+ * (lit while working, flickering during an incident, dark when idle). The ground stays a neutral warm dark
+ * (a strict four-step ramp: background, card, secondary, border) so the signs carry the colour. Light mode
+ * is the same street by day. Dark is the default theme (see the theme script in app/layout.tsx).
+ */
 :root {
-  --radius: 0.6rem;
-  --background: oklch(0.985 0.002 260);
-  --foreground: oklch(0.18 0.01 265);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.01 265);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.01 265);
-  --primary: oklch(0.45 0.17 264);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0.006 264);
-  --secondary-foreground: oklch(0.25 0.02 265);
-  --muted: oklch(0.955 0.006 264);
-  --muted-foreground: oklch(0.5 0.015 265);
-  --accent: oklch(0.94 0.02 264);
-  --accent-foreground: oklch(0.25 0.05 265);
-  --destructive: oklch(0.58 0.22 27);
-  --success: oklch(0.6 0.15 155);
-  --warning: oklch(0.75 0.15 75);
-  --border: oklch(0.91 0.006 264);
-  --input: oklch(0.91 0.006 264);
-  --ring: oklch(0.55 0.15 264);
-  --sidebar: oklch(0.975 0.004 264);
+  --radius: 0.75rem;
+  /* day: cool concrete, signs unlit but coloured */
+  --background: #f3f1f4;
+  --foreground: #1b1620;
+  --card: #ffffff;
+  --card-foreground: #1b1620;
+  --popover: #ffffff;
+  --popover-foreground: #1b1620;
+  --primary: #1b1620;
+  --primary-foreground: #fff8ee;
+  --secondary: #e9e5ec;
+  --secondary-foreground: #2a2330;
+  --muted: #ebe7ee;
+  --muted-foreground: #5c5165;
+  --accent: #e4dfe8;
+  --accent-foreground: #1b1620;
+  --destructive: #cf2c22;
+  --success: #12795a;
+  --warning: #9a6700;
+  --border: #dcd5e0;
+  --input: #d3cbd8;
+  --ring: #c48a00;
+  --sidebar: #ebe7ee;
+
+  /* the acrylic set: one per employee, picked from the employee id (lib/sign.ts) */
+  --sign-merah: #d42a20;
+  --sign-kuning: #f6b51e;
+  --sign-tosca: #19b3a4;
+  --sign-biru: #3561d6;
+  --sign-hijau: #45ad55;
+  --sign-oranye: #ee7418;
+  --sign-ungu: #8752d4;
+  --sign-magenta: #c02f7c;
+  /* "needs your approval" is always this amber strip */
+  --approval: #f6b51e;
+  --approval-hi: #ffd04e;
+  --approval-ink: #2a1a02;
 }
 
 .dark {
-  --background: oklch(0.16 0.008 265);
-  --foreground: oklch(0.96 0.003 265);
-  --card: oklch(0.2 0.01 265);
-  --card-foreground: oklch(0.96 0.003 265);
-  --popover: oklch(0.2 0.01 265);
-  --popover-foreground: oklch(0.96 0.003 265);
-  --primary: oklch(0.68 0.15 264);
-  --primary-foreground: oklch(0.16 0.01 265);
-  --secondary: oklch(0.26 0.012 265);
-  --secondary-foreground: oklch(0.96 0.003 265);
-  --muted: oklch(0.26 0.012 265);
-  --muted-foreground: oklch(0.7 0.012 265);
-  --accent: oklch(0.28 0.03 265);
-  --accent-foreground: oklch(0.96 0.003 265);
-  --destructive: oklch(0.65 0.2 25);
-  --success: oklch(0.7 0.14 155);
-  --warning: oklch(0.8 0.14 75);
-  --border: oklch(0.3 0.012 265);
-  --input: oklch(0.32 0.012 265);
-  --ring: oklch(0.6 0.13 264);
-  --sidebar: oklch(0.18 0.009 265);
+  /* night: warm asphalt */
+  --background: #110e15;
+  --foreground: #f7efe6;
+  --card: #18141d;
+  --card-foreground: #f7efe6;
+  --popover: #1e1924;
+  --popover-foreground: #f7efe6;
+  --primary: #fff3e4;
+  --primary-foreground: #17121c;
+  --secondary: #211b27;
+  --secondary-foreground: #f7efe6;
+  --muted: #211b27;
+  --muted-foreground: #b3a7b9;
+  --accent: #2a2231;
+  --accent-foreground: #f7efe6;
+  --destructive: #ff5a4c;
+  --success: #3fd0a0;
+  --warning: #f6b51e;
+  --border: #2f2737;
+  --input: #3a3043;
+  --ring: #f6b51e;
+  --sidebar: #18141d;
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 6px);
+  --radius-md: calc(var(--radius) - 3px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
@@ -74,27 +96,103 @@
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-approval: var(--approval);
+  --color-approval-ink: var(--approval-ink);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-sidebar: var(--sidebar);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  body { @apply bg-background text-foreground antialiased; }
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+  body { @apply bg-background text-foreground antialiased; font-variant-numeric: tabular-nums; }
+  ::selection { background: var(--approval); color: var(--approval-ink); }
+  input, textarea { caret-color: var(--ring); }
+  a.text-primary { text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 3px; }
+  a.text-primary:hover { text-decoration-color: currentColor; }
+  * { scrollbar-width: thin; scrollbar-color: var(--input) transparent; }
 }
 
-/* Categorical chart slots (dataviz reference palette, validated light/dark) */
-:root {
-  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
-  --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948;
-  --series-other: #a3a29c;
+/* sign-painter capitals: page titles, names on signs, big numbers */
+@utility font-display {
+  font-family: var(--font-shoulders), "Arial Narrow", ui-sans-serif, sans-serif;
+  font-variation-settings: "opsz" 72;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 0.95;
 }
-.dark {
-  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
-  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
-  --series-other: #6f6e69;
+
+/*
+ * The sign: backlit acrylic. --sign is the panel colour, --sign-ink the lettering. A lit sign has an inner
+ * luminance (brighter at the centre), a 1px inner highlight and its colour cast on the ground below.
+ * States: [data-state=lit] steady, [data-state=starting] one flicker-on, [data-state=fault] flickers until the
+ * incident is handled, [data-state=off] dark acrylic with dim lettering. By day (light theme) an unlit sign
+ * keeps its colour but loses its light.
+ */
+.sign {
+  --sign: var(--sign-merah);
+  --sign-ink: #fff8ee;
+  position: relative;
+  color: var(--sign-ink);
+  background: radial-gradient(120% 95% at 50% 32%, color-mix(in srgb, var(--sign) 78%, white), var(--sign) 62%, color-mix(in srgb, var(--sign) 84%, black));
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.2),
+    inset 0 -16px 26px -14px rgb(0 0 0 / 0.28),
+    0 22px 30px -18px color-mix(in srgb, var(--sign) 75%, transparent);
+  transition: filter 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sign[data-state="starting"] { animation: sign-on 1.4s cubic-bezier(0.16, 1, 0.3, 1) 1; }
+.sign[data-state="fault"] { animation: sign-fault 4s steps(1) infinite; }
+/* by day an unlit sign is a pale tint of its colour with its colour as lettering, and casts no light */
+.sign[data-state="off"] {
+  color: color-mix(in srgb, var(--sign) 45%, #1b1620);
+  background: color-mix(in srgb, var(--sign) 14%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sign) 32%, transparent);
+}
+/* by night it is dark acrylic: the lettering still readable, the panel gives no light */
+.dark .sign[data-state="off"] {
+  color: color-mix(in srgb, var(--sign) 45%, #d8cfdc);
+  background: #1d1922;
+  box-shadow: inset 0 0 0 1px #2c2533;
+}
+
+@keyframes sign-on {
+  0%, 14% { filter: brightness(0.35) saturate(0.3); }
+  16% { filter: brightness(1.2); }
+  20% { filter: brightness(0.5) saturate(0.5); }
+  26%, 100% { filter: none; }
+}
+@keyframes sign-fault {
+  0%, 100% { filter: none; }
+  8% { filter: brightness(0.35) saturate(0.4); }
+  10% { filter: none; }
+  12% { filter: brightness(0.35) saturate(0.4); }
+  14%, 61% { filter: none; }
+  63% { filter: brightness(0.4) saturate(0.4); }
+  66% { filter: none; }
+}
+
+/* the approval strip: an amber lightbox across the top of every pending approval */
+.approval-strip {
+  color: var(--approval-ink);
+  background: radial-gradient(140% 120% at 50% 30%, var(--approval-hi), var(--approval) 70%);
+  box-shadow: inset 0 -10px 18px -10px rgb(0 0 0 / 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sign[data-state="starting"], .sign[data-state="fault"] { animation: none; }
+  .sign { transition: none; }
+}
+
+/* Categorical chart slots: the acrylic set, so a chart's series match the employees' signs */
+:root {
+  --series-1: var(--sign-merah); --series-2: var(--sign-biru); --series-3: var(--sign-tosca); --series-4: var(--sign-kuning);
+  --series-5: var(--sign-magenta); --series-6: var(--sign-hijau); --series-7: var(--sign-ungu); --series-8: var(--sign-oranye);
+  --series-other: #8c8194;
 }

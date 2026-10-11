@@ -6,16 +6,20 @@ import { Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useR
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertOctagon, ChevronLeft, Loader2, Plus, Trash2, UsersRound } from "lucide-react";
 import { hasRole, type ChatMessageDTO } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState } from "@/components/layout/common";
 import { Composer, type MentionCandidate } from "@/components/chat/composer";
 import { MessageItem } from "@/components/chat/message-item";
+import { OfficeFacade, useSignColors } from "@/components/office/employee-sign";
+import { PendingApprovalsList, usePendingApprovals } from "@/components/approvals/pending-list";
+import type { IncidentRow } from "@/components/inspector/incidents-card";
 import { api, ApiError } from "@/lib/api";
 import { applyRealtimeMessage, mergeMessages } from "@/lib/chat-thread";
 import { useRealtime } from "@/lib/events";
@@ -192,6 +196,16 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
       if (data && !data.messages.some((m) => m.id === target)) anchor.current = null;
       else return;
     }
+    // opening a thread with a decision waiting: start at that approval (its amber strip in view), not at the bottom
+    if (firstPaint && messages.length) {
+      const waiting = [...messages].reverse().find((m) => m.approvals?.some((a) => a.status === "PENDING"));
+      const card = waiting && document.getElementById(waiting.approvals!.find((a) => a.status === "PENDING")!.id);
+      if (card) {
+        stick.current = false;
+        card.scrollIntoView({ behavior: "auto", block: "start" });
+        return;
+      }
+    }
     if (!stick.current) return;
     // a new message glides in; streamed text and the first render jump, so the view keeps up with every delta
     if (added && !firstPaint) {
@@ -337,22 +351,34 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
         .map((e) => ({ id: e.id, name: e.name, avatar: e.avatar, role: e.role }))
     : null;
 
+  const colors = useSignColors();
+  const facadeIds = team ? (members ?? []).map((x) => x.id) : emp ? [emp.id] : [];
+
   return (
-    <div className="flex h-[calc(100vh-8.5rem)] flex-col rounded-xl border bg-card">
-      <div className="flex items-center gap-2 border-b px-4 py-3">
-        <Avatar emoji={emp?.avatar ?? "👥"} />
-        <div className="min-w-0">
-          <div className="truncate font-medium">{emp?.name ?? team?.name ?? t("fallbackTitle")}</div>
-          <div className="truncate text-xs text-muted-foreground">{emp ? `${emp.role} · ${ts(`autonomy.${emp.autonomyLevel}`)}` : t(`teamMode.${team?.responderMode ?? "lead"}`)}</div>
+    <section aria-label={emp?.name ?? team?.name ?? t("fallbackTitle")} className="flex h-[calc(100dvh-var(--chrome,3.5rem)-2.5rem)] lg:h-[calc(100dvh-var(--chrome,3.5rem)-3.5rem)] min-h-[34rem] flex-col overflow-hidden rounded-2xl border bg-card">
+      <header className="border-b px-4 pt-4 sm:px-5">
+        <Link href="/chat" className="mb-2 inline-flex min-h-9 items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground md:hidden">
+          <ChevronLeft className="size-4" aria-hidden /> {t("conversations")}
+        </Link>
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+          <div className="min-w-0">
+            <h2 className="font-display truncate text-[2rem]">{emp?.name ?? team?.name ?? t("fallbackTitle")}</h2>
+            <p className="mt-1 hidden truncate text-sm text-muted-foreground sm:block">
+              {emp ? `${emp.role} · ${ts(`autonomy.${emp.autonomyLevel}`)}` : t(`teamMode.${team?.responderMode ?? "lead"}`)}
+            </p>
+          </div>
         </div>
-      </div>
-      <div ref={scroller} role="log" aria-live="polite" aria-label={t("threadLabel")} className="flex-1 space-y-4 overflow-y-auto p-4">
+        {!!facadeIds.length && <OfficeFacade ids={facadeIds} leadId={team?.leadId} size="sm" className="mt-3 sm:hidden" />}
+        {!!facadeIds.length && <OfficeFacade ids={facadeIds} leadId={team?.leadId} size="md" className="mt-3 hidden sm:flex" />}
+      </header>
+      <div ref={scroller} role="log" aria-live="polite" aria-label={t("threadLabel")} className="flex-1 space-y-6 overflow-y-auto px-4 py-5 sm:px-6">
         {!messages.length && <p className="pt-10 text-center text-sm text-muted-foreground">{t("emptyThread")}</p>}
         {messages.map((m) => (
           <MessageItem
             key={m.id}
             m={m}
             author={m.employeeId ? empById.get(m.employeeId) : undefined}
+            color={m.employeeId ? colors.get(m.employeeId) : emp ? colors.get(emp.id) : undefined}
             fallbackAvatar={emp?.avatar}
             teamChat={!!conv.teamId}
             canDecide={canDecide}
@@ -379,7 +405,75 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
       </div>
       <Composer members={members} busy={busy} sending={send.isPending} onSend={(text, files) => send.mutateAsync({ text, files })} />
       {taskFrom !== null && <TaskFromChat text={taskFrom} employeeId={leadId} onClose={() => setTaskFrom(null)} />}
-    </div>
+    </section>
+  );
+}
+
+const OPEN_INCIDENT = new Set(["open", "handling", "escalated"]);
+
+/** Beside the thread on wide screens: what is waiting for you across the office, and what is broken. */
+function ChatContext() {
+  const t = useTranslations("chat");
+  const fmt = useFormat();
+  const { data: emps } = useEmployees();
+  const live = (emps ?? []).filter((e) => e.status !== "ARCHIVED");
+  const spent = live.reduce((n, e) => n + (e.spentToday ?? 0), 0);
+  const cap = live.reduce((n, e) => n + e.dailyBudget, 0);
+  const { data: pending } = usePendingApprovals();
+  const { data: inc } = useQuery({
+    queryKey: ["incidents"],
+    queryFn: () => api.get<{ incidents: IncidentRow[]; resolved7d: number }>("/api/incidents"),
+    refetchInterval: 60_000,
+  });
+  const incidents = (inc?.incidents ?? []).filter((i) => OPEN_INCIDENT.has(i.status));
+  return (
+    <aside aria-label={t("context.title")} className="hidden h-[calc(100dvh-var(--chrome,3.5rem)-2.5rem)] lg:h-[calc(100dvh-var(--chrome,3.5rem)-3.5rem)] min-h-[34rem] flex-col gap-6 overflow-y-auto rounded-2xl border bg-card p-5 xl:flex">
+      <h2 className="font-display text-[1.6rem]">{t("context.title")}</h2>
+      <div>
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("context.approvals")}</h3>
+          <span className="font-display text-[1.9rem] text-approval">{pending?.length ?? "…"}</span>
+        </div>
+        <PendingApprovalsList approvals={pending} empty={t("context.noApprovals")} />
+        {!!pending?.length && (
+          <Link href="/approvals" className="mt-2 inline-block text-xs font-semibold text-muted-foreground underline underline-offset-2 hover:text-foreground">
+            {t("context.openInbox")}
+          </Link>
+        )}
+      </div>
+      <div>
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-muted-foreground">{t("context.incidents")}</h3>
+          <span className={cn("font-display text-[1.9rem]", incidents.length ? "text-destructive" : "text-muted-foreground")}>{inc ? incidents.length : "…"}</span>
+        </div>
+        {inc && !incidents.length && <p className="text-sm text-muted-foreground">{t("context.noIncidents")}</p>}
+        <ul className="space-y-2">
+          {incidents.slice(0, 4).map((i) => (
+            <li key={i.id} className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm">
+              <div className="flex items-center gap-1.5 font-semibold text-destructive">
+                <AlertOctagon className="size-3.5 shrink-0" aria-hidden /> {i.employee?.name ?? ""}
+              </div>
+              <p className="mt-0.5 line-clamp-3 text-foreground/85">{i.summary}</p>
+              {i.task && (
+                <Link href={`/tasks/${i.task.id}`} className="mt-1 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
+                  {i.task.title}
+                </Link>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+      {cap > 0 && (
+        <div className="mt-auto border-t pt-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-muted-foreground">{t("context.cost")}</h3>
+            <span className="font-display text-[1.6rem] tabular-nums">{fmt.credits(spent)}</span>
+          </div>
+          <Progress value={Math.min(100, (spent / cap) * 100)} className="mt-2 h-1.5" />
+          <p className="mt-1.5 text-xs text-muted-foreground">{t("context.ofCap", { cap: fmt.credits(cap) })}</p>
+        </div>
+      )}
+    </aside>
   );
 }
 
@@ -430,45 +524,56 @@ function ChatPage() {
     }
   }, [wantEmp, data, router, create]);
 
+  const colors = useSignColors();
   return (
-    <div className="grid gap-4 md:grid-cols-[260px_1fr] [&>*]:min-w-0">
-      <div className="space-y-3">
-        <div className="rounded-xl border bg-card p-3">
-          <div className="mb-2 flex items-center gap-1 text-sm font-medium">
-            <Plus className="size-4" /> {t("newChat")}
-          </div>
+    <div className="grid gap-4 md:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)_19rem] [&>*]:min-w-0">
+      {/* on a phone an open conversation takes the screen; its header links back to this list */}
+      <div className={cn("flex-col gap-4 md:flex md:h-[calc(100dvh-var(--chrome,3.5rem)-2.5rem)] lg:h-[calc(100dvh-var(--chrome,3.5rem)-3.5rem)] md:min-h-[34rem]", conv ? "hidden" : "flex")}>
+        <div className="rounded-2xl border bg-card p-3">
+          <h2 className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+            <Plus className="size-4" aria-hidden /> {t("newChat")}
+          </h2>
           <div className="flex flex-wrap gap-1.5">
             {emps
               ?.filter((e) => e.status !== "ARCHIVED")
               .map((e) => (
-                <Button key={e.id} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => create.mutate({ employeeId: e.id })}>
-                  {e.avatar} {e.name}
+                <Button key={e.id} size="sm" variant="outline" className="gap-1.5 px-2" onClick={() => create.mutate({ employeeId: e.id })}>
+                  <Avatar emoji={e.avatar} size="sm" color={colors.get(e.id)} className="size-5 rounded-md text-xs" /> {e.name}
                 </Button>
               ))}
             {teams
               ?.filter((t) => t.leadId)
               .map((t) => (
-                <Button key={t.id} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => create.mutate({ teamId: t.id })}>
-                  👥 {t.name}
+                <Button key={t.id} size="sm" variant="outline" className="gap-1.5 px-2" onClick={() => create.mutate({ teamId: t.id })}>
+                  <UsersRound className="size-4" aria-hidden /> {t.name}
                 </Button>
               ))}
           </div>
         </div>
-        <div className="space-y-1">
+        <nav aria-label={t("conversations")} className="min-h-0 flex-1 space-y-1 overflow-y-auto">
           {data?.map((c) => {
             const e = c.employeeId ? emps?.find((x) => x.id === c.employeeId) : undefined;
+            const active = c.id === selected;
             return (
-              <div key={c.id} className={cn("group flex items-center gap-2 rounded-lg px-2 py-2 text-sm", c.id === selected ? "bg-primary/10" : "hover:bg-accent")}>
-                <Link href={`/chat?c=${c.id}`} className="flex min-w-0 flex-1 items-center gap-2">
-                  <span>{e?.avatar ?? "👥"}</span>
+              <div key={c.id} className={cn("group flex items-center gap-2 rounded-xl px-2.5 py-2 text-sm", active ? "bg-secondary" : "hover:bg-secondary/60")}>
+                <Link href={`/chat?c=${c.id}`} aria-current={active ? "page" : undefined} className="flex min-w-0 flex-1 items-center gap-2.5">
+                  {e ? (
+                    <Avatar emoji={e.avatar} size="sm" color={colors.get(e.id)} />
+                  ) : (
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent">
+                      <UsersRound className="size-4" aria-hidden />
+                    </span>
+                  )}
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{c.title}</span>
-                    <span className="block text-[11px] text-muted-foreground">{e?.name ?? t("team")} · {fmt.ago(c.updatedAt)}</span>
+                    <span className="block truncate font-semibold">{c.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {e?.name ?? t("team")} · {fmt.ago(c.updatedAt)}
+                    </span>
                   </span>
                 </Link>
                 <button
                   type="button"
-                  className="rounded opacity-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+                  className="rounded-lg p-1 opacity-0 hover:bg-accent focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
                   onClick={() => del.mutate(c.id)}
                   aria-label={t("deleteChat")}
                   title={t("deleteChat")}
@@ -478,9 +583,10 @@ function ChatPage() {
               </div>
             );
           })}
-        </div>
+        </nav>
       </div>
       {conv ? <ChatView key={conv.id} conv={conv} focusMessageId={sp.get("m")} /> : <EmptyState title={t("empty.title")} description={t("empty.description")} />}
+      <ChatContext />
     </div>
   );
 }

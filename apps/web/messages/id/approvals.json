@@ -69,7 +69,8 @@
     "waitingForAdmin": "Menunggu keputusan admin",
     "showDetails": "Tampilkan detail",
     "hideDetails": "Sembunyikan detail",
-    "openInInbox": "Buka di Persetujuan"
+    "openInInbox": "Buka di Persetujuan",
+    "stripPending": "Perlu persetujuan"
   },
   "bash": {
     "runsWhere": "Menjalankan persis perintah ini di sandbox karyawan (workspace yang sama, tanpa akses ke host, jaringan hanya yang diizinkan, git hooks dinonaktifkan)."
@@ -104,5 +105,12 @@
     "savedAs": "Jika disetujui, skill disimpan di Pengaturan → Skill, tempat Anda dapat menonaktifkan, mengubah, atau menghapusnya.",
     "target": "Untuk {name}",
     "slug": "Nama"
+  },
+  "reasons": {
+    "autonomy": "Aksi tidak bisa dibatalkan: butuh persetujuanmu (otonomi {level}).",
+    "allowList": "Aksi tidak bisa dibatalkan di luar daftar izin Pemilik: butuh persetujuanmu.",
+    "leak": "Pengaman output menemukan kemungkinan rahasia atau data pribadi di payload.",
+    "taint": "Run ini memproses konten yang tidak tepercaya (input luar, halaman web, atau hasil tool), jadi aksi yang tidak bisa dibatalkan butuh persetujuan.",
+    "demoDryRun": "Demo: dijalankan sebagai dry run."
   }
 }

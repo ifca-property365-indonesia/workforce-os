@@ -78,5 +78,17 @@
     "next": "Versi berikutnya",
     "position": "{index}/{count}"
   },
-  "conversationChanged": "Percakapan berubah — dimuat ulang"
+  "conversationChanged": "Percakapan berubah — dimuat ulang",
+  "context": {
+    "title": "Hari ini",
+    "approvals": "Menunggu persetujuan",
+    "noApprovals": "Tidak ada yang menunggumu.",
+    "incidents": "Insiden terbuka",
+    "noIncidents": "Tidak ada insiden terbuka.",
+    "openInbox": "Buka antrean persetujuan",
+    "members": "{count, plural, other {# anggota}}",
+    "cost": "Biaya hari ini",
+    "ofCap": "dari batas harian {cap}"
+  },
+  "conversations": "Percakapan"
 }

@@ -32,5 +32,8 @@
   "openTask": "Open task",
   "openEmployee": "Open employee",
   "noWebgl": "3D is not available in this browser. Showing the 2D view.",
-  "reception": "Reception"
+  "reception": "Reception",
+  "facade": "Employee signs",
+  "incident": "incident",
+  "lead": "LEAD"
 }

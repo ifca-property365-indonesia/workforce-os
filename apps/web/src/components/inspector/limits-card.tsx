@@ -53,14 +53,14 @@ export function LimitsCard() {
             <div key={w.type} className="space-y-1">
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">{KNOWN.includes(w.type) ? t(`limits.window.${w.type}`) : w.type}</span>
-                <span className={cn("tabular-nums", pct >= 90 ? "text-destructive" : pct >= 70 ? "text-amber-600" : "text-muted-foreground")}>
+                <span className={cn("tabular-nums", pct >= 90 ? "text-destructive" : pct >= 70 ? "text-warning" : "text-muted-foreground")}>
                   {w.utilization === null ? "—" : t("limits.used", { pct })}
                 </span>
               </div>
               <Progress
                 value={pct}
                 aria-label={KNOWN.includes(w.type) ? t(`limits.window.${w.type}`) : w.type}
-                className={cn("h-2", pct >= 90 && "[&>div]:bg-destructive", pct >= 70 && pct < 90 && "[&>div]:bg-amber-500")}
+                className={cn("h-2", pct >= 90 && "[&>div]:bg-destructive", pct >= 70 && pct < 90 && "[&>div]:bg-warning")}
               />
               <div className="text-xs text-muted-foreground">
                 {w.status === "rejected" ? t("limits.rejected") : null} {w.resetsAt ? t("limits.resetsAt", { time: f.dateTime(w.resetsAt) }) : t("limits.resetUnknown")}
@@ -92,7 +92,7 @@ export function QuotaBanner() {
   if (!data?.paused) return null;
   const admin = me?.role === "OWNER" || me?.role === "ADMIN";
   return (
-    <div className="flex flex-wrap items-center gap-2 bg-amber-500/20 px-4 py-2 text-sm text-amber-900 dark:text-amber-100">
+    <div className="flex flex-wrap items-center gap-2 bg-warning/20 px-4 py-2 text-sm text-warning">
       <span className="font-semibold">{t("quota.badge")}</span>
       <span>{t("quota.until", { time: f.dateTime(data.paused.until) })}</span>
       {data.paused.reason && <span className="text-xs opacity-80">{data.paused.reason}</span>}
