@@ -21,15 +21,35 @@ export const queueModule = {
       if (redisState.down) throw new Error("connect ECONNREFUSED 10.0.0.5:6379");
       return "PONG";
     },
-    get: async (k: string) => kv.get(k) ?? null,
-    set: async (k: string, v: string) => (kv.set(k, v), "OK"),
+    get: async (k: string) => kv.get(k) ?? (counters.has(k) ? String(counters.get(k)) : null),
+    set: async (k: string, v: string, ...opts: unknown[]) => {
+      // SET k v [PX ms] NX: only when absent
+      if (opts.includes("NX") && (kv.has(k) || counters.has(k))) return null;
+      kv.set(k, v);
+      return "OK";
+    },
     incr: async (k: string) => {
       const n = (counters.get(k) ?? 0) + 1;
       counters.set(k, n);
       return n;
     },
+    decr: async (k: string) => {
+      const n = (counters.get(k) ?? 0) - 1;
+      counters.set(k, n);
+      return n;
+    },
     expire: async () => 1,
-    del: async (k: string) => void counters.delete(k),
+    pexpire: async () => 1,
+    del: async (k: string) => {
+      const had = counters.delete(k) || kv.delete(k);
+      return had ? 1 : 0;
+    },
+    /** the compare-and-delete lock release script: KEYS[1], ARGV[1] */
+    eval: async (_script: string, _n: number, k: string, v: string) => {
+      if (kv.get(k) !== v) return 0;
+      kv.delete(k);
+      return 1;
+    },
     publish: async () => 0,
   }),
   q: { task: vi.fn(), chat: vi.fn(), action: vi.fn(), ingest: vi.fn(), misc: vi.fn() },

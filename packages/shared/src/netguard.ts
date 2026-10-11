@@ -34,6 +34,7 @@ for (const [net, prefix] of [
   ["::", 128], // unspecified
   ["::1", 128], // loopback
   // IPv4-mapped (::ffff:0:0/96) and IPv4-compatible (::/96) are judged by their embedded IPv4 (see embeddedIpv4)
+  ["::ffff:0:0:0", 96], // IPv4-translated (SIIT, ::ffff:0:a.b.c.d)
   ["64:ff9b::", 96], // NAT64 well-known prefix
   ["64:ff9b:1::", 48], // local-use NAT64
   ["100::", 64], // discard-only
@@ -91,6 +92,25 @@ export function isBlockedAddress(ip: string): boolean {
     return blocked6.check(bare.replace(/%.*$/, ""), "ipv6");
   }
   return true;
+}
+
+/**
+ * Throw SsrfBlockedError unless `url` is http(s) and every address its host resolves to is public. Hosts in
+ * `allowHosts` (e.g. the MCP server an Owner configured on purpose) are let through as-is. No socket pinning:
+ * for that use safeFetch; this is the check for SDK clients that bring their own fetch.
+ */
+export async function assertPublicUrl(url: string | URL, o: { allowHosts?: string[]; resolver?: Resolver } = {}): Promise<void> {
+  const u = typeof url === "string" ? new URL(url) : url;
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw new SsrfBlockedError(`scheme ${u.protocol} is not allowed`);
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (o.allowHosts?.some((h) => h.toLowerCase() === host)) return;
+  if (isIP(host)) {
+    if (isBlockedAddress(host)) throw new SsrfBlockedError(`address ${host} is not public`);
+    return;
+  }
+  const resolve = o.resolver ?? defaultResolve;
+  const addrs = await resolve(host);
+  if (!addrs.length || addrs.some((a) => isBlockedAddress(a.address))) throw new SsrfBlockedError(`host ${host} resolves to a non-public address`);
 }
 
 // ---------------------------------------------------------------------------

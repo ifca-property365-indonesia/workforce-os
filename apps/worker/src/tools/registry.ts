@@ -451,7 +451,7 @@ export function buildTools(ctx: RunContext) {
         const { text, findings } = await guardOutput(ctx.guard, "memory_save", a.content);
         if (findings.some((f) => f.severity === "high")) return err("Refused: memory content looks like it contains a secret.");
         const v = await embedOne(text);
-        await db.insert(memories).values({ workspaceId: ctx.workspaceId, employeeId: ctx.employee.id, kind: a.kind ?? "fact", content: text, source: "agent", embedding: v });
+        await db.insert(memories).values({ workspaceId: ctx.workspaceId, employeeId: ctx.employee.id, kind: a.kind ?? "fact", content: text, source: "agent", embedding: v, untrusted: ctx.guard.tainted });
         return ok("Saved to memory.");
       }),
     ),
@@ -570,7 +570,7 @@ export function buildTools(ctx: RunContext) {
             "handoff_prd",
             `PRD: ${d.title}`,
             "Approve to create a Developer task with this PRD; reject with feedback to ask for a revision.",
-            { prdDeliverableId: d.id, title: d.title, prd: text, developerId: dev?.id ?? null, developerName: dev?.name ?? null, repositoryId: task?.repositoryId ?? null, clientId: task?.clientId ?? null, projectId: task?.projectId ?? null },
+            { prdDeliverableId: d.id, title: d.title, prd: text, developerId: dev?.id ?? null, developerName: dev?.name ?? null, repositoryId: task?.repositoryId ?? null, clientId: task?.clientId ?? null, projectId: task?.projectId ?? null, untrustedInput: ctx.guard.tainted },
             [],
           );
           return ok(`PRD "${d.title}" saved and sent to the owner for review (approval ${id}). Wait for the decision; do not start development yourself.`);
@@ -644,6 +644,9 @@ export function buildTools(ctx: RunContext) {
             source: ctx.conversationId ? "chat" : "board",
             dryRun: ctx.dryRun,
             phase: a.start === false ? "hold" : null,
+            // a task created by a run that handled untrusted content starts tainted (its brief may carry the injection)
+            originTaskId: ctx.taskId ?? null,
+            untrustedInput: ctx.guard.tainted,
           });
         } catch (e) {
           if (e instanceof TaskInputError) return err(`${e.message}. Use ids from this workspace.`);
@@ -681,6 +684,8 @@ export function buildTools(ctx: RunContext) {
             dryRun: ctx.dryRun,
             // the lead is running this; a Lead change mid-run must not drop the subtask
             requireTeamLead: false,
+            // the parent link covers an untrusted parent task; this covers a lead run tainted mid-run
+            untrustedInput: ctx.guard.tainted,
           });
         } catch (e) {
           if (e instanceof TaskInputError) return err(`${e.message}. Use ids from this workspace.`);
@@ -694,6 +699,7 @@ export function buildTools(ctx: RunContext) {
           toEmployeeId: a.assigneeId,
           intent: "request",
           content: `New subtask: ${a.title}`,
+          untrusted: ctx.guard.tainted,
         });
         await publish(ctx.workspaceId, { type: "task.created", taskId: t.id, parentTaskId: ctx.taskId, title: t.title, employeeId: a.assigneeId });
         return ok(`Subtask "${a.title}" delegated (id ${t.id}).`);
@@ -759,7 +765,10 @@ export function buildTools(ctx: RunContext) {
         const [to] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, a.toEmployeeId), eq(employees.workspaceId, ctx.workspaceId)));
         if (!to) return err("Unknown employee id");
         const { text } = await guardOutput(ctx.guard, "message_teammate", a.content);
-        await db.insert(agentMessages).values({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, fromEmployeeId: ctx.employee.id, toEmployeeId: to.id, intent: a.intent, content: text });
+        // written by a tainted run: the recipient sees it as data and its run is tainted too
+        await db
+          .insert(agentMessages)
+          .values({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, fromEmployeeId: ctx.employee.id, toEmployeeId: to.id, intent: a.intent, content: text, untrusted: ctx.guard.tainted });
         await recordStep({
           workspaceId: ctx.workspaceId,
           taskId: ctx.taskId,
@@ -940,7 +949,15 @@ export async function teamMemberIds(teamId: string): Promise<string[]> {
 
 export async function unreadMessagesFor(employeeId: string) {
   const rows = await db
-    .select({ id: agentMessages.id, from: employees.name, fromId: agentMessages.fromEmployeeId, intent: agentMessages.intent, content: agentMessages.content, at: agentMessages.createdAt })
+    .select({
+      id: agentMessages.id,
+      from: employees.name,
+      fromId: agentMessages.fromEmployeeId,
+      intent: agentMessages.intent,
+      content: agentMessages.content,
+      untrusted: agentMessages.untrusted,
+      at: agentMessages.createdAt,
+    })
     .from(agentMessages)
     .leftJoin(employees, eq(employees.id, agentMessages.fromEmployeeId))
     .where(and(eq(agentMessages.toEmployeeId, employeeId), sql`${agentMessages.readAt} is null`))

@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { LookEditor } from "@/components/employees/look-editor";
+import { ExportButton } from "@/components/packages/export-dialog";
 import { DiffView } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
@@ -494,6 +495,7 @@ export default function EmployeePage({ params }: P) {
               <Play className="size-4" /> {t("detail.resume")}
             </Button>
           )}
+          {me && hasRole(me.role, "ADMIN") && <ExportButton selection={{ employeeIds: [e.id] }} name={e.name} size="default" />}
           <Button variant="ghost" onClick={() => confirm(t("detail.archiveConfirm", { name: e.name })) && archive.mutate()} aria-label={t("detail.archive")}>
             <Archive className="size-4" />
           </Button>

@@ -430,12 +430,15 @@ describe("team chat routing", () => {
     expect(runs.inputs.map((i) => i.ctx.employee.id)).toEqual(emps.map((e) => e.id));
     expect(runs.startTainted).toEqual([false, false, true]);
 
-    // the next turn starts clean
+    // every reply of the tainted turn is marked untrusted (the one before the taint too)
+    expect((await replyRows(conv.id)).map((r) => r.meta.untrusted)).toEqual([true, true, true]);
+
+    // the next turn reads those replies in its transcript: it starts tainted too
     const m2 = await userMessage(conv.id, "Next");
     runs.taint.clear();
     runs.startTainted.length = 0;
     await runChat(conv.id, m2.id);
-    expect(runs.startTainted).toEqual([false, false, false]);
+    expect(runs.startTainted).toEqual([true, true, true]);
   });
 
   it("mode auto while the workspace is paused on the subscription limit: no classifier call (fallback quota)", async () => {

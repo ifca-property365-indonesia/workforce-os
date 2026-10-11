@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
-import { db, tasks, teams } from "@wfos/db";
-import { runsQueue } from "../lib/redis";
+import { db, employees, tasks, teams, webhookDeliveries, workspaces } from "@wfos/db";
+import { enqueueTask, runsQueue } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { log } from "../lib/logger";
 import { activeConversationIds, isTaskRunActive } from "../guards/killswitch";
@@ -9,6 +9,7 @@ import { failTask, settleDispatchedRoutineRuns } from "../runner/task-status";
 import { afterApprovalResolved } from "../runner/approvals";
 import { onChildFinished } from "../orchestration/team";
 import { CHAT_TURN_STALE_MS, closeStaleTurns } from "../runner/chat-turns";
+import { activeQuotaPause } from "../lib/limits";
 
 /**
  * Stale RUNNING reaper.
@@ -37,11 +38,21 @@ import { CHAT_TURN_STALE_MS, closeStaleTurns } from "../runner/chat-turns";
  * - team leads RUNNING in phase 'wait' whose subtasks have all ended (recheckWaitingLeads),
  * - AWAITING_APPROVAL tasks whose approvals are all resolved (resumeResolvedApprovals),
  * - chat replies left 'streaming' for more than CHAT_TURN_STALE_MS (closed as errors),
- * - dispatched routine runs whose tasks all ended.
+ * - dispatched routine runs whose tasks all ended,
+ * - QUEUED tasks older than LOST_QUEUED_AFTER_MS that no BullMQ job will ever run (the enqueue was lost):
+ *   re-enqueued, unless held (phase hold), behind the kill switch, a quota pause or an employee that is not active,
+ * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches).
  */
 export const ORPHAN_AFTER_MS = 35 * 60_000;
 export const REAP_EVERY_MS = 5 * 60_000;
 export const ORPHAN_ERROR = "orphaned: the run stopped without finishing";
+/** A QUEUED task this old without a job is re-enqueued (a normal enqueue lands within seconds). */
+export const LOST_QUEUED_AFTER_MS = 10 * 60_000;
+/** Inbound webhook deliveries are kept this long (the log in Settings; idempotency keys older than this are forgotten). */
+export const WEBHOOK_DELIVERY_RETENTION_MS = 30 * 24 * 3_600_000;
+const PRUNE_BATCH = 1000;
+/** at most this many batches per sweep: a large backlog is worked off over several sweeps */
+const PRUNE_MAX_BATCHES = 20;
 
 export interface OrphanCandidate {
   id: string;
@@ -90,6 +101,10 @@ export interface ReapResult {
   approvalsResumed: string[];
   /** assistant rows left 'streaming' by a dead chat run, closed as errors */
   chatTurnsClosed: string[];
+  /** QUEUED tasks without a job, enqueued again */
+  requeued: string[];
+  /** webhook deliveries deleted for age */
+  webhookDeliveriesPruned: number;
 }
 
 export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapResult> {
@@ -129,8 +144,92 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
   );
   if (chatTurnsClosed.length) log.warn({ chatTurnsClosed }, "closed orphaned streaming chat replies");
 
+  const requeued = await requeueLostTasks(now, opts.liveElsewhere ?? probeLiveElsewhere);
+  const webhookDeliveriesPruned = await sweep("webhook deliveries", 0, () => pruneWebhookDeliveries(now));
+
   const routineRunsSettled = await settleDispatchedRoutineRuns();
-  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed };
+  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned };
+}
+
+/**
+ * QUEUED tasks whose enqueue was lost (the web or a worker died between the insert and the queue add, Redis was
+ * down): nothing would ever run them. Re-enqueued when older than LOST_QUEUED_AFTER_MS and BullMQ has no
+ * active/waiting/delayed job for them (the same probe as the orphan reaper; never blind: a failed probe skips the
+ * sweep). Left alone: held tasks (phase hold), workspaces behind the kill switch or a quota pause (their tasks
+ * are released when it lifts), and tasks whose executor is not ACTIVE (paused, budget): runTask would only
+ * record "not active" again. runTask re-checks the status, so a task that moved on meanwhile is skipped there.
+ */
+async function requeueLostTasks(now: Date, liveElsewhere: (c: OrphanCandidate[]) => Promise<Set<string>>): Promise<string[]> {
+  return sweep("lost queued tasks", [], async () => {
+    const cutoff = new Date(now.getTime() - LOST_QUEUED_AFTER_MS);
+    const rows = await db
+      .select({ id: tasks.id, workspaceId: tasks.workspaceId, assigneeId: tasks.assigneeId, teamId: tasks.teamId, parentTaskId: tasks.parentTaskId })
+      .from(tasks)
+      .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
+      .where(and(eq(tasks.status, "QUEUED"), or(isNull(tasks.phase), notInArray(tasks.phase, ["hold", "wait"])), lt(tasks.updatedAt, cutoff), eq(workspaces.killSwitch, false)))
+      .limit(100);
+    if (!rows.length) return [];
+
+    // the executor (assignee, or the team lead of a team-level task) must be ACTIVE
+    const teamIds = [...new Set(rows.filter((r) => r.teamId && !r.parentTaskId).map((r) => r.teamId!))];
+    const leads = teamIds.length ? await db.select({ id: teams.id, leadId: teams.leadId }).from(teams).where(inArray(teams.id, teamIds)) : [];
+    const executor = (r: OrphanCandidate) => (r.teamId && !r.parentTaskId ? (leads.find((l) => l.id === r.teamId)?.leadId ?? r.assigneeId) : r.assigneeId);
+    const empIds = [...new Set(rows.map(executor).filter((x): x is string => !!x))];
+    const inactive = new Set(
+      empIds.length
+        ? (await db.select({ id: employees.id, status: employees.status }).from(employees).where(inArray(employees.id, empIds))).filter((e) => e.status !== "ACTIVE").map((e) => e.id)
+        : [],
+    );
+    const paused = new Set<string>();
+    for (const ws of new Set(rows.map((r) => r.workspaceId))) if (await activeQuotaPause(ws)) paused.add(ws);
+    const candidates = rows.filter((r) => !paused.has(r.workspaceId) && !inactive.has(executor(r) ?? ""));
+    if (!candidates.length) return [];
+
+    let live: Set<string>;
+    try {
+      live = await liveElsewhere(candidates);
+    } catch (e) {
+      log.warn({ err: e }, "reaper: job probe failed; not re-enqueueing queued tasks"); // never enqueue blind
+      return [];
+    }
+    const requeued: string[] = [];
+    for (const c of candidates) {
+      if (live.has(c.id)) continue;
+      try {
+        await enqueueTask(c.id, c.workspaceId);
+      } catch (e) {
+        log.warn({ err: e, taskId: c.id }, "reaper: re-enqueueing a queued task failed");
+        continue;
+      }
+      requeued.push(c.id);
+      await recordStep({ workspaceId: c.workspaceId, taskId: c.id, kind: "system", name: "task_requeued", output: { reason: "queued without a job", queuedBefore: cutoff.toISOString() } }).catch(
+        (e: unknown) => log.warn({ err: e, taskId: c.id }, "reaper: step not recorded"),
+      );
+    }
+    if (requeued.length) log.warn({ requeued }, "re-enqueued QUEUED tasks that had no job");
+    return requeued;
+  });
+}
+
+/** Delete webhook deliveries past their retention, PRUNE_BATCH rows per statement. Returns how many were deleted. */
+export async function pruneWebhookDeliveries(now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - WEBHOOK_DELIVERY_RETENTION_MS);
+  let total = 0;
+  for (let i = 0; i < PRUNE_MAX_BATCHES; i++) {
+    const rows = await db
+      .delete(webhookDeliveries)
+      .where(
+        inArray(
+          webhookDeliveries.id,
+          db.select({ id: webhookDeliveries.id }).from(webhookDeliveries).where(lt(webhookDeliveries.receivedAt, cutoff)).limit(PRUNE_BATCH),
+        ),
+      )
+      .returning({ id: webhookDeliveries.id });
+    total += rows.length;
+    if (rows.length < PRUNE_BATCH) break;
+  }
+  if (total) log.info({ pruned: total, before: cutoff.toISOString() }, "reaper: pruned old webhook deliveries");
+  return total;
 }
 
 /** One sweep of the reaper; a failure is logged and never stops the other sweeps. */

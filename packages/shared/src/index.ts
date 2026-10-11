@@ -119,8 +119,17 @@ export const STEP_KINDS = [
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
-export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo"] as const;
+export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo", "webhook"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
+
+export const WEBHOOK_DELIVERY_STATUSES = ["accepted", "duplicate", "rejected", "failed"] as const;
+export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
+/** Inbound webhook limits: body size, requests per trigger per minute, payload excerpt kept per delivery. */
+export const WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
+export const WEBHOOK_RATE_PER_MIN = 60;
+export const WEBHOOK_EXCERPT_CHARS = 2000;
+/** Prefix of personal API tokens (wfos_<random>). */
+export const API_TOKEN_PREFIX = "wfos_";
 
 /** Something went wrong with a run that a person or the team lead should look at. */
 export const INCIDENT_KINDS = ["failed", "stalled", "loop", "could_not_start", "routine_failed"] as const;
@@ -442,7 +451,7 @@ export function decideGate(input: GateInput): GateDecision {
 export function applyRunSignals(decision: GateDecision, s: { toolClass: ToolClass; tainted: boolean; highLeak?: boolean }): GateDecision {
   if (decision.kind !== "run" || s.toolClass !== "irreversible") return decision;
   if (s.highLeak) return { kind: "approval", reason: "Output guard found possible secrets/PII in the payload.", rule: "leak" };
-  if (s.tainted) return { kind: "approval", reason: "Untrusted content with injection markers was read in this run.", rule: "taint" };
+  if (s.tainted) return { kind: "approval", reason: "This run handled untrusted content (external input, a web page or tool output), so irreversible actions need approval.", rule: "taint" };
   return decision;
 }
 
@@ -578,6 +587,11 @@ export interface MessageMeta {
   hint?: "no_responder" | "busy";
   /** responders beyond the per-turn cap that were not run (team chat) */
   skippedResponders?: string[];
+  /**
+   * Untrusted content: user messages from a machine client (API token with markUntrusted), and assistant replies /
+   * approval receipts written by a tainted run. Later turns fence these rows and start tainted.
+   */
+  untrusted?: boolean;
 }
 
 /** An approval shown inline under the chat message that raised it. */
@@ -808,3 +822,5 @@ export const webhookPayloadSchema = z.object({ channel: z.string().default("defa
 export function formatCredits(n: number): string {
   return n < 1 ? n.toFixed(3) : n.toFixed(2);
 }
+export * from "./mcp-oauth";
+export * from "./package";

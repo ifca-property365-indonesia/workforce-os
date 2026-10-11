@@ -86,6 +86,20 @@ const LEAK_PATTERNS: { rule: string; re: RegExp; severity: GuardFinding["severit
   { rule: "aws-access-key", re: /\bAKIA[0-9A-Z]{16}\b/g, severity: "high" },
   { rule: "github-token", re: /\bgh[pousr]_[A-Za-z0-9]{36,}\b/g, severity: "high" },
   { rule: "private-key", re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/g, severity: "high" },
+  { rule: "slack-token", re: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, severity: "high" },
+  { rule: "stripe-key", re: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, severity: "high" },
+  { rule: "google-api-key", re: /\bAIza[0-9A-Za-z_-]{35}\b/g, severity: "high" },
+  // bounded scheme and userinfo so long word-boundary runs cannot make this quadratic
+  { rule: "url-credentials", re: /\b[a-z][a-z0-9+.-]{0,31}:\/\/[^\s:/@]{0,256}:[^\s/@]{1,256}@/gi, severity: "high" },
+  { rule: "wfos-token", re: /\b(?:wfos|whsec)_[A-Za-z0-9_-]{30,}/g, severity: "high" },
+  { rule: "telegram-bot-token", re: /\b\d{8,10}:AA[A-Za-z0-9_-]{30,}\b/g, severity: "high" },
+  { rule: "vendor-token", re: /\b(?:SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}|glpat-[A-Za-z0-9_-]{20,}|npm_[A-Za-z0-9]{36,})\b/g, severity: "high" },
+  { rule: "bearer-token", re: /\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*/gi, severity: "high" },
+  {
+    rule: "secret-assignment",
+    re: /["']?\b(?:api[_-]?key|secret(?:[_-]?key)?|access[_-]?token|auth[_-]?token|refresh[_-]?token|client[_-]?secret|token)["']?\s*[:=]\s*["']?(?!process\.env\b|os\.environ\b|env\.|\$\{|\$[A-Z_])[A-Za-z0-9_\-./+]{12,}/gi,
+    severity: "medium",
+  },
   { rule: "jwt", re: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, severity: "medium" },
   { rule: "password-assignment", re: /\b(password|passwd|pwd)\s*[:=]\s*\S{6,}/gi, severity: "high" },
   { rule: "credit-card", re: /\b(?:\d[ -]?){13,16}\b/g, severity: "medium" },
@@ -110,7 +124,11 @@ function luhn(num: string): boolean {
 }
 
 /** Check outputs for secrets / PII before they are shown or leave the system. */
-export function screenLeakage(text: string): GuardFinding[] {
+/** Longest text the leak patterns scan in one call (longer payloads are scanned in their first 200 000 chars). */
+export const LEAK_SCAN_MAX_CHARS = 200_000;
+
+export function screenLeakage(input: string): GuardFinding[] {
+  const text = input.length > LEAK_SCAN_MAX_CHARS ? input.slice(0, LEAK_SCAN_MAX_CHARS) : input;
   const out: GuardFinding[] = [];
   for (const p of LEAK_PATTERNS) {
     p.re.lastIndex = 0;
@@ -138,6 +156,92 @@ export function redactSecrets(text: string): string {
     t = t.replace(p.re, (m) => `[REDACTED:${p.rule}:${redact(m)}]`);
   }
   return t;
+}
+
+// ---------------------------------------------------------------------------
+// Export redaction (team / employee packages): everything that could be a secret leaves as a marker
+// ---------------------------------------------------------------------------
+
+/** A path segment or host label that reads like a key or token rather than a word. */
+function looksLikeKey(part: string): boolean {
+  if (/[A-Za-z0-9]{24,}/.test(part)) return true;
+  // a single letters-only run of 16+ (abcdefghijklmnopqrst) or 4+ equal-length dash groups (AB12-CD34-EF56-GH78)
+  if (/^[A-Za-z]{16,}$/.test(part) && !/^[a-z]+$/.test(part.replace(/[A-Z]/, (c) => c.toLowerCase()))) return true;
+  if (/^[A-Za-z]{20,}$/.test(part)) return true;
+  const groups = part.split("-");
+  if (groups.length >= 4 && groups.every((g) => g.length === groups[0]!.length && /^[A-Za-z0-9]{3,8}$/.test(g))) return true;
+  // hyphenated words with short numbers (github-mcp-server-2024, v2, s3) are names, not keys
+  const tokens = part.split(/[-_.~]+/).filter(Boolean);
+  if (tokens.length && tokens.every((t) => /^[A-Za-z]+$/.test(t) || /^\d{1,8}$/.test(t) || t.length <= 6)) return false;
+  return part.length >= 16 && /[A-Za-z]/.test(part) && /\d/.test(part);
+}
+
+/**
+ * A URL safe to share: userinfo and #fragment dropped, every query value emptied (names kept), and path
+ * segments / subdomain labels that look like keys replaced by "redacted". Pushes the rules it applied to `found`.
+ * An unparseable URL becomes "".
+ */
+export function redactUrl(raw: string, found: string[] = []): string {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    found.push("url-invalid");
+    return "";
+  }
+  const rules = new Set<string>();
+  if (u.username || u.password) rules.add("url-userinfo");
+  if (u.hash) rules.add("url-fragment");
+  const params = [...u.searchParams.entries()];
+  if (params.some(([, v]) => v !== "")) rules.add("url-query");
+  const search = params.map(([k]) => `${encodeURIComponent(k)}=`).join("&");
+  const labels = u.hostname.split(".");
+  // the last two labels are the registrable domain: only subdomain labels can carry a token
+  const host = labels.map((l, i) => (i < labels.length - 2 && looksLikeKey(l) ? (rules.add("url-key"), "redacted") : l)).join(".");
+  const path = u.pathname
+    .split("/")
+    .map((seg) => {
+      let decoded = seg;
+      try {
+        decoded = decodeURIComponent(seg);
+      } catch {
+        // malformed escape: check the raw segment
+      }
+      return seg && looksLikeKey(decoded) ? (rules.add("url-key"), "redacted") : seg;
+    })
+    .join("/");
+  found.push(...rules);
+  return `${u.protocol}//${host}${u.port ? `:${u.port}` : ""}${path}${search ? `?${search}` : ""}`;
+}
+
+const URL_IN_TEXT_RE = /\bhttps?:\/\/[^\s<>"'`)\]]+/g;
+
+/**
+ * Redact text for export. Like screenLeakage + redactSecrets, but every finding is replaced (high and medium:
+ * keys, JWTs, card numbers, NIK, passwords) by `[REDACTED:<rule>]` with no excerpt, and URLs in the text go
+ * through redactUrl. Returns the rules that fired.
+ */
+export function exportRedact(text: string): { text: string; rules: string[] } {
+  const rules = new Set<string>();
+  let t = text;
+  for (const p of LEAK_PATTERNS) {
+    p.re.lastIndex = 0;
+    t = t.replace(p.re, (m) => {
+      if (p.rule === "credit-card" && !luhn(m)) return m;
+      rules.add(p.rule);
+      return `[REDACTED:${p.rule}]`;
+    });
+  }
+  t = t.replace(URL_IN_TEXT_RE, (m) => {
+    const found: string[] = [];
+    const safe = redactUrl(m, found);
+    if (!found.length) return m;
+    for (const r of found) rules.add(r);
+    return safe || "[REDACTED:url]";
+  });
+  // belt and braces: nothing the leakage screen still finds may leave
+  for (const f of screenLeakage(t)) rules.add(f.rule);
+  return { text: rules.size ? redactSecrets(t) : t, rules: [...rules] };
 }
 
 // ---------------------------------------------------------------------------

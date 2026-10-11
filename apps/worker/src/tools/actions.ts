@@ -17,6 +17,7 @@ import { msg } from "@wfos/shared/messages";
 import { and, eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { getExternalMcpServers, getSmtp, getWebhookUrl } from "../lib/settings";
 
 export interface ActionResult {
@@ -107,7 +108,7 @@ async function doRunApprovedCommand(workspaceId: string, command: string, contex
 }
 
 /** Approved PRD → a Developer task carrying the PRD as context, linked to the Project task. */
-async function doHandoffPrd(workspaceId: string, p: Record<string, unknown>, context: { taskId?: string | null }): Promise<ActionResult> {
+async function doHandoffPrd(workspaceId: string, p: Record<string, unknown>, context: { taskId?: string | null; untrusted?: boolean }): Promise<ActionResult> {
   const developerId = typeof p.developerId === "string" ? p.developerId : null;
   if (!developerId) return { ok: false, summary: "Choose a developer (Edit & Approve) before approving the handoff." };
   const [dev] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, developerId), eq(employees.workspaceId, workspaceId)));
@@ -129,6 +130,8 @@ ${String(p.prd ?? "")}`,
       clientId: typeof p.clientId === "string" ? p.clientId : null,
       projectId: typeof p.projectId === "string" ? p.projectId : null,
       source: "board",
+      // the PRD was written by a run that handled untrusted content (the origin link covers an untrusted task)
+      untrustedInput: context.untrusted === true,
     });
   } catch (e) {
     if (!(e instanceof TaskInputError)) throw e;
@@ -171,12 +174,21 @@ function providerFetch(): ProviderFetch {
   return providerFetchImpl ?? (fetch as unknown as ProviderFetch);
 }
 
+/** fetch for the MCP transport that never lets the runtime follow a redirect (redirectPolicy "same-origin" decides). */
+export const noAutoRedirectFetch: FetchLike = (url, init) => fetch(url, { ...init, redirect: "manual" });
+
 export async function callExternalMcpTool(workspaceId: string, server: string, tool: string, args: Record<string, unknown>): Promise<ActionResult> {
   const servers = await getExternalMcpServers(workspaceId);
   const s = servers.find((x) => x.name === server);
   if (!s) return { ok: false, summary: `MCP server ${server} not connected` };
   const client = new Client({ name: "workforce-os", version: "0.1.0" });
-  const transport = new StreamableHTTPClientTransport(new URL(s.url), { requestInit: { headers: s.headers } });
+  // the runtime never follows a redirect by itself; the SDK follows one only within the server's origin, so the
+  // auth header is never sent to a host it was not configured for (same as apps/web/src/lib/server/mcp.ts)
+  const transport = new StreamableHTTPClientTransport(new URL(s.url), {
+    requestInit: { headers: s.headers },
+    redirectPolicy: "same-origin",
+    fetch: noAutoRedirectFetch,
+  });
   try {
     await withRetry(() => client.connect(transport), { retries: 1, timeoutMs: 15000, label: "mcp-connect" });
     const r = await client.callTool({ name: tool, arguments: args }, undefined, { timeout: 60000 });
@@ -197,7 +209,8 @@ export async function executeAction(
   workspaceId: string,
   toolName: string,
   payload: Record<string, unknown>,
-  context: { taskId?: string | null; employeeId?: string | null } = {},
+  /** untrusted: the run that asked for this action was tainted (approval payload untrustedInput) */
+  context: { taskId?: string | null; employeeId?: string | null; untrusted?: boolean } = {},
 ): Promise<ActionResult> {
   switch (toolName) {
     case "bash":

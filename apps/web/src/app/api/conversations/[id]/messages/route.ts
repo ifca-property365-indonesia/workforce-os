@@ -1,31 +1,12 @@
-import { and, asc, eq, ne, or } from "drizzle-orm";
-import { conversations, db, employees, messages, teamMembers, teams } from "@wfos/db";
+import { and, eq } from "drizzle-orm";
+import { conversations, db, messages } from "@wfos/db";
 import type { ChatMessageDTO, MessageMeta } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { notFound, route } from "@/lib/server/route";
 import { publish, q } from "@/lib/server/queue";
 import { saveDocument } from "@/lib/server/uploads";
-import { parseMentions, type MentionMember } from "@/lib/mentions";
-
-/** A team's active members (Lead first, then by name), the only people an @mention can address. */
-async function teamRoster(workspaceId: string, teamId: string): Promise<MentionMember[]> {
-  const [t] = await db.select({ leadId: teams.leadId }).from(teams).where(and(eq(teams.id, teamId), eq(teams.workspaceId, workspaceId)));
-  if (!t) return [];
-  const rows = await db
-    .selectDistinct({ id: employees.id, name: employees.name })
-    .from(employees)
-    .leftJoin(teamMembers, and(eq(teamMembers.employeeId, employees.id), eq(teamMembers.teamId, teamId)))
-    .where(
-      and(
-        eq(employees.workspaceId, workspaceId),
-        ne(employees.status, "ARCHIVED"),
-        // the Lead counts even when a lead-only edit left them out of team_members
-        t.leadId ? or(eq(teamMembers.teamId, teamId), eq(employees.id, t.leadId)) : eq(teamMembers.teamId, teamId),
-      ),
-    )
-    .orderBy(asc(employees.name));
-  return [...rows.filter((r) => r.id === t.leadId), ...rows.filter((r) => r.id !== t.leadId)];
-}
+import { parseMentions } from "@/lib/mentions";
+import { teamRoster } from "@/lib/server/teams";
 
 /** Send a chat message (multipart: content + optional files). Files are indexed into the knowledge base. */
 export const POST = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {

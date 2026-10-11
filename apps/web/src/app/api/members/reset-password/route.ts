@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { audit, db, members, users } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
+import { revokeUserApiTokens } from "@/lib/server/api-token";
 import { body, notFound, route } from "@/lib/server/route";
 
 const schema = z.object({ userId: z.string().uuid() });
@@ -27,6 +28,16 @@ export const POST = route("ADMIN", async ({ session, req }) => {
     .set({ passwordHash: await bcrypt.hash(tempPassword, 11), mustChangePassword: true, passwordChangedAt: new Date() })
     .where(eq(users.id, userId))
     .returning({ email: users.email });
-  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "member.password_reset", targetType: "user", targetId: userId, details: { email: u!.email } });
+  // tokens minted with the old password stop working (authenticateApiToken also compares passwordChangedAt)
+  const tokensRevoked = await revokeUserApiTokens(userId);
+  await audit({
+    workspaceId: session.workspaceId,
+    actorUserId: session.userId,
+    actorLabel: session.email,
+    action: "member.password_reset",
+    targetType: "user",
+    targetId: userId,
+    details: { email: u!.email, tokensRevoked },
+  });
   return { ok: true, tempPassword };
 });

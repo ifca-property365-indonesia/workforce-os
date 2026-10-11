@@ -1,10 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { conversations, db, messages, routineRuns, routines, steps, tasks } from "@wfos/db";
+import { conversations, db, employees, messages, routineRuns, routines, steps, tasks, webhookDeliveries, webhookTriggers } from "@wfos/db";
 import type { RunJob } from "@wfos/shared";
 import { failTask, handleRunJobFailed, setTaskStatus, settleDispatchedRoutineRuns, settleRoutineRun } from "../src/runner/task-status";
 import { afterApprovalResolved } from "../src/runner/approvals";
-import { ORPHAN_AFTER_MS, ORPHAN_ERROR, probeLiveElsewhere, reapOrphanedTasks } from "../src/scheduler/reaper";
+import {
+  LOST_QUEUED_AFTER_MS,
+  ORPHAN_AFTER_MS,
+  ORPHAN_ERROR,
+  probeLiveElsewhere,
+  pruneWebhookDeliveries,
+  reapOrphanedTasks,
+  WEBHOOK_DELIVERY_RETENTION_MS,
+} from "../src/scheduler/reaper";
 import { isTaskRunActive, registerRun, unregisterRun } from "../src/guards/killswitch";
 import { publish, redis, runsQueue } from "../src/lib/redis";
 import { CHAT_INTERRUPTED_TEXT, CHAT_TURN_STALE_MS } from "../src/runner/chat-turns";
@@ -241,6 +249,75 @@ describe("orphan reaper", () => {
       delete r.zrangebyscore;
       delete q.getJobs;
     }
+  });
+});
+
+describe("reaper: QUEUED tasks without a job", () => {
+  const lost = (id: string) => backdate(id, LOST_QUEUED_AFTER_MS + 60_000);
+
+  it("re-enqueues an old QUEUED task that has no job and records task_requeued", async () => {
+    const { ws, emp } = await setup();
+    const t = await makeTask(ws.id, emp.id);
+    await lost(t.id);
+    const { requeued } = await reapOrphanedTasks({ liveElsewhere: nobodyElse });
+    expect(requeued).toContain(t.id);
+    expect(enqueuedRuns(t.id)).toHaveLength(1);
+    expect((await row(t.id)).status).toBe("QUEUED");
+    const [s] = await db.select().from(steps).where(and(eq(steps.taskId, t.id), eq(steps.name, "task_requeued")));
+    expect(s?.kind).toBe("system");
+  });
+
+  it("leaves recent, held, live, killed, quota-paused and inactive-executor tasks alone", async () => {
+    const { ws, emp } = await setup();
+    const recent = await makeTask(ws.id, emp.id);
+    const hold = await makeTask(ws.id, emp.id, { phase: "hold" });
+    const live = await makeTask(ws.id, emp.id);
+    const killedWs = await makeWorkspace({ killSwitch: true });
+    const killedEmp = await makeEmployee(killedWs.id);
+    const killed = await makeTask(killedWs.id, killedEmp.id);
+    const quotaWs = await makeWorkspace({ quotaPausedUntil: new Date(Date.now() + 3_600_000), quotaPauseReason: "limit" });
+    const quotaEmp = await makeEmployee(quotaWs.id);
+    const quota = await makeTask(quotaWs.id, quotaEmp.id);
+    const paused = await makeEmployee(ws.id);
+    await db.update(employees).set({ status: "PAUSED_BUDGET" }).where(eq(employees.id, paused.id));
+    const inactive = await makeTask(ws.id, paused.id);
+    for (const t of [hold, live, killed, quota, inactive]) await lost(t.id);
+
+    const { requeued } = await reapOrphanedTasks({ liveElsewhere: async () => new Set([live.id]) });
+    for (const t of [recent, hold, live, killed, quota, inactive]) {
+      expect(requeued).not.toContain(t.id);
+      expect(enqueuedRuns(t.id)).toHaveLength(0);
+    }
+  });
+
+  it("enqueues nothing when the job probe fails", async () => {
+    const { ws, emp } = await setup();
+    const t = await makeTask(ws.id, emp.id);
+    await lost(t.id);
+    const { requeued } = await reapOrphanedTasks({
+      liveElsewhere: async () => {
+        throw new Error("redis down");
+      },
+    });
+    expect(requeued).toEqual([]);
+    expect(enqueuedRuns(t.id)).toHaveLength(0);
+  });
+});
+
+describe("reaper: webhook deliveries", () => {
+  it("deletes deliveries older than 30 days in batches and keeps the rest", async () => {
+    const ws = await makeWorkspace();
+    const [trigger] = await db.insert(webhookTriggers).values({ workspaceId: ws.id, name: "Inbound", secretHash: "x".repeat(64) }).returning();
+    const old = new Date(Date.now() - WEBHOOK_DELIVERY_RETENTION_MS - 3_600_000);
+    await db.insert(webhookDeliveries).values([
+      ...Array.from({ length: 1205 }, () => ({ triggerId: trigger!.id, workspaceId: ws.id, status: "accepted" as const, receivedAt: old })),
+      { triggerId: trigger!.id, workspaceId: ws.id, status: "accepted" as const, receivedAt: new Date(Date.now() - WEBHOOK_DELIVERY_RETENTION_MS + 3_600_000) },
+      { triggerId: trigger!.id, workspaceId: ws.id, status: "rejected" as const },
+    ]);
+    expect(await pruneWebhookDeliveries()).toBe(1205);
+    const left = await db.select().from(webhookDeliveries).where(eq(webhookDeliveries.triggerId, trigger!.id));
+    expect(left).toHaveLength(2);
+    expect((await reapOrphanedTasks({ liveElsewhere: nobodyElse })).webhookDeliveriesPruned).toBe(0);
   });
 });
 

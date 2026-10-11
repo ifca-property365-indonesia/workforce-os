@@ -9,7 +9,9 @@
     "members": "Anggota",
     "audit": "Log audit",
     "repositories": "Repositori",
-    "departments": "Departemen"
+    "departments": "Departemen",
+    "webhooks": "Webhook",
+    "apiTokens": "Akses API"
   },
   "workspace": {
     "title": "Workspace",
@@ -87,7 +89,28 @@
     "tokenPlaceholder": "Bearer token (opsional)",
     "connect": "Hubungkan",
     "test": "Uji koneksi",
-    "testOk": "Terhubung: {count} tool ({reversible} dapat dibatalkan)"
+    "testOk": "Terhubung: {count} tool ({reversible} dapat dibatalkan)",
+    "oauthBadge": "OAuth",
+    "oauthConnect": "Hubungkan dengan OAuth",
+    "oauthHint": "Untuk server yang meminta Anda masuk (OAuth): isi nama dan URL server, lalu masuk di halaman server tersebut. Workforce OS menjaga token aksesnya tetap berlaku.",
+    "reconnect": "Hubungkan ulang",
+    "needsReconnect": "sesi masuk kedaluwarsa",
+    "importedDisabled": "Diimpor — tambahkan token untuk mengaktifkan",
+    "setUp": "Atur",
+    "oauthConfirmTitle": "Masuk ke server MCP ini?",
+    "oauthConfirmDescription": "Anda sedang menghubungkan {host}. Periksa tempat Anda akan masuk dan akses yang diminta sebelum melanjutkan.",
+    "oauthServer": "Anda akan masuk di",
+    "oauthScopes": "Akses yang diminta",
+    "oauthScopesDefault": "Akses bawaan server (tidak ada scope yang disebutkan).",
+    "oauthOtherSite": "Hati-hati: halaman masuk {as} berada di situs yang berbeda dari server MCP {mcp}. Lanjutkan hanya jika Anda memang mengharapkan penyedia ini.",
+    "oauthContinue": "Lanjutkan untuk masuk",
+    "oauthResult": {
+      "connected": "Server MCP terhubung.",
+      "invalid_state": "Tautan masuk itu sudah kedaluwarsa atau sudah dipakai. Mulai lagi dari Hubungkan dengan OAuth.",
+      "denied": "Proses masuk dibatalkan di server MCP.",
+      "failed": "Tidak dapat menyelesaikan proses masuk ke server MCP. Coba lagi.",
+      "forbidden": "Hanya Owner workspace yang dapat menghubungkan server MCP."
+    }
   },
   "pricing": {
     "updatedToast": "Harga diperbarui",

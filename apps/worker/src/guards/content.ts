@@ -8,8 +8,31 @@ export interface GuardCtx {
   conversationId: string | null;
   employeeId: string;
   enabled: boolean;
-  /** set once untrusted content with injection markers entered the context */
+  /** set once untrusted content entered the context (injection markers, untrusted input, untrusted stored content) */
   tainted: boolean;
+}
+
+/** Names of the "guard" steps (status flagged) recorded when a run is tainted: read back by approvalTainted. */
+export const TAINT_STEP_NAMES = ["input_guard", "untrusted_input", "untrusted_memory", "untrusted_message", "untrusted_transcript", "untrusted_subtask"] as const;
+
+/**
+ * Taint the run because untrusted stored content is part of its input (a memory or a colleague's message written by
+ * a tainted run, an imported memory, a message from a machine client). Records one "guard" step named `name` per
+ * call; callers call it once per run and source. Never throws: the taint stands even if the step is not recorded.
+ */
+export async function taintRun(ctx: GuardCtx, name: string, note: string, input?: Record<string, unknown>): Promise<void> {
+  ctx.tainted = true;
+  await recordStep({
+    workspaceId: ctx.workspaceId,
+    taskId: ctx.taskId,
+    conversationId: ctx.conversationId,
+    employeeId: ctx.employeeId,
+    kind: "guard",
+    name,
+    status: "flagged",
+    ...(input ? { input } : {}),
+    output: { note },
+  }).catch((e: unknown) => log.warn({ err: e, name }, "taint step not recorded"));
 }
 
 /** Input guard: screen untrusted tool results before the model sees them. */

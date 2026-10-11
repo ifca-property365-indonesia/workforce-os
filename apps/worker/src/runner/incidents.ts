@@ -327,7 +327,15 @@ interface MarkedRecovery {
  * one failing never aborts the others. Returns how many subtasks were re-queued or created and enqueued;
  * 0 means the parent should finish its review as if nothing was requested.
  */
-export async function applyRecoveries(workspaceId: string, parentTaskId: string, leadId: string, reqs: RecoveryRequest[]): Promise<number> {
+export async function applyRecoveries(
+  workspaceId: string,
+  parentTaskId: string,
+  leadId: string,
+  reqs: RecoveryRequest[],
+  /** untrusted: the lead's review run was tainted, so the revised brief may carry an injection: the subtask starts tainted */
+  opts: { untrusted?: boolean } = {},
+): Promise<number> {
+  const untrusted = opts.untrusted === true;
   if (!reqs.length) return 0;
   const loaded = await (async () => {
     const [parent] = await db.select().from(tasks).where(eq(tasks.id, parentTaskId));
@@ -351,7 +359,7 @@ export async function applyRecoveries(workspaceId: string, parentTaskId: string,
         log.info({ taskId: req.taskId, refusal }, "recovery skipped");
         continue;
       }
-      const m = req.action === "retry" ? await markRetry(parentTaskId, req) : await markReassign(workspaceId, parent, req);
+      const m = req.action === "retry" ? await markRetry(parentTaskId, req, untrusted) : await markReassign(workspaceId, parent, req, untrusted);
       if (m) marked.push(m);
       else log.info({ taskId: req.taskId, action: req.action }, "recovery skipped: the subtask changed meanwhile");
     } catch (e) {
@@ -375,12 +383,12 @@ export async function applyRecoveries(workspaceId: string, parentTaskId: string,
       continue;
     }
     n++;
-    await bookkeeping(workspaceId, parentTaskId, leadId, m);
+    await bookkeeping(workspaceId, parentTaskId, leadId, m, untrusted);
   }
   return n;
 }
 
-async function bookkeeping(workspaceId: string, parentTaskId: string, leadId: string, m: MarkedRecovery): Promise<void> {
+async function bookkeeping(workspaceId: string, parentTaskId: string, leadId: string, m: MarkedRecovery, untrusted: boolean): Promise<void> {
   const { req, task, child } = m;
   if (req.action === "retry") {
     await bestEffort("mark incident", child.id, () => markIncident(child.id, "retried"));
@@ -392,7 +400,7 @@ async function bookkeeping(workspaceId: string, parentTaskId: string, leadId: st
   }
   await bestEffort("mark incident", child.id, () => markIncident(child.id, "reassigned"));
   await bestEffort("agent message", task.id, () =>
-    db.insert(agentMessages).values({ workspaceId, taskId: task.id, fromEmployeeId: leadId, toEmployeeId: task.assigneeId, intent: "request", content: `Reassigned subtask: ${task.title}` }),
+    db.insert(agentMessages).values({ workspaceId, taskId: task.id, fromEmployeeId: leadId, toEmployeeId: task.assigneeId, intent: "request", content: `Reassigned subtask: ${task.title}`, untrusted }),
   );
   await bestEffort("reassign step", child.id, () =>
     recordStep({ workspaceId, taskId: child.id, employeeId: leadId, kind: "system", name: "subtask_reassigned", output: { newTaskId: task.id, employeeId: task.assigneeId } }),
@@ -418,7 +426,7 @@ async function lockFailedChild(tx: Tx, childId: string, parentTaskId: string): P
   return child;
 }
 
-async function markRetry(parentTaskId: string, req: RecoveryRequest): Promise<MarkedRecovery | null> {
+async function markRetry(parentTaskId: string, req: RecoveryRequest, untrusted: boolean): Promise<MarkedRecovery | null> {
   assertTransition("FAILED", "QUEUED");
   return db.transaction(async (tx) => {
     const child = await lockFailedChild(tx, req.taskId, parentTaskId);
@@ -431,6 +439,8 @@ async function markRetry(parentTaskId: string, req: RecoveryRequest): Promise<Ma
         completedAt: null,
         retryCount: sql`${tasks.retryCount} + 1`,
         brief: withRevisedBrief(child.brief, req.revisedBrief, child.retryCount + 1),
+        // never cleared: once untrusted, a task stays untrusted
+        ...(untrusted ? { untrustedInput: true } : {}),
       })
       .where(and(eq(tasks.id, child.id), eq(tasks.status, "FAILED")))
       .returning();
@@ -444,7 +454,7 @@ async function markRetry(parentTaskId: string, req: RecoveryRequest): Promise<Ma
   });
 }
 
-async function markReassign(workspaceId: string, parent: Task, req: RecoveryRequest): Promise<MarkedRecovery | null> {
+async function markReassign(workspaceId: string, parent: Task, req: RecoveryRequest, untrusted: boolean): Promise<MarkedRecovery | null> {
   if (!req.employeeId) return null;
   const employeeId = req.employeeId;
   return db.transaction(async (tx) => {
@@ -464,6 +474,8 @@ async function markReassign(workspaceId: string, parent: Task, req: RecoveryRequ
       source: "team",
       dryRun: child.dryRun,
       requireTeamLead: false,
+      // the parent/origin links cover an untrusted task; this covers a lead review run tainted mid-run
+      untrustedInput: untrusted || child.untrustedInput,
     });
     // the retry budget follows the work, not the employee (same transaction as the insert)
     const [task] = await tx.update(tasks).set({ retryCount: child.retryCount + 1 }).where(eq(tasks.id, created.id)).returning();

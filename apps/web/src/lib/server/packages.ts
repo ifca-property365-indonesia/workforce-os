@@ -1,0 +1,650 @@
+import "server-only";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { CronExpressionParser } from "cron-parser";
+import { z } from "zod";
+import type { NextRequest } from "next/server";
+import { credentials, db, departments, employees, memories, routines, teamMembers, teams, workspaceDepartments, workspaces, type DB } from "@wfos/db";
+import {
+  isTimeZone,
+  mcpServerOfSelector,
+  packageKey,
+  parseWfosPackage,
+  PACKAGE_LEFT_OUT,
+  PACKAGE_MAX_BYTES,
+  PACKAGE_VERSION,
+  renameMcpSelector,
+  toolPermissionSchema,
+  uniqueMcpName,
+  type PackageDepartment,
+  type PackageEmployee,
+  type PackageMcpSlot,
+  type PackageRoutine,
+  type PackageTeam,
+  type WfosPackage,
+} from "@wfos/shared";
+import { exportRedact, redactUrl } from "@wfos/shared/server";
+import { assertPublicUrl, type Resolver } from "@wfos/shared/netguard";
+import { HttpError } from "./auth";
+import { readBodyCapped } from "./body-cap";
+import { MCP_RESERVED_NAMES } from "./mcp";
+
+type Q = Pick<DB, "select">;
+
+// ---------------------------------------------------------------------------
+// Reading a package from a request
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw bodies may be pretty-printed; the 2 MB limit applies to the compact package (checked by the schema). The raw
+ * body is cut off at 4 MB while it streams in: a larger one is refused without being buffered first.
+ */
+export const MAX_RAW_BODY = PACKAGE_MAX_BYTES * 2;
+
+/** The request body as a validated package; a readable 4xx otherwise. */
+export async function readPackage(req: NextRequest): Promise<WfosPackage> {
+  const bytes = await readBodyCapped(req, MAX_RAW_BODY);
+  if (!bytes) throw new HttpError(413, "The package is larger than 2 MB", { code: "package_too_large" });
+  const text = new TextDecoder("utf-8").decode(bytes);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    throw new HttpError(400, "Invalid JSON body", { code: "invalid_json" });
+  }
+  return parsePackageOrThrow(raw);
+}
+
+export function parsePackageOrThrow(raw: unknown): WfosPackage {
+  const r = parseWfosPackage(raw);
+  if (r.ok) return r.pkg;
+  const extra = { issues: r.issues };
+  switch (r.reason) {
+    case "not_a_package":
+      throw new HttpError(400, r.message, { code: "package_not_a_package", ...extra });
+    case "newer_version":
+      throw new HttpError(400, r.message, { code: "package_newer_version", ...extra });
+    case "too_large":
+      throw new HttpError(413, r.message, { code: "package_too_large", ...extra });
+    default:
+      throw new HttpError(400, r.message, { code: "package_invalid", detail: r.message.slice(0, 500), ...extra });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+
+export const exportRequestSchema = z.object({
+  employeeIds: z.array(z.uuid()).max(500).optional(),
+  teamIds: z.array(z.uuid()).max(200).optional(),
+  includeMemories: z.boolean().default(false),
+  includeDepartments: z.boolean().default(false),
+  dryRun: z.boolean().default(false),
+  name: z.string().trim().min(1).max(120).optional(),
+});
+export type ExportRequest = z.infer<typeof exportRequestSchema>;
+
+export interface PackageRedaction {
+  /** e.g. employee:dewi.persona, mcp:crm.url */
+  where: string;
+  rule: string;
+}
+
+export interface ExportReport {
+  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; mcpSlots: string[] };
+  redactions: PackageRedaction[];
+  leftOut: string[];
+  counts: { employees: number; teams: number; routines: number; departments: number; mcpSlots: number; memories: number; redactions: number };
+}
+
+const MEMORIES_PER_EMPLOYEE = 200;
+
+/** Build a secret-free package from the workspace's selection. Selecting a team includes its (non-archived) members. */
+export async function buildExport(workspaceId: string, input: ExportRequest): Promise<{ pkg: WfosPackage; report: ExportReport }> {
+  const wantEmployees = [...new Set(input.employeeIds ?? [])];
+  const wantTeams = [...new Set(input.teamIds ?? [])];
+  const everything = !wantEmployees.length && !wantTeams.length;
+
+  const teamRows = everything
+    ? await db.select().from(teams).where(eq(teams.workspaceId, workspaceId)).orderBy(teams.createdAt)
+    : wantTeams.length
+      ? await db.select().from(teams).where(and(eq(teams.workspaceId, workspaceId), inArray(teams.id, wantTeams))).orderBy(teams.createdAt)
+      : [];
+  if (teamRows.length !== wantTeams.length && !everything) throw new HttpError(400, "Unknown team", { code: "unknown_team" });
+  const teamIds = teamRows.map((t) => t.id);
+  const memberRows = teamIds.length ? await db.select().from(teamMembers).where(inArray(teamMembers.teamId, teamIds)) : [];
+
+  let empRows: (typeof employees.$inferSelect)[];
+  if (everything) {
+    empRows = (await db.select().from(employees).where(eq(employees.workspaceId, workspaceId)).orderBy(employees.createdAt)).filter((e) => e.status !== "ARCHIVED");
+  } else {
+    if (wantEmployees.length) {
+      const found = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.workspaceId, workspaceId), inArray(employees.id, wantEmployees)));
+      if (found.length !== wantEmployees.length) throw new HttpError(400, "Unknown employee", { code: "unknown_employee" });
+    }
+    const fromTeams = [...memberRows.map((m) => m.employeeId), ...teamRows.map((t) => t.leadId).filter((x): x is string => !!x)];
+    const ids = [...new Set([...wantEmployees, ...fromTeams])];
+    const rows = ids.length ? await db.select().from(employees).where(and(eq(employees.workspaceId, workspaceId), inArray(employees.id, ids))).orderBy(employees.createdAt) : [];
+    // a team's archived members stay behind; an archived employee picked explicitly is exported
+    empRows = rows.filter((e) => e.status !== "ARCHIVED" || wantEmployees.includes(e.id));
+  }
+
+  const redactions: PackageRedaction[] = [];
+  const clean = (where: string, text: string, max: number): string => {
+    const r = exportRedact(text);
+    for (const rule of r.rules) redactions.push({ where, rule });
+    return r.text.slice(0, max);
+  };
+
+  const empKeys = new Map<string, string>();
+  const takenEmp = new Set<string>();
+  for (const e of empRows) empKeys.set(e.id, packageKey(e.name, takenEmp));
+
+  let memRows: { employeeId: string; kind: string; content: string }[] = [];
+  if (input.includeMemories && empRows.length) {
+    const all = await db
+      .select({ employeeId: memories.employeeId, kind: memories.kind, content: memories.content })
+      .from(memories)
+      .where(and(eq(memories.workspaceId, workspaceId), inArray(memories.employeeId, empRows.map((e) => e.id))))
+      .orderBy(desc(memories.createdAt));
+    const per = new Map<string, number>();
+    memRows = all.filter((m) => {
+      const n = (per.get(m.employeeId) ?? 0) + 1;
+      per.set(m.employeeId, n);
+      return n <= MEMORIES_PER_EMPLOYEE;
+    });
+  }
+
+  const mcpNames = new Set<string>();
+  const pkgEmployees: PackageEmployee[] = empRows.map((e) => {
+    const k = empKeys.get(e.id)!;
+    const tools = [...new Set(e.toolPermissions.map((p) => p.tool))].filter((t) => toolPermissionSchema.shape.tool.safeParse(t).success);
+    for (const t of tools) {
+      const s = mcpServerOfSelector(t);
+      if (s) mcpNames.add(s);
+    }
+    const seeds = memRows
+      .filter((m) => m.employeeId === e.id)
+      .map((m, i) => ({ kind: (["fact", "feedback", "preference"].includes(m.kind) ? m.kind : "fact") as "fact" | "feedback" | "preference", content: clean(`employee:${k}.memories.${i}`, m.content, 4000) }))
+      .filter((m) => m.content.trim());
+    return {
+      key: k,
+      name: clean(`employee:${k}.name`, e.name, 80),
+      avatar: e.avatar,
+      role: clean(`employee:${k}.role`, e.role, 80),
+      templateKey: e.templateKey,
+      persona: clean(`employee:${k}.persona`, e.persona, 4000),
+      instructions: clean(`employee:${k}.instructions`, e.instructions, 20000),
+      businessContext: clean(`employee:${k}.businessContext`, e.businessContext, 20000),
+      model: e.model,
+      autonomyLevel: e.autonomyLevel,
+      toolPermissions: tools,
+      outputLanguage: e.outputLanguage,
+      executionMode: e.executionMode,
+      department: e.department,
+      egressDomains: e.egressDomains,
+      look: e.look ?? null,
+      ...(input.includeMemories ? { seedMemories: seeds } : {}),
+    };
+  });
+
+  const teamKeys = new Map<string, string>();
+  const takenTeam = new Set<string>();
+  const pkgTeams: PackageTeam[] = teamRows.map((t) => {
+    const k = packageKey(t.name, takenTeam);
+    teamKeys.set(t.id, k);
+    const members = [...new Set([...(t.leadId ? [t.leadId] : []), ...memberRows.filter((m) => m.teamId === t.id).map((m) => m.employeeId)])];
+    return {
+      key: k,
+      name: clean(`team:${k}.name`, t.name, 120),
+      description: clean(`team:${k}.description`, t.description, 2000),
+      leadKey: (t.leadId && empKeys.get(t.leadId)) || null,
+      memberKeys: members.map((id) => empKeys.get(id)).filter((x): x is string => !!x),
+      responderMode: t.responderMode,
+    };
+  });
+
+  const empIds = empRows.map((e) => e.id);
+  const routineRows = empIds.length || teamIds.length ? (await db.select().from(routines).where(eq(routines.workspaceId, workspaceId)).orderBy(routines.createdAt)).filter((r) => (r.assigneeId && empKeys.has(r.assigneeId)) || (r.teamId && teamKeys.has(r.teamId))) : [];
+  const pkgRoutines: PackageRoutine[] = routineRows.map((r, i) => ({
+    name: clean(`routine:${i}.name`, r.name, 120),
+    cron: r.cron,
+    timezone: r.timezone,
+    brief: clean(`routine:${i}.brief`, r.brief, 20000) || "-",
+    assigneeKey: (r.assigneeId && empKeys.get(r.assigneeId)) || null,
+    teamKey: (r.teamId && teamKeys.get(r.teamId)) || null,
+    perClient: r.perClient,
+    dryRun: r.dryRun,
+  }));
+
+  let pkgDepartments: PackageDepartment[] | undefined;
+  if (input.includeDepartments) {
+    const used = new Set(empRows.map((e) => e.department).filter((x): x is string => !!x));
+    const rows = used.size ? (await workspaceDepartments(workspaceId)).filter((d) => used.has(d.key)) : [];
+    const bi = (where: string, v: { en: string; id: string }) => ({ en: clean(`${where}.en`, v.en, 20000), id: clean(`${where}.id`, v.id, 20000) });
+    pkgDepartments = rows.map((d) => ({
+      key: d.key,
+      name: bi(`department:${d.key}.name`, d.name),
+      sop: bi(`department:${d.key}.sop`, d.sop),
+      subagents: d.subagents.map((s, i) => ({
+        name: s.name,
+        description: bi(`department:${d.key}.subagents.${i}.description`, s.description),
+        prompt: bi(`department:${d.key}.subagents.${i}.prompt`, s.prompt),
+        ...(s.tools ? { tools: s.tools } : {}),
+      })),
+    }));
+  }
+
+  const mcpSlots: PackageMcpSlot[] = [];
+  if (mcpNames.size) {
+    const rows = await db
+      .select({ name: credentials.name, config: credentials.config })
+      .from(credentials)
+      .where(and(eq(credentials.workspaceId, workspaceId), eq(credentials.kind, "mcp"), inArray(credentials.name, [...mcpNames])))
+      .orderBy(credentials.name);
+    for (const r of rows) {
+      const found: string[] = [];
+      const url = redactUrl(String((r.config as { url?: unknown }).url ?? ""), found);
+      for (const rule of found) redactions.push({ where: `mcp:${r.name}.url`, rule });
+      if (url) mcpSlots.push({ name: r.name, url });
+    }
+  }
+
+  const [ws] = await db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.id, workspaceId));
+  const defaultName = input.name ?? (teamRows.length === 1 && !wantEmployees.length ? teamRows[0]!.name : empRows.length === 1 && !teamRows.length ? empRows[0]!.name : (ws?.name ?? "Workforce"));
+  const commit = process.env.WFOS_COMMIT?.trim().slice(0, 64);
+  const draft = {
+    format: "wfos.package" as const,
+    version: PACKAGE_VERSION as 1,
+    meta: { name: clean("meta.name", defaultName, 120) || "Workforce", exportedAt: new Date().toISOString(), ...(commit ? { appCommit: commit } : {}) },
+    employees: pkgEmployees,
+    teams: pkgTeams,
+    routines: pkgRoutines,
+    ...(pkgDepartments ? { departments: pkgDepartments } : {}),
+    mcpSlots,
+  };
+  // what we hand out must be exactly what an import accepts
+  const pkg = parsePackageOrThrow(draft);
+
+  const leftOut: string[] = [...PACKAGE_LEFT_OUT];
+  if (!input.includeMemories) leftOut.push("memories");
+  if (!input.includeDepartments) leftOut.push("departments");
+  const report: ExportReport = {
+    included: {
+      employees: pkg.employees.map((e) => e.name),
+      teams: pkg.teams.map((t) => t.name),
+      routines: pkg.routines.map((r) => r.name),
+      departments: (pkg.departments ?? []).map((d) => d.key),
+      mcpSlots: pkg.mcpSlots.map((s) => s.name),
+    },
+    redactions,
+    leftOut,
+    counts: {
+      employees: pkg.employees.length,
+      teams: pkg.teams.length,
+      routines: pkg.routines.length,
+      departments: pkg.departments?.length ?? 0,
+      mcpSlots: pkg.mcpSlots.length,
+      memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
+      redactions: redactions.length,
+    },
+  };
+  return { pkg, report };
+}
+
+// ---------------------------------------------------------------------------
+// Import
+// ---------------------------------------------------------------------------
+
+export type ImportWarning = { code: string } & Record<string, string | number>;
+export interface ImportConflict {
+  kind: "employee" | "team" | "routine" | "department" | "mcpSlot";
+  name: string;
+  /** the name it will be created under, when it differs */
+  as?: string;
+}
+
+interface Existing {
+  employeeNames: Set<string>;
+  teamNames: Set<string>;
+  routineNames: Set<string>;
+  departmentKeys: Set<string>;
+  mcpNames: Set<string>;
+}
+
+async function loadExisting(q: Q, workspaceId: string): Promise<Existing> {
+  const lower = (xs: { name: string }[]) => new Set(xs.map((x) => x.name.trim().toLowerCase()));
+  const [emps, ts, rs, ds, ms] = await Promise.all([
+    q.select({ name: employees.name, status: employees.status }).from(employees).where(eq(employees.workspaceId, workspaceId)),
+    q.select({ name: teams.name }).from(teams).where(eq(teams.workspaceId, workspaceId)),
+    q.select({ name: routines.name }).from(routines).where(eq(routines.workspaceId, workspaceId)),
+    q.select({ key: departments.key }).from(departments).where(eq(departments.workspaceId, workspaceId)),
+    q.select({ name: credentials.name }).from(credentials).where(and(eq(credentials.workspaceId, workspaceId), eq(credentials.kind, "mcp"))),
+  ]);
+  return {
+    employeeNames: lower(emps.filter((e) => e.status !== "ARCHIVED")),
+    teamNames: lower(ts),
+    routineNames: lower(rs),
+    departmentKeys: new Set(ds.map((d) => d.key)),
+    mcpNames: new Set(ms.map((m) => m.name)),
+  };
+}
+
+interface Plan {
+  mcpRenames: Map<string, string>;
+  newDepartments: PackageDepartment[];
+  /** employee key → department key to store (null when it exists neither in the package nor the workspace) */
+  departmentOf: Map<string, string | null>;
+  warnings: ImportWarning[];
+  conflicts: ImportConflict[];
+}
+
+function plan(pkg: WfosPackage, ex: Existing): Plan {
+  const warnings: ImportWarning[] = [];
+  const conflicts: ImportConflict[] = [];
+  const has = (set: Set<string>, name: string) => set.has(name.trim().toLowerCase());
+
+  for (const e of pkg.employees) if (has(ex.employeeNames, e.name)) conflicts.push({ kind: "employee", name: e.name });
+  for (const t of pkg.teams) if (has(ex.teamNames, t.name)) conflicts.push({ kind: "team", name: t.name });
+  for (const r of pkg.routines) if (has(ex.routineNames, r.name)) conflicts.push({ kind: "routine", name: r.name });
+
+  const mcpRenames = new Map<string, string>();
+  // a reserved name (oauth, tools) is renamed like a clash: the Settings API could not address it
+  const taken = new Set([...ex.mcpNames, ...MCP_RESERVED_NAMES]);
+  for (const s of pkg.mcpSlots) {
+    const name = uniqueMcpName(s.name, taken);
+    taken.add(name);
+    mcpRenames.set(s.name, name);
+    if (name !== s.name) {
+      conflicts.push({ kind: "mcpSlot", name: s.name, as: name });
+      warnings.push({ code: "mcp_renamed", from: s.name, to: name });
+    }
+  }
+
+  const newDepartments: PackageDepartment[] = [];
+  for (const d of pkg.departments ?? []) {
+    if (ex.departmentKeys.has(d.key)) {
+      conflicts.push({ kind: "department", name: d.key });
+      warnings.push({ code: "department_exists", key: d.key });
+    } else newDepartments.push(d);
+  }
+  const knownDepartments = new Set([...ex.departmentKeys, ...newDepartments.map((d) => d.key)]);
+  const departmentOf = new Map<string, string | null>();
+  for (const e of pkg.employees) {
+    const d = e.department ?? null;
+    if (d && !knownDepartments.has(d)) warnings.push({ code: "department_missing", name: e.name, key: d });
+    departmentOf.set(e.key, d && knownDepartments.has(d) ? d : null);
+  }
+
+  if (pkg.employees.length) warnings.push({ code: "employees_draft", count: pkg.employees.length });
+  const toolCount = pkg.employees.reduce((n, e) => n + e.toolPermissions.length, 0);
+  if (toolCount) warnings.push({ code: "tools_disabled", count: toolCount });
+  for (const e of pkg.employees) if (e.executionMode === "workspace") warnings.push({ code: "workspace_mode", name: e.name });
+  if (pkg.routines.length) warnings.push({ code: "routines_disabled", count: pkg.routines.length });
+  if (pkg.mcpSlots.length) warnings.push({ code: "mcp_disabled", count: pkg.mcpSlots.length });
+  const slots = new Set(pkg.mcpSlots.map((s) => s.name));
+  const unknown = new Set<string>();
+  for (const e of pkg.employees) {
+    for (const t of e.toolPermissions) {
+      const s = mcpServerOfSelector(t);
+      if (s && !slots.has(s) && !ex.mcpNames.has(s)) unknown.add(s);
+    }
+  }
+  for (const server of unknown) warnings.push({ code: "mcp_unknown", server });
+  return { mcpRenames, newDepartments, departmentOf, warnings, conflicts };
+}
+
+function cronError(r: PackageRoutine): string | null {
+  if (!isTimeZone(r.timezone)) return `unknown time zone ${r.timezone}`;
+  try {
+    CronExpressionParser.parse(r.cron, { tz: r.timezone });
+    return null;
+  } catch (e) {
+    return (e as Error).message.slice(0, 200);
+  }
+}
+
+/**
+ * The package's MCP slot URLs must point to public addresses: an import must not plant a slot that would let this
+ * server reach a private, loopback or link-local host (cloud metadata, the database, an admin port) once someone
+ * adds a token. Every host is resolved; one that does not resolve is refused too (it cannot be judged).
+ */
+export async function mcpSlotUrlErrors(pkg: WfosPackage, resolver?: Resolver): Promise<ImportWarning[]> {
+  const errors: ImportWarning[] = [];
+  for (const s of pkg.mcpSlots) {
+    let host = "";
+    try {
+      const u = new URL(s.url);
+      host = u.hostname.replace(/^\[|\]$/g, "");
+      // a literal "localhost"-style name never resolves publicly, whatever DNS says today
+      if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("local name");
+      await assertPublicUrl(u, resolver ? { resolver } : {});
+    } catch {
+      errors.push({ code: "mcp_url_not_public", name: s.name, host: host || s.url.slice(0, 200) });
+    }
+  }
+  return errors;
+}
+
+/** Everything an imported employee will be told and remember, in full, so the admin can read it before importing. */
+export interface ImportPreviewEmployee {
+  key: string;
+  name: string;
+  role: string;
+  persona: string;
+  instructions: string;
+  businessContext: string;
+  seedMemories: { kind: string; content: string }[];
+  toolPermissions: string[];
+  egressDomains: string[];
+  executionMode: string;
+  department: string | null;
+}
+
+export interface ImportPreviewDepartment {
+  key: string;
+  /** false: the workspace already has this key and keeps its own (nothing of this one is imported) */
+  isNew: boolean;
+  name: { en: string; id: string };
+  sop: { en: string; id: string };
+  subagents: { name: string; description: { en: string; id: string }; prompt: { en: string; id: string }; tools: string[] | null }[];
+}
+
+export interface ImportPreviewDetails {
+  employees: ImportPreviewEmployee[];
+  departments: ImportPreviewDepartment[];
+  teams: { name: string; description: string }[];
+  routines: { name: string; cron: string; timezone: string; brief: string }[];
+  mcpSlots: { name: string; url: string }[];
+  /** every host the package's employees may reach from a sandbox (egressDomains), deduplicated */
+  egressHosts: string[];
+  /** every tool a package subagent may use, deduplicated */
+  subagentTools: string[];
+}
+
+function previewDetails(pkg: WfosPackage, p: Plan): ImportPreviewDetails {
+  const newKeys = new Set(p.newDepartments.map((d) => d.key));
+  const departments = (pkg.departments ?? []).map((d) => ({
+    key: d.key,
+    isNew: newKeys.has(d.key),
+    name: d.name,
+    sop: d.sop,
+    subagents: d.subagents.map((s) => ({ name: s.name, description: s.description, prompt: s.prompt, tools: s.tools ?? null })),
+  }));
+  return {
+    employees: pkg.employees.map((e) => ({
+      key: e.key,
+      name: e.name,
+      role: e.role,
+      persona: e.persona,
+      instructions: e.instructions,
+      businessContext: e.businessContext,
+      seedMemories: (e.seedMemories ?? []).map((m) => ({ kind: m.kind, content: m.content })),
+      toolPermissions: e.toolPermissions,
+      egressDomains: e.egressDomains,
+      executionMode: e.executionMode,
+      department: e.department ?? null,
+    })),
+    departments,
+    teams: pkg.teams.map((t) => ({ name: t.name, description: t.description })),
+    routines: pkg.routines.map((r) => ({ name: r.name, cron: r.cron, timezone: r.timezone, brief: r.brief })),
+    mcpSlots: pkg.mcpSlots.map((s) => ({ name: s.name, url: s.url })),
+    egressHosts: [...new Set(pkg.employees.flatMap((e) => e.egressDomains))].sort(),
+    subagentTools: [...new Set(departments.filter((d) => d.isNew).flatMap((d) => d.subagents.flatMap((s) => s.tools ?? [])))].sort(),
+  };
+}
+
+export interface ImportPreview {
+  ok: boolean;
+  name: string;
+  /** the full text of what would be imported (instructions, memories, SOPs, subagent prompts), for review */
+  details: ImportPreviewDetails;
+  will: { employees: number; teams: number; routines: number; departments: number; mcpSlots: number; memories: number };
+  warnings: ImportWarning[];
+  conflicts: ImportConflict[];
+  /** problems that make the commit fail */
+  errors: ImportWarning[];
+}
+
+export async function previewImport(workspaceId: string, pkg: WfosPackage, opts: { resolver?: Resolver } = {}): Promise<ImportPreview> {
+  await workspaceDepartments(workspaceId); // the defaults count as existing departments
+  const p = plan(pkg, await loadExisting(db, workspaceId));
+  const errors: ImportWarning[] = [];
+  for (const r of pkg.routines) {
+    const err = cronError(r);
+    if (err) errors.push({ code: "invalid_cron", name: r.name, detail: err });
+  }
+  errors.push(...(await mcpSlotUrlErrors(pkg, opts.resolver)));
+  return {
+    ok: errors.length === 0,
+    name: pkg.meta.name,
+    details: previewDetails(pkg, p),
+    will: {
+      employees: pkg.employees.length,
+      teams: pkg.teams.length,
+      routines: pkg.routines.length,
+      departments: p.newDepartments.length,
+      mcpSlots: pkg.mcpSlots.length,
+      memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
+    },
+    warnings: p.warnings,
+    conflicts: p.conflicts,
+    errors,
+  };
+}
+
+export interface ImportResult {
+  employees: { key: string; id: string; name: string }[];
+  teams: { key: string; id: string; name: string }[];
+  routines: { id: string; name: string }[];
+  departments: string[];
+  mcpSlots: { id: string; name: string; from: string }[];
+  memories: number;
+  warnings: ImportWarning[];
+}
+
+/**
+ * Create everything in one transaction, additive only: employees at DRAFT with every tool disabled and no
+ * allow-list, routines disabled, MCP slots disabled without a secret, departments only where the key is new.
+ * Any failure (e.g. an invalid cron) rolls the whole import back.
+ */
+export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: { resolver?: Resolver } = {}): Promise<ImportResult> {
+  // resolved again now (the preview may be minutes old): a slot that is not public is a validation error
+  const [bad] = await mcpSlotUrlErrors(pkg, opts.resolver);
+  if (bad) {
+    throw new HttpError(400, `MCP server ${bad.name} in the package does not point to a public address`, { code: "package_mcp_url_not_public", name: bad.name, host: bad.host });
+  }
+  await workspaceDepartments(workspaceId);
+  return db.transaction(async (tx) => {
+    const p = plan(pkg, await loadExisting(tx, workspaceId));
+    const out: ImportResult = { employees: [], teams: [], routines: [], departments: [], mcpSlots: [], memories: 0, warnings: p.warnings };
+
+    for (const s of pkg.mcpSlots) {
+      const name = p.mcpRenames.get(s.name)!;
+      // disabled and without a secret until an Owner adds the token in Settings (which replaces this config); the
+      // worker's getExternalMcpServers skips config.disabled. (encryptSecret("") cannot be decrypted, so no empty box.)
+      const [row] = await tx.insert(credentials).values({ workspaceId, kind: "mcp", name, config: { url: s.url, disabled: true }, secretEnc: null }).returning({ id: credentials.id });
+      out.mcpSlots.push({ id: row!.id, name, from: s.name });
+    }
+
+    if (p.newDepartments.length) {
+      const rows = await tx
+        .insert(departments)
+        .values(p.newDepartments.map((d) => ({ workspaceId, key: d.key, name: d.name, sop: d.sop, subagents: d.subagents })))
+        .onConflictDoNothing()
+        .returning({ key: departments.key });
+      out.departments = rows.map((r) => r.key);
+    }
+
+    const empIds = new Map<string, string>();
+    for (const e of pkg.employees) {
+      const [row] = await tx
+        .insert(employees)
+        .values({
+          workspaceId,
+          name: e.name,
+          avatar: e.avatar,
+          role: e.role,
+          templateKey: e.templateKey ?? null,
+          persona: e.persona,
+          instructions: e.instructions,
+          businessContext: e.businessContext,
+          model: e.model,
+          autonomyLevel: "DRAFT",
+          toolPermissions: e.toolPermissions.map((tool) => ({ tool: renameMcpSelector(tool, p.mcpRenames), enabled: false })),
+          allowList: [],
+          status: "ACTIVE",
+          outputLanguage: e.outputLanguage,
+          executionMode: e.executionMode,
+          egressDomains: e.egressDomains,
+          department: p.departmentOf.get(e.key) ?? null,
+          look: e.look ?? null,
+        })
+        .returning({ id: employees.id });
+      empIds.set(e.key, row!.id);
+      out.employees.push({ key: e.key, id: row!.id, name: e.name });
+      const seeds = e.seedMemories ?? [];
+      if (seeds.length) {
+        // embeddings are back-filled by the worker (backfillMemoryEmbeddings). Seed memories came from someone
+        // else's package: recalled as data, and recalling one taints the run
+        await tx
+          .insert(memories)
+          .values(seeds.map((m) => ({ workspaceId, employeeId: row!.id, kind: m.kind, content: m.content, source: "import", untrusted: true, embedding: null })));
+        out.memories += seeds.length;
+      }
+    }
+
+    const teamIds = new Map<string, string>();
+    for (const t of pkg.teams) {
+      const leadId = t.leadKey ? empIds.get(t.leadKey)! : null;
+      const [row] = await tx.insert(teams).values({ workspaceId, name: t.name, description: t.description, leadId, responderMode: t.responderMode }).returning({ id: teams.id });
+      teamIds.set(t.key, row!.id);
+      const memberIds = [...new Set([...(leadId ? [leadId] : []), ...t.memberKeys.map((k) => empIds.get(k)!)])];
+      if (memberIds.length) await tx.insert(teamMembers).values(memberIds.map((employeeId) => ({ teamId: row!.id, employeeId })));
+      out.teams.push({ key: t.key, id: row!.id, name: t.name });
+    }
+
+    for (const r of pkg.routines) {
+      const err = cronError(r);
+      if (err) throw new HttpError(400, `Invalid cron expression in routine ${r.name}: ${err}`, { code: "invalid_cron", detail: `${r.name}: ${err}` });
+      const [row] = await tx
+        .insert(routines)
+        .values({
+          workspaceId,
+          name: r.name,
+          cron: r.cron,
+          timezone: r.timezone,
+          brief: r.brief,
+          assigneeId: r.assigneeKey ? empIds.get(r.assigneeKey)! : null,
+          teamId: r.teamKey ? teamIds.get(r.teamKey)! : null,
+          perClient: r.perClient,
+          dryRun: r.dryRun,
+          enabled: false,
+          nextRunAt: null,
+        })
+        .returning({ id: routines.id });
+      out.routines.push({ id: row!.id, name: r.name });
+    }
+    return out;
+  });
+}

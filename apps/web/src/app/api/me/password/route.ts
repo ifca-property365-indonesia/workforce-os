@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { audit, db, users } from "@wfos/db";
 import { HttpError, setSession } from "@/lib/server/auth";
+import { revokeUserApiTokens } from "@/lib/server/api-token";
 import { rateLimit, resetRateLimit } from "@/lib/server/ratelimit";
 import { body, route } from "@/lib/server/route";
 
@@ -11,7 +12,7 @@ const schema = z.object({
   newPassword: z.string().min(10, "Use at least 10 characters").max(200),
 });
 
-/** Change your own password. Revokes every other session (see getSession). */
+/** Change your own password. Revokes every other session (see getSession) and every API token (in all workspaces). */
 export const POST = route("VIEWER", async ({ session, req }) => {
   const input = await body(req, schema);
   const [user] = await db.select().from(users).where(eq(users.id, session.userId));
@@ -27,7 +28,17 @@ export const POST = route("VIEWER", async ({ session, req }) => {
     .set({ passwordHash: await bcrypt.hash(input.newPassword, 11), mustChangePassword: false, passwordChangedAt: new Date() })
     .where(eq(users.id, user.id));
   await resetRateLimit(`pwchange:${user.id}`);
-  await audit({ workspaceId: session.workspaceId, actorUserId: user.id, actorLabel: user.email, action: "user.password_changed", targetType: "user", targetId: user.id });
+  // a token minted by whoever knew the old password must not outlive it
+  const tokensRevoked = await revokeUserApiTokens(user.id);
+  await audit({
+    workspaceId: session.workspaceId,
+    actorUserId: user.id,
+    actorLabel: user.email,
+    action: "user.password_changed",
+    targetType: "user",
+    targetId: user.id,
+    details: { tokensRevoked },
+  });
   // re-issue this browser's session so only the other sessions are signed out
   await setSession(user.id, session.workspaceId);
   return { ok: true };

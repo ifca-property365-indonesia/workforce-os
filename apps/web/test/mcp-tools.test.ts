@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SsrfBlockedError } from "@wfos/shared/netguard";
 import { eq } from "drizzle-orm";
 import { credentials, db, members, users, workspaces } from "@wfos/db";
 import type { Role } from "@wfos/shared";
@@ -8,8 +9,11 @@ import { encryptSecret } from "@wfos/shared/server";
 import { POST as login } from "@/app/api/auth/login/route";
 import { GET as listTools } from "@/app/api/settings/mcp/[name]/tools/route";
 import { POST as addServer } from "@/app/api/settings/mcp/route";
-import { noAutoRedirectFetch } from "@/lib/server/mcp";
+import { guardedMcpFetch, noAutoRedirectFetch } from "@/lib/server/mcp";
 import { call, callWithParams, resetBrowser } from "./browser";
+
+// no network: every host resolves through the fake DNS (public unless it is a *.private.test host)
+vi.mock("node:dns/promises", async (orig) => (await import("./fake-dns")).dnsModule(orig as () => Promise<typeof import("node:dns/promises")>));
 
 /** The MCP SDK is replaced: no network. Each test sets what connect / listTools do. */
 const sdk = vi.hoisted(() => ({
@@ -136,7 +140,8 @@ describe("GET /api/settings/mcp/[name]/tools", () => {
     await server(ws.id, "crm", "https://crm.example.com/mcp", "s3cret");
     expect((await get("crm")).status).toBe(200);
     expect(sdk.transports[0]!.redirectPolicy).toBe("same-origin");
-    expect(sdk.transports[0]!.fetch).toBe(noAutoRedirectFetch);
+    // the transport's fetch is the guarded one: anything but the configured host must be public
+    await expect((sdk.transports[0]!.fetch as typeof noAutoRedirectFetch)("http://169.254.169.254/latest", {})).rejects.toBeInstanceOf(SsrfBlockedError);
     const seen: RequestInit[] = [];
     const real = globalThis.fetch;
     globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => (seen.push(init ?? {}), new Response(null, { status: 204 }))) as typeof fetch;
@@ -148,6 +153,37 @@ describe("GET /api/settings/mcp/[name]/tools", () => {
     }
     expect(seen.map((i) => i.redirect)).toEqual(["manual", "manual"]);
     expect(seen[0]!.method).toBe("POST");
+  });
+
+  it("the listing's fetch reaches the configured host, and only public addresses besides it", async () => {
+    const seen: string[] = [];
+    const base = async (url: string | URL) => (seen.push(String(url)), new Response(null, { status: 204 }));
+    const f = guardedMcpFetch(["mcp.private.test"], base);
+    expect((await f("https://mcp.private.test/mcp")).status).toBe(204); // the Owner's own (private) host
+    expect((await f("https://public.example.com/x")).status).toBe(204);
+    await expect(f("https://other.private.test/x")).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(f("http://169.254.169.254/latest/meta-data")).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(f("http://[::1]:8080/")).rejects.toBeInstanceOf(SsrfBlockedError);
+    await expect(f("https://metadata.test/")).rejects.toBeInstanceOf(SsrfBlockedError);
+    expect(seen).toEqual(["https://mcp.private.test/mcp", "https://public.example.com/x"]);
+  });
+
+  it("a refusal by the SSRF guard is a 400 mcp_url_not_public, not 'unreachable'", async () => {
+    const ws = await signedIn("ADMIN");
+    await server(ws.id, "crm", "https://crm.example.com/mcp");
+    sdk.connect.mockRejectedValueOnce(new SsrfBlockedError("host x resolves to a non-public address"));
+    const r = await get("crm");
+    expect(r.status).toBe(400);
+    expect(r.json).toMatchObject({ code: "mcp_url_not_public", name: "crm" });
+  });
+
+  it("an imported (disabled) slot is never contacted: 409 mcp_server_disabled", async () => {
+    const ws = await signedIn("ADMIN");
+    await db.insert(credentials).values({ workspaceId: ws.id, kind: "mcp", name: "crm", config: { url: "http://169.254.169.254/mcp", disabled: true }, secretEnc: null });
+    const r = await get("crm");
+    expect(r.status).toBe(409);
+    expect(r.json.code).toBe("mcp_server_disabled");
+    expect(sdk.transports).toHaveLength(0);
   });
 
   it("gives up after the timeout", async () => {

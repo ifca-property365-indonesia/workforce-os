@@ -22,5 +22,8 @@ export const NAMESPACES = [
   "knowledge",
   "settings",
   "office",
+  "webhooks",
+  "apitokens",
+  "packages",
 ] as const;
 export type Namespace = (typeof NAMESPACES)[number];

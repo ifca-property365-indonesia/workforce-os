@@ -96,6 +96,9 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
         source: "board",
         dryRun: action === "dry_run" ? true : t.dryRun,
         createdBy: session.userId,
+        // a copy of work that started from untrusted input is just as untrusted; originTaskId keeps the lineage
+        untrustedInput: t.untrustedInput,
+        originTaskId: t.id,
         // unchanged: a copy keeps the original's (possibly since removed) assignee and team
         requireAssignee: false,
         requireTeamLead: false,

@@ -16,6 +16,8 @@ import { api } from "@/lib/api";
 import { hasRole, TEAM_RESPONDER_MODES, type TeamResponderMode } from "@wfos/shared";
 import { useClients, useEmployees, useMe, useTeams, type Team } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { ExportButton } from "@/components/packages/export-dialog";
+import { ImportButton } from "@/components/packages/import-dialog";
 
 function BriefDialog({ team, onClose }: { team: Team; onClose: () => void }) {
   const t = useTranslations("teams");
@@ -109,6 +111,7 @@ function ResponderModePicker({ team, canEdit, saving, onChange }: { team: Team; 
 
 export default function TeamsPage() {
   const tt = useTranslations("teams");
+  const tp = useTranslations("packages");
   const qc = useQueryClient();
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
@@ -153,11 +156,17 @@ export default function TeamsPage() {
           </CardContent>
         </Card>
         <div className="space-y-4">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Input placeholder={tt("newTeamPlaceholder")} value={newName} onChange={(e) => setNewName(e.target.value)} className="max-w-xs" />
             <Button disabled={!newName} onClick={() => create.mutate()} className="gap-1">
               <Plus className="size-4" /> {tt("createTeam")}
             </Button>
+            {isAdmin && (
+              <div className="ml-auto flex gap-2">
+                <ImportButton />
+                <ExportButton label={tp("export.exportAll")} />
+              </div>
+            )}
           </div>
           {!teams?.length && <EmptyState title={tt("empty.title")} description={tt("empty.description")} />}
           {teams?.map((t) => (
@@ -182,6 +191,7 @@ export default function TeamsPage() {
                   <Button size="sm" variant="secondary" disabled={!t.leadId} onClick={() => setBriefing(t)} className="gap-1">
                     <Send className="size-3.5" /> {tt("briefTeam")}
                   </Button>
+                  {isAdmin && <ExportButton selection={{ teamIds: [t.id] }} name={t.name} variant="ghost" />}
                   <Button size="icon" variant="ghost" onClick={() => confirm(tt("confirmDelete", { name: t.name })) && del.mutate(t.id)} aria-label={tt("deleteTeam")}>
                     <Trash2 className="size-4" />
                   </Button>

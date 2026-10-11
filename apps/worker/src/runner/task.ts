@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { approvals, clients, db, employees, projects, repositories, tasks, workspaceDepartments } from "@wfos/db";
+import { approvals, clients, db, employees, projects, repositories, steps, tasks, workspaceDepartments } from "@wfos/db";
 import { ROLE_TEMPLATES } from "@wfos/templates";
 import { decryptSecret } from "@wfos/shared/server";
 import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
@@ -14,11 +14,12 @@ import { msg } from "@wfos/shared/messages";
 import { log } from "../lib/logger";
 import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
-import { buildSystemPrompt, recallMemories, workspaceDirectory } from "./prompt";
+import { buildSystemPrompt, inboxSection, recallMemories, taintFromStoredInput, workspaceDirectory } from "./prompt";
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
 import { planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
 import { failTask, setTaskStatus } from "./task-status";
 import { applyRecoveries } from "./incidents";
+import { persistRunTaint, untrustedLineage } from "./taint";
 import { errorMessage } from "../lib/errors";
 import { scriptedTaskRun } from "../simulation/demo";
 
@@ -26,6 +27,7 @@ type Task = typeof tasks.$inferSelect;
 
 // Status changes live in ./task-status (setTaskStatus, failTask); re-exported for existing importers.
 export { failTask, notifyFinished, setTaskStatus } from "./task-status";
+export { untrustedLineage } from "./taint";
 
 /** While a run is in flight its row is touched this often, so the reaper (35 min) never takes it for an orphan. */
 export const RUN_HEARTBEAT_MS = 5 * 60_000;
@@ -127,6 +129,26 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
   }
 }
 
+const UNTRUSTED_INPUT_NOTE = "Created from untrusted input (e.g. a webhook payload), or an earlier run of it handled untrusted content: every irreversible action in this run needs human approval.";
+const UNTRUSTED_SUBTASK_NOTE = "A subtask was created from or handled untrusted content: every irreversible action in this run needs human approval.";
+
+/** One guard step of this name per task (not per run), so the timeline says why approvals are forced. */
+async function recordTaskTaint(task: Task, employeeId: string, name: "untrusted_input" | "untrusted_subtask", note: string, input?: Record<string, unknown>): Promise<void> {
+  try {
+    const [seen] = await db.select({ id: steps.id }).from(steps).where(and(eq(steps.taskId, task.id), eq(steps.kind, "guard"), eq(steps.name, name))).limit(1);
+    if (seen) return;
+    await recordStep({ workspaceId: task.workspaceId, taskId: task.id, employeeId, kind: "guard", name, status: "flagged", ...(input ? { input } : {}), output: { note } });
+  } catch (e) {
+    log.warn({ err: e, taskId: task.id, name }, "taint step not recorded"); // the taint stands
+  }
+}
+
+/** Team lead (plan or review): ids of its subtasks marked untrusted (created from, or a run of them handled, untrusted content). */
+async function untrustedSubtaskIds(taskId: string): Promise<string[]> {
+  const rows = await db.select({ id: tasks.id }).from(tasks).where(and(eq(tasks.parentTaskId, taskId), eq(tasks.untrustedInput, true)));
+  return rows.map((r) => r.id);
+}
+
 type Workspace = Awaited<ReturnType<typeof getWorkspace>>;
 type Employee = typeof employees.$inferSelect;
 type Team = Awaited<ReturnType<typeof resolveExecutor>>["team"];
@@ -155,6 +177,12 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     }
   }
 
+  const untrusted = await untrustedLineage(task);
+  if (untrusted) await recordTaskTaint(task, emp.id, "untrusted_input", UNTRUSTED_INPUT_NOTE);
+  // a lead reads its subtasks' results and deliverables (review) or re-plans around them: one untrusted subtask taints it
+  const untrustedKids = team?.role === "lead" ? await untrustedSubtaskIds(task.id) : [];
+  if (untrustedKids.length) await recordTaskTaint(task, emp.id, "untrusted_subtask", UNTRUSTED_SUBTASK_NOTE, { taskIds: untrustedKids });
+
   const ctx: RunContext = {
     runId: randomUUID(),
     workspaceId: ws.id,
@@ -163,7 +191,9 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     conversationId: null,
     dryRun: task.dryRun,
     sandboxed: false,
-    guard: { workspaceId: ws.id, taskId: task.id, conversationId: null, employeeId: emp.id, enabled: ws.guardsEnabled, tainted: false },
+    // created from untrusted input (a webhook payload, or a sub-/follow-up task of one): the run starts tainted,
+    // so every irreversible action needs a human approval, even an allow-listed one (applyRunSignals)
+    guard: { workspaceId: ws.id, taskId: task.id, conversationId: null, employeeId: emp.id, enabled: ws.guardsEnabled, tainted: untrusted || untrustedKids.length > 0 },
     pendingApprovalIds: [],
     deliverables: [],
     createdTaskIds: [],
@@ -192,8 +222,11 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     unreadMessagesFor(emp.id),
   ]);
 
+  // stored content written by a tainted run (or imported) is fenced as data in the prompt and taints this run
+  await taintFromStoredInput(ctx, mem, inbox);
+
   const promptParts = [`# Task: ${task.title}`, task.brief, context && `## Context\n${context}`];
-  if (inbox.length) promptParts.push(`## Messages from colleagues\n${inbox.map((m) => `- ${m.from ?? "system"} (${m.intent}): ${m.content}`).join("\n")}`);
+  if (inbox.length) promptParts.push(inboxSection(inbox));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(task, team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);
@@ -227,6 +260,7 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   try {
     out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget, agents });
   } catch (e) {
+    await persistRunTaint(ctx.guard, task);
     if (e instanceof WorkspaceBusyError) {
       // not a failure: wait for a free sandbox slot
       if (!(await setTaskStatus({ ...task, status: "RUNNING" }, "QUEUED", { error: null }))) return; // cancelled meanwhile
@@ -239,6 +273,9 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     await failTask(task, msg, { kind: "error" });
     return;
   }
+
+  // however the run ended or paused (done, approval, waiting for subtasks, any stop): before the status change
+  await persistRunTaint(ctx.guard, task);
 
   const running = { ...task, status: "RUNNING" as TaskStatus };
 
@@ -290,9 +327,9 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     await db.update(tasks).set({ phase: "wait" }).where(eq(tasks.id, task.id));
     // neither may strand the parent in "wait": a failure counts as nothing re-queued (applyRecoveries never throws)
     const n = ctx.revisionRequests.length
-      ? await requestRevisions(ws.id, task.id, emp.id, ctx.revisionRequests).catch((e: unknown) => (log.error({ err: e, taskId }, "revisions not applied"), 0))
+      ? await requestRevisions(ws.id, task.id, emp.id, ctx.revisionRequests, { untrusted: ctx.guard.tainted }).catch((e: unknown) => (log.error({ err: e, taskId }, "revisions not applied"), 0))
       : 0;
-    const m = await applyRecoveries(ws.id, task.id, emp.id, ctx.recoveryRequests ?? []);
+    const m = await applyRecoveries(ws.id, task.id, emp.id, ctx.recoveryRequests ?? [], { untrusted: ctx.guard.tainted });
     if (n + m > 0) {
       await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "team_review_reopened", output: { revisions: n, recoveries: m } });
       return; // stays RUNNING; the review runs again once these subtasks end

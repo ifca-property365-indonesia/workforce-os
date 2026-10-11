@@ -9,7 +9,9 @@
     "members": "Members",
     "audit": "Audit log",
     "repositories": "Repositories",
-    "departments": "Departments"
+    "departments": "Departments",
+    "webhooks": "Webhooks",
+    "apiTokens": "API access"
   },
   "workspace": {
     "title": "Workspace",
@@ -87,7 +89,28 @@
     "tokenPlaceholder": "Bearer token (optional)",
     "connect": "Connect",
     "test": "Test connection",
-    "testOk": "Connected: {count, plural, one {# tool} other {# tools}} ({reversible} reversible)"
+    "testOk": "Connected: {count, plural, one {# tool} other {# tools}} ({reversible} reversible)",
+    "oauthBadge": "OAuth",
+    "oauthConnect": "Connect with OAuth",
+    "oauthHint": "For servers that sign you in (OAuth): enter a name and the server URL, then sign in on the server's page. Workforce OS keeps the access token fresh.",
+    "reconnect": "Reconnect",
+    "needsReconnect": "sign-in expired",
+    "importedDisabled": "Imported — add the token to enable",
+    "setUp": "Set up",
+    "oauthConfirmTitle": "Sign in to this MCP server?",
+    "oauthConfirmDescription": "You are connecting {host}. Check where you will sign in and what access is asked for before you continue.",
+    "oauthServer": "You will sign in at",
+    "oauthScopes": "Access requested",
+    "oauthScopesDefault": "The server's default access (no scopes named).",
+    "oauthOtherSite": "Careful: the sign-in page {as} is on a different site than the MCP server {mcp}. Continue only if you expected this provider.",
+    "oauthContinue": "Continue to sign in",
+    "oauthResult": {
+      "connected": "MCP server connected.",
+      "invalid_state": "That sign-in link has expired or was already used. Start again from Connect with OAuth.",
+      "denied": "The sign-in was cancelled on the MCP server.",
+      "failed": "Could not finish signing in to the MCP server. Try again.",
+      "forbidden": "Only a workspace Owner can connect MCP servers."
+    }
   },
   "pricing": {
     "updatedToast": "Price updated",

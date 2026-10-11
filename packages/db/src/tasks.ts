@@ -58,6 +58,8 @@ export interface CreateTaskInput {
   dryRun?: boolean;
   phase?: string | null;
   createdBy?: string | null;
+  /** created from untrusted input (a webhook payload): the run starts tainted (default false) */
+  untrustedInput?: boolean;
   /** refuse a task with neither assignee nor team (default true, as on the board) */
   requireAssignee?: boolean;
   /** refuse a team whose Lead is not set (default true, as on the board) */
@@ -126,6 +128,7 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
       status: "QUEUED",
       phase: input.phase ?? null,
       createdBy: input.createdBy ?? null,
+      untrustedInput: input.untrustedInput ?? false,
     })
     .returning();
   return row!;

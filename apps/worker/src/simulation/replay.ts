@@ -9,7 +9,7 @@ import { getWorkspace } from "../lib/settings";
 import { log } from "../lib/logger";
 import { checkBudget } from "../guards/budget";
 import { grantedToolNames, type RunContext } from "../tools/registry";
-import { buildSystemPrompt, recallMemories, workspaceDirectory } from "../runner/prompt";
+import { buildSystemPrompt, recallMemories, taintFromStoredInput, workspaceDirectory } from "../runner/prompt";
 import { runAgent } from "../runner/executor";
 
 /**
@@ -61,11 +61,13 @@ export async function runReplay(replayId: string): Promise<void> {
         };
         // Replays must not create tasks or delegate: strip those tools.
         ctx.employee.toolPermissions = ctx.employee.toolPermissions.filter((p) => !["create_task", "delegate_subtask", "message_teammate", "memory_save"].includes(p.tool));
+        const mem = await recallMemories(emp.id, `${t.title}\n${t.brief}`);
+        await taintFromStoredInput(ctx, mem);
         const systemPrompt = buildSystemPrompt({
           employee: emp,
           overrides: rp.proposed,
           workspaceName: ws.name,
-          memories: await recallMemories(emp.id, `${t.title}\n${t.brief}`),
+          memories: mem,
           directory: await workspaceDirectory(ws.id),
           grantedTools: grantedToolNames(ctx).map((n) => n.split("__").pop()!),
           dryRun: true,

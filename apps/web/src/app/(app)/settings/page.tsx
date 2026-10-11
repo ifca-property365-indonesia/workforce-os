@@ -2,14 +2,18 @@
 
 import { RepositoriesSettings } from "@/components/settings/repositories";
 import { DepartmentsSettings } from "@/components/settings/departments";
+import { WebhooksSettings } from "@/components/settings/webhooks";
+import { ApiTokensSettings } from "@/components/settings/api-tokens";
 import { mcpToolsQueryKey, type McpTool } from "@/components/employees/tool-permissions";
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { KeyRound, Loader2, PlugZap, UserMinus } from "lucide-react";
+import { AlertTriangle, KeyRound, Loader2, PlugZap, UserMinus } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +24,7 @@ import { PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { useMe } from "@/lib/hooks";
+import { settingsTab } from "@/lib/settings-tabs";
 
 interface Settings {
   workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean; require2faAdmins: boolean; defaultLocale: "id" | "en" | null; timezone: string };
@@ -381,8 +386,104 @@ function Notifications({ s }: { s: Settings }) {
   );
 }
 
+interface McpServerItem {
+  id: string;
+  name: string;
+  url: string;
+  tokenSet: boolean;
+  auth: "token" | "oauth";
+  /** an OAuth server whose sign-in has to be redone (refused refresh, or expired with nothing to refresh it) */
+  needsReconnect: boolean;
+  /** a slot an import left unconfigured: never contacted until an Owner saves it with its token */
+  disabled: boolean;
+}
+
+/** A started OAuth sign-in, shown to the Owner before the browser leaves for the authorization server. */
+interface McpOAuthStartInfo {
+  authorizeUrl: string;
+  authorizationServerHost: string;
+  scopes: string[];
+  sameSite: boolean;
+}
+
+/** OAuth sign-in to an MCP server, step 1: the server names its authorization page; nothing is opened yet. */
+function startMcpOAuth(name: string, url: string) {
+  return api.post<McpOAuthStartInfo>("/api/settings/mcp/oauth/start", { name, url });
+}
+
+/**
+ * Step 2: the Owner sees where they are about to sign in (the authorization server's host, the scopes asked for),
+ * with a warning when that host is on another site than the MCP server, and only then goes there.
+ */
+function McpOAuthConfirm({ start, mcpUrl, onClose }: { start: McpOAuthStartInfo | null; mcpUrl: string; onClose: () => void }) {
+  const t = useTranslations("settings");
+  const tc = useTranslations("common");
+  let mcpHost = "";
+  try {
+    mcpHost = new URL(mcpUrl).host;
+  } catch {
+    // shown as typed below
+  }
+  return (
+    <Dialog open={!!start} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("integrations.oauthConfirmTitle")}</DialogTitle>
+          <DialogDescription>{t("integrations.oauthConfirmDescription", { host: mcpHost || mcpUrl })}</DialogDescription>
+        </DialogHeader>
+        {start && (
+          <div className="space-y-3 text-sm">
+            <div className="space-y-1">
+              <Label>{t("integrations.oauthServer")}</Label>
+              <code className="block break-all rounded-md border bg-muted px-2 py-1.5 text-xs">{start.authorizationServerHost}</code>
+            </div>
+            <div className="space-y-1">
+              <Label>{t("integrations.oauthScopes")}</Label>
+              {start.scopes.length ? (
+                <ul className="flex flex-wrap gap-1">
+                  {start.scopes.map((s) => (
+                    <li key={s}>
+                      <code className="rounded border px-1.5 py-0.5 text-xs">{s}</code>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t("integrations.oauthScopesDefault")}</p>
+              )}
+            </div>
+            {!start.sameSite && (
+              <Alert variant="destructive">
+                <AlertTriangle className="size-4" />
+                <AlertDescription>{t("integrations.oauthOtherSite", { as: start.authorizationServerHost, mcp: mcpHost || mcpUrl })}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {tc("cancel")}
+          </Button>
+          <Button variant={start?.sameSite === false ? "destructive" : "default"} onClick={() => start && window.location.assign(start.authorizeUrl)}>
+            {t("integrations.oauthContinue")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** One connected MCP server, with a live "Test connection" that lists its tools through the server. */
-function McpServerRow({ server, onRemove }: { server: { name: string; url: string; tokenSet: boolean }; onRemove: () => void }) {
+function McpServerRow({
+  server,
+  onRemove,
+  onOAuth,
+  onSetUp,
+}: {
+  server: McpServerItem;
+  onRemove: () => void;
+  onOAuth: (start: McpOAuthStartInfo, url: string) => void;
+  onSetUp: () => void;
+}) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
   const qc = useQueryClient();
@@ -392,13 +493,34 @@ function McpServerRow({ server, onRemove }: { server: { name: string; url: strin
     // the employee editor's per-tool list reads the same cache entry
     onSuccess: (r) => qc.setQueryData(mcpToolsQueryKey(me?.workspace.id, server.name), r),
   });
+  const reconnect = useMutation({
+    mutationFn: () => startMcpOAuth(server.name, server.url),
+    onSuccess: (r) => onOAuth(r, server.url),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const oauth = server.auth === "oauth";
   return (
     <div className="rounded-md border p-2 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <code className="font-medium">{server.name}</code>
+        {oauth && <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t("integrations.oauthBadge")}</span>}
         <span className="min-w-0 flex-1 truncate text-muted-foreground">{server.url}</span>
-        {server.tokenSet && <span className="text-xs text-emerald-600">{t("integrations.tokenSet")}</span>}
-        <Button size="sm" variant="outline" className="gap-1" onClick={() => test.mutate()} disabled={test.isPending}>
+        {server.disabled && <span className="text-xs text-amber-600 dark:text-amber-400">{t("integrations.importedDisabled")}</span>}
+        {oauth && server.needsReconnect && <span className="text-xs text-amber-600 dark:text-amber-400">{t("integrations.needsReconnect")}</span>}
+        {!oauth && server.tokenSet && <span className="text-xs text-emerald-600">{t("integrations.tokenSet")}</span>}
+        {server.disabled && (
+          <Button size="sm" variant="outline" className="gap-1" onClick={onSetUp}>
+            <KeyRound className="size-3.5" />
+            {t("integrations.setUp")}
+          </Button>
+        )}
+        {oauth && server.needsReconnect && (
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => reconnect.mutate()} disabled={reconnect.isPending}>
+            {reconnect.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+            {t("integrations.reconnect")}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => test.mutate()} disabled={test.isPending || server.disabled}>
           {test.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
           {t("integrations.test")}
         </Button>
@@ -416,14 +538,37 @@ function McpServerRow({ server, onRemove }: { server: { name: string; url: strin
   );
 }
 
+/** What the OAuth callback reported (?mcp=<outcome>), once: a toast, then the parameter is dropped from the URL. */
+const MCP_OAUTH_OUTCOMES = ["connected", "invalid_state", "denied", "failed", "forbidden"] as const;
+function useMcpOAuthOutcome() {
+  const t = useTranslations("settings");
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const outcome = url.searchParams.get("mcp");
+    if (!outcome) return;
+    const known = (MCP_OAUTH_OUTCOMES as readonly string[]).includes(outcome) ? (outcome as (typeof MCP_OAUTH_OUTCOMES)[number]) : "failed";
+    if (known === "connected") toast.success(t("integrations.oauthResult.connected"));
+    else toast.error(t(`integrations.oauthResult.${known}`));
+    url.searchParams.delete("mcp");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [t]);
+}
+
 function Integrations() {
   const t = useTranslations("settings");
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["mcp"], queryFn: () => api.get<{ servers: { id: string; name: string; url: string; tokenSet: boolean }[] }>("/api/settings/mcp") });
+  useMcpOAuthOutcome();
+  const { data } = useQuery({ queryKey: ["mcp"], queryFn: () => api.get<{ servers: McpServerItem[] }>("/api/settings/mcp") });
   const [f, setF] = useState({ name: "", url: "", token: "" });
   const add = useMutation({
     mutationFn: () => api.post("/api/settings/mcp", { ...f, token: f.token || undefined }),
     onSuccess: () => (setF({ name: "", url: "", token: "" }), void qc.invalidateQueries({ queryKey: ["mcp"] })),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const [oauthStart, setOAuthStart] = useState<{ start: McpOAuthStartInfo; url: string } | null>(null);
+  const oauth = useMutation({
+    mutationFn: () => startMcpOAuth(f.name, f.url),
+    onSuccess: (r) => setOAuthStart({ start: r, url: f.url }),
     onError: (e) => toast.error((e as Error).message),
   });
   const { data: me } = useMe();
@@ -443,9 +588,17 @@ function Integrations() {
       </CardHeader>
       <CardContent className="space-y-3">
         {data?.servers.map((s) => (
-          <McpServerRow key={s.id} server={s} onRemove={() => del.mutate(s.name)} />
+          <McpServerRow
+            key={s.id}
+            server={s}
+            onRemove={() => del.mutate(s.name)}
+            onOAuth={(start, url) => setOAuthStart({ start, url })}
+            // an imported slot: its name and URL go into the form, where the Owner checks the URL and adds the token
+            onSetUp={() => setF({ name: s.name, url: s.url, token: "" })}
+          />
         ))}
-        <div className="grid gap-2 sm:grid-cols-[140px_1fr_1fr_auto]">
+        <McpOAuthConfirm start={oauthStart?.start ?? null} mcpUrl={oauthStart?.url ?? ""} onClose={() => setOAuthStart(null)} />
+        <div className="grid gap-2 sm:grid-cols-[140px_1fr_1fr_auto_auto]">
           <Input placeholder={t("integrations.namePlaceholder")} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           {/* i18n-ignore: example URL */}
           <Input placeholder="https://…/mcp" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
@@ -453,7 +606,12 @@ function Integrations() {
           <Button onClick={() => add.mutate()} disabled={!f.name || !f.url}>
             {t("integrations.connect")}
           </Button>
+          <Button variant="outline" className="gap-1" onClick={() => oauth.mutate()} disabled={!f.name || !f.url || !!f.token || oauth.isPending}>
+            {oauth.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <KeyRound className="size-3.5" />}
+            {t("integrations.oauthConnect")}
+          </Button>
         </div>
+        <p className="text-xs text-muted-foreground">{t("integrations.oauthHint")}</p>
       </CardContent>
     </Card>
   );
@@ -695,11 +853,16 @@ export default function SettingsPage() {
   const { data: me } = useMe();
   const admin = me?.role === "OWNER" || me?.role === "ADMIN";
   const owner = me?.role === "OWNER";
-  if (!data) return null;
+  // ?tab=<tab> opens that tab (the MCP OAuth callback comes back to integrations); the page renders nothing before
+  // its data loads, so reading the URL here cannot cause a hydration mismatch
+  const [requestedTab] = useState(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("tab")));
+  // the role decides which tabs exist: wait for it, so ?tab= can only open a tab this person can see
+  if (!data || !me) return null;
+  const initialTab = settingsTab(requestedTab, admin);
   return (
     <div>
       <PageHeader title={t("title")} />
-      <Tabs defaultValue="general">
+      <Tabs defaultValue={initialTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="general">{t("tabs.general")}</TabsTrigger>
           {admin && <TabsTrigger value="email">{t("tabs.email")}</TabsTrigger>}
@@ -709,6 +872,8 @@ export default function SettingsPage() {
           <TabsTrigger value="departments">{t("tabs.departments")}</TabsTrigger>
           <TabsTrigger value="pricing">{t("tabs.pricing")}</TabsTrigger>
           <TabsTrigger value="members">{t("tabs.members")}</TabsTrigger>
+          {admin && <TabsTrigger value="webhooks">{t("tabs.webhooks")}</TabsTrigger>}
+          <TabsTrigger value="api">{t("tabs.apiTokens")}</TabsTrigger>
           {admin && <TabsTrigger value="audit">{t("tabs.audit")}</TabsTrigger>}
         </TabsList>
         <TabsContent value="general" className="mt-4">
@@ -734,6 +899,12 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="members" className="mt-4">
           <Members owner={owner} admin={admin} meId={me?.user.id} />
+        </TabsContent>
+        <TabsContent value="webhooks" className="mt-4">
+          <WebhooksSettings owner={owner} admin={admin} />
+        </TabsContent>
+        <TabsContent value="api" className="mt-4">
+          <ApiTokensSettings admin={admin} />
         </TabsContent>
         <TabsContent value="audit" className="mt-4">
           <Audit />

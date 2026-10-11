@@ -14,6 +14,7 @@ import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { chatMessageDto } from "./chat-turns";
 import { redactSecrets } from "@wfos/shared/server";
+import { approvalTainted } from "./taint";
 
 type ApprovalRow = typeof approvals.$inferSelect;
 
@@ -63,7 +64,8 @@ async function postChatReceipt(a: ApprovalRow, outcome: { kind: "executed" | "fa
         content,
         employeeId: a.employeeId,
         handledAt: new Date(),
-        meta: { approvalId: a.id },
+        // the title (and the tool output) come from a run that handled untrusted content: fenced and tainting later turns
+        meta: { approvalId: a.id, ...((await approvalTainted(a)) ? { untrusted: true } : {}) },
       })
       .returning();
     await publish(a.workspaceId, { type: "chat.message", conversationId: a.conversationId, message: chatMessageDto(m!) });
@@ -95,7 +97,8 @@ export async function executeApproval(approvalId: string): Promise<void> {
     result = { ok: true, summary: `DRY RUN: ${a.toolName} would have been executed now.`, details: { simulated: true } };
   } else {
     try {
-      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId });
+      // the taint mark is read from the payload the run wrote, never from the human-edited copy
+      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId, untrusted: a.payload.untrustedInput === true });
     } catch (e) {
       result = { ok: false, summary: errorMessage(e) };
     }
@@ -142,7 +145,11 @@ export async function handleRejection(approvalId: string): Promise<void> {
   const [a] = await db.select().from(approvals).where(eq(approvals.id, approvalId));
   if (!a || a.status !== "REJECTED") return;
   if (a.feedback && a.employeeId) {
-    const content = `Rejected "${a.title}" (${a.toolName}). Reviewer feedback: ${a.feedback}`;
+    // the reviewer's feedback is trusted human input; the title was written by the run: when that run handled
+    // untrusted content it is left out, so a trusted feedback memory cannot carry an injection
+    const content = (await approvalTainted(a))
+      ? `Rejected a proposed ${a.toolName} action. Reviewer feedback: ${a.feedback}`
+      : `Rejected "${a.title}" (${a.toolName}). Reviewer feedback: ${a.feedback}`;
     let embedding: number[] | null = null;
     try {
       embedding = await embedOne(content);

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { audit, db, members, users } from "@wfos/db";
 import { ROLES } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
+import { revokeUserApiTokens } from "@/lib/server/api-token";
 import { body, route } from "@/lib/server/route";
 
 export const GET = route("VIEWER", async ({ session }) => {
@@ -58,6 +59,16 @@ export const DELETE = route("ADMIN", async ({ session, req }) => {
   }
   const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
   await db.delete(members).where(and(eq(members.workspaceId, session.workspaceId), eq(members.userId, userId)));
-  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "member.removed", targetType: "user", targetId: userId, details: { email: u?.email, role: target.role } });
+  // their API tokens for this workspace already stop working (no membership); revoking them makes it final
+  const tokensRevoked = await revokeUserApiTokens(userId, session.workspaceId);
+  await audit({
+    workspaceId: session.workspaceId,
+    actorUserId: session.userId,
+    actorLabel: session.email,
+    action: "member.removed",
+    targetType: "user",
+    targetId: userId,
+    details: { email: u?.email, role: target.role, tokensRevoked },
+  });
   return { ok: true };
 });

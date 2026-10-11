@@ -1,4 +1,5 @@
 
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   uuid,
@@ -16,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   IncidentKind,
+  WebhookDeliveryStatus,
   IncidentStatus,
   MessageMeta,
   TeamResponderMode,
@@ -266,6 +268,8 @@ export const tasks = pgTable(
     workspaceStatus: text("workspace_status"),
     /** automatic retries by the team lead after an incident (bounded by INCIDENT_RETRY_LIMIT) */
     retryCount: integer("retry_count").notNull().default(0),
+    /** created from untrusted input (webhook payload): the run starts tainted */
+    untrustedInput: boolean("untrusted_input").notNull().default(false),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -393,6 +397,8 @@ export const agentMessages = pgTable("agent_messages", {
   toEmployeeId: uuid("to_employee_id").references(() => employees.id, { onDelete: "set null" }),
   intent: text("intent").notNull(), // request | update | question | answer | review
   content: text("content").notNull(),
+  /** written by a tainted run: shown to the recipient as data and taints the recipient's run */
+  untrusted: boolean("untrusted").notNull().default(false),
   readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -443,7 +449,9 @@ export const memories = pgTable(
     employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
     kind: text("kind").notNull().default("fact"), // fact | feedback | preference
     content: text("content").notNull(),
-    source: text("source").notNull().default("agent"), // agent | user | rejection
+    source: text("source").notNull().default("agent"), // agent | user | rejection | import
+    /** saved by a tainted run (or imported): recalled as data, and recalling it taints the run */
+    untrusted: boolean("untrusted").notNull().default(false),
     embedding: vector("embedding", { dimensions: EMBEDDING_DIM }),
     createdAt: createdAt(),
   },
@@ -626,4 +634,73 @@ export const pushSubscriptions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("push_subscriptions_endpoint").on(t.endpoint), index("push_subscriptions_user").on(t.userId)],
+);
+
+// ---------------------------------------------------------------------------
+// Inbound webhooks & API tokens
+// ---------------------------------------------------------------------------
+
+export const webhookTriggers = pgTable(
+  "webhook_triggers",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** sha256 hex of the bearer secret (shown once at creation) */
+    secretHash: text("secret_hash").notNull(),
+    assigneeId: uuid("assignee_id").references(() => employees.id, { onDelete: "set null" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    /** task brief; the payload is appended as a fenced data block */
+    briefTemplate: text("brief_template").notNull().default(""),
+    dryRun: boolean("dry_run").notNull().default(false),
+    enabled: boolean("enabled").notNull().default(true),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    lastFiredAt: timestamp("last_fired_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("webhook_triggers_ws").on(t.workspaceId)],
+);
+
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: id(),
+    triggerId: uuid("trigger_id").notNull().references(() => webhookTriggers.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    idempotencyKey: text("idempotency_key"),
+    /** accepted | duplicate | rejected | failed */
+    status: text("status").$type<WebhookDeliveryStatus>().notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    error: text("error"),
+    /** first characters of the payload, secrets redacted */
+    payloadExcerpt: text("payload_excerpt").notNull().default(""),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("webhook_deliveries_trigger").on(t.triggerId, t.receivedAt),
+    index("webhook_deliveries_received").on(t.receivedAt),
+    uniqueIndex("webhook_deliveries_idem").on(t.triggerId, t.idempotencyKey).where(sql`idempotency_key is not null`),
+  ],
+);
+
+export const apiTokens = pgTable(
+  "api_tokens",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** sha256 hex of the token; the token itself is shown once */
+    tokenHash: text("token_hash").notNull(),
+    /** first characters of the token (e.g. "wfos_ab12") so the owner can recognise it */
+    prefix: text("prefix").notNull(),
+    scopes: jsonb("scopes").$type<string[]>().notNull().default(["mcp"]),
+    /** tasks and chat messages this token creates start tainted (machine clients are untrusted by default) */
+    markUntrusted: boolean("mark_untrusted").notNull().default(true),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("api_tokens_ws_user").on(t.workspaceId, t.userId), uniqueIndex("api_tokens_hash").on(t.tokenHash)],
 );
