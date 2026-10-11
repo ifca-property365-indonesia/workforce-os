@@ -2,7 +2,7 @@
 
 A self-hosted platform for "hiring" AI employees. Each employee is a named agent with a role, persona, business context, persistent memory, scoped tool access and an explicit autonomy level. Employees take work from chat, the task board or scheduled routines, and they can work together in teams. Any irreversible action stops at a human approval. Every step is metered, can be inspected, and can be rehearsed in a dry run.
 
-Agents run on the **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`). The SDK's built-in tools (Bash, file I/O, web) are **disabled**. Employees can only use the platform's own MCP tools, plus external MCP servers that an Owner connects.
+Agents run on the **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`). The SDK's built-in tools (Bash, file I/O, web) are **disabled**. Employees can only use the platform's own MCP tools, plus external MCP servers that an Owner connects. Work can also arrive from outside: inbound webhooks, and machine clients (Claude Code, Claude Desktop) through the platform's own MCP server.
 
 ```
 apps/web        Next.js 16 (App Router) UI + route handlers (Zod), SSE at /api/events
@@ -16,15 +16,17 @@ packages/templates  Role templates (Developer, PM, Finance, Support, Sales, Rese
 
 | Layer | Where it is enforced |
 |---|---|
-| Tool classification (reversible / irreversible) | `packages/shared/src/index.ts` → `BUILTIN_TOOLS`, `classifyTool()` (unknown external tools fail closed = irreversible) |
-| Gate (DRAFT / QUEUE / EXECUTE / CLOSE, per-tool override, Owner allow-list) | `decideGate()`, called by **every tool handler** in `apps/worker/src/tools/registry.ts`; external MCP tools go through `canUseTool` in `runner/executor.ts` |
+| Tool classification (reversible / irreversible) | `packages/shared/src/index.ts` → `BUILTIN_TOOLS`, `classifyTool()`. Unknown external tools are classified by verb (camelCase split; send/pay/delete/… anywhere is irreversible; a leading read verb is a read; chained names like `fetch_and_release_funds` and anything unsure fail closed = irreversible) |
+| Gate (DRAFT / QUEUE / EXECUTE / CLOSE, per-tool override, Owner allow-list) | `decideGate()`, called by **every tool handler** in `apps/worker/src/tools/registry.ts`; external MCP tools go through `canUseTool` in `runner/executor.ts`. Permissions can target one MCP tool or a glob (`mcp:crm:list_*`); a disabled rule always wins. Every decision is recorded with the rule that produced it |
 | Per-action approval | each irreversible call creates its own `approvals` row with the exact payload; nothing runs until a human approves it, and the approved (or edited) payload is what gets executed |
-| Guards (on by default) | input: prompt-injection screening of tool results, which **taints** the run so even allow-listed actions need approval. Output: secret/PII leakage check on payloads and answers (`guards/content.ts`) |
+| Guards (on by default) | input: prompt-injection screening of tool results (external MCP results too, capped at 8 000 characters), which **taints** the run so even allow-listed actions need approval. Output: secret/PII leakage check on payloads and answers (`guards/content.ts`) |
+| Taint follows the content | untrusted input stays untrusted when it is stored: webhook payloads and machine-client messages start tainted; tasks created by a tainted run (create_task, delegation, handoff, retries, reruns), memories, messages between employees, chat replies, routines and skills carry the mark, and a run that reads them is tainted too. Stored untrusted text is fenced as data in prompts |
+| Run safety | an idle watchdog stops a run with no activity for `RUN_IDLE_TIMEOUT_MIN` (default 20; a long tool call pauses it up to 3×), and a repeat guard refuses the same tool call made several times in a row and then stops the loop (`runner/executor.ts`) |
 | Budgets | per-employee daily and per-workspace monthly caps are checked before each run and after every LLM step, with an SDK `maxBudgetUsd` backstop. Hitting a cap sets the employee to `PAUSED_BUDGET` |
 | Kill switch | sets a DB flag, Redis pub/sub aborts every in-flight run immediately, queued work is held, and approvals cannot execute |
 | Audit | `audit_log` is append-only (a Postgres trigger blocks UPDATE/DELETE/TRUNCATE) |
 | Approval execution | an approved action is claimed (`APPROVED → EXECUTING`) before it runs, so concurrent or retried jobs execute it at most once |
-| Web fetch | `safeFetch` (`packages/shared/src/netguard.ts`) resolves DNS itself, refuses non-public addresses (private, loopback, link-local/metadata, CGNAT, ULA, IPv4-mapped), pins the socket to the checked IP and re-checks every redirect |
+| Web fetch | `safeFetch` (`packages/shared/src/netguard.ts`) resolves DNS itself, refuses non-public addresses (private, loopback, link-local/metadata, CGNAT, ULA, IPv4-mapped), pins the socket to the checked IP and re-checks every redirect. MCP OAuth discovery/token requests, MCP tool listing and imported MCP slots use `assertPublicUrl` (only the host an Owner configured is exempt) and refuse cross-origin redirects |
 | Credentials | AES-256-GCM (`ENCRYPTION_KEY`). They are never returned to the browser or given to the model. The agent process gets an allow-listed env with only its own workspace's Claude credential |
 
 Run `pnpm --filter @wfos/worker exec tsx src/scripts/safety-check.ts <workspaceId>` to check the gate against a real DB and SMTP. It needs no Claude token.
@@ -148,17 +150,48 @@ All date math uses the workspace time zone (`APP_TIME_ZONE`).
 - **Telegram** (optional, `TELEGRAM_*`):
   - Each user links their own chat under **Account → Telegram**, with a one-time code sent to the bot as `/link CODE`.
   - Linked members get done/failed/approval notifications and a daily summary.
-  - Admins and Owners also get **Approve / Reject** buttons. Each button is HMAC-signed, works once, only for the user it was sent to, and only while that user still has the Admin role. The decision goes through the same checks and audit log as the web (`via: telegram`).
+  - Admins and Owners also get **Approve / Reject** buttons. Each button is HMAC-signed, works once, only for the user it was sent to, and only while that user still has the Admin role. The decision goes through the same checks and audit log as the web (`via: telegram`). Proposed routines and skills have no buttons: they are approved in the web, where the full content is shown.
   - Register the webhook yourself after deploy; the command is in `.env.example`.
+- **Preferences**: **Account → Notifications** switches each kind (approval, task done/failed, incident, routine failed, limits, chat reply) per channel (in-app, email, Telegram, push) and mutes employees. Read state is per user. "Task finished" is only sent when the task has a result.
 - **Web push** (optional, `VAPID_*`):
   - The app is installable (manifest, icons, offline page).
   - **Account → Push notifications** turns push on per device.
   - The service worker never caches pages or API data.
   - Push endpoints are limited to the browsers' push services.
+  - A focused app window acknowledges a push and shows it as a toast instead of a second system notification.
 
 ## Languages
 
-The UI is available in **Bahasa Indonesia** and **English**. Each user picks a language (account menu or Account page), the workspace has a default (Settings → General), and otherwise the browser language is used. Dates, numbers and money follow the language (`Rp 1.234.567` in Indonesian) in `APP_TIME_ZONE` (default `Asia/Jakarta`). Each employee has an **output language** (workspace default / Bahasa Indonesia / English) for answers, documents and emails. Notifications, default invoice emails and invoice PDFs use the workspace language. Conventions for contributors: `docs/upgrade/I18N.md`.
+The UI is available in **Bahasa Indonesia** and **English**. Each user picks a language (account menu or Account page), the workspace has a default (Settings → General), and otherwise the browser language is used. Dates, numbers and money follow the language (`Rp 1.234.567` in Indonesian) in `APP_TIME_ZONE` (default `Asia/Jakarta`). Each employee has an **output language** (workspace default / Bahasa Indonesia / English) for answers, documents and emails. Notifications, default invoice emails and invoice PDFs use the workspace language. Conventions for contributors: `docs/upgrade/I18N.md`. `apps/web/messages/id/.source-hashes.json` records which English text each Indonesian string was translated from; the i18n test fails on stale or missing translations (`pnpm --filter @wfos/web i18n:rehash` after updating them).
+
+## Teams and chat
+
+- **Who answers in a team chat**: each team has a responder mode (Teams page): **Lead** (default), **Everyone** (members answer in turn, each seeing the earlier replies), **Mentions only**, or **Automatic** (Claude Haiku 5.5 picks the teammate in under 5 s, shown as "Picked automatically · 94%"; on a timeout, an error or low confidence the lead answers). `@Name` and `@semua`/`@everyone` override the mode. At most 5 employees answer one message.
+- **Approvals in the thread**: an approval raised in chat appears as a card under the reply that raised it (guard findings included); Admins decide there or in `/approvals`, others see "waiting for an admin". After the decision a one-line receipt is posted in the conversation. Irreversible actions that ran through the allow-list show as chips.
+- **Versions**: a conversation is a tree. **Edit** a message or **Regenerate** a reply to fork a version (switcher "‹ 2/3 ›"); an edit stops the old reply, and pending approvals on the abandoned branch expire. Messages sent quickly one after another are answered as one turn.
+- **Proposing routines and skills**: an employee can propose a routine (`propose_routine`) or a skill (`skill_propose`) in chat; it becomes an approval card showing the rule and next three runs, or the full skill text.
+
+## Incidents and recovery
+
+A task that fails, stalls, loops or cannot start, or a routine run that fails, opens an **incident** (Dashboard card, Inspector). For a team subtask the lead gets it in its review (as data, never as instructions) and may `retry_subtask` or `reassign_subtask` at most twice per piece of work; otherwise a person is notified once. More than 5 incidents per workspace per hour are muted. A reaper fails runs that died, wakes leads whose subtasks all ended, resumes tasks whose approvals were all decided and re-queues lost work.
+
+## Integrations
+
+- **Inbound webhooks** (Settings → Webhooks): `POST /api/hooks/<id>` with `Authorization: Bearer <secret>` (shown once; only its sha256 is stored) creates a task for an employee or a team. 256 KB body cap, per-IP and per-trigger rate limits, `Idempotency-Key` support, delivery log with redacted excerpts (kept 30 days). The payload is fenced as data in the brief and the task starts tainted, so nothing irreversible runs without a person.
+- **MCP server for machine clients** (`/api/mcp`, Settings → API access): personal API tokens (at most 365 days, revoked on password change, admin reset and removal from the workspace, untrusted by default). Tools: list/get employees, teams, tasks and conversations, `create_task`, `send_message`, `wait_for_task`, read-only `list_approvals`. No tool can approve, delete or touch credentials. Setup for Claude Code and Claude Desktop: [docs/MCP-SERVER.md](docs/MCP-SERVER.md).
+- **External MCP servers with OAuth** (Settings → Integrations → Connect with OAuth): discovery, dynamic client registration and PKCE; the Owner confirms the authorization server and scopes before signing in; tokens are encrypted and refreshed under a lock. **Test connection** lists the server's tools, and the employee editor can grant or block them one by one.
+
+## Packages (export / import)
+
+Export teams or employees as a `*.wfos.json` package (Teams page, employee page): persona, instructions, business context, look, teams and responder modes, routines, departments, skills, optional seed memories and MCP slots (URL only). Secrets, keys, URL credentials and query values are redacted, and the export dialog lists what was redacted and what is never exported (allow-lists, credentials, chats, tasks). Import shows the full text first, needs a fresh 2FA confirmation, and creates everything in one transaction without touching anything that exists: autonomy DRAFT, every tool off, empty allow-list, routines off, MCP slots disabled (public hosts only), imported memories and skills untrusted.
+
+## Skills
+
+**Settings → Skills** holds `SKILL.md` skills (paste or upload; name + description frontmatter; leak-screened; 64 KB). Assign them on the employee page. Assigned skills are listed one line each in the employee's system prompt (untrusted or imported skills by name only) and read on demand with `skill_read`; an untrusted skill is returned as data and taints the run. In Workspace mode the runner installs the trusted assigned skills as `~/.claude/skills/wfos-<slug>` on every run and removes ones no longer assigned. Built-in names (pdf, docx, xlsx, pptx) are reserved.
+
+## Memory
+
+Per-employee memory with optional **expiry** and **supersedes**; recall skips expired and superseded memories and is placed in the user message (the system prompt stays stable across runs), next to a short "recent work" brief. Every change is journaled with **Undo** (refused if the memory changed since, unless forced). A nightly tidy (02:00 `APP_TIME_ZONE`) expires memories and supersedes exact and near-duplicates, at most 20% per pass, all journaled.
 
 ## Tests, typecheck and lint
 
@@ -168,7 +201,11 @@ pnpm test        # shared + web + worker; never calls Claude, sends mail or touc
 pnpm test:system # as root on a host with systemd: real sandbox units + the real Claude Code CLI against a local stub API
 pnpm lint
 pnpm test:deploy # upgrade.sh scenarios (stubs) + backup/restore round trip (throwaway databases)
+pnpm --filter @wfos/worker run eval       # scenario evals of the safety guarantees (also part of pnpm test)
+EVAL_LIVE=1 pnpm --filter @wfos/worker run eval:live   # opt-in: routing classifier accuracy against the real model (cents)
 ```
+
+Scenario format, scorers and the live tier: [docs/EVALS.md](docs/EVALS.md).
 
 The web and worker suites run against a **throwaway PostgreSQL database** that the test setup creates and drops. They need a role with `CREATEDB` that owns a template database with pgvector (one-time setup, as the postgres superuser):
 
@@ -195,6 +232,7 @@ Then set `TEST_DATABASE_ADMIN_URL=postgres://workforce_dev:…@127.0.0.1:5432/po
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional Google sign-in (redirect URI: `$APP_URL/api/auth/google/callback`) |
 | `ALLOW_SIGNUP` | public signup (default `false`; the first user can always sign up). Admins add members in Settings → Members |
 | `WORKER_CONCURRENCY`, `PER_EMPLOYEE_CONCURRENCY` | parallel runs total / per employee |
+| `RUN_IDLE_TIMEOUT_MIN` | stop a run with no activity for this many minutes (default 20) |
 | `STORAGE_DIR` | uploads, embedding model cache, agent sandbox dirs |
 | `CLAUDE_INSTANCE_FALLBACK` | `false` = workspaces without their own Claude credential cannot run (default `true`) |
 | `APP_TIME_ZONE` | time zone for dates in the UI (default `Asia/Jakarta`) |
@@ -207,11 +245,12 @@ Then set `TEST_DATABASE_ADMIN_URL=postgres://workforce_dev:…@127.0.0.1:5432/po
 
 - **Hire wizard** (`/employees/hire`), in four steps: template → persona & context → tools & autonomy → a first bounded task with a live inspector.
 - **Office** (`/office`): the live 2D/3D office (see above).
-- **Teams** (`/teams`): drag-and-drop membership with a crowned Lead. A team brief gets a plan, then `delegate_subtask`, then a wait while members work, then a review (`request_revision`, once per subtask), then the final deliverable. Agents talk to each other through `agent_messages`, which are logged as Activity.
-- **Chat** (`/chat`) streams over SSE, accepts attachments (which are indexed into the knowledge base), and can turn a message into a task.
+- **Teams** (`/teams`): drag-and-drop membership with a crowned Lead, responder mode, export/import. A team brief gets a plan, then `delegate_subtask`, then a wait while members work, then a review (`request_revision`, once per subtask; `retry_subtask` / `reassign_subtask` after an incident), then the final deliverable. Agents talk to each other through `agent_messages`, which are logged as Activity.
+- **Chat** (`/chat`) streams over SSE, accepts attachments (which are indexed into the knowledge base), shows approvals inline, supports `@mentions`, edit/regenerate with versions, deep links (`/chat?c=…&m=…`), and can turn a message into a task.
 - **Task board** (`/tasks`) is a Kanban by status, filterable by employee, client and project. The task page is the **Activity Inspector**: every LLM call, tool call, guard hit, approval and compaction, with model, tokens, latency and credits.
-- **Routines** (`/routines`): cron + timezone, one task per client, next runs, run history, run now.
-- **Approvals** (`/approvals`) previews the exact payload (email as it will be sent, invoice PDF, webhook text) and offers Approve, Edit & Approve, or Reject with feedback. The feedback is written to the employee's memory.
+- **Routines** (`/routines`): 5-field cron + timezone with a live readable preview and the next three runs, one task per client, overlap policy (skip / queue), missed runs (more than 12 h late) recorded instead of run, run history, run now.
+- **Approvals** (`/approvals`, and inline in chat) previews the exact payload (email as it will be sent, invoice PDF, webhook text, routine schedule, skill text) and offers Approve, Edit & Approve, or Reject with feedback. The feedback is written to the employee's memory. Cards from an older version of a conversation are marked.
 - **Dry run** swaps irreversible tools for mocks that record what *would* have happened. **Replay** re-runs past tasks with proposed instructions and shows old vs new outputs side by side with a diff before you promote the change.
-- **Memory & knowledge**: per-employee memory you can edit, and a workspace knowledge base (PDF/DOCX/MD → chunks → local 384-d embeddings with all-MiniLM-L6-v2 and pgvector HNSW). `kb_search` answers come with citations.
+- **Employee page**: plain-language **Activity** tab ("Sent an email to …"), memory panel with states, expiry and history, skills, per-tool MCP permissions.
+- **Memory & knowledge**: per-employee memory you can edit (see Memory above), and a workspace knowledge base (PDF/DOCX/MD → chunks → local 384-d embeddings with all-MiniLM-L6-v2 and pgvector HNSW). `kb_search` answers come with citations.
 - **Demo Mode** runs a scripted lifecycle (PM plans → Developer builds → QA reviews → Finance drafts invoice → approval → email "sent" as a dry run → Lead review) that emits the same SSE events.
