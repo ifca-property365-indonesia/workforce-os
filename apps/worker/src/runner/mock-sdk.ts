@@ -9,7 +9,8 @@ import { toolDefsOf } from "../tools/registry";
  */
 export type MockStep =
   | { llm: { input: number; output: number; text?: string; model?: string } }
-  | { tool: string; input: Record<string, unknown> }
+  /** `error`: an allowed call to an external MCP tool (no handler here) returns an error result */
+  | { tool: string; input: Record<string, unknown>; error?: boolean }
   | { wait: number }
   | { result: string }
   /** emit a raw SDK message (e.g. a recorded rate_limit_event) */
@@ -53,6 +54,7 @@ export function mockRunner(script: MockStep[]): MockRunner {
     const signal = options.abortController?.signal;
     const canUseTool = options.canUseTool as CanUseTool | undefined;
     let n = 0;
+    let toolN = 0;
     async function* gen(): AsyncGenerator<SDKMessage> {
       for (const step of script) {
         aborted(signal);
@@ -74,8 +76,11 @@ export function mockRunner(script: MockStep[]): MockRunner {
             },
           } as unknown as SDKMessage;
         } else if ("tool" in step) {
+          const toolUseId = `toolu_mock_${++toolN}`;
+          let isError = false;
+          let resultText = "ok";
           const permission: PermissionResult = (canUseTool
-            ? await canUseTool(step.tool, step.input, { signal: signal ?? new AbortController().signal, toolUseID: `toolu_${n}` } as never)
+            ? await canUseTool(step.tool, step.input, { signal: signal ?? new AbortController().signal, toolUseID: toolUseId } as never)
             : null) ?? { behavior: "deny", message: "no permission decision" };
           const call: MockToolCall = { name: step.tool, input: step.input, permission };
           runner.calls.push(call);
@@ -86,9 +91,22 @@ export function mockRunner(script: MockStep[]): MockRunner {
             if (def) {
               const r = await def.handler((permission.updatedInput ?? step.input) as never, {});
               call.output = r.content.map((c) => ("text" in c ? c.text : "")).join("\n");
+              resultText = call.output;
+              isError = !!r.isError;
+            } else if (step.error) {
+              resultText = "external tool failed";
+              isError = true;
             }
+          } else if (permission.behavior === "deny") {
+            resultText = permission.message;
+            isError = true;
           }
-          yield { type: "user", parent_tool_use_id: null, session_id: "mock-session", message: { role: "user", content: [] } } as unknown as SDKMessage;
+          yield {
+            type: "user",
+            parent_tool_use_id: null,
+            session_id: "mock-session",
+            message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseId, content: resultText, is_error: isError }] },
+          } as unknown as SDKMessage;
         } else if ("event" in step) {
           yield step.event as unknown as SDKMessage;
         } else if ("wait" in step) {

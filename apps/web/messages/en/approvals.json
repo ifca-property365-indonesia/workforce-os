@@ -47,6 +47,12 @@
     "task": "task",
     "dryRunNotice": "Dry run: approving records what would happen; nothing is actually sent.",
     "guardFindings": "Guard findings",
+    "guardFindingsCount": "{count, plural, one {# finding} other {# findings}}",
+    "severity": {
+      "low": "low",
+      "medium": "medium",
+      "high": "high"
+    },
     "editedByHuman": "Edited by a human before approval.",
     "feedback": "Feedback: {feedback}",
     "result": "Result: {summary}",
@@ -57,7 +63,11 @@
     "editAndApprove": "Edit & approve",
     "reject": "Reject",
     "rejected": "Rejected — feedback saved to the employee’s memory",
-    "approved": "Approved — executing now"
+    "approved": "Approved — executing now",
+    "waitingForAdmin": "Waiting for an admin to decide",
+    "showDetails": "Show details",
+    "hideDetails": "Hide details",
+    "openInInbox": "Open in Approvals"
   },
   "bash": {
     "runsWhere": "Runs exactly this command in the employee's sandbox (same workspace, no host access, allow-listed network only, git hooks disabled)."

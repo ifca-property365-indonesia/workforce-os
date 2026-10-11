@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { approvals, audit, db, memories, tasks, workspaces } from "@wfos/db";
+import { approvals, audit, db, memories, messages, tasks, workspaces } from "@wfos/db";
 import type { Deliverable } from "@wfos/db";
 import { recordStep } from "../lib/steps";
 import { enqueueTask, publish } from "../lib/redis";
@@ -10,6 +10,67 @@ import { TOOL_BY_NAME } from "@wfos/shared";
 import { afterTerminal, failTask } from "./task-status";
 import { errorMessage } from "../lib/errors";
 import { sql } from "drizzle-orm";
+import { msg } from "@wfos/shared/messages";
+import { workspaceLocale } from "../lib/settings";
+import { chatMessageDto } from "./chat-turns";
+import { redactSecrets } from "@wfos/shared/server";
+
+type ApprovalRow = typeof approvals.$inferSelect;
+
+/** Receipt text limits: the summary / error of an action and a reviewer's feedback. */
+export const RECEIPT_SUMMARY_CHARS = 300;
+export const RECEIPT_FEEDBACK_CHARS = 500;
+
+/**
+ * Untrusted text (tool output, reviewer feedback) made safe for a one-line receipt that later
+ * agents read in the transcript: secrets redacted, newlines flattened, length capped.
+ */
+export function receiptText(text: string, max: number): string {
+  const flat = redactSecrets(text).replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
+ * A chat approval (raised in a conversation, no task) reports its outcome back into that
+ * conversation as a system message. Best-effort: a failure is logged and never undoes or blocks
+ * the decision itself.
+ */
+async function postChatReceipt(a: ApprovalRow, outcome: { kind: "executed" | "failed"; summary: string } | { kind: "rejected" }): Promise<void> {
+  if (!a.conversationId || a.taskId) return;
+  try {
+    // a retried job must not post the same receipt twice
+    const [already] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.conversationId, a.conversationId), eq(messages.role, "system"), sql`${messages.meta} @> ${JSON.stringify({ approvalId: a.id })}::jsonb`))
+      .limit(1);
+    if (already) return;
+    const locale = await workspaceLocale(a.workspaceId);
+    const title = receiptText(a.title, RECEIPT_SUMMARY_CHARS);
+    const summary = outcome.kind === "rejected" ? "" : receiptText(outcome.summary, RECEIPT_SUMMARY_CHARS);
+    const feedback = a.feedback ? receiptText(a.feedback, RECEIPT_FEEDBACK_CHARS) : "";
+    const content =
+      outcome.kind === "executed"
+        ? msg(locale, "receipt.executed", { title, summary })
+        : outcome.kind === "failed"
+          ? msg(locale, "receipt.failed", { title, error: summary })
+          : msg(locale, "receipt.rejected", { title }) + (feedback ? `\n${msg(locale, "receipt.feedback", { feedback })}` : "");
+    const [m] = await db
+      .insert(messages)
+      .values({
+        conversationId: a.conversationId,
+        role: "system",
+        content,
+        employeeId: a.employeeId,
+        handledAt: new Date(),
+        meta: { approvalId: a.id },
+      })
+      .returning();
+    await publish(a.workspaceId, { type: "chat.message", conversationId: a.conversationId, message: chatMessageDto(m!) });
+  } catch (e) {
+    log.warn({ err: e, approvalId: a.id, conversationId: a.conversationId }, "chat receipt for approval failed");
+  }
+}
 
 /** Execute an APPROVED action with the exact (possibly edited) payload. Idempotent per approval. */
 export async function executeApproval(approvalId: string): Promise<void> {
@@ -49,6 +110,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
   await recordStep({
     workspaceId: a.workspaceId,
     taskId: a.taskId,
+    conversationId: a.conversationId,
     employeeId: a.employeeId,
     kind: "tool",
     name: simulated ? `simulated:${a.toolName}` : a.toolName,
@@ -71,6 +133,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
   }
   await audit({ workspaceId: a.workspaceId, actorLabel: "system", action: `approval.${status.toLowerCase()}`, targetType: "approval", targetId: a.id, details: { toolName: a.toolName, summary: result.summary } });
   await publish(a.workspaceId, { type: "approval.updated", approvalId: a.id, status });
+  await postChatReceipt(a, { kind: result.ok ? "executed" : "failed", summary: result.summary });
   if (a.taskId) await afterApprovalResolved(a.taskId);
 }
 
@@ -87,8 +150,9 @@ export async function handleRejection(approvalId: string): Promise<void> {
       log.warn({ err: e }, "embedding failed for rejection memory");
     }
     await db.insert(memories).values({ workspaceId: a.workspaceId, employeeId: a.employeeId, kind: "feedback", source: "rejection", content, embedding });
-    await recordStep({ workspaceId: a.workspaceId, taskId: a.taskId, employeeId: a.employeeId, kind: "system", name: "feedback_written_to_memory", output: content });
+    await recordStep({ workspaceId: a.workspaceId, taskId: a.taskId, conversationId: a.conversationId, employeeId: a.employeeId, kind: "system", name: "feedback_written_to_memory", output: content });
   }
+  await postChatReceipt(a, { kind: "rejected" });
   if (a.taskId) await afterApprovalResolved(a.taskId);
 }
 

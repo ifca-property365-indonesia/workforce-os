@@ -7,7 +7,10 @@ import type { RealtimeEvent } from "@wfos/shared";
 type Listener = (ev: RealtimeEvent) => void;
 const Ctx = createContext<{ subscribe: (l: Listener) => () => void; connected: boolean } | null>(null);
 
-/** One EventSource per tab; invalidates TanStack queries and fans events out to listeners. */
+/**
+ * One EventSource per tab; invalidates TanStack queries and fans events out to listeners. After a dropped
+ * connection comes back, the event-driven queries (open conversations included) are refetched.
+ */
 export function EventsProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const listeners = useRef(new Set<Listener>());
@@ -27,9 +30,16 @@ export function EventsProvider({ children }: { children: ReactNode }) {
           pending.clear();
         }, 250);
     };
+    /** events published while the stream was down are lost: on a reconnect, refetch what they would have updated */
+    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard"];
+    let wasConnected = false;
     const connect = () => {
       es = new EventSource("/api/events");
-      es.addEventListener("ready", () => setConnected(true));
+      es.addEventListener("ready", () => {
+        if (wasConnected) for (const k of RECONNECT_KEYS) invalidate(k);
+        wasConnected = true;
+        setConnected(true);
+      });
       es.onmessage = (m) => {
         let ev: RealtimeEvent;
         try {

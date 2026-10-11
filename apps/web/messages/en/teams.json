@@ -24,5 +24,29 @@
     "client": "Client (optional)",
     "dryRun": "Dry run",
     "send": "Send brief"
+  },
+  "responder": {
+    "title": "Who answers in the team chat",
+    "help": "When a message mentions nobody. An @mention always reaches that member.",
+    "adminOnly": "Only admins can change this.",
+    "saved": "Saved",
+    "modes": {
+      "lead": {
+        "label": "Lead",
+        "description": "The Lead answers and can delegate to members."
+      },
+      "everyone": {
+        "label": "Everyone",
+        "description": "Every member answers in turn."
+      },
+      "mentions": {
+        "label": "Mentions only",
+        "description": "Only @mentioned members answer; otherwise nobody does."
+      },
+      "auto": {
+        "label": "Automatic",
+        "description": "A fast model picks the best-suited member; unsure picks go to the Lead."
+      }
+    }
   }
 }

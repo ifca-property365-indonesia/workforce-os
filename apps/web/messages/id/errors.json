@@ -77,5 +77,6 @@
   "department_not_found": "Departemen tidak ditemukan.",
   "telegram_not_configured": "Telegram belum dikonfigurasi di server ini.",
   "push_not_configured": "Notifikasi push belum dikonfigurasi di server ini.",
-  "push_endpoint_not_allowed": "Layanan push browser ini tidak didukung."
+  "push_endpoint_not_allowed": "Layanan push browser ini tidak didukung.",
+  "invalid_form": "Permintaan harus dikirim sebagai formulir (multipart/form-data)."
 }

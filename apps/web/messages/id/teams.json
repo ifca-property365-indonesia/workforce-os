@@ -24,5 +24,29 @@
     "client": "Klien (opsional)",
     "dryRun": "Dry run",
     "send": "Kirim brief"
+  },
+  "responder": {
+    "title": "Siapa yang menjawab di chat tim",
+    "help": "Saat pesan tidak menyebut siapa pun. @mention selalu sampai ke anggota yang disebut.",
+    "adminOnly": "Hanya admin yang dapat mengubahnya.",
+    "saved": "Tersimpan",
+    "modes": {
+      "lead": {
+        "label": "Ketua",
+        "description": "Ketua menjawab dan dapat mendelegasikan ke anggota."
+      },
+      "everyone": {
+        "label": "Semua",
+        "description": "Setiap anggota menjawab bergantian."
+      },
+      "mentions": {
+        "label": "Hanya yang disebut",
+        "description": "Hanya anggota yang di-@mention yang menjawab; selain itu tidak ada."
+      },
+      "auto": {
+        "label": "Otomatis",
+        "description": "Model cepat memilih anggota yang paling sesuai; jika ragu, Ketua yang menjawab."
+      }
+    }
   }
 }

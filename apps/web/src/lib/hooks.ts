@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { AllowListEntry, AutonomyLevel, EmployeeStatus, OfficeLook, ToolMeta, ToolPermission, TaskStatus, Role } from "@wfos/shared";
+import type { AllowListEntry, AutonomyLevel, EmployeeStatus, OfficeLook, ToolMeta, ToolPermission, TaskStatus, Role, TeamResponderMode } from "@wfos/shared";
 import type { RoleTemplate } from "@wfos/templates";
 import { api } from "./api";
 
@@ -87,6 +87,8 @@ export interface Team {
   name: string;
   description: string;
   leadId: string | null;
+  /** who answers an un-mentioned message in the team chat */
+  responderMode: TeamResponderMode;
   memberIds: string[];
 }
 

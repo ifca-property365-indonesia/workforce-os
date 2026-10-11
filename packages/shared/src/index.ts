@@ -349,6 +349,7 @@ export const DEFAULT_MODEL = "claude-opus-5-5";
 export const DEFAULT_MODEL_PRICES: readonly ModelPrice[] = [
   { model: "claude-opus-5-5", label: "Claude Opus 5.5", inputPer1k: 0.4, outputPer1k: 2.0, cacheReadPer1k: 0.02, cacheWritePer1k: 0.5 },
   { model: "claude-sonnet-5-5", label: "Claude Sonnet 5.5", inputPer1k: 0.2, outputPer1k: 1.0, cacheReadPer1k: 0.02, cacheWritePer1k: 0.25 },
+  { model: "claude-haiku-5-5", label: "Claude Haiku 5.5", inputPer1k: 0.01, outputPer1k: 0.05, cacheReadPer1k: 0.001, cacheWritePer1k: 0.0125 },
   { model: "claude-haiku-4-5", label: "Claude Haiku 4.5", inputPer1k: 0.1, outputPer1k: 0.5, cacheReadPer1k: 0.01, cacheWritePer1k: 0.125 },
   { model: "claude-fable-5-1", label: "Claude Fable 5.1", inputPer1k: 1.0, outputPer1k: 5.0, cacheReadPer1k: 0.025, cacheWritePer1k: 1.25 },
 ];
@@ -384,7 +385,7 @@ export type RealtimeEvent =
   | { type: "step.created"; taskId: string | null; conversationId?: string | null; step: StepDTO }
   | { type: "chat.delta"; conversationId: string; messageId: string; text: string }
   | { type: "chat.message"; conversationId: string; message: ChatMessageDTO }
-  | { type: "approval.created"; approvalId: string; taskId: string | null; title: string }
+  | { type: "approval.created"; approvalId: string; taskId: string | null; conversationId?: string | null; title: string }
   | { type: "approval.updated"; approvalId: string; status: ApprovalStatus }
   | { type: "employee.updated"; employeeId: string; status: EmployeeStatus }
   | { type: "killswitch"; engaged: boolean }
@@ -412,10 +413,67 @@ export interface StepDTO {
   createdAt: string;
 }
 
+/** Who answers an un-mentioned message in a team chat. */
+export const TEAM_RESPONDER_MODES = ["lead", "everyone", "mentions", "auto"] as const;
+export type TeamResponderMode = (typeof TEAM_RESPONDER_MODES)[number];
+
+/** Fast, cheap model used to pick a responder in team chats set to "auto". */
+export const ROUTING_MODEL = "claude-haiku-5-5";
+/** Minimum classifier confidence to act on its pick; below it the lead answers. */
+export const ROUTING_MIN_CONFIDENCE = 0.6;
+/** Most teammates that answer one team-chat message (lead first); the rest are listed in meta.skippedResponders. */
+export const MAX_RESPONDERS_PER_TURN = 5;
+
+/** How a responder was chosen for a team-chat turn. */
+export interface RoutedBy {
+  mode: "mention" | "everyone" | "lead" | "auto" | "fallback";
+  /** classifier confidence (mode "auto") */
+  confidence?: number;
+  /** why the lead answered instead (mode "fallback"): timeout, error, low_confidence, invalid */
+  reason?: string;
+}
+
+/** An irreversible action that ran without a human because an allow-list rule matched. */
+export interface AutoActionChip {
+  tool: string;
+  label: string;
+}
+
 /** Structured extras on a chat message; every field is optional so old rows ({}) stay valid. */
 export interface MessageMeta {
   /** user messages folded into this assistant turn (rapid messages coalesce into one reply) */
   turnMessageIds?: string[];
+  /** user messages: employees @mentioned (team chat) */
+  mentions?: string[];
+  /** user messages: @semua / @everyone */
+  mentionAll?: boolean;
+  /** assistant messages: how this responder was picked (team chat) */
+  routedBy?: RoutedBy;
+  /** assistant messages: irreversible actions that ran via the allow-list */
+  chips?: AutoActionChip[];
+  /** system messages: the approval this receipt reports on */
+  approvalId?: string;
+  /** system notes the UI localises: nobody mentioned in a "mentions" team chat / responder busy (employeeId set) */
+  hint?: "no_responder" | "busy";
+  /** responders beyond the per-turn cap that were not run (team chat) */
+  skippedResponders?: string[];
+}
+
+/** An approval shown inline under the chat message that raised it. */
+export interface ChatApprovalDTO {
+  id: string;
+  toolName: string;
+  title: string;
+  reason: string;
+  status: ApprovalStatus;
+  payload: Record<string, unknown>;
+  editedPayload: Record<string, unknown> | null;
+  feedback: string | null;
+  executionResult: Record<string, unknown> | null;
+  /** input/output guard findings (leak / injection) recorded when the approval was raised */
+  guardFindings: { rule: string; severity: "low" | "medium" | "high"; excerpt: string }[];
+  decidedAt: string | null;
+  createdAt: string;
 }
 
 export interface ChatMessageDTO {
@@ -428,6 +486,8 @@ export interface ChatMessageDTO {
   attachments?: { name: string; size: number; documentId?: string }[];
   status?: string;
   meta?: MessageMeta;
+  /** approvals raised by this (assistant) message */
+  approvals?: ChatApprovalDTO[];
   createdAt: string;
 }
 
@@ -581,6 +641,7 @@ export const teamInputSchema = z.object({
   description: z.string().max(2000).default(""),
   leadId: z.string().uuid().nullable(),
   memberIds: z.array(z.string().uuid()).default([]),
+  responderMode: z.enum(TEAM_RESPONDER_MODES).default("lead"),
 });
 
 export const approvalDecisionSchema = z.object({

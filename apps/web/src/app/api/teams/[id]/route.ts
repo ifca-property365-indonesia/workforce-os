@@ -9,7 +9,12 @@ type P = { id: string };
 export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   const input = await patchBody(req, teamInputSchema.partial());
   await assertWorkspaceEmployees(session.workspaceId, [input.leadId, ...(input.memberIds ?? [])]);
-  const set = { ...(input.name ? { name: input.name } : {}), ...(input.description !== undefined ? { description: input.description } : {}), ...(input.leadId !== undefined ? { leadId: input.leadId } : {}) };
+  const set = {
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.leadId !== undefined ? { leadId: input.leadId } : {}),
+    ...(input.responderMode !== undefined ? { responderMode: input.responderMode } : {}),
+  };
   const mine = and(eq(teams.id, params.id), eq(teams.workspaceId, session.workspaceId));
   // a members-only change has no team columns to set
   const [t] = Object.keys(set).length ? await db.update(teams).set(set).where(mine).returning() : await db.select().from(teams).where(mine);

@@ -14,6 +14,8 @@ process.env.STORAGE_DIR = mkdtempSync(path.join(os.tmpdir(), "wfos-test-"));
 process.env.ENCRYPTION_KEY = randomBytes(32).toString("hex");
 process.env.CLAUDE_AUTH_MODE = "oauth";
 process.env.CLAUDE_CODE_OAUTH_TOKEN = "stub-token-never-sent";
+// the stub token is the instance credential; a dev .env with CLAUDE_INSTANCE_FALLBACK=false must not disable it
+process.env.CLAUDE_INSTANCE_FALLBACK = "true";
 process.env.ANTHROPIC_API_KEY = "";
 process.env.LOG_LEVEL = "silent";
 

@@ -18,7 +18,7 @@ import { getExternalMcpServers } from "../lib/settings";
 import { guardOutput } from "../guards/content";
 import { redactSecrets } from "@wfos/shared/server";
 import { registerRun, unregisterRun } from "../guards/killswitch";
-import { buildToolServer, createApproval, grantedToolNames, WFOS_SERVER, type RunContext } from "../tools/registry";
+import { buildToolServer, createApproval, grantedToolNames, pushAutoAction, WFOS_SERVER, type RunContext } from "../tools/registry";
 
 export interface AgentRunInput {
   ctx: RunContext;
@@ -59,10 +59,14 @@ export class WorkspaceBusyError extends Error {
   }
 }
 
-const BUILTIN_DENY = ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookEdit", "Task", "Agent", "TodoWrite", "Skill"];
+export const BUILTIN_DENY = ["Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "WebFetch", "WebSearch", "NotebookEdit", "Task", "Agent", "TodoWrite", "Skill"];
 
-/** Gate for tools that come from external MCP servers (built-in wfos tools gate themselves). */
-export async function gateExternalTool(ctx: RunContext, toolName: string, input: Record<string, unknown>): Promise<PermissionResult> {
+/**
+ * Gate for tools that come from external MCP servers (built-in wfos tools gate themselves).
+ * `toolUseID` (from canUseTool) ties an allowed irreversible call to its tool_result, so its chip
+ * is only shown once the call succeeded (see settleAutoActions).
+ */
+export async function gateExternalTool(ctx: RunContext, toolName: string, input: Record<string, unknown>, toolUseID?: string): Promise<PermissionResult> {
   const server = toolName.split("__")[1] ?? "";
   const grant = ctx.employee.toolPermissions.find((p) => p.tool === `mcp:${server}` && p.enabled);
   if (!grant) return { behavior: "deny", message: `MCP server ${server} is not granted to this employee.` };
@@ -78,7 +82,14 @@ export async function gateExternalTool(ctx: RunContext, toolName: string, input:
     }),
     { toolClass: cls, tainted: ctx.guard.tainted },
   );
-  if (decision.kind === "run") return { behavior: "allow", updatedInput: input };
+  if (decision.kind === "run") {
+    // an irreversible MCP tool only runs unattended through an allow-list rule: show it as a chip once it succeeded
+    if (cls === "irreversible") {
+      if (toolUseID) (ctx.pendingAutoActions ??= new Map()).set(toolUseID, { tool: toolName, input });
+      else await pushAutoAction(ctx, toolName, input); // no id to match the result with (not sent by the SDK in practice)
+    }
+    return { behavior: "allow", updatedInput: input };
+  }
   if (decision.kind === "deny") return { behavior: "deny", message: decision.reason };
   if (decision.kind === "approval") {
     const id = await createApproval(ctx, toolName, `${toolName.split("__").slice(2).join("__")} via ${server}`, decision.reason, input, []);
@@ -97,6 +108,18 @@ export async function gateExternalTool(ctx: RunContext, toolName: string, input:
     output: { note: reason },
   });
   return { behavior: "deny", message: `${reason} The call was recorded but not executed.` };
+}
+
+/** Tool results came back: allowed irreversible MCP calls that succeeded become chips; failed ones are dropped. */
+export async function settleAutoActions(ctx: RunContext, content: unknown): Promise<void> {
+  if (!ctx.pendingAutoActions?.size || !Array.isArray(content)) return;
+  for (const b of content as { type: string; tool_use_id?: string; is_error?: boolean }[]) {
+    if (b.type !== "tool_result" || !b.tool_use_id) continue;
+    const pending = ctx.pendingAutoActions.get(b.tool_use_id);
+    if (!pending) continue;
+    ctx.pendingAutoActions.delete(b.tool_use_id);
+    if (!b.is_error) await pushAutoAction(ctx, pending.tool, pending.input);
+  }
 }
 
 /** Workspace mode: keep each Bash result (test output, build errors) as an inspectable, redacted step. */
@@ -201,11 +224,11 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   };
 
   const allowed = new Set(grantedToolNames(ctx));
-  const toolModePermissions = async (toolName: string, toolInput: Record<string, unknown>): Promise<PermissionResult> => {
+  const toolModePermissions: CanUseTool = async (toolName, toolInput, opts): Promise<PermissionResult> => {
     if (toolName.startsWith(`mcp__${WFOS_SERVER}__`)) {
       return allowed.has(toolName) ? { behavior: "allow", updatedInput: toolInput } : { behavior: "deny", message: "Tool not granted to this employee." };
     }
-    if (toolName.startsWith("mcp__")) return gateExternalTool(ctx, toolName, toolInput);
+    if (toolName.startsWith("mcp__")) return gateExternalTool(ctx, toolName, toolInput, opts?.toolUseID);
     return { behavior: "deny", message: "Built-in tools are disabled for AI employees." };
   };
   let runQuery = agentQuery;
@@ -230,7 +253,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     canUseTool = workspacePermissions({
       ctx,
       allowedPlatformTools: allowed,
-      gateExternal: (n, i) => gateExternalTool(ctx, n, i),
+      gateExternal: (n, i, id) => gateExternalTool(ctx, n, i, id),
       workspaceDir: runLayout(host, { runId: ctx.runId, workspaceId: ctx.workspaceId, taskId: ctx.taskId! }).sandboxRepoDir,
     });
   }
@@ -316,6 +339,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         case "user": {
           // tool results returned → the next model request starts now
           requestStartedAt = Date.now();
+          if (!m.parent_tool_use_id) await settleAutoActions(ctx, m.message.content);
           if (ctx.workspace && !m.parent_tool_use_id) await recordBashOutputs(ctx, bashCalls, m.message.content);
           break;
         }
@@ -382,6 +406,8 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
       error = (e as Error).message;
     }
   } finally {
+    // calls that never returned a result (run stopped mid-call) get no chip
+    ctx.pendingAutoActions?.clear();
     unregisterRun(ctx.runId);
     if (ctx.workspace) await releaseWorkspaceSlot(ctx.runId);
     await rm(cwd, { recursive: true, force: true }).catch(() => {});

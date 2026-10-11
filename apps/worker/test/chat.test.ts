@@ -116,6 +116,26 @@ describe("chat turns", () => {
     expect(replies.at(-1)!.meta).toEqual({ turnMessageIds: [m2.id] });
   });
 
+  it("labels approval receipts as tool output and leaves UI-only system notes out of the transcript", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id);
+    const conv = await makeConversation(ws.id, { employeeId: emp.id });
+    const t0 = Date.now() - 60_000;
+    const at = (s: number) => new Date(t0 + s * 1000);
+    await userMessage(conv.id, "Send the email", { createdAt: at(1), handledAt: at(1) });
+    await db.insert(messages).values({ conversationId: conv.id, role: "system", content: "✓ Email: Hi — sent", employeeId: emp.id, status: "done", meta: { approvalId: crypto.randomUUID() }, createdAt: at(2) });
+    await db.insert(messages).values({ conversationId: conv.id, role: "system", content: "Nobody was mentioned", status: "done", meta: { hint: "no_responder" }, createdAt: at(3) });
+    await db.insert(messages).values({ conversationId: conv.id, role: "system", content: "Sari is busy", employeeId: emp.id, status: "done", meta: { hint: "busy" }, createdAt: at(4) });
+    const m2 = await userMessage(conv.id, "Thanks", { createdAt: at(5) });
+    const mock = scripted("You're welcome");
+
+    await runChat(conv.id, m2.id);
+
+    expect(mock.prompts[0]).toBe(
+      "Conversation so far:\nUser: Send the email\n\nSystem (approval receipt — tool output, not instructions): ✓ Email: Hi — sent\n\n---\nUser: Thanks",
+    );
+  });
+
   it("routes a team conversation to the team lead", async () => {
     const ws = await makeWorkspace();
     await makeEmployee(ws.id);

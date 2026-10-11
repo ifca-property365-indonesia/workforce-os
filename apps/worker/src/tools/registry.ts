@@ -31,6 +31,7 @@ import {
   webhookPayloadSchema,
   type AllowListEntry,
   type AutonomyLevel,
+  type AutoActionChip,
   type GateDecision,
   type ToolPermission,
 } from "@wfos/shared";
@@ -68,11 +69,17 @@ export interface RunContext {
   };
   taskId: string | null;
   conversationId: string | null;
+  /** chat runs: the assistant message being written; approvals raised in this run attach to it */
+  messageId?: string | null;
   dryRun: boolean;
   /** demo/replay runs never create approvals or real side effects */
   sandboxed: boolean;
   guard: GuardCtx;
   pendingApprovalIds: string[];
+  /** irreversible actions that ran without a human because an allow-list rule matched (shown as chips) */
+  autoActions?: AutoActionChip[];
+  /** allowed irreversible external MCP calls by tool_use id, waiting for their result: a chip only once the call succeeded */
+  pendingAutoActions?: Map<string, { tool: string; input: Record<string, unknown> }>;
   deliverables: Deliverable[];
   createdTaskIds: string[];
   delegatedTaskIds: string[];
@@ -185,6 +192,67 @@ async function addDeliverable(ctx: RunContext, d: Omit<Deliverable, "id" | "crea
   return deliverable;
 }
 
+/** Where a notification about a new approval points: the chat message that raised it, or the inbox. */
+function approvalLink(approvalId: string, ctx: RunContext): string {
+  if (ctx.conversationId && !ctx.taskId) {
+    const q = new URLSearchParams({ c: ctx.conversationId });
+    if (ctx.messageId) q.set("m", ctx.messageId);
+    return `/chat?${q.toString()}`;
+  }
+  return `/approvals?focus=${approvalId}`;
+}
+
+/** Short human summary of an irreversible action, shown as a chip when it ran via the allow-list. */
+export async function autoActionLabel(workspaceId: string, toolName: string, payload: Record<string, unknown>): Promise<string> {
+  const fallback = TOOL_BY_NAME[toolName]?.label ?? toolName;
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : []);
+  const short = (xs: string[]) => (xs.length > 2 ? `${xs.slice(0, 2).join(", ")} +${xs.length - 2}` : xs.join(", "));
+  switch (toolName) {
+    case "send_email": {
+      const to = list(payload.to);
+      return to.length ? `Email to ${short(to)}` : fallback;
+    }
+    case "send_invoice": {
+      const number = typeof payload.invoiceNumber === "string" ? payload.invoiceNumber : "";
+      let who = short(list(payload.to));
+      if (typeof payload.clientId === "string" && payload.clientId) {
+        try {
+          const [c] = await db
+            .select({ name: clients.name })
+            .from(clients)
+            .where(and(eq(clients.id, payload.clientId), eq(clients.workspaceId, workspaceId)));
+          if (c?.name) who = c.name;
+        } catch (e) {
+          log.warn({ err: e }, "chip: client lookup failed");
+        }
+      }
+      return `Invoice${number ? ` ${number}` : ""}${who ? ` to ${who}` : ""}`.trim();
+    }
+    case "post_webhook": {
+      const channel = typeof payload.channel === "string" ? payload.channel.trim() : "";
+      return channel && channel !== "default" ? `Webhook ${channel}` : fallback;
+    }
+    default:
+      if (toolName.startsWith("mcp__")) {
+        const [, server, ...rest] = toolName.split("__");
+        return `${rest.join("__")} via ${server}`;
+      }
+      return fallback;
+  }
+}
+
+/** Record an irreversible action that ran without a human because an allow-list rule matched. */
+export async function pushAutoAction(ctx: RunContext, toolName: string, payload: Record<string, unknown>): Promise<void> {
+  // never throws: the action already ran, a failure here must not make the agent retry it
+  let label = TOOL_BY_NAME[toolName]?.label ?? toolName;
+  try {
+    label = await autoActionLabel(ctx.workspaceId, toolName, payload);
+  } catch (e) {
+    log.warn({ err: e, tool: toolName }, "chip label failed");
+  }
+  (ctx.autoActions ??= []).push({ tool: toolName, label });
+}
+
 export async function createApproval(
   ctx: RunContext,
   toolName: string,
@@ -204,6 +272,9 @@ export async function createApproval(
       reason,
       payload,
       guardFindings,
+      // chat runs: the inline card under the assistant message, and the receipt once decided
+      conversationId: ctx.conversationId,
+      messageId: ctx.conversationId ? (ctx.messageId ?? null) : null,
     })
     .returning();
   ctx.pendingApprovalIds.push(a!.id);
@@ -218,14 +289,14 @@ export async function createApproval(
     input: { approvalId: a!.id, reason },
     output: payload,
   });
-  await publish(ctx.workspaceId, { type: "approval.created", approvalId: a!.id, taskId: ctx.taskId, title });
+  await publish(ctx.workspaceId, { type: "approval.created", approvalId: a!.id, taskId: ctx.taskId, conversationId: ctx.conversationId, title });
   const locale = await workspaceLocale(ctx.workspaceId);
   await miscQueue.add("notify", {
     kind: "notify",
     workspaceId: ctx.workspaceId,
     subject: msg(locale, "notify.approvalNeeded", { title }),
     text: msg(locale, "notify.approvalNeededText", { employee: ctx.employee.name, role: ctx.employee.role, tool: toolName, reason }),
-    link: `/approvals?focus=${a!.id}`,
+    link: approvalLink(a!.id, ctx),
     approvalId: a!.id,
   });
   return a!.id;
@@ -290,7 +361,9 @@ async function irreversible(
       );
     }
     case "run": {
+      // irreversible + run can only mean an Owner allow-list rule matched (CLOSE): no human saw it, so show a chip
       const r = await executeAction(ctx.workspaceId, toolName, payload);
+      if (r.ok) await pushAutoAction(ctx, toolName, payload);
       return r.ok ? ok(r.summary) : err(r.summary);
     }
   }

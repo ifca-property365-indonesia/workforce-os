@@ -2,22 +2,25 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
-import { KanbanSquare, Loader2, Paperclip, Plus, Send, Trash2, X } from "lucide-react";
-import type { ChatMessageDTO } from "@wfos/shared";
+import { Loader2, Plus, Trash2 } from "lucide-react";
+import { hasRole, type ChatMessageDTO } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState } from "@/components/layout/common";
+import { Composer, type MentionCandidate } from "@/components/chat/composer";
+import { MessageItem } from "@/components/chat/message-item";
 import { api } from "@/lib/api";
+import { mergeMessages } from "@/lib/chat-thread";
 import { useRealtime } from "@/lib/events";
 import { useFormat } from "@/lib/use-format";
-import { useEmployees, useTeams } from "@/lib/hooks";
+import { useEmployees, useMe, useTeams, type Employee } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 interface Conv {
@@ -69,55 +72,151 @@ function TaskFromChat({ text, employeeId, onClose }: { text: string; employeeId:
   );
 }
 
-function ChatView({ conv }: { conv: Conv }) {
+const AWAIT_MS = 90_000;
+/** how long a smooth scroll to a new message may take before "is the reader at the bottom?" is believed again */
+const SMOOTH_SCROLL_MS = 1500;
+
+function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string | null }) {
   const t = useTranslations("chat");
   const ts = useTranslations("status");
-  const fmt = useFormat();
   const qc = useQueryClient();
+  const { data: me } = useMe();
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
   const key = ["conversation", conv.id];
-  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<{ messages: Msg[] }>(`/api/conversations/${conv.id}`) });
+  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<{ conversation: Conv; messages: Msg[] }>(`/api/conversations/${conv.id}`) });
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [text, setText] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
   const [taskFrom, setTaskFrom] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  /**
+   * The newest user message has no reply row yet. In auto-routed team chats the first reply row appears only after
+   * the classifier picked a responder (up to a few seconds), so the composer shows "waiting" until any reply,
+   * receipt or hint arrives (or 90 s pass).
+   */
+  const [awaiting, setAwaiting] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  /**
+   * Follow new messages only while the reader is at the bottom (not while they read an approval further up):
+   * `stick` is "the bottom sentinel is visible", watched by an IntersectionObserver. While our own smooth scroll
+   * is under way the sentinel is briefly out of view; that does not count as the reader leaving.
+   */
+  const stick = useRef(true);
+  const sentinelVisible = useRef(true);
+  const smoothUntil = useRef(0);
+  const smoothTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const shownCount = useRef(0);
+  const anchor = useRef<string | null>(focusMessageId);
+  const [anchorSeq, setAnchorSeq] = useState(0);
 
   useEffect(() => {
-    if (data) setMessages(data.messages.map((m) => ({ ...m, createdAt: String(m.createdAt) })));
+    const root = scroller.current;
+    const target = bottom.current;
+    if (!root || !target || typeof IntersectionObserver === "undefined") return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+        sentinelVisible.current = entry.isIntersecting;
+        if (entry.isIntersecting) stick.current = true;
+        else if (Date.now() > smoothUntil.current) stick.current = false;
+      },
+      { root, rootMargin: "0px 0px 80px 0px" },
+    );
+    io.observe(target);
+    return () => {
+      io.disconnect();
+      clearTimeout(smoothTimer.current);
+    };
+  }, []);
+
+  // a new ?m= (another notification clicked) while this conversation stays open: scroll to and highlight it too
+  useEffect(() => {
+    if (!focusMessageId || anchor.current === focusMessageId) return;
+    anchor.current = focusMessageId;
+    setAnchorSeq((n) => n + 1);
+  }, [focusMessageId]);
+
+  useEffect(() => {
+    if (data) setMessages((local) => mergeMessages(data.messages.map((m) => ({ ...m, createdAt: String(m.createdAt) })), local));
   }, [data]);
+  // layout effect: the scroll lands before paint, so a growing reply never pushes the sentinel out of view
+  useLayoutEffect(() => {
+    const added = messages.length > shownCount.current;
+    const firstPaint = shownCount.current === 0;
+    shownCount.current = messages.length;
+    if (anchor.current) {
+      const target = anchor.current;
+      const el = document.getElementById(`msg-${target}`);
+      if (el) {
+        anchor.current = null;
+        stick.current = false;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHighlight(target);
+        return;
+      }
+      // a deep link to a message that is not (or no longer) in this conversation: behave as usual
+      if (data && !data.messages.some((m) => m.id === target)) anchor.current = null;
+      else return;
+    }
+    if (!stick.current) return;
+    // a new message glides in; streamed text and the first render jump, so the view keeps up with every delta
+    if (added && !firstPaint) {
+      smoothUntil.current = Date.now() + SMOOTH_SCROLL_MS;
+      clearTimeout(smoothTimer.current);
+      smoothTimer.current = setTimeout(() => {
+        // the reader scrolled away during the animation: the observer saw no change since, so settle it here
+        if (!sentinelVisible.current) stick.current = false;
+      }, SMOOTH_SCROLL_MS);
+      bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    } else {
+      bottom.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    }
+  }, [messages, data, anchorSeq]);
+  const last = messages.at(-1);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!last) return;
+    const age = Math.max(0, Date.now() - new Date(last.createdAt).getTime());
+    const waiting = last.role === "user" && age < AWAIT_MS;
+    setAwaiting(waiting);
+    if (!waiting) return;
+    const timer = setTimeout(() => setAwaiting(false), AWAIT_MS - age);
+    return () => clearTimeout(timer);
+  }, [last?.id, last?.role, last?.createdAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!highlight) return;
+    const timer = setTimeout(() => setHighlight(null), 4000);
+    return () => clearTimeout(timer);
+  }, [highlight]);
 
+  const refetch = () => void qc.invalidateQueries({ queryKey: key });
   useRealtime((ev) => {
     if (ev.type === "chat.message" && ev.message.conversationId === conv.id) {
       setMessages((ms) => {
         const i = ms.findIndex((m) => m.id === ev.message.id);
         if (i === -1) return [...ms, ev.message];
         const copy = [...ms];
-        // keep streamed text if the final message has not arrived yet
-        copy[i] = { ...ev.message, content: ev.message.content || copy[i]!.content };
+        // keep streamed text if the final message has not arrived yet, and the approvals the fetch attached
+        copy[i] = { ...ev.message, content: ev.message.content || copy[i]!.content, approvals: ev.message.approvals ?? copy[i]!.approvals };
         return copy;
       });
     }
     if (ev.type === "chat.delta" && ev.conversationId === conv.id) {
       setMessages((ms) => ms.map((m) => (m.id === ev.messageId ? { ...m, content: m.content + ev.text, status: "streaming" } : m)));
     }
+    if (ev.type === "approval.created" && ev.conversationId === conv.id) refetch();
+    if (ev.type === "approval.updated" && messages.some((m) => m.approvals?.some((a) => a.id === ev.approvalId))) refetch();
   });
 
   const send = useMutation({
-    mutationFn: () => {
+    mutationFn: ({ text, files }: { text: string; files: File[] }) => {
       const f = new FormData();
       f.set("content", text);
       for (const file of files) f.append("files", file);
       return api.form(`/api/conversations/${conv.id}/messages`, f);
     },
     onSuccess: () => {
-      setText("");
-      setFiles([]);
+      // the sender wants to see their own message (and the reply), wherever they had scrolled to
+      stick.current = true;
       void qc.invalidateQueries({ queryKey: ["conversations"] });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -126,7 +225,16 @@ function ChatView({ conv }: { conv: Conv }) {
   const emp = conv.employeeId ? emps?.find((e) => e.id === conv.employeeId) : undefined;
   const team = conv.teamId ? teams?.find((t) => t.id === conv.teamId) : undefined;
   const leadId = emp?.id ?? team?.leadId ?? null;
-  const busy = messages.some((m) => m.role === "assistant" && (m.status === "streaming" || (m.status === undefined && !m.content)));
+  const busy = awaiting || messages.some((m) => m.role === "assistant" && (m.status === "streaming" || (m.status === undefined && !m.content)));
+  const canDecide = !!me && hasRole(me.role, "ADMIN");
+  const empById = useMemo(() => new Map((emps ?? []).map((e) => [e.id, e])), [emps]);
+  const nameOf = useCallback((id: string) => empById.get(id)?.name, [empById]);
+  const members: MentionCandidate[] | null = team
+    ? [...new Set([...(team.leadId ? [team.leadId] : []), ...team.memberIds])]
+        .map((id) => empById.get(id))
+        .filter((e): e is Employee => !!e && e.status !== "ARCHIVED")
+        .map((e) => ({ id: e.id, name: e.name, avatar: e.avatar, role: e.role }))
+    : null;
 
   return (
     <div className="flex h-[calc(100vh-8.5rem)] flex-col rounded-xl border bg-card">
@@ -134,96 +242,32 @@ function ChatView({ conv }: { conv: Conv }) {
         <Avatar emoji={emp?.avatar ?? "👥"} />
         <div className="min-w-0">
           <div className="truncate font-medium">{emp?.name ?? team?.name ?? t("fallbackTitle")}</div>
-          <div className="truncate text-xs text-muted-foreground">{emp ? `${emp.role} · ${ts(`autonomy.${emp.autonomyLevel}`)}` : t("teamSubtitle")}</div>
+          <div className="truncate text-xs text-muted-foreground">{emp ? `${emp.role} · ${ts(`autonomy.${emp.autonomyLevel}`)}` : t(`teamMode.${team?.responderMode ?? "lead"}`)}</div>
         </div>
       </div>
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div ref={scroller} role="log" aria-live="polite" aria-label={t("threadLabel")} className="flex-1 space-y-4 overflow-y-auto p-4">
         {!messages.length && <p className="pt-10 text-center text-sm text-muted-foreground">{t("emptyThread")}</p>}
-        {messages.map((m) => {
-          const mine = m.role === "user";
-          const author = m.employeeId ? emps?.find((e) => e.id === m.employeeId) : undefined;
-          return (
-            <div key={m.id} className={cn("flex gap-2", mine && "flex-row-reverse")}>
-              {!mine && <Avatar emoji={author?.avatar ?? emp?.avatar} size="sm" className="mt-1" />}
-              <div className={cn("max-w-[85%] space-y-1", mine && "items-end text-right")}>
-                <div className={cn("inline-block whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-left text-sm", mine ? "bg-primary text-primary-foreground" : "bg-muted")}>
-                  {m.content || <Loader2 className="size-4 animate-spin" />}
-                </div>
-                {!!m.attachments?.length && (
-                  <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
-                    {m.attachments.map((a) => (
-                      <span key={a.name} className="rounded border px-1.5 py-0.5">
-                        📎 {a.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  {fmt.ago(m.createdAt)}
-                  {m.taskId && (
-                    <Link href={`/tasks/${m.taskId}`} className="text-primary hover:underline">
-                      {t("taskCreatedLink")}
-                    </Link>
-                  )}
-                  {!mine && m.content && (
-                    <button type="button" className="inline-flex items-center gap-0.5 hover:text-foreground" onClick={() => setTaskFrom(m.content)}>
-                      <KanbanSquare className="size-3" /> {t("createTask")}
-                    </button>
-                  )}
-                  {mine && (
-                    <button type="button" className="inline-flex items-center gap-0.5 hover:text-foreground" onClick={() => setTaskFrom(m.content)}>
-                      <KanbanSquare className="size-3" /> {t("makeTask")}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={bottom} />
-      </div>
-      <form
-        className="border-t p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (text.trim() || files.length) send.mutate();
-        }}
-      >
-        {!!files.length && (
-          <div className="mb-2 flex flex-wrap gap-1">
-            {files.map((f) => (
-              <span key={f.name} className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs">
-                {f.name}
-                <button type="button" onClick={() => setFiles(files.filter((x) => x !== f))} aria-label={t("removeFile")}>
-                  <X className="size-3" />
-                </button>
-              </span>
-            ))}
+        {messages.map((m) => (
+          <MessageItem
+            key={m.id}
+            m={m}
+            author={m.employeeId ? empById.get(m.employeeId) : undefined}
+            fallbackAvatar={emp?.avatar}
+            teamChat={!!conv.teamId}
+            canDecide={canDecide}
+            highlighted={highlight === m.id}
+            onMakeTask={setTaskFrom}
+            names={nameOf}
+          />
+        ))}
+        {awaiting && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+            <Loader2 className="size-3.5 animate-spin" /> {t("waitingReply")}
           </div>
         )}
-        <div className="flex items-end gap-2">
-          <input ref={fileRef} type="file" multiple hidden accept=".pdf,.docx,.md,.txt,.csv,.json" onChange={(e) => setFiles([...files, ...Array.from(e.target.files ?? [])])} />
-          <Button type="button" size="icon" variant="ghost" onClick={() => fileRef.current?.click()} aria-label={t("attachFiles")}>
-            <Paperclip className="size-4" />
-          </Button>
-          <Textarea
-            rows={1}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                if (text.trim() || files.length) send.mutate();
-              }
-            }}
-            placeholder={busy ? t("placeholderBusy") : t("placeholder")}
-            className="max-h-40 min-h-10 resize-none"
-          />
-          <Button type="submit" size="icon" disabled={send.isPending || (!text.trim() && !files.length)} aria-label={t("send")}>
-            <Send className="size-4" />
-          </Button>
-        </div>
-      </form>
+        <div ref={bottom} />
+      </div>
+      <Composer members={members} busy={busy} sending={send.isPending} onSend={(text, files) => send.mutateAsync({ text, files })} />
       {taskFrom !== null && <TaskFromChat text={taskFrom} employeeId={leadId} onClose={() => setTaskFrom(null)} />}
     </div>
   );
@@ -239,7 +283,15 @@ function ChatPage() {
   const { data: teams } = useTeams();
   const { data } = useQuery({ queryKey: ["conversations"], queryFn: () => api.get<{ conversations: Conv[] }>("/api/conversations").then((r) => r.conversations) });
   const selected = sp.get("c");
-  const conv = data?.find((c) => c.id === selected) ?? null;
+  const listed = data?.find((c) => c.id === selected);
+  // a deep link (notification) can point at a conversation older than the 100 listed
+  const { data: direct } = useQuery({
+    queryKey: ["conversation", selected],
+    queryFn: () => api.get<{ conversation: Conv; messages: ChatMessageDTO[] }>(`/api/conversations/${selected}`),
+    enabled: !!selected && !!data && !listed,
+    retry: false,
+  });
+  const conv = listed ?? (direct?.conversation.id === selected ? direct.conversation : null);
 
   const create = useMutation({
     mutationFn: (v: { employeeId?: string; teamId?: string }) => api.post<{ conversation: Conv }>("/api/conversations", v),
@@ -304,7 +356,13 @@ function ChatPage() {
                     <span className="block text-[11px] text-muted-foreground">{e?.name ?? t("team")} · {fmt.ago(c.updatedAt)}</span>
                   </span>
                 </Link>
-                <button type="button" className="opacity-0 group-hover:opacity-100" onClick={() => del.mutate(c.id)} aria-label={t("deleteChat")}>
+                <button
+                  type="button"
+                  className="rounded opacity-0 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+                  onClick={() => del.mutate(c.id)}
+                  aria-label={t("deleteChat")}
+                  title={t("deleteChat")}
+                >
                   <Trash2 className="size-3.5 text-muted-foreground" />
                 </button>
               </div>
@@ -312,7 +370,7 @@ function ChatPage() {
           })}
         </div>
       </div>
-      {conv ? <ChatView key={conv.id} conv={conv} /> : <EmptyState title={t("empty.title")} description={t("empty.description")} />}
+      {conv ? <ChatView key={conv.id} conv={conv} focusMessageId={sp.get("m")} /> : <EmptyState title={t("empty.title")} description={t("empty.description")} />}
     </div>
   );
 }

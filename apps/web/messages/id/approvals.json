@@ -47,6 +47,12 @@
     "task": "tugas",
     "dryRunNotice": "Dry run: menyetujui hanya mencatat apa yang akan terjadi; tidak ada yang benar-benar dikirim.",
     "guardFindings": "Temuan pengaman",
+    "guardFindingsCount": "{count} temuan",
+    "severity": {
+      "low": "rendah",
+      "medium": "sedang",
+      "high": "tinggi"
+    },
     "editedByHuman": "Diedit oleh manusia sebelum disetujui.",
     "feedback": "Masukan: {feedback}",
     "result": "Hasil: {summary}",
@@ -57,7 +63,11 @@
     "editAndApprove": "Edit & setujui",
     "reject": "Tolak",
     "rejected": "Ditolak — masukan disimpan ke memori karyawan",
-    "approved": "Disetujui — sedang dijalankan"
+    "approved": "Disetujui — sedang dijalankan",
+    "waitingForAdmin": "Menunggu keputusan admin",
+    "showDetails": "Tampilkan detail",
+    "hideDetails": "Sembunyikan detail",
+    "openInInbox": "Buka di Persetujuan"
   },
   "bash": {
     "runsWhere": "Menjalankan persis perintah ini di sandbox karyawan (workspace yang sama, tanpa akses ke host, jaringan hanya yang diizinkan, git hooks dinonaktifkan)."

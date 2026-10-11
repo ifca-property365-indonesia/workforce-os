@@ -60,6 +60,8 @@ export function buildSystemPrompt(opts: {
   workspace?: { egressDomains: string[]; hasRepository: boolean };
   /** department SOP (already in the output language) and the names of its subagents */
   department?: { name: string; sop: string; subagents: string[] };
+  /** chat mode in a team conversation: who else is in the room */
+  teamChat?: { teamName: string; members: { name: string; role: string }[]; leadName: string | null };
 }): string {
   const e = { ...opts.employee, ...Object.fromEntries(Object.entries(opts.overrides ?? {}).filter(([, v]) => v !== undefined)) } as PromptEmployee;
   const tools = BUILTIN_TOOLS.filter((t) => opts.grantedTools.includes(t.name))
@@ -86,6 +88,11 @@ export function buildSystemPrompt(opts: {
       (opts.mode === "task"
         ? "- Save substantive outputs with draft_* tools so they become deliverables. End with a concise summary of what you did, what is pending, and any open questions."
         : `- This is a chat. Answer directly and concisely${opts.outputLocale ? "" : " in the user's language"}. Use create_task when the user asks for work that should be tracked.`),
+    opts.teamChat
+      ? `## Team chat\nYou are in the team chat of ${opts.teamChat.teamName}. Members:\n${opts.teamChat.members.map((m) => `- ${m.name} — ${m.role}`).join("\n")}\n` +
+        (opts.teamChat.leadName ? `The team lead is ${opts.teamChat.leadName}. ` : "") +
+        "Teammates may also answer this message: speak for yourself and your role, build on what a teammate already said instead of repeating it, and keep it short."
+      : "",
     opts.outputLocale
       ? `## Language\nWrite every answer, document, email and summary in ${LOCALE_NAMES[opts.outputLocale]}` +
         (opts.outputLocale === "id" ? " (formal Bahasa Indonesia, addressing people as \"Anda\"/\"Bapak/Ibu\")" : "") +

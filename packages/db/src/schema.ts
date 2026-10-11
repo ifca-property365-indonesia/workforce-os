@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 import type {
   MessageMeta,
+  TeamResponderMode,
   AllowListEntry,
   ToolPermission,
   ApprovalStatus,
@@ -170,6 +171,8 @@ export const teams = pgTable("teams", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   leadId: uuid("lead_id").references(() => employees.id, { onDelete: "set null" }),
+  /** who answers an un-mentioned message in the team chat */
+  responderMode: text("responder_mode").$type<TeamResponderMode>().notNull().default("lead"),
   createdAt: createdAt(),
 });
 
@@ -317,6 +320,9 @@ export const approvals = pgTable(
     feedback: text("feedback"),
     executionResult: jsonb("execution_result").$type<Record<string, unknown>>(),
     guardFindings: jsonb("guard_findings").$type<unknown[]>().notNull().default([]),
+    /** set when a chat run raised it: the conversation and the assistant message that shows it inline */
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+    messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
   (t) => [index("approvals_ws_status").on(t.workspaceId, t.status)],

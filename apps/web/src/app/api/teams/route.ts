@@ -13,7 +13,7 @@ export const GET = route("VIEWER", async ({ session }) => {
 export const POST = route("ADMIN", async ({ session, req }) => {
   const input = await body(req, teamInputSchema);
   await assertWorkspaceEmployees(session.workspaceId, [input.leadId, ...input.memberIds]);
-  const [t] = await db.insert(teams).values({ workspaceId: session.workspaceId, name: input.name, description: input.description, leadId: input.leadId }).returning();
+  const [t] = await db.insert(teams).values({ workspaceId: session.workspaceId, name: input.name, description: input.description, leadId: input.leadId, responderMode: input.responderMode }).returning();
   const ids = [...new Set([...(input.leadId ? [input.leadId] : []), ...input.memberIds])];
   if (ids.length) await db.insert(teamMembers).values(ids.map((employeeId) => ({ teamId: t!.id, employeeId })));
   await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "team.created", targetType: "team", targetId: t!.id, details: input });

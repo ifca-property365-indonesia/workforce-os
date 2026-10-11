@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -13,7 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState, PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
-import { useClients, useEmployees, useTeams, type Team } from "@/lib/hooks";
+import { hasRole, TEAM_RESPONDER_MODES, type TeamResponderMode } from "@wfos/shared";
+import { useClients, useEmployees, useMe, useTeams, type Team } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 function BriefDialog({ team, onClose }: { team: Team; onClose: () => void }) {
@@ -68,18 +69,58 @@ function BriefDialog({ team, onClose }: { team: Team; onClose: () => void }) {
   );
 }
 
+/** Who answers an un-mentioned message in this team's chat. */
+function ResponderModePicker({ team, canEdit, saving, onChange }: { team: Team; canEdit: boolean; saving: boolean; onChange: (mode: TeamResponderMode) => void }) {
+  const t = useTranslations("teams");
+  const name = useId();
+  return (
+    <div className="mt-4 border-t pt-3">
+      <div id={`${name}-title`} className="text-xs font-medium">
+        {t("responder.title")}
+      </div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        {t("responder.help")} {canEdit ? null : t("responder.adminOnly")}
+      </p>
+      {/* aria-busy rather than disabled while saving: disabling would drop the keyboard focus from the group */}
+      <div role="radiogroup" aria-labelledby={`${name}-title`} aria-busy={saving} className="grid gap-1.5 sm:grid-cols-2">
+        {TEAM_RESPONDER_MODES.map((mode) => {
+          const checked = (team.responderMode ?? "lead") === mode;
+          return (
+            <label
+              key={mode}
+              className={cn(
+                "flex items-start gap-2 rounded-md border px-2.5 py-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+                canEdit ? "cursor-pointer" : "cursor-not-allowed opacity-80",
+                checked ? "border-primary bg-primary/5" : canEdit && "hover:bg-accent",
+              )}
+            >
+              <input type="radio" name={name} value={mode} checked={checked} disabled={!canEdit} onChange={() => !saving && onChange(mode)} className="mt-0.5" />
+              <span className="min-w-0">
+                <span className="block font-medium">{t(`responder.modes.${mode}.label`)}</span>
+                <span className="block text-xs text-muted-foreground">{t(`responder.modes.${mode}.description`)}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function TeamsPage() {
   const tt = useTranslations("teams");
   const qc = useQueryClient();
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
+  const { data: me } = useMe();
+  const isAdmin = !!me && hasRole(me.role, "ADMIN");
   const [newName, setNewName] = useState("");
   const [over, setOver] = useState<string | null>(null);
   const [briefing, setBriefing] = useState<Team | null>(null);
   const inv = () => qc.invalidateQueries({ queryKey: ["teams"] });
   const create = useMutation({ mutationFn: () => api.post("/api/teams", { name: newName, leadId: null, memberIds: [] }), onSuccess: () => (setNewName(""), inv()) });
   const update = useMutation({
-    mutationFn: (v: { id: string; leadId?: string | null; memberIds?: string[] }) => api.patch(`/api/teams/${v.id}`, v),
+    mutationFn: ({ id, ...v }: { id: string; leadId?: string | null; memberIds?: string[]; responderMode?: TeamResponderMode }) => api.patch(`/api/teams/${id}`, v),
     onSuccess: inv,
     onError: (e) => toast.error((e as Error).message),
   });
@@ -173,6 +214,12 @@ export default function TeamsPage() {
                   })}
                 </div>
                 {!t.leadId && t.memberIds.length > 0 && <p className="mt-2 text-xs text-amber-600">{tt("chooseLead")}</p>}
+                <ResponderModePicker
+                  team={t}
+                  canEdit={isAdmin}
+                  saving={update.isPending && update.variables?.id === t.id && update.variables.responderMode !== undefined}
+                  onChange={(responderMode) => update.mutate({ id: t.id, responderMode }, { onSuccess: () => toast.success(tt("responder.saved")) })}
+                />
               </CardContent>
             </Card>
           ))}

@@ -99,6 +99,20 @@
       "when": 1791705731252,
       "tag": "0013_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791707552505,
+      "tag": "0014_chat_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1791707552506,
+      "tag": "0015_team_responders",
+      "breakpoints": true
     }
   ]
 }

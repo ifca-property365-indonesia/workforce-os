@@ -2,7 +2,7 @@ import { isLocale, type Locale } from "./index";
 
 /**
  * Bilingual templates for text the worker produces outside the web UI: notifications (in-app, email,
- * webhook), default invoice emails and the invoice PDF. Values are substituted for {name} placeholders.
+ * webhook), chat receipts for decided approvals, default invoice emails and the invoice PDF. Values are substituted for {name} placeholders.
  */
 const MESSAGES = {
   en: {
@@ -13,6 +13,10 @@ const MESSAGES = {
     "notify.pausedBudget": "{name} paused: budget cap",
     "notify.pausedMidTask": "{name} paused mid-task: budget cap",
     "notify.open": "Open: {url}",
+    "receipt.executed": "✓ {title} — {summary}",
+    "receipt.failed": "✗ {title} — {error}",
+    "receipt.rejected": "✗ Rejected: {title}",
+    "receipt.feedback": "Feedback: {feedback}",
     "notify.limitWarning": "Claude subscription at {pct}% of the {window} limit",
     "notify.limitWarningText": "The {window} window is {pct}% used. It resets at {resetsAt}.",
     "notify.limitRejected": "Claude subscription limit reached: work is paused",
@@ -48,6 +52,10 @@ const MESSAGES = {
     "notify.pausedBudget": "{name} dijeda: batas anggaran",
     "notify.pausedMidTask": "{name} dijeda di tengah tugas: batas anggaran",
     "notify.open": "Buka: {url}",
+    "receipt.executed": "✓ {title} — {summary}",
+    "receipt.failed": "✗ {title} — {error}",
+    "receipt.rejected": "✗ Ditolak: {title}",
+    "receipt.feedback": "Masukan: {feedback}",
     "notify.limitWarning": "Langganan Claude sudah {pct}% dari batas {window}",
     "notify.limitWarningText": "Jendela {window} sudah terpakai {pct}%. Direset pukul {resetsAt}.",
     "notify.limitRejected": "Batas langganan Claude tercapai: pekerjaan dijeda",

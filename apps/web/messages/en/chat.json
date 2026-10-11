@@ -3,7 +3,6 @@
   "team": "Team",
   "deleteChat": "Delete chat",
   "fallbackTitle": "Chat",
-  "teamSubtitle": "Team chat (answered by the Lead)",
   "emptyThread": "Say hello, ask a question, or describe work to turn into a task.",
   "taskCreatedLink": "task created",
   "createTask": "Create task",
@@ -24,5 +23,45 @@
     "submit": "Create & start",
     "created": "Task created",
     "open": "Open"
-  }
+  },
+  "teamMode": {
+    "lead": "Team chat (the Lead answers)",
+    "everyone": "Team chat (everyone answers)",
+    "mentions": "Team chat (only @mentioned members answer)",
+    "auto": "Team chat (the best-suited member answers)"
+  },
+  "placeholderTeam": "Message (type @ to mention someone, Enter to send)",
+  "messageLabel": "Message",
+  "mention": {
+    "listLabel": "Mention a team member",
+    "everyone": "Everyone in the team"
+  },
+  "routed": {
+    "auto": "Picked automatically · {confidence}%",
+    "autoNoScore": "Picked automatically",
+    "mention": "Mentioned",
+    "fallback": "Lead answered ({reason})",
+    "reasons": {
+      "timeout": "picking took too long",
+      "error": "picking failed",
+      "low_confidence": "no clear match",
+      "invalid": "no valid pick",
+      "lead_unavailable": "responder unavailable",
+      "killswitch": "kill switch is on",
+      "demo": "demo mode",
+      "budget": "budget reached",
+      "other": "no pick"
+    }
+  },
+  "chip": "{label} · auto (allow-list)",
+  "hints": {
+    "noResponder": "Nobody was mentioned, so nobody answered. In this team, type @Name or @everyone to get a reply.",
+    "busy": "{name} was busy and couldn't reply",
+    "busyUnknown": "A teammate was busy and couldn't reply",
+    "skippedResponders": "{count, plural, one {# teammate not asked} other {# teammates not asked}} (limit {limit} per message)"
+  },
+  "waitingReply": "Waiting for the reply…",
+  "replying": "Writing a reply…",
+  "replyingAs": "{name} is writing a reply…",
+  "threadLabel": "Conversation"
 }

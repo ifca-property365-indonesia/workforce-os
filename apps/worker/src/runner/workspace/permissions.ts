@@ -25,7 +25,7 @@ export interface WorkspacePermissionDeps {
   /** platform tool names the employee is granted (mcp__wfos__…) */
   allowedPlatformTools: Set<string>;
   /** gate for tools from external MCP servers (shared with Tool mode) */
-  gateExternal: (toolName: string, input: Record<string, unknown>) => Promise<PermissionResult>;
+  gateExternal: (toolName: string, input: Record<string, unknown>, toolUseID?: string) => Promise<PermissionResult>;
   /** workspace root as the sandbox sees it */
   workspaceDir: string;
 }
@@ -40,11 +40,11 @@ export function workspacePermissions(d: WorkspacePermissionDeps): CanUseTool {
   const step = (name: string, status: string, input: unknown, output?: unknown) =>
     recordStep({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, conversationId: ctx.conversationId, employeeId: ctx.employee.id, kind: "tool", name, status, input, output });
 
-  return async (toolName, input): Promise<PermissionResult> => {
+  return async (toolName, input, opts): Promise<PermissionResult> => {
     if (toolName.startsWith("mcp__wfos__")) {
       return d.allowedPlatformTools.has(toolName) ? { behavior: "allow", updatedInput: input } : { behavior: "deny", message: "Tool not granted to this employee." };
     }
-    if (toolName.startsWith("mcp__")) return d.gateExternal(toolName, input);
+    if (toolName.startsWith("mcp__")) return d.gateExternal(toolName, input, opts?.toolUseID);
 
     if (toolName === "Bash") {
       const command = String(input.command ?? "");
