@@ -46,7 +46,7 @@ export function NotificationPrefsCard() {
     setDraft({ ...draft, mutedEmployeeIds: muted ? [...draft.mutedEmployeeIds, id] : draft.mutedEmployeeIds.filter((x) => x !== id) });
   const active = (emps ?? []).filter((e) => e.status !== "ARCHIVED" || draft.mutedEmployeeIds.includes(e.id));
   return (
-    <Card className="lg:col-span-2">
+    <Card className="min-w-0 lg:col-span-2">
       <CardHeader>
         <CardTitle className="text-base">{t("notifications.title")}</CardTitle>
         <CardDescription>{t("notifications.description")}</CardDescription>

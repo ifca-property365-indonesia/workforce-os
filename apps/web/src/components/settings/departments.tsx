@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -29,14 +29,15 @@ interface Department {
 
 /** Two text areas side by side: Bahasa Indonesia and English. */
 function BilingualField({ label, value, onChange, rows = 4, disabled }: { label: string; value: Bi; onChange: (v: Bi) => void; rows?: number; disabled?: boolean }) {
+  const uid = useId();
   return (
     <div className="grid gap-2 sm:grid-cols-2">
       {(["id", "en"] as const).map((l) => (
         <div key={l} className="space-y-1">
-          <Label className="text-xs">
+          <Label className="text-xs" htmlFor={`${uid}-${l}`}>
             {label} · {l.toUpperCase()}
           </Label>
-          <Textarea rows={rows} value={value[l]} disabled={disabled} onChange={(e) => onChange({ ...value, [l]: e.target.value })} className="text-xs" />
+          <Textarea id={`${uid}-${l}`} rows={rows} value={value[l]} disabled={disabled} onChange={(e) => onChange({ ...value, [l]: e.target.value })} className="text-xs" />
         </div>
       ))}
     </div>
@@ -48,6 +49,7 @@ function DepartmentEditor({ dept, admin }: { dept: Department; admin: boolean })
   const tc = useTranslations("common");
   const qc = useQueryClient();
   const [d, setD] = useState(dept);
+  const uid = useId();
   useEffect(() => setD(dept), [dept]);
   const save = useMutation({
     mutationFn: () => api.put(`/api/departments/${dept.key}`, { name: d.name, sop: d.sop, subagents: d.subagents }),
@@ -74,8 +76,8 @@ function DepartmentEditor({ dept, admin }: { dept: Department; admin: boolean })
             <div key={i} className="space-y-2 rounded-md border p-3">
               <div className="flex items-end gap-2">
                 <div className="space-y-1">
-                  <Label className="text-xs">{tc("name")}</Label>
-                  <Input value={s.name} disabled={!admin} onChange={(e) => setSub(i, { ...s, name: e.target.value.toLowerCase() })} className="h-8 w-40 font-mono text-xs" />
+                  <Label className="text-xs" htmlFor={`${uid}-sub-${i}-name`}>{tc("name")}</Label>
+                  <Input id={`${uid}-sub-${i}-name`} value={s.name} disabled={!admin} onChange={(e) => setSub(i, { ...s, name: e.target.value.toLowerCase() })} className="h-8 w-40 font-mono text-xs" />
                 </div>
                 {admin && (
                   <Button type="button" size="sm" variant="ghost" className="text-destructive" aria-label={tc("remove")} onClick={() => setD({ ...d, subagents: d.subagents.filter((_, k) => k !== i) })}>

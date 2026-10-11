@@ -180,12 +180,12 @@ function General({ s, owner, admin }: { s: Settings; owner: boolean; admin: bool
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>{tc("name")}</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Label htmlFor="workspace-name">{tc("name")}</Label>
+            <Input id="workspace-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("workspace.monthlyBudget")}</Label>
-            <Input type="number" min={0} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
+            <Label htmlFor="workspace-budget">{t("workspace.monthlyBudget")}</Label>
+            <Input id="workspace-budget" type="number" min={0} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
           </div>
           <div className="sm:col-span-2">
             <Button onClick={() => save.mutate({ name, monthlyBudget: budget })}>{tc("save")}</Button>
@@ -298,39 +298,39 @@ function Email() {
       </CardHeader>
       <CardContent className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>{t("email.host")}</Label>
+          <Label htmlFor="smtp-host">{t("email.host")}</Label>
           {/* i18n-ignore: example host name */}
-          <Input value={f.host} onChange={(e) => setF({ ...f, host: e.target.value })} placeholder="smtp.gmail.com" />
+          <Input id="smtp-host" value={f.host} onChange={(e) => setF({ ...f, host: e.target.value })} placeholder="smtp.gmail.com" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label>{t("email.port")}</Label>
-            <Input type="number" value={f.port} onChange={(e) => setF({ ...f, port: Number(e.target.value) })} />
+            <Label htmlFor="smtp-port">{t("email.port")}</Label>
+            <Input id="smtp-port" type="number" value={f.port} onChange={(e) => setF({ ...f, port: Number(e.target.value) })} />
           </div>
           <label className="flex items-end gap-2 pb-2 text-sm">
             <Switch checked={f.secure} onCheckedChange={(v) => setF({ ...f, secure: v })} /> {t("email.tls")}
           </label>
         </div>
         <div className="space-y-1.5">
-          <Label>{t("email.user")}</Label>
-          <Input value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} autoComplete="off" />
+          <Label htmlFor="smtp-user">{t("email.user")}</Label>
+          <Input id="smtp-user" value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} autoComplete="off" />
         </div>
         <div className="space-y-1.5">
-          <Label>
+          <Label htmlFor="smtp-password">
             {tc("password")} {data?.smtp?.passwordSet && <span className="text-xs text-muted-foreground">{t("email.passwordSet")}</span>}
           </Label>
-          <Input type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
+          <Input id="smtp-password" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
         </div>
         <div className="space-y-1.5 sm:col-span-2">
-          <Label>{t("email.fromAddress")}</Label>
+          <Label htmlFor="smtp-from">{t("email.fromAddress")}</Label>
           {/* i18n-ignore: example sender address */}
-          <Input value={f.fromAddress} onChange={(e) => setF({ ...f, fromAddress: e.target.value })} placeholder='"Acme Studio" <hello@acme.com>' />
+          <Input id="smtp-from" value={f.fromAddress} onChange={(e) => setF({ ...f, fromAddress: e.target.value })} placeholder='"Acme Studio" <hello@acme.com>' />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
           <Button onClick={() => save.mutate()} disabled={!f.host || !f.fromAddress}>
             {tc("save")}
           </Button>
-          <Input className="max-w-60" value={to} onChange={(e) => setTo(e.target.value)} placeholder={t("email.testRecipient")} />
+          <Input className="max-w-60" value={to} onChange={(e) => setTo(e.target.value)} placeholder={t("email.testRecipient")} aria-label={t("email.testRecipient")} />
           <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending || !to}>
             {test.isPending ? t("email.sending") : t("email.sendTest")}
           </Button>
@@ -360,17 +360,17 @@ function Notifications({ s }: { s: Settings }) {
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 space-y-1.5">
-            <Label>{t("notifications.notifyEmail")}</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Label htmlFor="notify-email">{t("notifications.notifyEmail")}</Label>
+            <Input id="notify-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
           <Button onClick={() => save.mutate({ notifyEmail: email })}>{tc("save")}</Button>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 space-y-1.5">
-            <Label>
+            <Label htmlFor="notify-webhook">
               {t("notifications.webhookUrl")} {s.workspace.webhookConfigured && <span className="text-xs text-emerald-600">{t("notifications.configured")}</span>}
             </Label>
-            <Input value={hook} onChange={(e) => setHook(e.target.value)} placeholder={t("notifications.webhookPlaceholder")} />
+            <Input id="notify-webhook" value={hook} onChange={(e) => setHook(e.target.value)} placeholder={t("notifications.webhookPlaceholder")} />
           </div>
           <Button onClick={() => save.mutate({ webhookUrl: hook })} disabled={!hook}>
             {tc("save")}
@@ -434,12 +434,12 @@ function McpOAuthConfirm({ start, mcpUrl, onClose }: { start: McpOAuthStartInfo 
         </DialogHeader>
         {start && (
           <div className="space-y-3 text-sm">
-            <div className="space-y-1">
-              <Label>{t("integrations.oauthServer")}</Label>
+            <div role="group" aria-labelledby="mcp-oauth-server-label" className="space-y-1">
+              <Label id="mcp-oauth-server-label">{t("integrations.oauthServer")}</Label>
               <code className="block break-all rounded-md border bg-muted px-2 py-1.5 text-xs">{start.authorizationServerHost}</code>
             </div>
-            <div className="space-y-1">
-              <Label>{t("integrations.oauthScopes")}</Label>
+            <div role="group" aria-labelledby="mcp-oauth-scopes-label" className="space-y-1">
+              <Label id="mcp-oauth-scopes-label">{t("integrations.oauthScopes")}</Label>
               {start.scopes.length ? (
                 <ul className="flex flex-wrap gap-1">
                   {start.scopes.map((s) => (

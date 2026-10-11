@@ -26,6 +26,7 @@ function BriefDialog({ team, onClose }: { team: Team; onClose: () => void }) {
   const [brief, setBrief] = useState("");
   const [clientId, setClientId] = useState<string>("");
   const [dryRun, setDryRun] = useState(false);
+  const uid = useId();
   const m = useMutation({
     mutationFn: () => api.post<{ task: { id: string } }>("/api/tasks", { title, brief, teamId: team.id, clientId: clientId || null, dryRun }),
     onSuccess: (r) => (location.href = `/tasks/${r.task.id}`),
@@ -39,16 +40,16 @@ function BriefDialog({ team, onClose }: { team: Team; onClose: () => void }) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>{t("brief.titleLabel")}</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Label htmlFor={`${uid}-title`}>{t("brief.titleLabel")}</Label>
+            <Input id={`${uid}-title`} value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("brief.brief")}</Label>
-            <Textarea rows={5} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder={t("brief.briefPlaceholder")} />
+            <Label htmlFor={`${uid}-brief`}>{t("brief.brief")}</Label>
+            <Textarea id={`${uid}-brief`} rows={5} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder={t("brief.briefPlaceholder")} />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("brief.client")}</Label>
-            <select className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={clientId} onChange={(e) => setClientId(e.target.value)}>
+            <Label htmlFor={`${uid}-client`}>{t("brief.client")}</Label>
+            <select id={`${uid}-client`} className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={clientId} onChange={(e) => setClientId(e.target.value)}>
               <option value="">—</option>
               {clients?.map((c) => (
                 <option key={c.id} value={c.id}>

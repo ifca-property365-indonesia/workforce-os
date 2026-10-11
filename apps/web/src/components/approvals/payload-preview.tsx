@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ShieldAlert } from "lucide-react";
@@ -38,23 +39,24 @@ export function EmailPreview({ p }: { p: Email }) {
 
 export function EmailEditor({ value, onChange }: { value: Email; onChange: (v: Email) => void }) {
   const t = useTranslations("approvals");
+  const uid = useId();
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label className="text-xs">{t("editor.to")}</Label>
-        <Input value={value.to.join(", ")} onChange={(e) => onChange({ ...value, to: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
+        <Label className="text-xs" htmlFor={`${uid}-to`}>{t("editor.to")}</Label>
+        <Input id={`${uid}-to`} value={value.to.join(", ")} onChange={(e) => onChange({ ...value, to: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t("editor.cc")}</Label>
-        <Input value={(value.cc ?? []).join(", ")} onChange={(e) => onChange({ ...value, cc: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
+        <Label className="text-xs" htmlFor={`${uid}-cc`}>{t("editor.cc")}</Label>
+        <Input id={`${uid}-cc`} value={(value.cc ?? []).join(", ")} onChange={(e) => onChange({ ...value, cc: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t("editor.subject")}</Label>
-        <Input value={value.subject} onChange={(e) => onChange({ ...value, subject: e.target.value })} />
+        <Label className="text-xs" htmlFor={`${uid}-subject`}>{t("editor.subject")}</Label>
+        <Input id={`${uid}-subject`} value={value.subject} onChange={(e) => onChange({ ...value, subject: e.target.value })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">{t("editor.body")}</Label>
-        <Textarea rows={10} value={value.body} onChange={(e) => onChange({ ...value, body: e.target.value })} />
+        <Label className="text-xs" htmlFor={`${uid}-body`}>{t("editor.body")}</Label>
+        <Textarea id={`${uid}-body`} rows={10} value={value.body} onChange={(e) => onChange({ ...value, body: e.target.value })} />
       </div>
     </div>
   );
@@ -66,11 +68,12 @@ export function HandoffPicker({ value, onChange }: { value: { developerId: strin
   const { data: emps } = useEmployees();
   const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
   const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
+  const uid = useId();
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-1">
-        <Label className="text-xs" htmlFor="handoff-dev">{t("handoff.developer")}</Label>
-        <select id="handoff-dev" className={sel} value={value.developerId ?? ""} onChange={(e) => onChange({ ...value, developerId: e.target.value || null })}>
+        <Label className="text-xs" htmlFor={`${uid}-dev`}>{t("handoff.developer")}</Label>
+        <select id={`${uid}-dev`} className={sel} value={value.developerId ?? ""} onChange={(e) => onChange({ ...value, developerId: e.target.value || null })}>
           <option value="">—</option>
           {emps?.filter((e) => e.status !== "ARCHIVED").map((e) => (
             <option key={e.id} value={e.id}>
@@ -80,8 +83,8 @@ export function HandoffPicker({ value, onChange }: { value: { developerId: strin
         </select>
       </div>
       <div className="space-y-1">
-        <Label className="text-xs" htmlFor="handoff-repo">{t("handoff.repository")}</Label>
-        <select id="handoff-repo" className={sel} value={value.repositoryId ?? ""} onChange={(e) => onChange({ ...value, repositoryId: e.target.value || null })}>
+        <Label className="text-xs" htmlFor={`${uid}-repo`}>{t("handoff.repository")}</Label>
+        <select id={`${uid}-repo`} className={sel} value={value.repositoryId ?? ""} onChange={(e) => onChange({ ...value, repositoryId: e.target.value || null })}>
           <option value="">—</option>
           {repos?.map((r) => (
             <option key={r.id} value={r.id}>
@@ -168,19 +171,20 @@ export function SkillApprovalPreview({ p }: { p: Record<string, unknown> }) {
 export function SkillApprovalEditor({ p, onChange }: { p: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
   const t = useTranslations("approvals");
   const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const uid = useId();
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label className="text-xs" htmlFor="skill-approval-slug">{t("skill.slug")}</Label>
-        <Input id="skill-approval-slug" className="font-mono text-sm" value={str(p.slug)} onChange={(e) => onChange({ ...p, slug: e.target.value.toLowerCase() })} />
+        <Label className="text-xs" htmlFor={`${uid}-slug`}>{t("skill.slug")}</Label>
+        <Input id={`${uid}-slug`} className="font-mono text-sm" value={str(p.slug)} onChange={(e) => onChange({ ...p, slug: e.target.value.toLowerCase() })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs" htmlFor="skill-approval-description">{t("skill.description")}</Label>
-        <Textarea id="skill-approval-description" rows={2} value={str(p.description)} onChange={(e) => onChange({ ...p, description: e.target.value })} />
+        <Label className="text-xs" htmlFor={`${uid}-description`}>{t("skill.description")}</Label>
+        <Textarea id={`${uid}-description`} rows={2} value={str(p.description)} onChange={(e) => onChange({ ...p, description: e.target.value })} />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs" htmlFor="skill-approval-body">{t("skill.body")}</Label>
-        <Textarea id="skill-approval-body" rows={14} className="font-mono text-xs" value={str(p.body)} onChange={(e) => onChange({ ...p, body: e.target.value })} />
+        <Label className="text-xs" htmlFor={`${uid}-body`}>{t("skill.body")}</Label>
+        <Textarea id={`${uid}-body`} rows={14} className="font-mono text-xs" value={str(p.body)} onChange={(e) => onChange({ ...p, body: e.target.value })} />
       </div>
     </div>
   );

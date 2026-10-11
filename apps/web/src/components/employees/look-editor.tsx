@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -30,10 +30,11 @@ function useReducedMotion(): boolean {
 }
 
 function Swatches({ label, colors, value, disabled, onPick }: { label: string; colors: readonly string[]; value: number; disabled: boolean; onPick: (i: number) => void }) {
+  const labelId = useId();
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
+      <Label id={labelId}>{label}</Label>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={labelId}>
         {colors.map((c, i) => (
           <button
             key={c}
@@ -53,10 +54,11 @@ function Swatches({ label, colors, value, disabled, onPick }: { label: string; c
 }
 
 function Choices<T extends string>({ label, options, value, names, disabled, onPick }: { label: string; options: readonly T[]; value: T; names: (o: T) => string; disabled: boolean; onPick: (o: T) => void }) {
+  const labelId = useId();
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
+      <Label id={labelId}>{label}</Label>
+      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={labelId}>
         {options.map((o) => (
           <Button key={o} type="button" size="sm" role="radio" aria-checked={value === o} variant={value === o ? "default" : "outline"} disabled={disabled} onClick={() => onPick(o)}>
             {names(o)}

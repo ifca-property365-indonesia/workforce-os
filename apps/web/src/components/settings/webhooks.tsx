@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -311,9 +311,9 @@ export function WebhooksSettings({ owner, admin }: { owner: boolean; admin: bool
               <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs">{t("secretOnce")}</p>
               <SecretRow label={t("url")} value={revealed.url} copyLabel={tc("copy")} copied={tc("copied")} />
               <SecretRow label={t("secret")} value={revealed.secret} copyLabel={tc("copy")} copied={tc("copied")} />
-              <div className="space-y-1.5">
+              <div role="group" aria-labelledby="webhook-example-label" className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label>{t("example")}</Label>
+                  <Label id="webhook-example-label">{t("example")}</Label>
                   <Button size="sm" variant="ghost" onClick={() => void copy(curlExample(revealed.url, revealed.secret), tc("copied"))}>
                     <Copy className="size-3.5" />
                     {tc("copy")}
@@ -344,11 +344,12 @@ export function WebhooksSettings({ owner, admin }: { owner: boolean; admin: bool
 }
 
 function SecretRow({ label, value, copyLabel, copied }: { label: string; value: string; copyLabel: string; copied: string }) {
+  const id = useId();
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <div className="flex items-center gap-2">
-        <Input readOnly value={value} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
+        <Input id={id} readOnly value={value} className="font-mono text-xs" onFocus={(e) => e.target.select()} />
         <Button type="button" size="icon" variant="outline" className="shrink-0" aria-label={copyLabel} onClick={() => void copy(value, copied)}>
           <Copy className="size-4" />
         </Button>

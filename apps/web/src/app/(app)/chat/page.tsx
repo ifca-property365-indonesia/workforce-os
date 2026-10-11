@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -44,6 +44,7 @@ function TaskFromChat({ text, employeeId, onClose }: { text: string; employeeId:
   const t = useTranslations("chat");
   const [title, setTitle] = useState(text.split("\n")[0]!.slice(0, 100));
   const [brief, setBrief] = useState(text);
+  const uid = useId();
   const m = useMutation({
     mutationFn: () => api.post<{ task: { id: string } }>("/api/tasks", { title, brief, assigneeId: employeeId, start: true }),
     onSuccess: (r) => {
@@ -60,12 +61,12 @@ function TaskFromChat({ text, employeeId, onClose }: { text: string; employeeId:
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>{t("taskDialog.titleLabel")}</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Label htmlFor={`${uid}-title`}>{t("taskDialog.titleLabel")}</Label>
+            <Input id={`${uid}-title`} value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("taskDialog.brief")}</Label>
-            <Textarea rows={6} value={brief} onChange={(e) => setBrief(e.target.value)} />
+            <Label htmlFor={`${uid}-brief`}>{t("taskDialog.brief")}</Label>
+            <Textarea id={`${uid}-brief`} rows={6} value={brief} onChange={(e) => setBrief(e.target.value)} />
           </div>
         </div>
         <DialogFooter>
@@ -430,7 +431,7 @@ function ChatPage() {
   }, [wantEmp, data, router, create]);
 
   return (
-    <div className="grid gap-4 md:grid-cols-[260px_1fr]">
+    <div className="grid gap-4 md:grid-cols-[260px_1fr] [&>*]:min-w-0">
       <div className="space-y-3">
         <div className="rounded-xl border bg-card p-3">
           <div className="mb-2 flex items-center gap-1 text-sm font-medium">

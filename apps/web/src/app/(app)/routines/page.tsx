@@ -72,17 +72,17 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label>{tc("name")}</Label>
-            <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+            <Label htmlFor="routine-name">{tc("name")}</Label>
+            <Input id="routine-name" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("form.cron")}</Label>
-              <Input value={f.cron} onChange={(e) => setF({ ...f, cron: e.target.value })} className="font-mono" />
+              <Label htmlFor="routine-cron">{t("form.cron")}</Label>
+              <Input id="routine-cron" value={f.cron} onChange={(e) => setF({ ...f, cron: e.target.value })} className="font-mono" />
             </div>
             <div className="space-y-1.5">
-              <Label>{t("form.timezone")}</Label>
-              <Input value={f.timezone} onChange={(e) => setF({ ...f, timezone: e.target.value })} />
+              <Label htmlFor="routine-timezone">{t("form.timezone")}</Label>
+              <Input id="routine-timezone" value={f.timezone} onChange={(e) => setF({ ...f, timezone: e.target.value })} />
             </div>
           </div>
           <LiveSchedulePreview cron={f.cron} timezone={f.timezone} />
@@ -94,8 +94,9 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
             ))}
           </div>
           <div className="space-y-1.5">
-            <Label>{t("form.assignTo")}</Label>
+            <Label htmlFor="routine-assign">{t("form.assignTo")}</Label>
             <select
+              id="routine-assign"
               className="h-9 w-full rounded-md border bg-background px-2 text-sm"
               value={assignee}
               onChange={(e) => {
@@ -129,8 +130,8 @@ function RoutineDialog({ initial, id, onClose }: { initial: Form; id?: string; o
             ))}
           </fieldset>
           <div className="space-y-1.5">
-            <Label>{t("form.brief")}</Label>
-            <Textarea rows={4} value={f.brief} onChange={(e) => setF({ ...f, brief: e.target.value })} placeholder={t("form.briefPlaceholder", { variable: CLIENT_VAR })} />
+            <Label htmlFor="routine-brief">{t("form.brief")}</Label>
+            <Textarea id="routine-brief" rows={4} value={f.brief} onChange={(e) => setF({ ...f, brief: e.target.value })} placeholder={t("form.briefPlaceholder", { variable: CLIENT_VAR })} />
           </div>
           <div className="flex flex-wrap gap-5 text-sm">
             <label className="flex items-center gap-2">

@@ -180,9 +180,9 @@ function Wizard() {
             <div className="space-y-4">
               <div className="flex gap-3">
                 <div className="space-y-1.5">
-                  <Label>{t("persona.avatar")}</Label>
+                  <Label htmlFor="avatar">{t("persona.avatar")}</Label>
                   <Select value={d.avatar} onValueChange={(v) => set("avatar", v)}>
-                    <SelectTrigger className="w-20">
+                    <SelectTrigger id="avatar" className="w-20">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -209,9 +209,9 @@ function Wizard() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>{t("persona.model")}</Label>
+                  <Label htmlFor="model">{t("persona.model")}</Label>
                   <Select value={d.model} onValueChange={(v) => set("model", v)}>
-                    <SelectTrigger>
+                    <SelectTrigger id="model">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -302,12 +302,12 @@ function Wizard() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("firstTask.title")}</Label>
-                  <Input value={firstTask.title} onChange={(e) => setFirstTask({ ...firstTask, title: e.target.value })} />
+                  <Label htmlFor="first-task-title">{t("firstTask.title")}</Label>
+                  <Input id="first-task-title" value={firstTask.title} onChange={(e) => setFirstTask({ ...firstTask, title: e.target.value })} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("firstTask.brief")}</Label>
-                  <Textarea rows={4} value={firstTask.brief} onChange={(e) => setFirstTask({ ...firstTask, brief: e.target.value })} />
+                  <Label htmlFor="first-task-brief">{t("firstTask.brief")}</Label>
+                  <Textarea id="first-task-brief" rows={4} value={firstTask.brief} onChange={(e) => setFirstTask({ ...firstTask, brief: e.target.value })} />
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={firstTask.dryRun} onChange={(e) => setFirstTask({ ...firstTask, dryRun: e.target.checked })} />

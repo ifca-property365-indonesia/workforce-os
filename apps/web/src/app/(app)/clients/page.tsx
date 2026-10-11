@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
@@ -25,6 +25,7 @@ function ClientDialog({ client, onClose }: { client?: Client; onClose: () => voi
   const tc = useTranslations("common");
   const qc = useQueryClient();
   const [f, setF] = useState<CForm>(client ? { name: client.name, email: client.email, contacts: client.contacts, notes: client.notes, currency: client.currency } : { name: "", email: "", contacts: [], notes: "", currency: "IDR" });
+  const uid = useId();
   const m = useMutation({
     mutationFn: () => (client ? api.patch(`/api/clients/${client.id}`, f) : api.post("/api/clients", f)),
     onSuccess: () => (void qc.invalidateQueries({ queryKey: ["clients"] }), onClose()),
@@ -39,25 +40,25 @@ function ClientDialog({ client, onClose }: { client?: Client; onClose: () => voi
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-2 space-y-1.5">
-              <Label>{tc("name")}</Label>
-              <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+              <Label htmlFor={`${uid}-name`}>{tc("name")}</Label>
+              <Input id={`${uid}-name`} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
             </div>
             <div className="space-y-1.5">
-              <Label>{t("form.currency")}</Label>
-              <Input value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase() })} />
+              <Label htmlFor={`${uid}-currency`}>{t("form.currency")}</Label>
+              <Input id={`${uid}-currency`} value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase() })} />
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>{t("form.email")}</Label>
-            <Input type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
+            <Label htmlFor={`${uid}-email`}>{t("form.email")}</Label>
+            <Input id={`${uid}-email`} type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
           </div>
-          <div className="space-y-1.5">
-            <Label>{t("form.contacts")}</Label>
+          <div role="group" aria-labelledby={`${uid}-contacts`} className="space-y-1.5">
+            <Label id={`${uid}-contacts`}>{t("form.contacts")}</Label>
             {f.contacts.map((c, i) => (
               <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-                <Input placeholder={t("form.contactName")} value={c.name} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                <Input placeholder={t("form.contactEmail")} value={c.email} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, email: e.target.value } : x)) })} />
-                <Input placeholder={t("form.contactRole")} value={c.role} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)) })} />
+                <Input aria-label={t("form.contactName")} placeholder={t("form.contactName")} value={c.name} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
+                <Input aria-label={t("form.contactEmail")} placeholder={t("form.contactEmail")} value={c.email} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, email: e.target.value } : x)) })} />
+                <Input aria-label={t("form.contactRole")} placeholder={t("form.contactRole")} value={c.role} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)) })} />
                 <Button variant="ghost" size="icon" onClick={() => setF({ ...f, contacts: f.contacts.filter((_, j) => j !== i) })} aria-label={t("form.removeContact")}>
                   <Trash2 className="size-4" />
                 </Button>
@@ -68,8 +69,8 @@ function ClientDialog({ client, onClose }: { client?: Client; onClose: () => voi
             </Button>
           </div>
           <div className="space-y-1.5">
-            <Label>{t("form.notes")}</Label>
-            <Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
+            <Label htmlFor={`${uid}-notes`}>{t("form.notes")}</Label>
+            <Textarea id={`${uid}-notes`} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
           </div>
         </div>
         <DialogFooter>

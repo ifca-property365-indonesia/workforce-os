@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -75,6 +75,7 @@ export function ApiTokensSettings({ admin }: { admin: boolean }) {
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [markUntrusted, setMarkUntrusted] = useState(true);
   const [created, setCreated] = useState<{ token: string; mcpUrl: string } | null>(null);
+  const uid = useId();
   const needs2fa = me ? !me.user.twoFactorEnabled : false;
   const canCreate = me ? me.role !== "VIEWER" : false;
 
@@ -211,8 +212,8 @@ export function ApiTokensSettings({ admin }: { admin: boolean }) {
           {created && (
             <div className="min-w-0 space-y-4">
               <div className="space-y-1.5">
-                <Label>{t("tokenLabel")}</Label>
-                <div className="flex items-center gap-2">
+                <Label id={`${uid}-token`}>{t("tokenLabel")}</Label>
+                <div role="group" aria-labelledby={`${uid}-token`} className="flex items-center gap-2">
                   <code className="min-w-0 flex-1 break-all rounded-md border bg-muted px-2 py-1.5 text-xs">{created.token}</code>
                   <Button size="sm" variant="outline" className="shrink-0 gap-1" onClick={() => copy(created.token, tc("copied"))}>
                     <Copy className="size-3.5" />
@@ -221,8 +222,8 @@ export function ApiTokensSettings({ admin }: { admin: boolean }) {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>{t("claudeCodeLabel")}</Label>
-                <div className="flex items-start gap-2">
+                <Label id={`${uid}-claude`}>{t("claudeCodeLabel")}</Label>
+                <div role="group" aria-labelledby={`${uid}-claude`} className="flex items-start gap-2">
                   <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all rounded-md border bg-muted px-2 py-1.5 text-xs">{claudeCommand(created.mcpUrl, created.token)}</pre>
                   <Button size="sm" variant="outline" className="shrink-0 gap-1" onClick={() => copy(claudeCommand(created.mcpUrl, created.token), tc("copied"))}>
                     <Copy className="size-3.5" />

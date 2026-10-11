@@ -80,20 +80,20 @@ function InstructionsTab({ e }: { e: Employee }) {
       <Card>
         <CardContent className="grid gap-4 p-5 lg:grid-cols-2">
           <div className="space-y-1.5 lg:col-span-2">
-            <Label>{t("instructions.persona")}</Label>
-            <Textarea rows={2} value={form.persona} onChange={(x) => setForm({ ...form, persona: x.target.value })} />
+            <Label htmlFor="emp-persona">{t("instructions.persona")}</Label>
+            <Textarea id="emp-persona" rows={2} value={form.persona} onChange={(x) => setForm({ ...form, persona: x.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("instructions.instructions", { version: e.instructionsVersion })}</Label>
-            <Textarea rows={12} className="font-mono text-xs" value={form.instructions} onChange={(x) => setForm({ ...form, instructions: x.target.value })} />
+            <Label htmlFor="emp-instructions">{t("instructions.instructions", { version: e.instructionsVersion })}</Label>
+            <Textarea id="emp-instructions" rows={12} className="font-mono text-xs" value={form.instructions} onChange={(x) => setForm({ ...form, instructions: x.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <Label>{t("instructions.businessContext")}</Label>
-            <Textarea rows={12} value={form.businessContext} onChange={(x) => setForm({ ...form, businessContext: x.target.value })} />
+            <Label htmlFor="emp-business-context">{t("instructions.businessContext")}</Label>
+            <Textarea id="emp-business-context" rows={12} value={form.businessContext} onChange={(x) => setForm({ ...form, businessContext: x.target.value })} />
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:col-span-2">
-            <Label className="text-xs">{t("instructions.replayOnLast")}</Label>
-            <Input type="number" min={1} max={10} value={sample} onChange={(x) => setSample(Number(x.target.value))} className="h-8 w-16" />
+            <Label className="text-xs" htmlFor="emp-replay-sample">{t("instructions.replayOnLast")}</Label>
+            <Input id="emp-replay-sample" type="number" min={1} max={10} value={sample} onChange={(x) => setSample(Number(x.target.value))} className="h-8 w-16" />
             <span className="text-xs text-muted-foreground">{t("instructions.completedTasks")}</span>
             <Button disabled={!dirty || start.isPending} onClick={() => start.mutate()} className="gap-1.5">
               <FlaskConical className="size-4" /> {t("instructions.preview")}
@@ -258,8 +258,8 @@ function ToolsTab({ e }: { e: Employee }) {
       <AutonomyPicker value={autonomy} onChange={setAutonomy} />
       <div className="flex items-end gap-3">
         <div className="space-y-1.5">
-          <Label>{t("toolsTab.dailyBudget")}</Label>
-          <Input type="number" min={0} value={budget} onChange={(x) => setBudget(Number(x.target.value))} className="w-40" />
+          <Label htmlFor="emp-daily-budget">{t("toolsTab.dailyBudget")}</Label>
+          <Input id="emp-daily-budget" type="number" min={0} value={budget} onChange={(x) => setBudget(Number(x.target.value))} className="w-40" />
         </div>
       </div>
       <ToolPermissionsEditor tools={tpl.tools} value={perms} onChange={setPerms} defaultAutonomy={autonomy} extraServers={mcp?.servers.map((s) => s.name)} />
