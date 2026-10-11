@@ -463,7 +463,9 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     await flush().catch((e: unknown) => log.warn({ err: e, conversationId }, "chat: delta publish failed"));
     for (const id of ctx.createdTaskIds) await enqueueTask(id, ws.id);
     if (out.stopped === "budget") await pauseForBudget(ws.id, emp.id, "Budget reached during chat");
-    let content = out.text || (out.error ? `⚠️ ${out.error}` : "(no reply)");
+    // error / stalled / loop: the reply is an error that keeps whatever partial text the run produced
+    const failed = out.stopped === "error" || out.stopped === "stalled" || out.stopped === "loop";
+    let content = failed && out.error ? `${out.text ? `${out.text}\n\n` : ""}⚠️ ${out.error}` : out.text || (out.error ? `⚠️ ${out.error}` : "(no reply)");
     if (out.stopped === "quota") {
       const pause = await activeQuotaPause(ws.id);
       content = `${out.text ? `${out.text}\n\n` : ""}⏸️ ${pause?.reason ?? "The Claude subscription limit was reached."}`;
@@ -473,7 +475,7 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
       await db.update(messages).set({ taskId: ctx.createdTaskIds[0] }).where(eq(messages.id, assistant.id));
     }
     const chips = ctx.autoActions ?? [];
-    const outcome = await finish(content, out.stopped === "error" || out.stopped === "quota" ? "error" : "done", chips.length ? { ...assistant.meta, chips } : undefined);
+    const outcome = await finish(content, failed || out.stopped === "quota" ? "error" : "done", chips.length ? { ...assistant.meta, chips } : undefined);
     return out.stopped === "quota" ? { ...outcome, fatal: true } : outcome;
   } catch (e) {
     if (timer) clearTimeout(timer);

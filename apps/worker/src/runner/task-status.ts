@@ -9,6 +9,7 @@ import { log } from "../lib/logger";
 import { isTaskRunActive } from "../guards/killswitch";
 import { onChildFinished } from "../orchestration/team";
 import { closeTurnOfMessage } from "./chat-turns";
+import { incidentKindOf, openIncident, openRoutineIncident, resolveIncidentsOnTerminal, type FailureKind } from "./incidents";
 
 type Task = typeof tasks.$inferSelect;
 type TerminalStatus = "DONE" | "FAILED" | "CANCELLED";
@@ -27,19 +28,20 @@ async function bestEffort(label: string, taskId: string, fn: () => Promise<unkno
 
 /**
  * Side effects of a task reaching a terminal status, in this order: wake the parent (team lead) when
- * all its subtasks have ended, settle the routine run, publish task.updated, notify humans (DONE and
- * FAILED of top-level, non-replay tasks; a cancellation is a human's own action and is not notified).
+ * all its subtasks have ended, settle the routine run (a failed run opens its routine incident), close the
+ * incidents this end resolves, publish task.updated, notify humans (DONE of top-level, non-replay tasks;
+ * a cancellation is a human's own action and is not notified). A FAILED task is notified by its incident
+ * (see ./incidents), so FAILED only notifies here when `notifyFailure` is set (opening the incident failed).
  * Each step is best-effort: one failing (Redis down, a query error) never skips the others.
  * `task` is the row as written (status already terminal).
  */
-export async function afterTerminal(task: Task, status: TerminalStatus): Promise<void> {
+export async function afterTerminal(task: Task, status: TerminalStatus, opts: { notifyFailure?: boolean } = {}): Promise<void> {
   if (task.parentTaskId) await bestEffort("wake parent", task.id, () => onChildFinished(task.workspaceId, task.parentTaskId!));
   await bestEffort("routine run settle", task.id, () => settleRoutineRun(task));
+  await bestEffort("incidents resolve", task.id, () => resolveIncidentsOnTerminal(task, status));
   await bestEffort("publish", task.id, () => publish(task.workspaceId, { type: "task.updated", taskId: task.id, status, employeeId: task.assigneeId, title: task.title }));
-  if (status !== "CANCELLED") {
-    const text = status === "FAILED" ? (task.error ?? "") : (task.result ?? "");
-    await bestEffort("notify", task.id, () => notifyFinished(task, status, text));
-  }
+  if (status === "DONE") await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
+  if (status === "FAILED" && opts.notifyFailure) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.error ?? ""));
 }
 
 /**
@@ -75,7 +77,8 @@ export async function setTaskStatus(
   return true;
 }
 
-export type FailKind = "error" | "orphaned" | "could_not_start" | "approval_failed";
+/** stalled / loop: the run was stopped by the executor (AgentRunOutput.stopped); each maps to an incident kind. */
+export type FailKind = FailureKind;
 
 export interface FailOptions {
   kind?: FailKind;
@@ -96,8 +99,9 @@ export interface FailOptions {
  * The one way a task becomes FAILED. A single conditional UPDATE decides; when the task is already
  * terminal (or no longer matches `onlyIfStatus` / `staleBefore`) nothing happens and it returns false,
  * so calling it twice, or racing another finisher, is harmless.
- * On a real transition: the failure step (opts.step), then afterTerminal (wake the parent, settle the
- * routine run, publish task.updated, notify humans).
+ * On a real transition: the failure step (opts.step), the incident (./incidents: handled by the team lead,
+ * escalated to a person, or muted; this is also the human notification), then afterTerminal (wake the
+ * parent, settle the routine run, publish task.updated).
  */
 export async function failTask(task: Pick<Task, "id">, error: string, opts: FailOptions = {}): Promise<boolean> {
   const kind = opts.kind ?? "error";
@@ -118,7 +122,12 @@ export async function failTask(task: Pick<Task, "id">, error: string, opts: Fail
       recordStep({ workspaceId: row.workspaceId, taskId: row.id, employeeId: opts.employeeId ?? null, kind: "error", name: opts.stepName ?? "task_failed", status: "error", output: { kind, error } }),
     );
   }
-  await afterTerminal(row, "FAILED");
+  const incidentOpened = await openIncident(row, incidentKindOf(kind), error).then(
+    () => true,
+    (e: unknown) => (log.error({ err: e, taskId: row.id }, "open incident failed"), false),
+  );
+  // the incident must exist before the parent is woken: the lead's review prompt shows it
+  await afterTerminal(row, "FAILED", { notifyFailure: !incidentOpened });
   return true;
 }
 
@@ -145,7 +154,7 @@ export async function notifyFinished(task: Pick<Task, "workspaceId" | "id" | "ti
  * to end always sees all the others ended. A task id that no longer exists counts as not DONE.
  */
 async function settleRuns(filter: SQL): Promise<{ id: string; status: RoutineRunStatus }[]> {
-  const rows = await db.execute<{ id: string; status: RoutineRunStatus }>(sql`
+  const rows = await db.execute<{ id: string; status: RoutineRunStatus; routine_id: string; error: string | null; first_failed: string | null }>(sql`
     UPDATE routine_runs rr
     SET status = CASE WHEN s.not_done = 0 THEN 'done' ELSE 'failed' END,
         error = CASE WHEN s.not_done = 0 THEN NULL ELSE s.first_error END
@@ -156,7 +165,8 @@ async function settleRuns(filter: SQL): Promise<{ id: string; status: RoutineRun
         (array_agg(
           CASE WHEN t.id IS NULL THEN 'Task ' || e.tid || ' was deleted.'
                ELSE coalesce(nullif(t.error, ''), 'Task "' || t.title || '" ended ' || t.status) END
-          ORDER BY e.ord) FILTER (WHERE t.id IS NULL OR t.status <> 'DONE'))[1] AS first_error
+          ORDER BY e.ord) FILTER (WHERE t.id IS NULL OR t.status <> 'DONE'))[1] AS first_error,
+        (array_agg(e.tid ORDER BY e.ord) FILTER (WHERE t.id IS NULL OR t.status <> 'DONE'))[1] AS first_failed
       FROM routine_runs r
       CROSS JOIN LATERAL jsonb_array_elements_text(r.task_ids) WITH ORDINALITY AS e(tid, ord)
       LEFT JOIN tasks t ON t.id = e.tid::uuid
@@ -164,8 +174,15 @@ async function settleRuns(filter: SQL): Promise<{ id: string; status: RoutineRun
       GROUP BY r.id
     ) s
     WHERE rr.id = s.id AND rr.status = 'dispatched' AND s.open = 0
-    RETURNING rr.id, rr.status`);
-  return [...rows];
+    RETURNING rr.id, rr.status, rr.routine_id, rr.error, s.first_failed`);
+  // the UPDATE returns a run once (only "dispatched" rows change): one routine_failed incident per failed run
+  for (const r of rows) {
+    if (r.status !== "failed") continue;
+    await bestEffort("routine incident", r.first_failed ?? r.id, () =>
+      openRoutineIncident({ routineId: r.routine_id, firstFailedTaskId: r.first_failed, error: r.error }),
+    );
+  }
+  return [...rows].map((r) => ({ id: r.id, status: r.status }));
 }
 
 /**

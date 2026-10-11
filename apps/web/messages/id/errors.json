@@ -78,5 +78,9 @@
   "telegram_not_configured": "Telegram belum dikonfigurasi di server ini.",
   "push_not_configured": "Notifikasi push belum dikonfigurasi di server ini.",
   "push_endpoint_not_allowed": "Layanan push browser ini tidak didukung.",
-  "invalid_form": "Permintaan harus dikirim sebagai formulir (multipart/form-data)."
+  "invalid_form": "Permintaan harus dikirim sebagai formulir (multipart/form-data).",
+  "mcp_unreachable": "Tidak dapat menghubungi server MCP {name}. Periksa URL dan tokennya, lalu coba lagi.",
+  "mcp_invalid_name": "Nama server MCP terdiri dari 2–32 karakter: huruf kecil, angka, dan -, dengan satu _ di antara bagian (tidak di awal atau akhir).",
+  "mcp_server_not_found": "Tidak ada server MCP terhubung dengan nama itu.",
+  "mcp_invalid_url": "URL server MCP harus diawali http:// atau https://."
 }

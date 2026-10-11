@@ -32,5 +32,29 @@
       "seven_day_opus": "Weekly · Opus",
       "seven_day_sonnet": "Weekly · Sonnet"
     }
+  },
+  "incidents": {
+    "title": "Incidents",
+    "resolved7d": "{count, plural, =0 {None resolved in the last 7 days} one {# resolved in the last 7 days} other {# resolved in the last 7 days}}",
+    "empty": "Nothing needs attention.",
+    "noTask": "no task",
+    "routine": "Routine run",
+    "handledBy": "lead: {name}",
+    "needsYou": "needs you",
+    "more": "+{count} more",
+    "kind": {
+      "failed": "Failed",
+      "stalled": "Stalled",
+      "loop": "Loop",
+      "could_not_start": "Could not start",
+      "routine_failed": "Routine failed"
+    },
+    "status": {
+      "open": "open",
+      "handling": "lead handling",
+      "resolved": "resolved",
+      "escalated": "escalated",
+      "muted": "muted"
+    }
   }
 }

@@ -18,6 +18,7 @@ import { buildSystemPrompt, recallMemories, workspaceDirectory } from "./prompt"
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
 import { planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
 import { failTask, setTaskStatus } from "./task-status";
+import { applyRecoveries } from "./incidents";
 import { errorMessage } from "../lib/errors";
 import { scriptedTaskRun } from "../simulation/demo";
 
@@ -264,6 +265,13 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     await failTask(task, out.error ?? "Unknown error", { kind: "error", result: out.text || null });
     return;
   }
+  if (out.stopped === "stalled" || out.stopped === "loop") {
+    // stopped by the executor's watchdogs: an incident of that kind (the lead or a person handles it)
+    const error = out.error ?? (out.stopped === "stalled" ? "The run stalled: no progress for too long." : "The run was stopped: the same tool call kept repeating.");
+    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: `run_${out.stopped}`, status: "error", output: error });
+    await failTask(task, error, { kind: out.stopped, result: out.text || null });
+    return;
+  }
 
   // Start tasks created from this run (chat → board, delegation).
   for (const id of [...ctx.createdTaskIds, ...ctx.delegatedTaskIds]) {
@@ -277,12 +285,19 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "team_plan_delegated", output: { subtasks: ctx.delegatedTaskIds.length } });
     return; // stays RUNNING while members work
   }
-  if (team?.role === "lead" && team.phase === "review" && ctx.revisionRequests.length > 0) {
-    const n = await requestRevisions(ws.id, task.id, emp.id, ctx.revisionRequests);
-    if (n > 0) {
-      await db.update(tasks).set({ phase: "wait" }).where(eq(tasks.id, task.id));
-      return;
+  if (team?.role === "lead" && team.phase === "review" && (ctx.revisionRequests.length > 0 || (ctx.recoveryRequests?.length ?? 0) > 0)) {
+    // wait first: a subtask re-queued below that finishes fast must find the parent waiting (onChildFinished)
+    await db.update(tasks).set({ phase: "wait" }).where(eq(tasks.id, task.id));
+    // neither may strand the parent in "wait": a failure counts as nothing re-queued (applyRecoveries never throws)
+    const n = ctx.revisionRequests.length
+      ? await requestRevisions(ws.id, task.id, emp.id, ctx.revisionRequests).catch((e: unknown) => (log.error({ err: e, taskId }, "revisions not applied"), 0))
+      : 0;
+    const m = await applyRecoveries(ws.id, task.id, emp.id, ctx.recoveryRequests ?? []);
+    if (n + m > 0) {
+      await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "team_review_reopened", output: { revisions: n, recoveries: m } });
+      return; // stays RUNNING; the review runs again once these subtasks end
     }
+    await db.update(tasks).set({ phase: "review" }).where(eq(tasks.id, task.id)); // nothing re-queued: finish below
   }
 
   const pending = await db

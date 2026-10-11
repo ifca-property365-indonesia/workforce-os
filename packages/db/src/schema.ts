@@ -15,6 +15,8 @@ import {
   date,
 } from "drizzle-orm/pg-core";
 import type {
+  IncidentKind,
+  IncidentStatus,
   MessageMeta,
   TeamResponderMode,
   AllowListEntry,
@@ -262,6 +264,8 @@ export const tasks = pgTable(
     repositoryId: uuid("repository_id"),
     /** null | active | archived (workspace files removed after retention; deliverables kept) */
     workspaceStatus: text("workspace_status"),
+    /** automatic retries by the team lead after an incident (bounded by INCIDENT_RETRY_LIMIT) */
+    retryCount: integer("retry_count").notNull().default(0),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -273,6 +277,28 @@ export const tasks = pgTable(
     index("tasks_parent").on(t.parentTaskId),
     index("tasks_assignee").on(t.assigneeId),
   ],
+);
+
+export const incidents = pgTable(
+  "incidents",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<IncidentKind>().notNull(),
+    status: text("status").$type<IncidentStatus>().notNull().default("open"),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    parentTaskId: uuid("parent_task_id").references(() => tasks.id, { onDelete: "set null" }),
+    routineId: uuid("routine_id").references(() => routines.id, { onDelete: "set null" }),
+    employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    /** the team lead that got the incident turn (null = escalated to a person) */
+    handlerEmployeeId: uuid("handler_employee_id").references(() => employees.id, { onDelete: "set null" }),
+    summary: text("summary").notNull().default(""),
+    resolution: text("resolution"),
+    createdAt: createdAt(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [index("incidents_ws_status").on(t.workspaceId, t.status, t.createdAt), index("incidents_task").on(t.taskId)],
 );
 
 export const routines = pgTable("routines", {

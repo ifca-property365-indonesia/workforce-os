@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  AlertOctagon,
   AlertTriangle,
   Ban,
   Bot,
@@ -17,6 +18,7 @@ import {
   Minimize2,
   Play,
   RotateCcw,
+  Repeat,
   ShieldAlert,
   ShieldCheck,
   Wrench,
@@ -28,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodePanel } from "./code-panel";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
+import { describeStep } from "@/lib/step-labels";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +99,12 @@ const KIND_ICON: Record<StepKind, typeof Cpu> = {
   budget: AlertTriangle,
   system: Bot,
   error: AlertTriangle,
+  incident: AlertOctagon,
 };
+
+/** Step statuses, including gate decisions (run / draft / approval / simulate / deny) and incident states. */
+const BAD_STATUS = ["error", "blocked", "denied", "deny", "stopped"];
+const WARN_STATUS = ["flagged", "pending", "simulated", "drafted", "approval", "draft", "simulate", "open", "escalated"];
 
 export function DiffView({ diff }: { diff: string }) {
   return (
@@ -126,6 +134,21 @@ function Json({ value }: { value: unknown }) {
   return <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 p-2 text-xs">{s}</pre>;
 }
 
+/** A step's name, translated where the worker records a known shape (gate decisions, incidents, guards). */
+function StepName({ step }: { step: Step }) {
+  const t = useTranslations("inspector");
+  const info = describeStep(step);
+  if (info.type === "gate") return <span className="font-medium">{t("stepName.gate", { target: info.target })}</span>;
+  if (info.type === "repeat") return <span className="font-medium">{t("stepName.repeat_detected")}</span>;
+  if (info.type === "incident") {
+    const kind = info.kind ? t(`incidentKind.${info.kind}`) : "—";
+    const known = t.has(`stepName.incident.${info.action}`);
+    return <span className="font-medium">{known ? t(`stepName.incident.${info.action}`, { kind }) : step.name}</span>;
+  }
+  if (info.type === "stopped") return <span className="font-medium">{t(`stoppedTitle.${info.reason}`)}</span>;
+  return <span className="font-medium">{step.name}</span>;
+}
+
 export function StepTimeline({ steps, employees }: { steps: Step[]; employees: Map<string, { name: string; avatar: string }> }) {
   const t = useTranslations("inspector");
   const f = useFormat();
@@ -153,11 +176,12 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
       </div>
       <ol className="relative space-y-1 border-l pl-4">
         {steps.map((s) => {
-          const Icon = KIND_ICON[s.kind] ?? Bot;
+          const info = describeStep(s);
+          const Icon = info.type === "repeat" ? Repeat : info.type === "gate" ? ShieldCheck : (KIND_ICON[s.kind] ?? Bot);
           const isOpen = open.has(s.id);
           const emp = s.employeeId ? employees.get(s.employeeId) : undefined;
-          const bad = ["error", "blocked", "denied"].includes(s.status);
-          const warn = ["flagged", "pending", "simulated", "drafted"].includes(s.status);
+          const bad = BAD_STATUS.includes(s.status) || info.type === "stopped";
+          const warn = WARN_STATUS.includes(s.status) || info.type === "repeat";
           return (
             <li key={s.id} className="relative">
               <span
@@ -176,9 +200,18 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
               >
                 <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} />
                 {emp && <span title={emp.name}>{emp.avatar}</span>}
-                <span className="font-medium">{s.name}</span>
+                <StepName step={s} />
                 <span className="rounded bg-muted px-1.5 text-[11px] uppercase text-muted-foreground">{t.has(`stepKind.${s.kind}`) ? t(`stepKind.${s.kind}`) : s.kind}</span>
-                {s.status !== "ok" && <span className={cn("text-xs", bad ? "text-destructive" : "text-amber-600")}>{t.has(`stepStatus.${s.status}`) ? t(`stepStatus.${s.status}`) : s.status}</span>}
+                {info.type === "gate" && info.rule && (
+                  <span className="rounded border px-1.5 text-[11px] text-muted-foreground" title={info.reason ?? undefined}>
+                    {t(`gateRule.${info.rule}`)}
+                  </span>
+                )}
+                {s.status !== "ok" && (
+                  <span className={cn("text-xs", bad ? "text-destructive" : warn ? "text-amber-600" : "text-muted-foreground")}>
+                    {t.has(`stepStatus.${s.status}`) ? t(`stepStatus.${s.status}`) : s.status}
+                  </span>
+                )}
                 <span className="ml-auto flex flex-wrap items-center gap-3 text-xs tabular-nums text-muted-foreground">
                   {s.model && <span>{s.model}</span>}
                   {(s.inputTokens > 0 || s.outputTokens > 0) && (
@@ -275,6 +308,15 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
     queryKey: ["steps", taskId],
     queryFn: () => api.get<{ steps: Step[] }>(`/api/tasks/${taskId}/steps?include=children`),
   });
+  /** the run was stopped by the watchdog (no progress) or the repeat guard: say so above the raw error */
+  const stopped = (() => {
+    for (const st of [...(stepsData?.steps ?? [])].reverse()) {
+      if (st.taskId !== taskId) continue;
+      const info = describeStep(st);
+      if (info.type === "stopped") return info.reason;
+    }
+    return null;
+  })();
   const action = useMutation({
     mutationFn: (a: "start" | "cancel" | "retry" | "dry_run") => api.post<{ taskId?: string }>(`/api/tasks/${taskId}/actions`, { action: a }),
     onSuccess: (r, a) => {
@@ -335,7 +377,13 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
         </div>
       </div>
 
-      {task.error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{task.error}</div>}
+      {task.error && (
+        <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          {stopped && <div className="font-medium">{t(`stoppedTitle.${stopped}`)}</div>}
+          {stopped && <div className="mb-1 text-xs">{t(`stoppedHint.${stopped}`)}</div>}
+          {task.error}
+        </div>
+      )}
 
       <div className={cn("grid gap-4", !compact && "lg:grid-cols-5")}>
         <div className={cn("space-y-4", !compact && "lg:col-span-2")}>

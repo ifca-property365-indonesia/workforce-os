@@ -3,7 +3,8 @@ import { and, asc, eq } from "drizzle-orm";
 import { conversations, db, employees, messages, teams, workspaces } from "@wfos/db";
 import { runChat } from "../src/runner/chat";
 import { setQueryImpl, type QueryFn } from "../src/runner/sdk";
-import { mockRunner, type MockRunner } from "../src/runner/mock-sdk";
+import { mockRunner, type MockRunner, type MockStep } from "../src/runner/mock-sdk";
+import { setRunIdleTimeoutMs } from "../src/runner/executor";
 import { makeEmployee, makeWorkspace } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 import { publish } from "../src/lib/redis";
@@ -275,5 +276,35 @@ describe("chat turns", () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]!.status).toBe("error");
     expect(replies[0]!.content).toMatch(/^⚠️/);
+  });
+});
+
+describe("chat replies stopped by the run-safety guards", () => {
+  afterEach(() => setRunIdleTimeoutMs(null));
+
+  it("a stalled run closes the reply as an error, keeping the partial text", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id);
+    const conv = await makeConversation(ws.id, { employeeId: emp.id });
+    const m = await userMessage(conv.id, "Summarise the contracts");
+    setRunIdleTimeoutMs(60);
+    setQueryImpl(mockRunner([{ llm: { input: 5, output: 5, text: "Here is what I have so far." } }, { wait: 5_000 }, { result: "never" }]).query);
+    await runChat(conv.id, m.id);
+    const [reply] = await assistantRows(conv.id);
+    expect(reply!.status).toBe("error");
+    expect(reply!.content).toMatch(/^Here is what I have so far\.\n\n⚠️ No activity for .+ minutes — the run was stopped\.$/);
+  });
+
+  it("a looping run closes the reply as an error", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id, { toolPermissions: [{ tool: "mcp:crm", enabled: true }] });
+    const conv = await makeConversation(ws.id, { employeeId: emp.id });
+    const m = await userMessage(conv.id, "Find Acme");
+    const call: MockStep = { tool: "mcp__crm__list_contacts", input: { q: "acme" } };
+    setQueryImpl(mockRunner([...Array.from({ length: 12 }, () => call), { result: "never" }]).query);
+    await runChat(conv.id, m.id);
+    const [reply] = await assistantRows(conv.id);
+    expect(reply!.status).toBe("error");
+    expect(reply!.content).toBe("⚠️ The same tool call repeated 10 times in a row — the run was stopped.");
   });
 });

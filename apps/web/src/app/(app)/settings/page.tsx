@@ -2,12 +2,13 @@
 
 import { RepositoriesSettings } from "@/components/settings/repositories";
 import { DepartmentsSettings } from "@/components/settings/departments";
+import { mcpToolsQueryKey, type McpTool } from "@/components/employees/tool-permissions";
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { KeyRound, UserMinus } from "lucide-react";
+import { KeyRound, Loader2, PlugZap, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -380,9 +381,43 @@ function Notifications({ s }: { s: Settings }) {
   );
 }
 
-function Integrations() {
+/** One connected MCP server, with a live "Test connection" that lists its tools through the server. */
+function McpServerRow({ server, onRemove }: { server: { name: string; url: string; tokenSet: boolean }; onRemove: () => void }) {
   const t = useTranslations("settings");
   const tc = useTranslations("common");
+  const qc = useQueryClient();
+  const { data: me } = useMe();
+  const test = useMutation({
+    mutationFn: () => api.get<{ tools: McpTool[] }>(`/api/settings/mcp/${encodeURIComponent(server.name)}/tools`),
+    // the employee editor's per-tool list reads the same cache entry
+    onSuccess: (r) => qc.setQueryData(mcpToolsQueryKey(me?.workspace.id, server.name), r),
+  });
+  return (
+    <div className="rounded-md border p-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <code className="font-medium">{server.name}</code>
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">{server.url}</span>
+        {server.tokenSet && <span className="text-xs text-emerald-600">{t("integrations.tokenSet")}</span>}
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => test.mutate()} disabled={test.isPending}>
+          {test.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
+          {t("integrations.test")}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onRemove}>
+          {tc("remove")}
+        </Button>
+      </div>
+      {test.isSuccess && (
+        <div className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+          {t("integrations.testOk", { count: test.data.tools.length, reversible: test.data.tools.filter((x) => x.class === "reversible").length })}
+        </div>
+      )}
+      {test.isError && <div className="mt-2 break-words text-xs text-destructive">{(test.error as Error).message}</div>}
+    </div>
+  );
+}
+
+function Integrations() {
+  const t = useTranslations("settings");
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["mcp"], queryFn: () => api.get<{ servers: { id: string; name: string; url: string; tokenSet: boolean }[] }>("/api/settings/mcp") });
   const [f, setF] = useState({ name: "", url: "", token: "" });
@@ -391,7 +426,15 @@ function Integrations() {
     onSuccess: () => (setF({ name: "", url: "", token: "" }), void qc.invalidateQueries({ queryKey: ["mcp"] })),
     onError: (e) => toast.error((e as Error).message),
   });
-  const del = useMutation({ mutationFn: (name: string) => api.del(`/api/settings/mcp?name=${encodeURIComponent(name)}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["mcp"] }) });
+  const { data: me } = useMe();
+  const del = useMutation({
+    mutationFn: (name: string) => api.del(`/api/settings/mcp?name=${encodeURIComponent(name)}`),
+    onSuccess: (_r, name) => {
+      // its cached tool list is stale now (a server added again under the same name may expose other tools)
+      void qc.invalidateQueries({ queryKey: mcpToolsQueryKey(me?.workspace.id, name) });
+      return qc.invalidateQueries({ queryKey: ["mcp"] });
+    },
+  });
   return (
     <Card>
       <CardHeader>
@@ -400,14 +443,7 @@ function Integrations() {
       </CardHeader>
       <CardContent className="space-y-3">
         {data?.servers.map((s) => (
-          <div key={s.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">
-            <code className="font-medium">{s.name}</code>
-            <span className="flex-1 truncate text-muted-foreground">{s.url}</span>
-            {s.tokenSet && <span className="text-xs text-emerald-600">{t("integrations.tokenSet")}</span>}
-            <Button size="sm" variant="ghost" onClick={() => del.mutate(s.name)}>
-              {tc("remove")}
-            </Button>
-          </div>
+          <McpServerRow key={s.id} server={s} onRemove={() => del.mutate(s.name)} />
         ))}
         <div className="grid gap-2 sm:grid-cols-[140px_1fr_1fr_auto]">
           <Input placeholder={t("integrations.namePlaceholder")} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />

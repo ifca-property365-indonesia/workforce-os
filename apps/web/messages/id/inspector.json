@@ -22,7 +22,8 @@
     "compaction": "Pemadatan",
     "budget": "Anggaran",
     "system": "Sistem",
-    "error": "Kesalahan"
+    "error": "Kesalahan",
+    "incident": "Insiden"
   },
   "stepStatus": {
     "error": "kesalahan",
@@ -31,7 +32,16 @@
     "flagged": "ditandai",
     "pending": "menunggu",
     "simulated": "disimulasikan",
-    "drafted": "draf dibuat"
+    "drafted": "draf dibuat",
+    "run": "diizinkan",
+    "deny": "ditolak",
+    "approval": "perlu persetujuan",
+    "draft": "dijadikan draf",
+    "simulate": "disimulasikan",
+    "stopped": "dihentikan",
+    "open": "terbuka",
+    "escalated": "dieskalasi",
+    "muted": "dibisukan"
   },
   "deliverables": {
     "empty": "Belum ada hasil kerja.",
@@ -113,5 +123,43 @@
     "feedbackPlaceholder": "Apa yang perlu diubah? Karyawan melanjutkan di sesi dan workspace yang sama.",
     "requestChanges": "Minta perubahan",
     "changesRequested": "Perubahan diminta: karyawan akan melanjutkan"
+  },
+  "gateRule": {
+    "not_granted": "tidak diizinkan",
+    "reversible": "dapat dibatalkan",
+    "dry_run": "uji coba",
+    "autonomy_draft": "otonomi: draf",
+    "allow_list": "daftar izin",
+    "autonomy": "otonomi",
+    "taint": "konten tak tepercaya",
+    "leak": "kemungkinan bocor"
+  },
+  "stepName": {
+    "gate": "Gerbang · {target}",
+    "repeat_detected": "Panggilan tool berulang terdeteksi",
+    "incident": {
+      "opened": "Insiden dibuka: {kind}",
+      "handling": "Insiden diserahkan ke team lead",
+      "retried": "Insiden: dicoba ulang",
+      "reassigned": "Insiden: dialihkan",
+      "escalated": "Insiden dieskalasi ke orang",
+      "resolved": "Insiden selesai",
+      "muted": "Insiden dibisukan (batas per jam)"
+    }
+  },
+  "incidentKind": {
+    "failed": "gagal",
+    "stalled": "macet",
+    "loop": "berulang",
+    "could_not_start": "tidak bisa dimulai",
+    "routine_failed": "rutinitas gagal"
+  },
+  "stoppedTitle": {
+    "stalled": "Dihentikan: proses macet",
+    "loop": "Dihentikan: proses berulang-ulang"
+  },
+  "stoppedHint": {
+    "stalled": "Tidak ada kemajuan terlalu lama, jadi proses dihentikan.",
+    "loop": "Panggilan tool yang sama terus berulang, jadi proses dihentikan."
   }
 }

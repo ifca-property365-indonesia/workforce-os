@@ -32,5 +32,29 @@
       "seven_day_opus": "Mingguan · Opus",
       "seven_day_sonnet": "Mingguan · Sonnet"
     }
+  },
+  "incidents": {
+    "title": "Insiden",
+    "resolved7d": "{count, plural, =0 {Tidak ada yang diselesaikan dalam 7 hari terakhir} other {# diselesaikan dalam 7 hari terakhir}}",
+    "empty": "Tidak ada yang perlu ditangani.",
+    "noTask": "tanpa tugas",
+    "routine": "Jalannya rutinitas",
+    "handledBy": "lead: {name}",
+    "needsYou": "perlu Anda",
+    "more": "+{count} lainnya",
+    "kind": {
+      "failed": "Gagal",
+      "stalled": "Macet",
+      "loop": "Berulang",
+      "could_not_start": "Tidak bisa dimulai",
+      "routine_failed": "Rutinitas gagal"
+    },
+    "status": {
+      "open": "terbuka",
+      "handling": "ditangani lead",
+      "resolved": "selesai",
+      "escalated": "dieskalasi",
+      "muted": "dibisukan"
+    }
   }
 }

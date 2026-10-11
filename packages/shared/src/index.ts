@@ -115,11 +115,22 @@ export const STEP_KINDS = [
   "budget",
   "system",
   "error",
+  "incident",
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
 export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
+
+/** Something went wrong with a run that a person or the team lead should look at. */
+export const INCIDENT_KINDS = ["failed", "stalled", "loop", "could_not_start", "routine_failed"] as const;
+export type IncidentKind = (typeof INCIDENT_KINDS)[number];
+/** open → handling (the lead got a turn) → resolved; escalated = a person was notified; muted = over the hourly cap */
+export const INCIDENT_STATUSES = ["open", "handling", "resolved", "escalated", "muted"] as const;
+export type IncidentStatus = (typeof INCIDENT_STATUSES)[number];
+/** Automatic retries a lead may make per subtask, and auto-handled incidents per workspace per hour. */
+export const INCIDENT_RETRY_LIMIT = 2;
+export const INCIDENT_HOURLY_LIMIT = 5;
 
 // ---------------------------------------------------------------------------
 // Task state machine
@@ -174,6 +185,8 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "create_task", label: "Create task", description: "Create a task on the board (from chat)", class: "reversible", credits: 0.05, category: "tasks" },
   { name: "delegate_subtask", label: "Delegate subtask", description: "Team lead: assign a subtask to a team member", class: "reversible", credits: 0.05, category: "team" },
   { name: "request_revision", label: "Request revision", description: "Team lead: send a subtask back with feedback", class: "reversible", credits: 0.05, category: "team" },
+  { name: "retry_subtask", label: "Retry subtask", description: "Team lead: run a failed subtask again (bounded retries)", class: "reversible", credits: 0.05, category: "team" },
+  { name: "reassign_subtask", label: "Reassign subtask", description: "Team lead: give a failed subtask to another team member", class: "reversible", credits: 0.05, category: "team" },
   { name: "message_teammate", label: "Message teammate", description: "Send a structured message to another employee", class: "reversible", credits: 0.05, category: "team" },
   { name: "send_email", label: "Send email", description: "Send an email via workspace SMTP", class: "irreversible", credits: 1, category: "comms" },
   { name: "send_invoice", label: "Send invoice", description: "Email an invoice PDF to a client", class: "irreversible", credits: 1, category: "billing" },
@@ -190,6 +203,22 @@ const IRREVERSIBLE_VERBS = [
   "update", "write", "create", "cancel",
 ];
 const REVERSIBLE_VERBS = ["get", "list", "read", "search", "find", "fetch", "query", "describe", "view", "draft", "preview", "navigate"];
+/**
+ * Verbs that reach a person or move money/data out, or destroy something: irreversible wherever they appear,
+ * even after a leading read verb (`get_and_delete_file`). Nouns such as "post"/"message" are not in this list,
+ * so `get_post` / `list_messages` stay reads.
+ */
+/**
+ * Irreversible verbs that are also common nouns. Only directly after a leading read verb (`get_post`,
+ * `list_release_notes`) do they name the thing being read; anywhere else they stay verbs.
+ */
+const NOUN_LIKE_VERBS = ["post", "release"];
+/** Words that chain a second action onto a read (`fetch_and_release_funds`): such names never count as reads. */
+const CHAIN_WORDS = ["and", "then", "or", "also", "plus", "after", "before", "with"];
+const OUTBOUND_VERBS = [
+  "send", "reply", "forward", "publish", "pay", "charge", "refund", "transfer", "invite", "share", "submit",
+  "approve", "deploy", "merge", "push", "delete", "remove", "destroy", "drop", "revoke", "cancel", "purge",
+];
 
 /**
  * Lower-case word tokens of a tool name. camelCase, PascalCase and acronym boundaries are split
@@ -216,6 +245,18 @@ export function classifyTool(name: string, overrides?: Record<string, ToolClass>
   const builtin = TOOL_BY_NAME[bare];
   if (builtin) return builtin.class;
   const tokens = toolNameTokens(bare);
+  if (tokens.some((t) => OUTBOUND_VERBS.includes(t))) return "irreversible";
+  // A leading read verb names a read even when a later token is a noun that doubles as a verb (get_post,
+  // list_release). Any other write verb (getOrCreateContact, readThenUpdateRow) still fails closed below.
+  if (
+    tokens.length > 1 &&
+    REVERSIBLE_VERBS.includes(tokens[0]!) &&
+    NOUN_LIKE_VERBS.includes(tokens[1]!) &&
+    !tokens.some((t) => CHAIN_WORDS.includes(t)) &&
+    tokens.slice(2).every((t) => !IRREVERSIBLE_VERBS.includes(t))
+  ) {
+    return "reversible";
+  }
   if (tokens.some((t) => REVERSIBLE_VERBS.includes(t)) && !tokens.some((t) => IRREVERSIBLE_VERBS.includes(t))) {
     return "reversible";
   }
@@ -226,8 +267,15 @@ export function classifyTool(name: string, overrides?: Record<string, ToolClass>
 // Tool permissions & allow-list
 // ---------------------------------------------------------------------------
 
+/** Built-in tool name, `mcp:<server>`, or `mcp:<server>:<tool or glob>` (at most 8 "*"). */
+const TOOL_SELECTOR_RE = /^(?:[a-z][a-z0-9_]*|mcp:[a-z0-9-]+(?:_[a-z0-9-]+)*(?::[A-Za-z0-9_.*-]{1,128})?)$/;
 export const toolPermissionSchema = z.object({
-  tool: z.string().min(1),
+  tool: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(TOOL_SELECTOR_RE, "invalid tool selector")
+    .refine((t) => (t.match(/\*/g)?.length ?? 0) <= 8, "too many wildcards"),
   enabled: z.boolean().default(true),
   /** per-tool autonomy override; falls back to employee autonomyLevel */
   autonomy: z.enum(AUTONOMY_LEVELS).optional(),
@@ -250,12 +298,85 @@ export const allowListEntrySchema = z.object({
 });
 export type AllowListEntry = z.infer<typeof allowListEntrySchema>;
 
+/** Which rule produced a gate decision (shown in the Activity Inspector). */
+export type GateRule = "not_granted" | "reversible" | "dry_run" | "autonomy_draft" | "allow_list" | "autonomy" | "taint" | "leak";
+
 export type GateDecision =
-  | { kind: "run" }
-  | { kind: "draft"; reason: string }
-  | { kind: "approval"; reason: string }
-  | { kind: "simulate"; reason: string }
-  | { kind: "deny"; reason: string };
+  | { kind: "run"; rule?: GateRule }
+  | { kind: "draft"; reason: string; rule?: GateRule }
+  | { kind: "approval"; reason: string; rule?: GateRule }
+  | { kind: "simulate"; reason: string; rule?: GateRule }
+  | { kind: "deny"; reason: string; rule?: GateRule };
+
+/**
+ * Does a permission / allow-list `pattern` cover `toolName`? Exact match, or an external MCP selector
+ * `mcp:<server>:<glob>` where `*` matches any run of characters within the tool name (`mcp:crm:list_*`),
+ * or the server-level grant `mcp:<server>` covering every `mcp:<server>:<tool>`.
+ */
+export function toolPatternMatches(pattern: string, toolName: string): boolean {
+  if (pattern === toolName) return true;
+  if (!toolName.startsWith("mcp:") || !pattern.startsWith("mcp:")) return false;
+  const [, server, ...toolParts] = toolName.split(":");
+  const tool = toolParts.join(":");
+  if (!server || !tool) return false;
+  const [, pServer, ...patternParts] = pattern.split(":");
+  if (pServer !== server) return false;
+  if (patternParts.length === 0) return true; // server-level grant `mcp:<server>`
+  // Compare on the name the Claude SDK actually exposes (case-folded, [^a-z0-9_-] → "_"), so a rule saved with
+  // the server's raw tool name (`Contacts.Delete`) still governs the call the gate sees (`contacts_delete`).
+  return globMatches(normalizeMcpName(patternParts.join(":"), true), normalizeMcpName(tool));
+}
+
+/**
+ * MCP tool names as the gate compares them: lower-case, every character outside [a-z0-9_-] replaced by "_"
+ * (Claude Code normalises MCP tool names the same way). `keepStars` preserves "*" in selectors.
+ */
+export function normalizeMcpName(name: string, keepStars = false): string {
+  return name.toLowerCase().replace(keepStars ? /[^a-z0-9_*-]/g : /[^a-z0-9_-]/g, "_");
+}
+
+/** Linear-time glob match where "*" matches any run of characters (no regex, so no catastrophic backtracking). */
+export function globMatches(glob: string, text: string): boolean {
+  let g = 0;
+  let t = 0;
+  let star = -1;
+  let mark = 0;
+  while (t < text.length) {
+    if (g < glob.length && glob[g] !== "*" && glob[g] === text[t]) {
+      g++;
+      t++;
+    } else if (g < glob.length && glob[g] === "*") {
+      star = g++;
+      mark = t;
+    } else if (star !== -1) {
+      g = star + 1;
+      t = ++mark;
+    } else {
+      return false;
+    }
+  }
+  while (g < glob.length && glob[g] === "*") g++;
+  return g === glob.length;
+}
+
+/** Specificity of a matching pattern: exact 3, glob 2 (longer literal part first), server-level 1. */
+function patternRank(pattern: string, toolName: string): number {
+  if (pattern === toolName || (!pattern.includes("*") && pattern.split(":").length > 2)) return 3;
+  if (pattern.includes("*")) return 2 + pattern.replace(/\*/g, "").length / 1000;
+  return 1;
+}
+
+/**
+ * The permission that governs `toolName`: undefined when nothing grants it. Any matching entry that is disabled
+ * wins (an explicit "no" beats a broader "yes"); otherwise the most specific enabled entry decides autonomy.
+ */
+export function matchToolPermission(toolName: string, permissions: ToolPermission[]): ToolPermission | undefined {
+  const matches = permissions.filter((p) => toolPatternMatches(p.tool, toolName));
+  if (matches.length === 0) return undefined;
+  const denied = matches.find((p) => !p.enabled);
+  if (denied) return denied;
+  return [...matches].sort((a, b) => patternRank(b.tool, toolName) - patternRank(a.tool, toolName))[0];
+}
 
 export interface GateInput {
   toolName: string;
@@ -269,7 +390,7 @@ export interface GateInput {
 }
 
 export function effectiveAutonomy(toolName: string, employeeAutonomy: AutonomyLevel, permissions: ToolPermission[]): AutonomyLevel {
-  const p = permissions.find((x) => x.tool === toolName);
+  const p = matchToolPermission(toolName, permissions);
   return p?.autonomy ?? employeeAutonomy;
 }
 
@@ -295,22 +416,22 @@ export function allowListMatches(entry: AllowListEntry, scope: GateInput["scope"
  * Never trusts the model: only configuration decides.
  */
 export function decideGate(input: GateInput): GateDecision {
-  const perm = input.permissions.find((p) => p.tool === input.toolName);
+  const perm = matchToolPermission(input.toolName, input.permissions);
   if (!perm || !perm.enabled) {
-    return { kind: "deny", reason: `Tool "${input.toolName}" is not granted to this employee.` };
+    return { kind: "deny", reason: `Tool "${input.toolName}" is not granted to this employee.`, rule: "not_granted" };
   }
-  if (input.toolClass === "reversible") return { kind: "run" };
+  if (input.toolClass === "reversible") return { kind: "run", rule: "reversible" };
 
   // Irreversible from here on.
-  if (input.dryRun) return { kind: "simulate", reason: "Dry run: irreversible action replaced by a mock." };
+  if (input.dryRun) return { kind: "simulate", reason: "Dry run: irreversible action replaced by a mock.", rule: "dry_run" };
   const level = effectiveAutonomy(input.toolName, input.employeeAutonomy, input.permissions);
-  if (level === "DRAFT") return { kind: "draft", reason: "Autonomy DRAFT: saved as a draft, nothing was sent." };
+  if (level === "DRAFT") return { kind: "draft", reason: "Autonomy DRAFT: saved as a draft, nothing was sent.", rule: "autonomy_draft" };
   if (level === "CLOSE") {
-    const entry = input.allowList.find((e) => e.tool === input.toolName && allowListMatches(e, input.scope));
-    if (entry) return { kind: "run" };
-    return { kind: "approval", reason: "Irreversible action outside the Owner allow-list requires approval." };
+    const entry = input.allowList.find((e) => toolPatternMatches(e.tool, input.toolName) && allowListMatches(e, input.scope));
+    if (entry) return { kind: "run", rule: "allow_list" };
+    return { kind: "approval", reason: "Irreversible action outside the Owner allow-list requires approval.", rule: "autonomy" };
   }
-  return { kind: "approval", reason: `Irreversible action requires approval (autonomy ${level}).` };
+  return { kind: "approval", reason: `Irreversible action requires approval (autonomy ${level}).`, rule: "autonomy" };
 }
 
 /**
@@ -320,8 +441,8 @@ export function decideGate(input: GateInput): GateDecision {
  */
 export function applyRunSignals(decision: GateDecision, s: { toolClass: ToolClass; tainted: boolean; highLeak?: boolean }): GateDecision {
   if (decision.kind !== "run" || s.toolClass !== "irreversible") return decision;
-  if (s.highLeak) return { kind: "approval", reason: "Output guard found possible secrets/PII in the payload." };
-  if (s.tainted) return { kind: "approval", reason: "Untrusted content with injection markers was read in this run." };
+  if (s.highLeak) return { kind: "approval", reason: "Output guard found possible secrets/PII in the payload.", rule: "leak" };
+  if (s.tainted) return { kind: "approval", reason: "Untrusted content with injection markers was read in this run.", rule: "taint" };
   return decision;
 }
 

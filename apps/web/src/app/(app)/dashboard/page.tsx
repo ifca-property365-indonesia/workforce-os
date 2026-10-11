@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress";
 import { Avatar, PageHeader, Stat, StatusBadge } from "@/components/layout/common";
 import { WeeklySpendChart } from "@/components/inspector/weekly-spend";
 import { LimitsCard } from "@/components/inspector/limits-card";
+import { IncidentsCard } from "@/components/inspector/incidents-card";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/use-format";
@@ -78,6 +79,10 @@ export default function DashboardPage() {
 
       <div className="mt-6">
         <LimitsCard />
+      </div>
+
+      <div className="mt-6">
+        <IncidentsCard />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">

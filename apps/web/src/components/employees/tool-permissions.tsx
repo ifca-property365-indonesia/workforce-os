@@ -1,11 +1,251 @@
 "use client";
 
-import { AUTONOMY_LEVELS, type AutonomyLevel, type ToolMeta, type ToolPermission } from "@wfos/shared";
-import { Lock, Unlock } from "lucide-react";
+import { useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { AUTONOMY_LEVELS, type AutonomyLevel, type ToolClass, type ToolMeta, type ToolPermission } from "@wfos/shared";
+import { ChevronRight, Lock, Plus, RotateCcw, Trash2, Unlock } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { api } from "@/lib/api";
+import { useMe } from "@/lib/hooks";
+import {
+  mcpToolKey,
+  mcpToolRules,
+  normalizePermissionKey,
+  parseToolSelector,
+  resolveMcpTool,
+  setMcpToolAutonomy,
+  toggleMcpTool,
+  upsertPermission,
+} from "@/lib/tool-selectors";
 import { cn } from "@/lib/utils";
+
+/** Granted implicitly to a team lead during review; never shown as grantable tools. */
+const LEAD_ONLY_TOOLS = new Set(["request_revision", "retry_subtask", "reassign_subtask"]);
+
+export interface McpTool {
+  /** the server's own name, shown to people */
+  name: string;
+  /** normalised name used in `mcp:<server>:<key>` permission rules */
+  key: string;
+  description: string;
+  class: ToolClass;
+}
+
+/** Edits are functional updates, so two quick toggles both land even before the parent re-renders. */
+export type PermissionsUpdate = (update: (cur: ToolPermission[]) => ToolPermission[]) => void;
+
+/** Cache key of one server's tool list; per workspace, since two workspaces can name a server the same. */
+export const mcpToolsQueryKey = (workspaceId: string | undefined, server?: string) =>
+  server === undefined ? ["mcp-tools", workspaceId] : ["mcp-tools", workspaceId, server];
+
+/** Tools of one connected MCP server, listed live by the server (ADMIN). Shared by Settings and the employee editor. */
+export function useMcpTools(server: string, enabled = true) {
+  const { data: me } = useMe();
+  const workspaceId = me?.workspace.id;
+  return useQuery({
+    queryKey: mcpToolsQueryKey(workspaceId, server),
+    queryFn: () => api.get<{ tools: McpTool[] }>(`/api/settings/mcp/${encodeURIComponent(server)}/tools`),
+    enabled: enabled && !!workspaceId,
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+function ClassBadge({ cls }: { cls: ToolClass }) {
+  const t = useTranslations("employees");
+  const irreversible = cls === "irreversible";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
+        irreversible ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+      )}
+    >
+      {irreversible ? <Lock className="size-3" /> : <Unlock className="size-3" />}
+      {t(`toolClass.${cls}`)}
+    </span>
+  );
+}
+
+function AutonomySelect({ value, onChange, inherit, className }: { value: AutonomyLevel | undefined; onChange: (v: AutonomyLevel | undefined) => void; inherit: AutonomyLevel; className?: string }) {
+  const t = useTranslations("employees");
+  const ts = useTranslations("status");
+  return (
+    <Select value={value ?? "inherit"} onValueChange={(v) => onChange(v === "inherit" ? undefined : (v as AutonomyLevel))}>
+      <SelectTrigger className={cn("w-full sm:w-52", className)}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="inherit">{t("toolPermissions.inherit", { level: ts(`autonomy.${inherit}`) })}</SelectItem>
+        {AUTONOMY_LEVELS.map((l) => (
+          <SelectItem key={l} value={l}>
+            {ts(`autonomy.${l}`)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/**
+ * Per-tool rules under one MCP server grant: each listed tool can be switched off or given its own autonomy
+ * (saved as `mcp:<server>:<normalised tool>`), and hand-typed globs (`mcp:<server>:list_*`) cover several tools at once.
+ * The server-level switch stays the master grant; a matching disabled rule always wins.
+ */
+function McpToolsPanel({
+  server,
+  value,
+  onChange,
+  defaultAutonomy,
+}: {
+  server: string;
+  value: ToolPermission[];
+  onChange: PermissionsUpdate;
+  defaultAutonomy: AutonomyLevel;
+}) {
+  const t = useTranslations("employees");
+  const { data, error, isLoading, refetch, isFetching } = useMcpTools(server);
+  /** a tool's own autonomy, kept while the panel is open so switching it off and on again does not lose it */
+  const remembered = useRef(new Map<string, AutonomyLevel>());
+  const [selector, setSelector] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  const serverGrant = value.find((p) => p.tool === `mcp:${server}`);
+  const granted = !!serverGrant?.enabled;
+  const serverAutonomy = serverGrant?.autonomy ?? defaultAutonomy;
+  const tools = data?.tools ?? [];
+  const listed = new Set(tools.map((x) => mcpToolKey(server, x.key)));
+  // rules saved with a raw tool name still apply (the gate normalises both sides); they are shown normalised
+  const rules = mcpToolRules(value, server).filter((p) => !listed.has(normalizePermissionKey(p.tool)));
+  const prefix = `mcp:${server}:`;
+
+  const toggleTool = (tool: string, on: boolean) =>
+    onChange((cur) => {
+      const own = resolveMcpTool(cur, server, tool).own?.autonomy;
+      if (own) remembered.current.set(tool, own);
+      return toggleMcpTool(cur, server, tool, on, remembered.current.get(tool));
+    });
+  const setToolAutonomy = (tool: string, level: AutonomyLevel | undefined) => {
+    if (level) remembered.current.set(tool, level);
+    else remembered.current.delete(tool);
+    onChange((cur) => setMcpToolAutonomy(cur, server, tool, level));
+  };
+  const setRule = (tool: string, next: Omit<ToolPermission, "tool"> | null) =>
+    onChange((cur) => {
+      const key = normalizePermissionKey(tool);
+      return upsertPermission(cur, key, next && { tool: key, ...next });
+    });
+  const addRule = () => {
+    const s = parseToolSelector(selector);
+    if (!s) return setInvalid(true);
+    const key = mcpToolKey(server, s);
+    // a new rule blocks by default: the common reason to type a selector is "never these tools"
+    onChange((cur) => (cur.some((p) => normalizePermissionKey(p.tool) === key) ? cur : [...cur, { tool: key, enabled: false }]));
+    setSelector("");
+    setInvalid(false);
+  };
+
+  return (
+    <div className="space-y-3 border-t bg-muted/30 p-3 sm:pl-14">
+      <p className="text-xs text-muted-foreground">{t("toolPermissions.disabledWins")}</p>
+      {!granted && <p className="text-xs text-amber-700 dark:text-amber-300">{t("toolPermissions.serverNotGranted")}</p>}
+      {isLoading && <p className="text-xs text-muted-foreground">{t("toolPermissions.loadingTools")}</p>}
+      {error && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+          <span className="min-w-0 flex-1 break-words">{(error as Error).message}</span>
+          <Button type="button" size="sm" variant="outline" className="h-7 gap-1" onClick={() => void refetch()} disabled={isFetching}>
+            <RotateCcw className="size-3" /> {t("toolPermissions.retry")}
+          </Button>
+        </div>
+      )}
+      {data && !tools.length && <p className="text-xs text-muted-foreground">{t("toolPermissions.noTools")}</p>}
+      {tools.length > 0 && (
+        <div className="divide-y rounded-md border bg-background">
+          {tools.map((tool) => {
+            const r = resolveMcpTool(value, server, tool.key);
+            const inherit = r.inheritedAutonomy ?? serverAutonomy;
+            return (
+              <div key={`${tool.key}/${tool.name}`} className={cn("flex flex-col gap-2 p-2 sm:flex-row sm:items-center", !r.enabled && "opacity-70")}>
+                <Switch
+                  checked={r.enabled}
+                  disabled={!granted || !!r.blockedBy}
+                  onCheckedChange={(v) => toggleTool(tool.key, v)}
+                  aria-label={t("toolPermissions.grant", { tool: tool.name })}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <code className="font-medium">{tool.name}</code>
+                    <ClassBadge cls={tool.class} />
+                  </div>
+                  {tool.description && <div className="line-clamp-2 text-xs text-muted-foreground">{tool.description}</div>}
+                  {r.blockedBy && <div className="text-xs text-destructive">{t("toolPermissions.blockedBy", { rule: r.blockedBy })}</div>}
+                </div>
+                {tool.class === "irreversible" && r.enabled && (
+                  <AutonomySelect value={r.own?.autonomy} onChange={(v) => setToolAutonomy(tool.key, v)} inherit={inherit} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {rules.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-xs font-medium">{t("toolPermissions.rules")}</div>
+          <div className="divide-y rounded-md border bg-background">
+            {rules.map((p) => (
+              <div key={p.tool} className={cn("flex flex-col gap-2 p-2 sm:flex-row sm:items-center", !p.enabled && "opacity-70")}>
+                <Switch
+                  checked={p.enabled}
+                  disabled={!granted && !p.enabled}
+                  onCheckedChange={(v) => setRule(p.tool, { enabled: v, ...(v && p.autonomy ? { autonomy: p.autonomy } : {}) })}
+                  aria-label={t("toolPermissions.grant", { tool: normalizePermissionKey(p.tool) })}
+                />
+                <div className="min-w-0 flex-1">
+                  <code className="text-sm">{normalizePermissionKey(p.tool).slice(prefix.length)}</code>
+                  <div className="text-xs text-muted-foreground">{p.enabled ? t("toolPermissions.ruleAllows") : t("toolPermissions.ruleBlocks")}</div>
+                </div>
+                {p.enabled && granted && (
+                  <AutonomySelect
+                    value={p.autonomy}
+                    onChange={(v) => setRule(p.tool, { enabled: true, ...(v ? { autonomy: v } : {}) })}
+                    inherit={serverAutonomy}
+                  />
+                )}
+                <Button type="button" size="icon" variant="ghost" className="size-8" onClick={() => setRule(p.tool, null)} aria-label={t("toolPermissions.removeRule", { rule: normalizePermissionKey(p.tool) })}>
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="space-y-1">
+        <div className="flex gap-2">
+          <Input
+            value={selector}
+            onChange={(e) => (setSelector(e.target.value), setInvalid(false))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addRule();
+              }
+            }}
+            placeholder={t("toolPermissions.selectorPlaceholder")}
+            aria-invalid={invalid}
+            className="h-8 font-mono text-xs"
+          />
+          <Button type="button" size="sm" variant="outline" className="h-8 gap-1" onClick={addRule} disabled={!selector.trim()}>
+            <Plus className="size-3.5" /> {t("toolPermissions.addRule")}
+          </Button>
+        </div>
+        <p className={cn("text-xs", invalid ? "text-destructive" : "text-muted-foreground")}>{invalid ? t("toolPermissions.selectorInvalid") : t("toolPermissions.selectorHelp")}</p>
+      </div>
+    </div>
+  );
+}
 
 export function AutonomyPicker({ value, onChange }: { value: AutonomyLevel; onChange: (v: AutonomyLevel) => void }) {
   const ts = useTranslations("status");
@@ -36,22 +276,28 @@ export function ToolPermissionsEditor({
 }: {
   tools: ToolMeta[];
   value: ToolPermission[];
-  onChange: (v: ToolPermission[]) => void;
+  onChange: PermissionsUpdate;
   defaultAutonomy: AutonomyLevel;
   extraServers?: string[];
 }) {
   const t = useTranslations("employees");
-  const ts = useTranslations("status");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (name: string) =>
+    setExpanded((cur) => {
+      const next = new Set(cur);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   const get = (name: string) => value.find((p) => p.tool === name);
-  const set = (name: string, patch: Partial<ToolPermission>) => {
-    const cur = get(name);
-    if (cur) onChange(value.map((p) => (p.tool === name ? { ...p, ...patch } : p)));
-    else onChange([...value, { tool: name, enabled: true, ...patch }]);
-  };
+  const set = (name: string, patch: Partial<ToolPermission>) =>
+    onChange((cur) =>
+      cur.some((p) => p.tool === name) ? cur.map((p) => (p.tool === name ? { ...p, ...patch } : p)) : [...cur, { tool: name, enabled: true, ...patch }],
+    );
   /** builtin tool metadata is English data; translate by tool name when a catalog entry exists */
   const rows: ToolMeta[] = [
     ...tools
-      .filter((x) => x.name !== "request_revision")
+      .filter((x) => !LEAD_ONLY_TOOLS.has(x.name))
       .map((x) => ({
         ...x,
         label: t.has(`tools.${x.name}.label`) ? t(`tools.${x.name}.label`) : x.label,
@@ -72,41 +318,33 @@ export function ToolPermissionsEditor({
         const p = get(tool.name);
         const enabled = !!p?.enabled;
         const irreversible = tool.class === "irreversible";
+        const server = tool.name.startsWith("mcp:") ? tool.name.slice(4) : null;
+        const isOpen = server !== null && expanded.has(server);
+        const ruleCount = server ? mcpToolRules(value, server).length : 0;
         return (
-          <div key={tool.name} className={cn("flex flex-col gap-2 p-3 sm:flex-row sm:items-center", !enabled && "opacity-70")}>
-            <Switch checked={enabled} onCheckedChange={(v) => set(tool.name, { enabled: v })} aria-label={t("toolPermissions.grant", { tool: tool.label })} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                {tool.label}
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase",
-                    irreversible ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                  )}
-                >
-                  {irreversible ? <Lock className="size-3" /> : <Unlock className="size-3" />}
-                  {t(`toolClass.${tool.class}`)}
-                </span>
+          <div key={tool.name}>
+            <div className={cn("flex flex-col gap-2 p-3 sm:flex-row sm:items-center", !enabled && "opacity-70")}>
+              <Switch checked={enabled} onCheckedChange={(v) => set(tool.name, { enabled: v })} aria-label={t("toolPermissions.grant", { tool: tool.label })} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  {tool.label}
+                  <ClassBadge cls={tool.class} />
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {tool.description} · {t(`toolCategories.${tool.category}`)} · <code>{tool.name}</code>
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {tool.description} · {t(`toolCategories.${tool.category}`)} · <code>{tool.name}</code>
-              </div>
+              {server !== null && (
+                <Button type="button" size="sm" variant="ghost" className="gap-1 self-start sm:self-auto" onClick={() => toggleExpanded(server)} aria-expanded={isOpen}>
+                  <ChevronRight className={cn("size-3.5 transition-transform", isOpen && "rotate-90")} />
+                  {ruleCount ? t("toolPermissions.perToolCount", { count: ruleCount }) : t("toolPermissions.perTool")}
+                </Button>
+              )}
+              {irreversible && enabled && (
+                <AutonomySelect value={p?.autonomy} onChange={(v) => set(tool.name, { autonomy: v })} inherit={defaultAutonomy} />
+              )}
             </div>
-            {irreversible && enabled && (
-              <Select value={p?.autonomy ?? "inherit"} onValueChange={(v) => set(tool.name, { autonomy: v === "inherit" ? undefined : (v as AutonomyLevel) })}>
-                <SelectTrigger className="w-full sm:w-52">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="inherit">{t("toolPermissions.inherit", { level: ts(`autonomy.${defaultAutonomy}`) })}</SelectItem>
-                  {AUTONOMY_LEVELS.map((l) => (
-                    <SelectItem key={l} value={l}>
-                      {ts(`autonomy.${l}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            {isOpen && server !== null && <McpToolsPanel server={server} value={value} onChange={onChange} defaultAutonomy={defaultAutonomy} />}
           </div>
         );
       })}

@@ -1,9 +1,10 @@
 import { db, tasks, teams, employees, agentMessages } from "@wfos/db";
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
-import { TERMINAL_STATUSES } from "@wfos/shared";
+import { INCIDENT_RETRY_LIMIT, TERMINAL_STATUSES } from "@wfos/shared";
 import { enqueueTask, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { teamMemberIds, type TeamContext } from "../tools/registry";
+import { dataBlock, incidentBlock, latestIncidents, retriesLeft } from "../runner/incidents";
 
 /** Resolve who executes a task: the assignee, or the team lead for team-level tasks. */
 export async function resolveExecutor(task: typeof tasks.$inferSelect): Promise<{ employeeId: string | null; team?: TeamContext }> {
@@ -34,14 +35,41 @@ export async function planPrompt(task: typeof tasks.$inferSelect, team: TeamCont
 }
 
 export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<string> {
-  const children = await db.select().from(tasks).where(eq(tasks.parentTaskId, task.id));
+  const children = await db.select().from(tasks).where(eq(tasks.parentTaskId, task.id)).orderBy(tasks.createdAt);
+  const failed = children.filter((c) => c.status === "FAILED");
+  const incidents = await latestIncidents(failed.map((c) => c.id));
+  let recoverable = false;
   const blocks = children.map((c) => {
     const ds = c.deliverables.map((d) => `#### ${d.title} (${d.kind})\n${d.content.slice(0, 6000)}`).join("\n\n");
-    return `### Subtask ${c.id}: ${c.title} — ${c.status}\nResult: ${c.result ?? c.error ?? "(none)"}\n${ds}`;
+    const inc = incidents.get(c.id);
+    const shown = c.status === "FAILED" && inc && inc.status !== "muted";
+    // a failed subtask's error goes in its incident block, or an error block, as data: never raw in the Result line
+    const rawError = !c.result && !shown && c.error ? c.error : null;
+    const lines = [
+      `### Subtask ${c.id}: ${c.title} — ${c.status}`,
+      `Result: ${c.result ?? (shown ? "(failed: see the incident report)" : rawError ? "(failed: see the error report)" : "(none)")}`,
+    ];
+    if (rawError) lines.push(dataBlock("error", rawError.slice(0, 2000)));
+    // a muted incident gives the lead no hints (automatic recovery is paused for the hour)
+    if (shown) {
+      if (inc.resolution === "reassigned") lines.push("(Reassigned to another member: see the newer subtask with the same title.)");
+      else {
+        lines.push(incidentBlock(inc, c.retryCount));
+        if (inc.status === "handling" && retriesLeft(c) > 0) recoverable = true;
+        else lines.push("No retries remain for this subtask: explain the failure in your review.");
+      }
+    }
+    if (ds) lines.push(ds);
+    return lines.join("\n");
   });
   return [
     "All subtasks have finished. Review each deliverable against its acceptance criteria.",
     "If one is not acceptable, call request_revision with specific feedback (once per subtask).",
+    ...(recoverable
+      ? [
+          `A subtask failed. While it has retries left (at most ${INCIDENT_RETRY_LIMIT} per subtask) you may call retry_subtask (same member, optionally with a revisedBrief) or reassign_subtask (another member of this team); otherwise explain the failure in your review.`,
+        ]
+      : []),
     "If everything is acceptable, assemble the final deliverable with draft_document (kind review) and finish with a summary for the human.",
     blocks.join("\n\n"),
   ].join("\n\n");

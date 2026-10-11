@@ -46,6 +46,7 @@ import { exportAgentBranch, type RepoRef } from "../runner/workspace/git";
 import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
+import { recoveryRefusal, type RecoveryRequest } from "../runner/incidents";
 
 export const WFOS_SERVER = "wfos";
 
@@ -84,6 +85,8 @@ export interface RunContext {
   createdTaskIds: string[];
   delegatedTaskIds: string[];
   revisionRequests: { taskId: string; feedback: string }[];
+  /** team lead in review: retry_subtask / reassign_subtask requests, applied after the run (applyRecoveries) */
+  recoveryRequests?: RecoveryRequest[];
   team?: TeamContext;
   /** Workspace mode: Claude Code runs in an isolated per-task sandbox (tasks only, never chat) */
   workspace?: {
@@ -109,7 +112,7 @@ function toolCredits(name: string): number {
 function effectivePermissions(ctx: RunContext): ToolPermission[] {
   const perms = [...ctx.employee.toolPermissions];
   if (ctx.team?.role === "lead") {
-    for (const t of ["delegate_subtask", "request_revision", "message_teammate", "list_tasks"]) {
+    for (const t of ["delegate_subtask", "request_revision", "retry_subtask", "reassign_subtask", "message_teammate", "list_tasks"]) {
       if (!perms.some((p) => p.tool === t)) perms.push({ tool: t, enabled: true });
     }
   }
@@ -709,6 +712,40 @@ export function buildTools(ctx: RunContext) {
         ctx.revisionRequests.push({ taskId: a.subtaskId, feedback: a.feedback });
         return ok("Revision requested. The parent task will wait for the revised deliverable, then you review again.");
       }),
+    ),
+  );
+
+  /** retry_subtask / reassign_subtask: validated now, applied after the lead's review run (like request_revision). */
+  const recover = async (req: RecoveryRequest, name: string): Promise<ToolResult> => {
+    if (!ctx.team || ctx.team.role !== "lead" || ctx.team.phase !== "review" || !ctx.taskId) return err(`${name} is only available to a team lead during review.`);
+    if ((ctx.recoveryRequests ?? []).some((r) => r.taskId === req.taskId)) return err("A retry or reassignment of this subtask is already scheduled.");
+    const refusal = await recoveryRefusal({ workspaceId: ctx.workspaceId, parentTaskId: ctx.taskId, memberIds: ctx.team.memberIds, req });
+    if (refusal) return err(refusal);
+    (ctx.recoveryRequests ??= []).push(req);
+    return ok(
+      `${req.action === "retry" ? "Retry" : "Reassignment"} scheduled. The parent task will wait for the subtask, then you review again (one retry or reassignment is used from the subtask's budget).`,
+    );
+  };
+
+  add(
+    "retry_subtask",
+    tool(
+      "retry_subtask",
+      "Team lead only, during review: run a FAILED subtask again with the same member, optionally with a revised brief appended (bounded retries per subtask).",
+      { taskId: z.string().uuid(), revisedBrief: z.string().min(5).max(4000).optional() },
+      wrap(ctx, "retry_subtask", async (a: { taskId: string; revisedBrief?: string }) => recover({ action: "retry", taskId: a.taskId, revisedBrief: a.revisedBrief }, "retry_subtask")),
+    ),
+  );
+
+  add(
+    "reassign_subtask",
+    tool(
+      "reassign_subtask",
+      "Team lead only, during review: give a FAILED subtask to another active member of this team as a new subtask, optionally with a revised brief appended (same retry budget).",
+      { taskId: z.string().uuid(), employeeId: z.string().uuid(), revisedBrief: z.string().min(5).max(4000).optional() },
+      wrap(ctx, "reassign_subtask", async (a: { taskId: string; employeeId: string; revisedBrief?: string }) =>
+        recover({ action: "reassign", taskId: a.taskId, employeeId: a.employeeId, revisedBrief: a.revisedBrief }, "reassign_subtask"),
+      ),
     ),
   );
 

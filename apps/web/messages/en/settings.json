@@ -85,7 +85,9 @@
     "tokenSet": "token set",
     "namePlaceholder": "name (e.g. github)",
     "tokenPlaceholder": "Bearer token (optional)",
-    "connect": "Connect"
+    "connect": "Connect",
+    "test": "Test connection",
+    "testOk": "Connected: {count, plural, one {# tool} other {# tools}} ({reversible} reversible)"
   },
   "pricing": {
     "updatedToast": "Price updated",

@@ -85,7 +85,9 @@
     "tokenSet": "token diatur",
     "namePlaceholder": "nama (mis. github)",
     "tokenPlaceholder": "Bearer token (opsional)",
-    "connect": "Hubungkan"
+    "connect": "Hubungkan",
+    "test": "Uji koneksi",
+    "testOk": "Terhubung: {count} tool ({reversible} dapat dibatalkan)"
   },
   "pricing": {
     "updatedToast": "Harga diperbarui",

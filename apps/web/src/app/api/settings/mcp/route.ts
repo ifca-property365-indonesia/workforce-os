@@ -2,7 +2,14 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { audit, credentials, db } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
+import { HttpError } from "@/lib/server/auth";
 import { body, route } from "@/lib/server/route";
+
+/**
+ * Same rule as the shared permission schema's `mcp:<server>`: [a-z0-9-] parts joined by single "_", 2–32 chars.
+ * "__" is refused because the Claude SDK names MCP tools `mcp__<server>__<tool>`, so it would split the name.
+ */
+const MCP_SERVER_NAME_RE = /^(?=.{2,32}$)[a-z0-9-]+(?:_[a-z0-9-]+)*$/;
 
 export const GET = route("ADMIN", async ({ session }) => {
   const rows = await db.select().from(credentials).where(and(eq(credentials.workspaceId, session.workspaceId), eq(credentials.kind, "mcp")));
@@ -10,7 +17,7 @@ export const GET = route("ADMIN", async ({ session }) => {
 });
 
 const schema = z.object({
-  name: z.string().regex(/^[a-z0-9_-]{2,32}$/, "lowercase letters, digits, - and _ only"),
+  name: z.string(),
   url: z.url(),
   token: z.string().optional(),
   authHeader: z.string().optional(),
@@ -18,6 +25,7 @@ const schema = z.object({
 
 export const POST = route("OWNER", async ({ session, req }) => {
   const input = await body(req, schema);
+  if (!MCP_SERVER_NAME_RE.test(input.name)) throw new HttpError(400, "Invalid MCP server name", { code: "mcp_invalid_name" });
   const config = { url: input.url, ...(input.authHeader ? { authHeader: input.authHeader } : {}) };
   const secretEnc = input.token ? encryptSecret(input.token) : null;
   await db

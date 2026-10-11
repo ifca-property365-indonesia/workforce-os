@@ -160,7 +160,7 @@ function AllowListEditor({ e, canEdit }: { e: Employee; canEdit: boolean }) {
   const ts = useTranslations("status");
   const qc = useQueryClient();
   const [list, setList] = useState<AllowListEntry[]>(e.allowList);
-  const irreversible = e.toolPermissions.filter((p) => p.enabled && ["send_email", "send_invoice", "post_webhook"].includes(p.tool) || p.tool.startsWith("mcp:"));
+  const irreversible = e.toolPermissions.filter((p) => p.enabled && (["send_email", "send_invoice", "post_webhook"].includes(p.tool) || p.tool.startsWith("mcp:")));
   const save = useMutation({
     mutationFn: () => api.patch(`/api/employees/${e.id}`, { allowList: list }),
     onSuccess: () => {

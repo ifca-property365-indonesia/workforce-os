@@ -65,6 +65,26 @@ describe("classifyTool", () => {
     expect(classifyTool(name)).toBe(cls);
   });
 
+  it.each([
+    // a leading read verb names a read even when a later token is a noun that doubles as a verb
+    ["mcp__blog__get_post", "reversible"],
+    ["mcp__github__list_releases", "reversible"],
+    ["mcp__tickets__list_closed_issues", "reversible"],
+    // outbound verbs are irreversible wherever they appear
+    ["mcp__slack__send_message", "irreversible"],
+    ["mcp__slack__reply_to_thread", "irreversible"],
+    ["mcp__drive__share_doc", "irreversible"],
+    ["mcp__mail__forward_email", "irreversible"],
+    ["mcp__x__get_and_delete_file", "irreversible"],
+    ["mcp__x__fetchAndDelete", "irreversible"],
+    // any other write verb after a leading read still fails closed
+    ["mcp__crm__getOrCreateContact", "irreversible"],
+    ["mcp__x__readThenUpdateRow", "irreversible"],
+    ["mcp__x__list_then_write", "irreversible"],
+  ] as const)("outbound verbs and leading reads: %s → %s", (name, cls) => {
+    expect(classifyTool(name)).toBe(cls);
+  });
+
   it("a verb glued inside a longer lowercase word is not a verb", () => {
     expect(classifyTool("mcp__x__listall")).toBe("irreversible");
     expect(classifyTool("mcp__x__getaway")).toBe("irreversible");
@@ -75,5 +95,16 @@ describe("classifyTool", () => {
     expect(classifyTool("mcp__crm__sync_contacts", { sync_contacts: "reversible" })).toBe("reversible");
     expect(classifyTool("kb_search", { kb_search: "irreversible" })).toBe("irreversible");
     expect(classifyTool("mcp__crm__list_contacts", { other: "reversible" })).toBe("reversible");
+  });
+});
+
+describe("classifyTool release noun/verb", () => {
+  it("reads a release after a leading read verb", () => {
+    expect(classifyTool("mcp__gh__get_release")).toBe("reversible");
+    expect(classifyTool("mcp__gh__list_release")).toBe("reversible");
+  });
+  it("still fails closed for release as a verb", () => {
+    expect(classifyTool("mcp__gh__release_version")).toBe("irreversible");
+    expect(classifyTool("mcp__gh__create_release")).toBe("irreversible");
   });
 });

@@ -78,5 +78,9 @@
   "telegram_not_configured": "Telegram is not configured on this server.",
   "push_not_configured": "Push notifications are not configured on this server.",
   "push_endpoint_not_allowed": "This browser's push service is not supported.",
-  "invalid_form": "The request must be sent as a form (multipart/form-data)."
+  "invalid_form": "The request must be sent as a form (multipart/form-data).",
+  "mcp_unreachable": "Could not reach the MCP server {name}. Check its URL and token, then try again.",
+  "mcp_invalid_name": "MCP server names are 2–32 characters: lowercase letters, digits and -, with single _ between parts (not at the start or end).",
+  "mcp_server_not_found": "No MCP server with that name is connected.",
+  "mcp_invalid_url": "The MCP server URL must start with http:// or https://."
 }

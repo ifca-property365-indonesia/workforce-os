@@ -22,6 +22,8 @@ export const env = {
   concurrency: Number(process.env.WORKER_CONCURRENCY ?? 2),
   perEmployeeConcurrency: Number(process.env.PER_EMPLOYEE_CONCURRENCY ?? 1),
   logLevel: process.env.LOG_LEVEL ?? "info",
+  /** a run with no SDK event (message, stream delta, tool call) for this many minutes is stopped as stalled */
+  runIdleTimeoutMin: Number(process.env.RUN_IDLE_TIMEOUT_MIN) > 0 ? Number(process.env.RUN_IDLE_TIMEOUT_MIN) : 20,
   namespace: wfosNamespace(),
 };
 

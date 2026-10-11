@@ -284,7 +284,7 @@ function Wizard() {
           </div>
           <div>
             <h3 className="mb-2 font-medium">{t("tools.toolPermissions")}</h3>
-            <ToolPermissionsEditor tools={tpl.tools} value={d.toolPermissions} onChange={(v) => set("toolPermissions", v)} defaultAutonomy={d.autonomyLevel} extraServers={mcp?.servers.map((s) => s.name)} />
+            <ToolPermissionsEditor tools={tpl.tools} value={d.toolPermissions} onChange={(f) => setD((x) => ({ ...x, toolPermissions: f(x.toolPermissions) }))} defaultAutonomy={d.autonomyLevel} extraServers={mcp?.servers.map((s) => s.name)} />
           </div>
         </div>
       )}

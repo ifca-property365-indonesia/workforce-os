@@ -22,7 +22,8 @@
     "compaction": "Compaction",
     "budget": "Budget",
     "system": "System",
-    "error": "Error"
+    "error": "Error",
+    "incident": "Incident"
   },
   "stepStatus": {
     "error": "error",
@@ -31,7 +32,16 @@
     "flagged": "flagged",
     "pending": "pending",
     "simulated": "simulated",
-    "drafted": "drafted"
+    "drafted": "drafted",
+    "run": "allowed",
+    "deny": "denied",
+    "approval": "needs approval",
+    "draft": "drafted",
+    "simulate": "simulated",
+    "stopped": "stopped",
+    "open": "open",
+    "escalated": "escalated",
+    "muted": "muted"
   },
   "deliverables": {
     "empty": "No deliverables yet.",
@@ -113,5 +123,43 @@
     "feedbackPlaceholder": "What should change? The employee continues in the same session and workspace.",
     "requestChanges": "Request changes",
     "changesRequested": "Changes requested: the employee will continue"
+  },
+  "gateRule": {
+    "not_granted": "not granted",
+    "reversible": "reversible",
+    "dry_run": "dry run",
+    "autonomy_draft": "autonomy: draft",
+    "allow_list": "allow-list",
+    "autonomy": "autonomy",
+    "taint": "untrusted content",
+    "leak": "possible leak"
+  },
+  "stepName": {
+    "gate": "Gate · {target}",
+    "repeat_detected": "Repeated tool call detected",
+    "incident": {
+      "opened": "Incident opened: {kind}",
+      "handling": "Incident handed to the team lead",
+      "retried": "Incident: retried",
+      "reassigned": "Incident: reassigned",
+      "escalated": "Incident escalated to a person",
+      "resolved": "Incident resolved",
+      "muted": "Incident muted (hourly limit)"
+    }
+  },
+  "incidentKind": {
+    "failed": "failed",
+    "stalled": "stalled",
+    "loop": "loop",
+    "could_not_start": "could not start",
+    "routine_failed": "routine failed"
+  },
+  "stoppedTitle": {
+    "stalled": "Stopped: the run stalled",
+    "loop": "Stopped: the run was looping"
+  },
+  "stoppedHint": {
+    "stalled": "No progress was reported for too long, so the run was stopped.",
+    "loop": "The same tool call kept repeating, so the run was stopped."
   }
 }
