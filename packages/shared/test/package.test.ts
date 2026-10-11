@@ -5,7 +5,16 @@ import {
   packageKey,
   parseWfosPackage,
   renameMcpSelector,
+  SKILL_BODY_MAX,
+  SKILL_SLUG_MAX,
   uniqueMcpName,
+  truncateUtf8,
+  uniqueSkillSlug,
+  hasControlChars,
+  isReservedSkillSlug,
+  SKILL_RESERVED_SLUGS,
+  stripControlChars,
+  utf8Bytes,
   wfosPackageSchema,
 } from "../src/index";
 import { exportRedact, redactUrl } from "../src/server";
@@ -98,6 +107,89 @@ describe("wfosPackageSchema", () => {
     expect(parseWfosPackage({ hello: "world" })).toMatchObject({ ok: false, reason: "not_a_package" });
     expect(parseWfosPackage([1, 2])).toMatchObject({ ok: false, reason: "not_a_package" });
     expect(parseWfosPackage({ ...pkg(), version: 0 })).toMatchObject({ ok: false, reason: "invalid" });
+  });
+});
+
+describe("package skills", () => {
+  const skills = [{ slug: "weekly-report", description: "How to write the weekly report", body: "# Weekly report\n\n1. Collect numbers" }];
+
+  it("accepts skills and employee skill slugs (both optional)", () => {
+    const raw = pkg({ skills });
+    (raw.employees[0] as Record<string, unknown>).skillSlugs = ["weekly-report"];
+    const r = parseWfosPackage(raw);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.pkg.skills).toEqual(skills);
+    expect(r.pkg.employees[0]!.skillSlugs).toEqual(["weekly-report"]);
+    expect(r.pkg.employees[1]!.skillSlugs).toBeUndefined();
+    const old = parseWfosPackage(pkg());
+    expect(old.ok && old.pkg.skills).toBeUndefined();
+  });
+
+  it("drops anything but slug, description and body (no scripts or resources)", () => {
+    const r = parseWfosPackage(pkg({ skills: [{ ...skills[0], scripts: { "run.sh": "curl evil" }, allowedTools: ["Bash"], source: "builtin", untrusted: false }] }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(Object.keys(r.pkg.skills![0]!).sort()).toEqual(["body", "description", "slug"]);
+  });
+
+  it.each([
+    ["a slug that is not kebab-case", { skills: [{ ...skills[0], slug: "Weekly_Report" }] }, "skills.0.slug"],
+    ["a slug that is too long", { skills: [{ ...skills[0], slug: "a".repeat(SKILL_SLUG_MAX + 1) }] }, "skills.0.slug"],
+    ["an empty description", { skills: [{ ...skills[0], description: "" }] }, "skills.0.description"],
+    ["a body over the limit", { skills: [{ ...skills[0], body: "x".repeat(SKILL_BODY_MAX + 1) }] }, "skills.0.body"],
+    ["a body over the limit in UTF-8 bytes (not characters)", { skills: [{ ...skills[0], body: "é".repeat(SKILL_BODY_MAX / 2 + 1) }] }, "skills.0.body"],
+    ["duplicate slugs", { skills: [skills[0], skills[0]] }, "skills.1.slug"],
+  ])("rejects %s", (_label, over, path) => {
+    const r = parseWfosPackage(pkg(over));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues.map((i) => i.path)).toContain(path);
+  });
+
+  it("rejects an employee skill slug the package does not carry", () => {
+    const raw = pkg({ skills });
+    (raw.employees[1] as Record<string, unknown>).skillSlugs = ["weekly-report", "ghost"];
+    const r = parseWfosPackage(raw);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.issues.map((i) => i.path)).toContain("employees.1.skillSlugs.1");
+  });
+
+  it("measures and cuts skill bodies in UTF-8 bytes", () => {
+    expect(utf8Bytes("aé🤖")).toBe(1 + 2 + 4);
+    expect(truncateUtf8("aé🤖", 6)).toBe("aé");
+    expect(truncateUtf8("aé🤖", 7)).toBe("aé🤖");
+    expect(parseWfosPackage(pkg({ skills: [{ ...skills[0], body: "é".repeat(SKILL_BODY_MAX / 2) }] })).ok).toBe(true);
+  });
+
+  it("finds a free skill slug", () => {
+    expect(uniqueSkillSlug("weekly-report", new Set())).toBe("weekly-report");
+    expect(uniqueSkillSlug("weekly-report", new Set(["weekly-report"]))).toBe("weekly-report-2");
+    expect(uniqueSkillSlug("weekly-report", new Set(["weekly-report", "weekly-report-2"]))).toBe("weekly-report-3");
+    const long = `${"a".repeat(SKILL_SLUG_MAX - 2)}-b`;
+    const out = uniqueSkillSlug(long, new Set([long]));
+    expect(out.length).toBeLessThanOrEqual(SKILL_SLUG_MAX);
+    expect(out).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*-2$/);
+  });
+
+  it("treats the built-in skill names as taken", () => {
+    expect(SKILL_RESERVED_SLUGS).toEqual(["pdf", "docx", "xlsx", "pptx"]);
+    for (const slug of SKILL_RESERVED_SLUGS) {
+      expect(isReservedSkillSlug(slug)).toBe(true);
+      expect(uniqueSkillSlug(slug, new Set())).toBe(`${slug}-2`);
+    }
+    expect(uniqueSkillSlug("pdf", new Set(["pdf-2"]))).toBe("pdf-3");
+    expect(isReservedSkillSlug("pdf-tools")).toBe(false);
+    expect(uniqueSkillSlug("pdf-tools", new Set())).toBe("pdf-tools");
+    // a reserved slug is still a valid package slug: it is renamed on import, not refused
+    expect(parseWfosPackage(pkg({ skills: [{ ...skills[0], slug: "pdf" }] })).ok).toBe(true);
+  });
+
+  it("finds and strips C0 control characters (tab, LF and CR are allowed)", () => {
+    expect(hasControlChars("a\tb\nc\r\n")).toBe(false);
+    for (const c of ["\u0000", "\u0001", "\u0008", "\u000b", "\u000c", "\u001b", "\u001f"]) expect(hasControlChars(`x${c}y`)).toBe(true);
+    expect(hasControlChars("\u007f é 🤖")).toBe(false);
+    expect(stripControlChars("a\u0000b\u001b[0mc\td")).toBe("ab[0mc\td");
+    expect(parseWfosPackage(pkg({ skills: [{ ...skills[0], body: "nul\u0000" }] })).ok).toBe(false);
+    expect(parseWfosPackage(pkg({ skills: [{ ...skills[0], description: "esc\u001b" }] })).ok).toBe(false);
   });
 });
 

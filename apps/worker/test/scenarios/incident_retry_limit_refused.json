@@ -1,0 +1,134 @@
+{
+  "name": "incident_retry_limit_refused",
+  "description": "A team subtask that already used both retries fails again: the incident is escalated to a person and the lead's third retry_subtask is refused",
+  "setup": {
+    "employees": [
+      {
+        "key": "lead",
+        "name": "Budi",
+        "role": "Lead PM"
+      },
+      {
+        "key": "m1",
+        "name": "Sari",
+        "role": "Researcher"
+      },
+      {
+        "key": "m2",
+        "name": "Dewi",
+        "role": "Copywriter"
+      }
+    ],
+    "teams": [
+      {
+        "key": "squad",
+        "name": "Squad",
+        "lead": "lead",
+        "members": [
+          "m1",
+          "m2"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "key": "parent",
+        "assignee": "lead",
+        "team": "squad",
+        "status": "RUNNING",
+        "phase": "wait",
+        "title": "Launch plan",
+        "brief": "Plan the launch"
+      },
+      {
+        "key": "child",
+        "assignee": "m1",
+        "team": "squad",
+        "parent": "parent",
+        "status": "RUNNING",
+        "retryCount": 2,
+        "title": "Market research",
+        "brief": "Research the market"
+      },
+      {
+        "key": "sibling",
+        "assignee": "m2",
+        "team": "squad",
+        "parent": "parent",
+        "status": "DONE",
+        "result": "copy done",
+        "title": "Copy"
+      }
+    ]
+  },
+  "scripts": {
+    "lead": [
+      {
+        "tool": "mcp__wfos__retry_subtask",
+        "input": {
+          "taskId": "{{task.child}}",
+          "revisedBrief": "Try the census data"
+        }
+      },
+      {
+        "result": "Research failed after two retries (quota); the copy is ready."
+      }
+    ]
+  },
+  "trigger": [
+    {
+      "kind": "fail_task",
+      "task": "child",
+      "error": "API quota exceeded on the research source"
+    },
+    {
+      "kind": "task",
+      "task": "parent"
+    }
+  ],
+  "expect": [
+    {
+      "scorer": "incidentOpened",
+      "kind": "failed",
+      "status": "escalated",
+      "task": "child",
+      "count": 1
+    },
+    {
+      "scorer": "toolCall",
+      "tool": "mcp__wfos__retry_subtask",
+      "output": "retry limit reached",
+      "count": 1
+    },
+    {
+      "scorer": "stepRecorded",
+      "name": "retry_subtask",
+      "status": "error"
+    },
+    {
+      "scorer": "taskMatches",
+      "task": "child",
+      "fields": {
+        "status": "FAILED",
+        "retryCount": 2
+      }
+    },
+    {
+      "scorer": "taskStatus",
+      "task": "parent",
+      "status": "DONE"
+    },
+    {
+      "scorer": "jobQueued",
+      "queue": "runs",
+      "task": "child",
+      "count": 0
+    },
+    {
+      "scorer": "jobQueued",
+      "queue": "misc",
+      "kind": "notify",
+      "min": 1
+    }
+  ]
+}

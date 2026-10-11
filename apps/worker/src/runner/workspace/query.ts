@@ -6,6 +6,7 @@ import type { Options, Query, SDKMessage, SdkMcpToolDefinition } from "@anthropi
 import { WORKSPACE_BUILTIN_TOOLS } from "@wfos/shared";
 import type { ClaudeCredential } from "@wfos/db/claude";
 import type { RunSpec } from "@wfos/runner/protocol";
+import type { SkillFileSpec } from "@wfos/runner/skills";
 import { toolDefsOf } from "../../tools/registry";
 import type { QueryFn } from "../sdk";
 import { log } from "../../lib/logger";
@@ -26,6 +27,11 @@ export interface WorkspaceRunConfig {
   upstream?: string;
   onGatewayEvent?: (e: GatewayEvent) => void;
   onLayout?: (l: RunLayout) => void;
+  /**
+   * The employee's assigned, enabled TRUSTED skills (loadSkillFiles): sent in the run spec, and the runner (as the
+   * sandbox user) writes them to ~/.claude/skills/wfos-<slug>/SKILL.md on every run, removing stale managed ones.
+   */
+  skills?: SkillFileSpec[];
 }
 
 /**
@@ -42,6 +48,7 @@ export async function prepareWorkspaceDirs(layout: RunLayout, seed?: { skillsDir
     // built-in skills (docx/xlsx/pptx/pdf); copied once into the fresh, root-created home
     await cp(seed.skillsDir, path.join(layout.hostStateDir, "home", ".claude", "skills"), { recursive: true, dereference: false, verbatimSymlinks: true });
   }
+  // the employee's own skills are NOT written here: the runner syncs them (as the sandbox user) on every run
 }
 
 export async function workspaceExists(layout: RunLayout): Promise<boolean> {
@@ -92,6 +99,8 @@ async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?:
     credentialType: cfg.credential.type,
     gitIdentity: cfg.gitIdentity,
     agents: o.agents as RunSpec["agents"],
+    // always a list (possibly empty), so the runner also removes skills no longer assigned or now untrusted
+    skills: (cfg.skills ?? []).map((s) => ({ slug: s.slug, description: s.description, body: s.body })),
   };
 
   await prepareWorkspaceDirs(layout, { skillsDir: path.join(host.runnerDir, "skills") });

@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { api } from "@/lib/api";
 
 export interface ExportReport {
-  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; mcpSlots: string[] };
+  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; skills: string[]; mcpSlots: string[] };
   redactions: { where: string; rule: string }[];
   leftOut: string[];
-  counts: { employees: number; teams: number; routines: number; departments: number; mcpSlots: number; memories: number; redactions: number };
+  counts: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number; redactions: number };
 }
 
 interface Selection {
@@ -22,7 +22,7 @@ interface Selection {
   teamIds?: string[];
 }
 
-const GROUPS = ["employees", "teams", "routines", "departments", "mcpSlots"] as const;
+const GROUPS = ["employees", "teams", "routines", "departments", "skills", "mcpSlots"] as const;
 
 /** Save a package as <name>.wfos.json in the browser. */
 function download(pkg: WfosPackage): string {

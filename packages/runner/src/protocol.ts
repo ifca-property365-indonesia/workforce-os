@@ -29,6 +29,12 @@ export interface RunSpec {
   gitIdentity: { name: string; email: string };
   /** department subagents (Claude Code Task tool) */
   agents?: Record<string, { description: string; prompt: string; tools?: string[] }>;
+  /**
+   * The employee's assigned, enabled TRUSTED skills: the runner writes them to ~/.claude/skills/wfos-<slug>/SKILL.md
+   * on every run and removes managed wfos-* directories not listed (an empty list removes them all). Untrusted
+   * skills are never sent: they are read with skill_read only. Absent (older worker): the skills directory is left as is.
+   */
+  skills?: { slug: string; description: string; body: string }[];
 }
 
 export type RunnerToWorker =

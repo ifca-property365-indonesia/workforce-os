@@ -11,7 +11,8 @@
     "repositories": "Repositories",
     "departments": "Departments",
     "webhooks": "Webhooks",
-    "apiTokens": "API access"
+    "apiTokens": "API access",
+    "skills": "Skills"
   },
   "workspace": {
     "title": "Workspace",

@@ -245,6 +245,14 @@
     "post_webhook": {
       "label": "Publish to webhook",
       "description": "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)"
+    },
+    "skill_read": {
+      "label": "Read skill",
+      "description": "Read one of its assigned skills (SKILL.md) by name. Granted automatically while at least one switched-on skill is assigned."
+    },
+    "skill_propose": {
+      "label": "Propose skill",
+      "description": "Propose a new reusable skill (SKILL.md) from what it learned. A person approves it before it is saved and assigned."
     }
   },
   "executionMode": {

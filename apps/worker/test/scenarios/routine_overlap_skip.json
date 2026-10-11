@@ -1,0 +1,18 @@
+{
+  "name": "routine_overlap_skip",
+  "description": "A due routine with overlap skip whose previous firing is still running is recorded skipped_overlap and dispatches nothing",
+  "setup": {
+    "employees": [{ "key": "sari", "name": "Sari", "role": "Analyst" }],
+    "routines": [{ "key": "daily", "name": "Daily report", "assignee": "sari", "overlap": "skip", "dueAgoMs": 60000 }],
+    "tasks": [{ "key": "prev", "assignee": "sari", "routine": "daily", "status": "RUNNING", "title": "Daily report (yesterday)" }],
+    "routineRuns": [{ "routine": "daily", "tasks": ["prev"], "status": "dispatched" }]
+  },
+  "trigger": { "kind": "routine_tick" },
+  "expect": [
+    { "scorer": "routineRun", "routine": "daily", "status": "skipped_overlap", "count": 1 },
+    { "scorer": "routineRun", "routine": "daily", "status": "dispatched", "count": 1 },
+    { "scorer": "taskCount", "routine": "daily", "count": 1 },
+    { "scorer": "jobQueued", "queue": "runs", "count": 0 },
+    { "scorer": "sdkRuns", "who": "sari", "count": 0 }
+  ]
+}

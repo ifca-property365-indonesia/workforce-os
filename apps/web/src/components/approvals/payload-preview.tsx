@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { ShieldAlert } from "lucide-react";
 import { invoiceTotal, type InvoicePayload } from "@wfos/shared";
 import { CodeDiff } from "@/components/inspector/code-view";
 import { Input } from "@/components/ui/input";
@@ -135,6 +136,56 @@ export function RoutineApprovalPreview({ p }: { p: Record<string, unknown> }) {
   );
 }
 
+/** create_skill: the SKILL.md an employee wants to save, shown as plain text (never rendered as markup). */
+export function SkillApprovalPreview({ p }: { p: Record<string, unknown> }) {
+  const t = useTranslations("approvals");
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const body = str(p.body);
+  return (
+    <div className="space-y-2 rounded-lg border bg-background p-3 text-sm">
+      <div className="font-medium">{t("skill.proposed", { slug: str(p.slug) })}</div>
+      {str(p.employeeName) && <div className="text-xs text-muted-foreground">{t("skill.target", { name: str(p.employeeName) })}</div>}
+      {!!p.untrustedInput && (
+        <div className="flex gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-2 text-xs text-amber-800 dark:text-amber-200">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+          <span>{t("skill.untrusted")}</span>
+        </div>
+      )}
+      <div>
+        <div className="mb-1 text-xs text-muted-foreground">{t("skill.description")}</div>
+        <div className="whitespace-pre-wrap break-words">{str(p.description)}</div>
+      </div>
+      <details open={body.length <= 1500}>
+        <summary className="cursor-pointer text-xs text-muted-foreground">{t("skill.showBody", { count: body.length })}</summary>
+        <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-xs">{body}</pre>
+      </details>
+      <div className="text-xs text-muted-foreground">{t("skill.savedAs")}</div>
+    </div>
+  );
+}
+
+/** create_skill in Edit & Approve: the name, description and instructions can be changed before saving. */
+export function SkillApprovalEditor({ p, onChange }: { p: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+  const t = useTranslations("approvals");
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor="skill-approval-slug">{t("skill.slug")}</Label>
+        <Input id="skill-approval-slug" className="font-mono text-sm" value={str(p.slug)} onChange={(e) => onChange({ ...p, slug: e.target.value.toLowerCase() })} />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor="skill-approval-description">{t("skill.description")}</Label>
+        <Textarea id="skill-approval-description" rows={2} value={str(p.description)} onChange={(e) => onChange({ ...p, description: e.target.value })} />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor="skill-approval-body">{t("skill.body")}</Label>
+        <Textarea id="skill-approval-body" rows={14} className="font-mono text-xs" value={str(p.body)} onChange={(e) => onChange({ ...p, body: e.target.value })} />
+      </div>
+    </div>
+  );
+}
+
 export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; editing: boolean; draft: Record<string, unknown>; setDraft: (v: Record<string, unknown>) => void }) {
   const t = useTranslations("approvals");
   const f = useFormat();
@@ -216,6 +267,7 @@ export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; e
     );
   }
   if (a.toolName === "create_routine" && !editing) return <RoutineApprovalPreview p={p} />;
+  if (a.toolName === "create_skill") return editing ? <SkillApprovalEditor p={p} onChange={setDraft} /> : <SkillApprovalPreview p={p} />;
   if (a.toolName === "post_webhook") {
     return editing ? (
       <Textarea rows={6} value={String(p.text ?? "")} onChange={(e) => setDraft({ ...p, text: e.target.value })} />

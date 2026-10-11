@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db, members, telegramCallbacks, users } from "@wfos/db";
 import { setTelegramFetch, verifyCallback } from "@wfos/shared/telegram";
+import { msg } from "@wfos/shared/messages";
 import { telegramDailySummary, telegramNotify } from "../src/lib/telegram";
 import { makeApproval, makeEmployee, makeWorkspace } from "./fixtures";
 import { resetTransport } from "./transport";
@@ -62,6 +63,22 @@ describe("Telegram notifications", () => {
     }
     expect(to(admin).body.reply_markup!.inline_keyboard[0]![0]!.text).toContain("Setujui");
     expect(to(owner).body.reply_markup!.inline_keyboard[0]![0]!.text).toContain("Approve");
+  });
+
+  it("create_skill and create_routine approvals get no quick buttons: the message sends them to the web app", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id);
+    const owner = await member(ws.id, "OWNER", chat());
+    const admin = await member(ws.id, "ADMIN", chat(), "id");
+    for (const toolName of ["create_skill", "create_routine"]) {
+      sent = [];
+      const a = await makeApproval(ws.id, null, emp.id, { toolName, title: toolName, payload: {} });
+      expect(await telegramNotify(ws.id, "Approval needed", "body", `/approvals?focus=${a.id}`, a.id)).toBe(2);
+      for (const s of sent) expect(s.body.reply_markup, toolName).toBeUndefined();
+      expect(sent.find((s) => String(s.body.chat_id) === owner.telegramChatId)!.body.text).toContain(msg("en", "telegram.approveInWeb"));
+      expect(sent.find((s) => String(s.body.chat_id) === admin.telegramChatId)!.body.text).toContain(msg("id", "telegram.approveInWeb"));
+      expect(await db.select().from(telegramCallbacks).where(eq(telegramCallbacks.approvalId, a.id))).toEqual([]);
+    }
   });
 
   it("plain notifications carry no buttons and create no rows", async () => {

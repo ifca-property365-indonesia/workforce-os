@@ -3,6 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { NAMESPACES } from "@/i18n/namespaces";
+import { checkSourceHashes, flattenCatalog, loadEnglish, loadHashes, rehash, sourceHash } from "../scripts/i18n-hashes.mjs";
 
 /**
  * The i18n "lint": fails on hard-coded UI strings, on translation keys that do not exist,
@@ -167,7 +168,8 @@ const fmt = (fs: Finding[]) => fs.map((f) => `${f.file}:${f.line}  ${f.text}`).j
 describe("i18n catalogs", () => {
   it("every namespace file exists for every locale and is listed", () => {
     for (const l of LOCALES) {
-      const onDisk = readdirSync(path.join(MSG, l)).filter((f) => f.endsWith(".json")).map((f) => f.replace(/\.json$/, "")).sort();
+      // dotfiles (messages/id/.source-hashes.json) are not catalogs
+      const onDisk = readdirSync(path.join(MSG, l)).filter((f) => f.endsWith(".json") && !f.startsWith(".")).map((f) => f.replace(/\.json$/, "")).sort();
       expect(onDisk).toEqual([...NAMESPACES].sort());
     }
   });
@@ -205,5 +207,55 @@ describe("i18n usage in src", () => {
 
   it("every HttpError carries a translated code", () => {
     expect(fmt(result.badErrors)).toBe("");
+  });
+});
+
+describe("i18n source hashes (messages/id/.source-hashes.json)", () => {
+  const REHASH = "pnpm --filter @wfos/web i18n:rehash";
+
+  it("every Indonesian translation was made from the current English string", () => {
+    const english = loadEnglish(ROOT);
+    // the helper reads the same catalogs as this test
+    expect([...english.keys()].sort()).toEqual([...catalogs.en.keys()].sort());
+    const { stale, missing, orphaned } = checkSourceHashes(english, loadHashes(ROOT));
+    const problems = [
+      ...stale.map((k) => `stale translation: ${k} — update messages/id and run ${REHASH} --only ${k}`),
+      ...missing.map((k) => `no source hash: ${k} — translate it in messages/id and run ${REHASH} --only ${k}`),
+      ...orphaned.map((k) => `orphaned source hash: ${k} — run ${REHASH} --prune`),
+    ];
+    expect(problems.join("\n")).toBe("");
+  });
+
+  describe("helpers (fake catalog)", () => {
+    const en = flattenCatalog({ title: "Skills", editor: { save: "Save skill", help: "{count} / {max}" } }, "skills");
+
+    it("hashes the English source as 12 hex characters of its sha256", () => {
+      expect(sourceHash("Skills")).toMatch(/^[0-9a-f]{12}$/);
+      expect(sourceHash("Skills")).toBe(sourceHash("Skills"));
+      expect(sourceHash("Skills")).not.toBe(sourceHash("Skills "));
+      expect([...en.keys()]).toEqual(["skills.title", "skills.editor.save", "skills.editor.help"]);
+    });
+
+    it("finds stale, missing and orphaned hashes", () => {
+      const stored = { ...rehash(en, {}), "skills.gone": "000000000000" };
+      expect(checkSourceHashes(en, stored)).toEqual({ stale: [], missing: [], orphaned: ["skills.gone"] });
+      const changed = new Map(en).set("skills.editor.save", "Save this skill").set("skills.added", "New");
+      expect(checkSourceHashes(changed, stored)).toEqual({ stale: ["skills.editor.save"], missing: ["skills.added"], orphaned: ["skills.gone"] });
+    });
+
+    it("rehash: all keys by default, only the selected ones with --only, orphans dropped with --prune", () => {
+      const stored = rehash(en, {});
+      const changed = new Map(en).set("skills.title", "Skill library").set("skills.editor.save", "Save this skill");
+      const one = rehash(changed, stored, { only: ["skills.title"] });
+      expect(checkSourceHashes(changed, one).stale).toEqual(["skills.editor.save"]);
+      // a prefix selects a whole group
+      expect(checkSourceHashes(changed, rehash(changed, stored, { only: ["skills.editor"] })).stale).toEqual(["skills.title"]);
+      expect(checkSourceHashes(changed, rehash(changed, stored))).toEqual({ stale: [], missing: [], orphaned: [] });
+      expect(() => rehash(changed, stored, { only: ["skills.nope"] })).toThrow(/no English key/);
+      const withOrphan = { ...stored, "x.y": "abc" };
+      expect(rehash(en, withOrphan, { pruneOnly: true, prune: true })).toEqual(stored);
+      // pruning alone accepts nothing
+      expect(checkSourceHashes(changed, rehash(changed, withOrphan, { pruneOnly: true, prune: true })).stale).toEqual(["skills.title", "skills.editor.save"]);
+    });
   });
 });

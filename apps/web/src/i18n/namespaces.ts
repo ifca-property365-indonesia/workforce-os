@@ -25,5 +25,6 @@ export const NAMESPACES = [
   "webhooks",
   "apitokens",
   "packages",
+  "skills",
 ] as const;
 export type Namespace = (typeof NAMESPACES)[number];

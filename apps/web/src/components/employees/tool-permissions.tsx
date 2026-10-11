@@ -23,8 +23,11 @@ import {
 } from "@/lib/tool-selectors";
 import { cn } from "@/lib/utils";
 
-/** Granted implicitly to a team lead during review; never shown as grantable tools. */
-const LEAD_ONLY_TOOLS = new Set(["request_revision", "retry_subtask", "reassign_subtask"]);
+/**
+ * Granted implicitly, never shown as grantable tools: the lead-only review tools (to a team lead during review), and
+ * skill_read (to every employee with at least one switched-on skill assigned; see the Skills card).
+ */
+const IMPLICIT_TOOLS = new Set(["request_revision", "retry_subtask", "reassign_subtask", "skill_read"]);
 
 export interface McpTool {
   /** the server's own name, shown to people */
@@ -297,7 +300,7 @@ export function ToolPermissionsEditor({
   /** builtin tool metadata is English data; translate by tool name when a catalog entry exists */
   const rows: ToolMeta[] = [
     ...tools
-      .filter((x) => !LEAD_ONLY_TOOLS.has(x.name))
+      .filter((x) => !IMPLICIT_TOOLS.has(x.name))
       .map((x) => ({
         ...x,
         label: t.has(`tools.${x.name}.label`) ? t(`tools.${x.name}.label`) : x.label,

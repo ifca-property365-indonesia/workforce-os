@@ -9,6 +9,7 @@ import { recordStep } from "../lib/steps";
 import { checkBudget, pauseForBudget } from "../guards/budget";
 import { grantedToolNames, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, memoryNotesBlock, recallMemories, recentWorkBrief, taintFromStoredInput, workspaceDirectory } from "./prompt";
+import { loadAssignedSkills } from "./skills";
 import { taintRun } from "../guards/content";
 import { escapeData } from "./incidents";
 import { markMessagesUntrusted } from "./taint";
@@ -611,10 +612,13 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     : "";
   const turnText = `${transcript ? `Conversation so far:\n${transcript}\n\n---\n` : ""}User: ${latestText}${attach}${teammates}`;
 
-  const [mem, recent] = await Promise.all([
+  const [mem, recent, assignedSkills] = await Promise.all([
     recallMemories(emp.id, latestText),
     recentWorkBrief(emp.id, { excludeConversationId: conversationId }).catch((e: unknown) => (log.warn({ err: e, conversationId }, "chat: recent work brief failed"), "")),
+    loadAssignedSkills(emp.id, ws.id, ctx.employee.toolPermissions),
   ]);
+  // listed in the system prompt; skill_read is granted implicitly while there is one
+  ctx.skills = assignedSkills;
   await taintFromStoredInput(ctx, mem);
   // memories lead the user message and recent work follows it (data, not instructions): the system prompt stays stable
   const prompt = [memoryNotesBlock(mem), turnText, recent].filter(Boolean).join("\n\n");
@@ -627,6 +631,7 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     mode: "chat",
     outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
     teamChat: input.teamChat,
+    skills: assignedSkills,
   });
 
   let buffer = "";

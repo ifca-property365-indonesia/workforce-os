@@ -24,12 +24,14 @@ interface Details {
     instructions: string;
     businessContext: string;
     seedMemories: { kind: string; content: string }[];
+    skillSlugs: string[];
     toolPermissions: string[];
     egressDomains: string[];
     executionMode: string;
     department: string | null;
   }[];
   departments: { key: string; isNew: boolean; name: Bi; sop: Bi; subagents: { name: string; description: Bi; prompt: Bi; tools: string[] | null }[] }[];
+  skills: { slug: string; as: string | null; description: string; body: string }[];
   teams: { name: string; description: string }[];
   routines: { name: string; cron: string; timezone: string; brief: string }[];
   mcpSlots: { name: string; url: string }[];
@@ -40,7 +42,7 @@ interface Preview {
   ok: boolean;
   name: string;
   details: Details;
-  will: { employees: number; teams: number; routines: number; departments: number; mcpSlots: number; memories: number };
+  will: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number };
   warnings: Note[];
   conflicts: { kind: string; name: string; as?: string }[];
   errors: Note[];
@@ -50,6 +52,7 @@ interface Created {
   teams: { id: string }[];
   routines: { id: string }[];
   departments: string[];
+  skills: { id: string }[];
   mcpSlots: { id: string }[];
   memories: number;
 }
@@ -116,6 +119,12 @@ function PackageContents({ d }: { d: Details }) {
             <Field label={t("import.instructions")} text={e.instructions} />
             <Field label={t("import.businessContext")} text={e.businessContext} />
             {e.seedMemories.length > 0 && <Field label={t("import.seedMemories")} text={e.seedMemories.map((m) => `[${m.kind}] ${m.content}`).join("\n")} />}
+            {e.skillSlugs.length > 0 && (
+              <div className="space-y-0.5">
+                <div className="text-xs font-medium text-muted-foreground">{t("import.employeeSkills")}</div>
+                {chips(e.skillSlugs)}
+              </div>
+            )}
             {e.toolPermissions.length > 0 && (
               <div className="space-y-0.5">
                 <div className="text-xs font-medium text-muted-foreground">{t("import.tools")}</div>
@@ -146,6 +155,18 @@ function PackageContents({ d }: { d: Details }) {
                 {sa.tools && sa.tools.length > 0 && chips(sa.tools)}
               </div>
             ))}
+          </div>
+        </details>
+      ))}
+      {d.skills.map((s) => (
+        <details key={s.slug} className="rounded-md border border-amber-500/40 p-2">
+          <summary className="cursor-pointer font-medium">
+            {t("import.skill", { slug: s.slug })}
+            {s.as && <span className="font-normal text-muted-foreground"> · {t("import.skillAs", { slug: s.as })}</span>}
+          </summary>
+          <div className="mt-2 space-y-2">
+            <Field label={t("import.skillDescription")} text={s.description} />
+            <Field label={t("import.skillBody")} text={s.body} />
           </div>
         </details>
       ))}
@@ -203,7 +224,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     onSuccess: (created) => {
       if (!created) return; // step-up cancelled
       toast.success(t("import.done", { employees: created.employees.length, teams: created.teams.length, routines: created.routines.length }));
-      for (const key of ["teams", "employees", "routines", "departments"]) void qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["teams", "employees", "routines", "departments", "skills"]) void qc.invalidateQueries({ queryKey: [key] });
       onClose();
     },
     onError: (e) => toast.error((e as Error).message),

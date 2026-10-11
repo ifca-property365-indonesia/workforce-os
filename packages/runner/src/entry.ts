@@ -10,9 +10,11 @@
  * It holds no platform secret and no real Claude credential.
  */
 import net from "node:net";
+import path from "node:path";
 import { z } from "zod";
 import { createSdkMcpServer, query, tool, type PermissionResult, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { SANDBOX, ndjson, type PermissionReply, type RunnerToWorker, type RunSpec, type ToolReply, type WorkerToRunner } from "./protocol";
+import { syncSkillFiles } from "./skills";
 
 const runToken = process.env.WFOS_RUN_TOKEN ?? "";
 const socketDir = process.env.WFOS_SOCKET_DIR ?? SANDBOX.socketDir;
@@ -113,6 +115,17 @@ async function main(): Promise<void> {
 
   send({ t: "hello", token: runToken, pid: process.pid });
   const s = await started;
+
+  // the employee's trusted skills, as of THIS run (written as the sandbox user, in its own home); a failure only
+  // costs the files: the skills stay listed in the system prompt and readable with skill_read
+  if (s.skills) {
+    try {
+      const r = await syncSkillFiles(path.join(process.env.HOME ?? "/tmp", ".claude", "skills"), s.skills);
+      if (r.skipped.length) send({ t: "log", level: "warn", msg: `skills not written: ${r.skipped.join(", ").slice(0, 1500)}` });
+    } catch (e) {
+      send({ t: "log", level: "warn", msg: `skills sync failed: ${(e as Error).message}`.slice(0, 2000) });
+    }
+  }
 
   // Platform tools: same names and schemas as in the worker; every call is executed (and gated) by the worker.
   const defs = s.mcpTools.map((t) => {

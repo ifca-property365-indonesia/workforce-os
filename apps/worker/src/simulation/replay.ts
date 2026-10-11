@@ -10,6 +10,7 @@ import { log } from "../lib/logger";
 import { checkBudget } from "../guards/budget";
 import { grantedToolNames, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, memoryNotesBlock, recallMemories, taintFromStoredInput, workspaceDirectory } from "../runner/prompt";
+import { loadAssignedSkills } from "../runner/skills";
 import { runAgent } from "../runner/executor";
 
 /**
@@ -63,6 +64,7 @@ export async function runReplay(replayId: string): Promise<void> {
         ctx.employee.toolPermissions = ctx.employee.toolPermissions.filter((p) => !["create_task", "delegate_subtask", "message_teammate", "memory_save"].includes(p.tool));
         const mem = await recallMemories(emp.id, `${t.title}\n${t.brief}`);
         await taintFromStoredInput(ctx, mem);
+        ctx.skills = await loadAssignedSkills(emp.id, ws.id, ctx.employee.toolPermissions);
         const systemPrompt = buildSystemPrompt({
           employee: emp,
           overrides: rp.proposed,
@@ -72,6 +74,7 @@ export async function runReplay(replayId: string): Promise<void> {
           dryRun: true,
           mode: "task",
           outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
+          skills: ctx.skills,
         });
         const out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: `${[memoryNotesBlock(mem).trim(), `# Task: ${t.title}\n${t.brief}`].filter(Boolean).join("\n\n")}`, creditBudget: budget.remaining, stepName: "replay", maxTurns: 15 });
         const drafts = ctx.deliverables.map((d) => `### ${d.title}\n${d.content}`).join("\n\n");

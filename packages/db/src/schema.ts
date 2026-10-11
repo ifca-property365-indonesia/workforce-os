@@ -17,6 +17,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type {
+  SkillSource,
   MemoryEventAction,
   NotificationChannelPrefs,
   RoutineOverlap,
@@ -772,4 +773,40 @@ export const notificationPrefs = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.workspaceId] })],
+);
+
+// ---------------------------------------------------------------------------
+// Skills (SKILL.md)
+// ---------------------------------------------------------------------------
+
+export const skills = pgTable(
+  "skills",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** kebab-case name, unique per workspace */
+    slug: text("slug").notNull(),
+    description: text("description").notNull(),
+    /** the SKILL.md body (markdown, no frontmatter) */
+    body: text("body").notNull(),
+    source: text("source").$type<SkillSource>().notNull().default("user"),
+    enabled: boolean("enabled").notNull().default(true),
+    /** proposed by a tainted run or imported: read back as data and taints the reader's run */
+    untrusted: boolean("untrusted").notNull().default(false),
+    /** sha256 of slug + description + body as saved, to spot edits of imported/learned skills */
+    provenanceHash: text("provenance_hash").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("skills_ws_slug").on(t.workspaceId, t.slug)],
+);
+
+export const employeeSkills = pgTable(
+  "employee_skills",
+  {
+    employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    skillId: uuid("skill_id").notNull().references(() => skills.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.employeeId, t.skillId] }), index("employee_skills_skill").on(t.skillId)],
 );

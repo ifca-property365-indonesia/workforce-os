@@ -106,5 +106,18 @@
   "memory_event_not_found": "Entri riwayat ini sudah tidak ada.",
   "memory_event_already_undone": "Perubahan ini sudah dibatalkan.",
   "memory_event_not_undoable": "Perubahan ini tidak dapat dibatalkan.",
-  "memory_changed_since": "Memori ini berubah setelah entri ini. Membatalkannya sekarang juga akan membuang perubahan sesudahnya."
+  "memory_changed_since": "Memori ini berubah setelah entri ini. Membatalkannya sekarang juga akan membuang perubahan sesudahnya.",
+  "skill_not_found": "Skill tidak ditemukan.",
+  "unknown_skill": "Skill tidak dikenal.",
+  "skill_slug_taken": "Skill bernama {slug} sudah ada di workspace ini.",
+  "skill_invalid_slug": "Nama skill berupa huruf kecil dan angka yang digabung dengan satu tanda hubung (misalnya weekly-report), paling banyak {max} karakter.",
+  "skill_description_required": "Skill memerlukan deskripsi: deskripsi memberi tahu karyawan kapan skill perlu dibaca.",
+  "skill_description_too_long": "Deskripsi lebih panjang dari {max} karakter.",
+  "skill_body_too_long": "Skill lebih besar dari {max} byte ({bytes} byte dalam UTF-8). Persingkat instruksinya.",
+  "skill_leak": "Skill ini berisi sesuatu yang tampak seperti rahasia ({rules}). Hapus bagian itu lalu simpan lagi: skill dibaca kembali ke dalam prompt.",
+  "skill_md_invalid": "SKILL.md tidak dapat dibaca: {reason, select, no_frontmatter {file harus diawali blok frontmatter ---} unclosed_frontmatter {blok frontmatter tidak ditutup dengan ---} frontmatter_too_large {blok frontmatter lebih besar dari 8 KB} missing_name {frontmatter tidak memiliki name} missing_description {frontmatter tidak memiliki description} other {frontmatter bukan YAML yang valid (baris {line})}}.",
+  "skill_body_required": "Skill memerlukan instruksi: tuliskan apa yang harus dilakukan karyawan.",
+  "skill_slug_reserved": "{slug} adalah nama skill bawaan (pdf, docx, xlsx, dan pptx sudah dipakai). Pilih nama lain.",
+  "skill_invalid_chars": "Skill ini berisi karakter kontrol (seperti NUL atau ESC). Hapus lalu simpan lagi: hanya tab dan baris baru yang diizinkan.",
+  "package_skill_leak": "Skill {slug} di dalam paket berisi sesuatu yang tampak seperti rahasia ({rules}). Hapus dari paket lalu impor lagi: skill dibaca kembali ke dalam prompt."
 }

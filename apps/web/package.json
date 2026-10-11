@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start -p 3010 -H 127.0.0.1",
     "typecheck": "node --max-old-space-size=1536 node_modules/typescript/bin/tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "i18n:rehash": "node scripts/i18n-rehash.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",

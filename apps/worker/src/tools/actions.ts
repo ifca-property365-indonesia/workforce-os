@@ -1,4 +1,4 @@
-import { approvals, audit, clients, createTask, db, employees, repositories, routines, TaskInputError, teams, users, workspaces, type TaskRow } from "@wfos/db";
+import { approvals, audit, clients, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, teams, users, workspaces, type TaskRow } from "@wfos/db";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
@@ -14,7 +14,7 @@ import {
   type EmailPayload,
   type InvoicePayload,
 } from "@wfos/shared";
-import { decryptSecret, withRetry } from "@wfos/shared/server";
+import { decryptSecret, screenLeakage, withRetry } from "@wfos/shared/server";
 import { sendMail } from "@wfos/shared/mail";
 import { renderInvoicePdf, formatMoney } from "@wfos/shared/invoice";
 import { msg } from "@wfos/shared/messages";
@@ -23,6 +23,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { getExternalMcpServers, getSmtp, getWebhookUrl, workspaceLocale } from "../lib/settings";
+import { isReservedSkillSlug, skillProposalSchema, skillProvenanceHash, SKILL_SLUG_MAX } from "../runner/skills";
 
 export interface ActionResult {
   ok: boolean;
@@ -209,12 +210,12 @@ export async function routineTargetError(workspaceId: string, assigneeId: string
   return null;
 }
 
-/** The person who approved the create_routine approval (decided_by), for the audit entry. */
-async function approver(workspaceId: string, context: { approvalId?: string | null; employeeId?: string | null }): Promise<{ id: string; email: string } | null> {
+/** The person who approved the create_routine / create_skill approval (decided_by), for the audit entry. */
+async function approver(workspaceId: string, context: { approvalId?: string | null; employeeId?: string | null }, toolName = "create_routine"): Promise<{ id: string; email: string } | null> {
   const where = context.approvalId
     ? and(eq(approvals.id, context.approvalId), eq(approvals.workspaceId, workspaceId))
     : // executeApproval has claimed the row (EXECUTING) before it calls executeAction
-      and(eq(approvals.workspaceId, workspaceId), eq(approvals.toolName, "create_routine"), eq(approvals.status, "EXECUTING"), context.employeeId ? eq(approvals.employeeId, context.employeeId) : undefined);
+      and(eq(approvals.workspaceId, workspaceId), eq(approvals.toolName, toolName), eq(approvals.status, "EXECUTING"), context.employeeId ? eq(approvals.employeeId, context.employeeId) : undefined);
   const [a] = await db.select({ decidedBy: approvals.decidedBy }).from(approvals).where(where).orderBy(desc(approvals.decidedAt)).limit(1);
   if (!a?.decidedBy) return null;
   const [u] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, a.decidedBy));
@@ -270,6 +271,83 @@ async function doCreateRoutine(
   });
   const locale = await workspaceLocale(workspaceId);
   return { ok: true, summary: msg(locale, "routine.created", { name: r!.name, next: formatRunTime(next, r!.timezone) }), details: { routineId: r!.id, nextRunAt: next.toISOString() } };
+}
+
+// ---------------------------------------------------------------------------
+// Skills proposed by an employee (skill_propose → approval "create_skill" → saved here)
+// ---------------------------------------------------------------------------
+
+/** How many numbered slugs (<slug>-2, -3, ...) are tried when the proposed one is taken. */
+const SKILL_SLUG_ATTEMPTS = 50;
+
+/** `<base>-<n>` within the slug length cap (the base is shortened, never the suffix). */
+function numberedSlug(base: string, n: number): string {
+  if (n === 1) return base;
+  const suffix = `-${n}`;
+  return `${base.slice(0, SKILL_SLUG_MAX - suffix.length).replace(/-+$/, "")}${suffix}`;
+}
+
+/**
+ * Approved create_skill: re-validate the (possibly edited) payload, save it as a learned skill under a slug that is
+ * free in the workspace and not a built-in skill's name (<slug>-2, ... when taken or reserved) and assign it to the proposing employee (the approval's employee,
+ * never a payload field). `context.untrusted` is read from the run's ORIGINAL payload: a skill learned by a tainted
+ * run stays untrusted however the person edited it, so reading it later taints the reader's run.
+ */
+async function doCreateSkill(
+  workspaceId: string,
+  payload: Record<string, unknown>,
+  context: { approvalId?: string | null; employeeId?: string | null; untrusted?: boolean },
+): Promise<ActionResult> {
+  const parsed = skillProposalSchema.safeParse(payload);
+  if (!parsed.success) return { ok: false, summary: `Invalid skill: ${parsed.error.issues.map((i) => `${i.path.join(".") || "payload"}: ${i.message}`).join("; ")}` };
+  const p = parsed.data;
+  if (screenLeakage(`${p.description}\n${p.body}`).some((f) => f.severity === "high")) {
+    return { ok: false, summary: "The skill looks like it contains a secret or credential: remove it (Edit & Approve) before saving." };
+  }
+  if (!context.employeeId) return { ok: false, summary: "The skill has no proposing employee to assign it to." };
+  const [emp] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, context.employeeId), eq(employees.workspaceId, workspaceId)));
+  if (!emp) return { ok: false, summary: "The proposing employee no longer exists in this workspace." };
+  const who = await approver(workspaceId, context, "create_skill");
+  const untrusted = context.untrusted === true;
+
+  let saved: typeof skills.$inferSelect | undefined;
+  for (let n = 1; n <= SKILL_SLUG_ATTEMPTS && !saved; n++) {
+    const slug = numberedSlug(p.slug, n);
+    if (isReservedSkillSlug(slug)) continue; // a built-in's name (pdf, docx, ...): saved as <slug>-2
+    // insert-or-skip on the (workspace, slug) unique index: a slug taken meanwhile moves on to the next number
+    saved = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(skills)
+        .values({
+          workspaceId,
+          slug,
+          description: p.description,
+          body: p.body,
+          source: "learned",
+          enabled: true,
+          untrusted,
+          provenanceHash: skillProvenanceHash({ slug, description: p.description, body: p.body }),
+          createdBy: who?.id ?? null,
+        })
+        .onConflictDoNothing({ target: [skills.workspaceId, skills.slug] })
+        .returning();
+      if (!row) return undefined;
+      await tx.insert(employeeSkills).values({ employeeId: emp.id, skillId: row.id }).onConflictDoNothing();
+      return row;
+    });
+  }
+  if (!saved) return { ok: false, summary: `No free name for skill "${p.slug}" (tried ${SKILL_SLUG_ATTEMPTS}): rename it (Edit & Approve).` };
+  await audit({
+    workspaceId,
+    actorUserId: who?.id ?? null,
+    actorLabel: who?.email ?? "approval",
+    action: "skill.created",
+    targetType: "skill",
+    targetId: saved.id,
+    details: { slug: saved.slug, proposedSlug: p.slug, source: "learned", proposedBy: emp.id, assignedTo: emp.id, approvalId: context.approvalId ?? null, untrusted, provenanceHash: saved.provenanceHash },
+  });
+  const locale = await workspaceLocale(workspaceId);
+  return { ok: true, summary: msg(locale, "skill.created", { slug: saved.slug, employee: emp.name }), details: { skillId: saved.id, slug: saved.slug, untrusted } };
 }
 
 async function repoFor(workspaceId: string, repositoryId: unknown): Promise<(RepoRef & { name: string }) | null> {
@@ -361,6 +439,8 @@ export async function executeAction(
       return doPostWebhook(workspaceId, webhookPayloadSchema.parse(payload));
     case "create_routine":
       return doCreateRoutine(workspaceId, payload, context);
+    case "create_skill":
+      return doCreateSkill(workspaceId, payload, context);
     default: {
       if (toolName.startsWith("mcp__")) {
         const [, server, ...rest] = toolName.split("__");

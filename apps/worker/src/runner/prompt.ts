@@ -4,6 +4,7 @@ import { desc, eq, sql, and, gt, gte, isNull, ne, or } from "drizzle-orm";
 import { embedOne, toVectorLiteral } from "../lib/embeddings";
 import { log } from "../lib/logger";
 import { taintRun, type GuardCtx } from "../guards/content";
+import { skillsSection, type AssignedSkill } from "./skills";
 
 export interface PromptEmployee {
   id: string;
@@ -210,6 +211,8 @@ export function buildSystemPrompt(opts: {
   department?: { name: string; sop: string; subagents: string[] };
   /** chat mode in a team conversation: who else is in the room */
   teamChat?: { teamName: string; members: { name: string; role: string }[]; leadName: string | null };
+  /** the employee's assigned, enabled skills: listed one line each (skillsSection; untrusted ones by slug only), read with skill_read */
+  skills?: Pick<AssignedSkill, "slug" | "description" | "untrusted">[];
 }): string {
   const e = { ...opts.employee, ...Object.fromEntries(Object.entries(opts.overrides ?? {}).filter(([, v]) => v !== undefined)) } as PromptEmployee;
   const tools = BUILTIN_TOOLS.filter((t) => opts.grantedTools.includes(t.name))
@@ -228,6 +231,8 @@ export function buildSystemPrompt(opts: {
       "Irreversible actions (send, publish, pay, delete, merge, deploy) are enforced by the platform: you cannot bypass approval. " +
       "When a tool says an action was queued for approval or saved as a draft, report that honestly; never claim something was sent when it was not.",
     `## Your tools\n${tools || "(no tools granted)"}`,
+    // the read hint (and the untrusted entries) only while skill_read is granted
+    skillsSection(opts.skills ?? [], { canRead: opts.grantedTools.includes("skill_read") }),
     memorySection(opts.memories ?? []),
     `## Colleagues\n${opts.directory}`,
     "## Working rules\n" +

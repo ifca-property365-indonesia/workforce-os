@@ -1,0 +1,105 @@
+{
+  "name": "repeat_detector_stops_loop",
+  "description": "An allow-listed external call repeated with the same arguments: allowed twice, denied from the 3rd, the run is stopped on the 5th and the task fails with a loop incident",
+  "setup": {
+    "employees": [
+      {
+        "key": "sari",
+        "name": "Sari",
+        "role": "Account Manager",
+        "autonomyLevel": "CLOSE",
+        "toolPermissions": [
+          {
+            "tool": "mcp:crm",
+            "enabled": true
+          }
+        ],
+        "allowList": [
+          {
+            "tool": "mcp:crm:send_note"
+          }
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "key": "notes",
+        "assignee": "sari",
+        "title": "Leave a note for Acme"
+      }
+    ]
+  },
+  "scripts": {
+    "sari": [
+      {
+        "repeat": 6,
+        "step": {
+          "tool": "mcp__crm__send_note",
+          "input": {
+            "to": "acme",
+            "text": "hi"
+          }
+        }
+      },
+      {
+        "result": "never reached"
+      }
+    ]
+  },
+  "trigger": {
+    "kind": "task",
+    "task": "notes"
+  },
+  "expect": [
+    {
+      "scorer": "toolCall",
+      "tool": "mcp__crm__send_note",
+      "count": 5
+    },
+    {
+      "scorer": "toolCall",
+      "tool": "mcp__crm__send_note",
+      "permission": "allow",
+      "count": 2
+    },
+    {
+      "scorer": "toolCall",
+      "tool": "mcp__crm__send_note",
+      "permission": "deny",
+      "output": "already called mcp__crm__send_note 2 times in a row",
+      "min": 1
+    },
+    {
+      "scorer": "stepRecorded",
+      "name": "repeat_detected",
+      "status": "denied",
+      "count": 2
+    },
+    {
+      "scorer": "stepRecorded",
+      "name": "repeat_detected",
+      "status": "stopped",
+      "count": 1
+    },
+    {
+      "scorer": "stepRecorded",
+      "name": "run_loop",
+      "status": "error",
+      "count": 1
+    },
+    {
+      "scorer": "noApproval"
+    },
+    {
+      "scorer": "taskStatus",
+      "task": "notes",
+      "status": "FAILED"
+    },
+    {
+      "scorer": "incidentOpened",
+      "kind": "loop",
+      "status": "escalated",
+      "count": 1
+    }
+  ]
+}

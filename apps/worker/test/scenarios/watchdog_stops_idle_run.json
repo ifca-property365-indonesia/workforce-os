@@ -1,0 +1,19 @@
+{
+  "name": "watchdog_stops_idle_run",
+  "description": "A run that goes silent longer than the idle timeout is stopped as stalled: the task fails with a stalled incident",
+  "runtime": { "idleTimeoutMs": 60 },
+  "setup": {
+    "employees": [{ "key": "sari", "name": "Sari", "role": "Analyst" }],
+    "tasks": [{ "key": "report", "assignee": "sari", "title": "Monthly report" }]
+  },
+  "scripts": {
+    "sari": [{ "llm": { "input": 10, "output": 10 } }, { "wait": 5000 }, { "result": "never reached" }]
+  },
+  "trigger": { "kind": "task", "task": "report" },
+  "expect": [
+    { "scorer": "stepRecorded", "name": "run_stalled", "status": "error", "count": 1 },
+    { "scorer": "taskStatus", "task": "report", "status": "FAILED" },
+    { "scorer": "taskMatches", "task": "report", "fields": { "status": "FAILED" } },
+    { "scorer": "incidentOpened", "kind": "stalled", "status": "escalated", "count": 1 }
+  ]
+}

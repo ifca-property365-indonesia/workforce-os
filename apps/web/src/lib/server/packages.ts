@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import type { NextRequest } from "next/server";
-import { credentials, db, departments, employees, memories, routines, teamMembers, teams, workspaceDepartments, workspaces, type DB } from "@wfos/db";
+import { credentials, db, departments, employees, employeeSkills, memories, routines, skills, teamMembers, teams, workspaceDepartments, workspaces, type DB } from "@wfos/db";
 import {
   isTimeZone,
   mcpServerOfSelector,
@@ -13,20 +13,28 @@ import {
   PACKAGE_MAX_BYTES,
   PACKAGE_VERSION,
   renameMcpSelector,
+  isReservedSkillSlug,
+  SKILL_BODY_MAX,
+  SKILL_DESCRIPTION_MAX,
+  stripControlChars,
   toolPermissionSchema,
+  truncateUtf8,
   uniqueMcpName,
+  uniqueSkillSlug,
   type PackageDepartment,
   type PackageEmployee,
   type PackageMcpSlot,
   type PackageRoutine,
+  type PackageSkill,
   type PackageTeam,
   type WfosPackage,
 } from "@wfos/shared";
-import { exportRedact, redactUrl } from "@wfos/shared/server";
+import { exportRedact, redactUrl, screenLeakage } from "@wfos/shared/server";
 import { assertPublicUrl, type Resolver } from "@wfos/shared/netguard";
 import { HttpError } from "./auth";
 import { readBodyCapped } from "./body-cap";
 import { MCP_RESERVED_NAMES } from "./mcp";
+import { skillProvenanceHash } from "./skills";
 
 type Q = Pick<DB, "select">;
 
@@ -91,10 +99,10 @@ export interface PackageRedaction {
 }
 
 export interface ExportReport {
-  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; mcpSlots: string[] };
+  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; skills: string[]; mcpSlots: string[] };
   redactions: PackageRedaction[];
   leftOut: string[];
-  counts: { employees: number; teams: number; routines: number; departments: number; mcpSlots: number; memories: number; redactions: number };
+  counts: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number; redactions: number };
 }
 
 const MEMORIES_PER_EMPLOYEE = 200;
@@ -155,6 +163,29 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
     });
   }
 
+  // the (enabled) skills assigned to the exported employees: a switched-off skill is not part of how they work
+  const skillRows = empRows.length
+    ? await db
+        .select({ employeeId: employeeSkills.employeeId, slug: skills.slug, description: skills.description, body: skills.body })
+        .from(employeeSkills)
+        .innerJoin(skills, eq(skills.id, employeeSkills.skillId))
+        .where(and(eq(skills.workspaceId, workspaceId), eq(skills.enabled, true), inArray(employeeSkills.employeeId, empRows.map((e) => e.id))))
+        .orderBy(skills.slug)
+    : [];
+  const pkgSkills: PackageSkill[] = [];
+  const skillSlugsOf = new Map<string, string[]>();
+  for (const r of skillRows) {
+    if (!pkgSkills.some((s) => s.slug === r.slug)) {
+      pkgSkills.push({
+        slug: r.slug,
+        // control characters are refused on save; one stored before that must not make the export invalid
+        description: clean(`skill:${r.slug}.description`, stripControlChars(r.description), SKILL_DESCRIPTION_MAX) || "-",
+        body: truncateUtf8(clean(`skill:${r.slug}.body`, stripControlChars(r.body), SKILL_BODY_MAX), SKILL_BODY_MAX),
+      });
+    }
+    skillSlugsOf.set(r.employeeId, [...(skillSlugsOf.get(r.employeeId) ?? []), r.slug]);
+  }
+
   const mcpNames = new Set<string>();
   const pkgEmployees: PackageEmployee[] = empRows.map((e) => {
     const k = empKeys.get(e.id)!;
@@ -185,6 +216,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
       egressDomains: e.egressDomains,
       look: e.look ?? null,
       ...(input.includeMemories ? { seedMemories: seeds } : {}),
+      ...(skillSlugsOf.has(e.id) ? { skillSlugs: skillSlugsOf.get(e.id)! } : {}),
     };
   });
 
@@ -261,6 +293,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
     teams: pkgTeams,
     routines: pkgRoutines,
     ...(pkgDepartments ? { departments: pkgDepartments } : {}),
+    ...(pkgSkills.length ? { skills: pkgSkills } : {}),
     mcpSlots,
   };
   // what we hand out must be exactly what an import accepts
@@ -275,6 +308,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
       teams: pkg.teams.map((t) => t.name),
       routines: pkg.routines.map((r) => r.name),
       departments: (pkg.departments ?? []).map((d) => d.key),
+      skills: (pkg.skills ?? []).map((s) => s.slug),
       mcpSlots: pkg.mcpSlots.map((s) => s.name),
     },
     redactions,
@@ -284,6 +318,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
       teams: pkg.teams.length,
       routines: pkg.routines.length,
       departments: pkg.departments?.length ?? 0,
+      skills: pkg.skills?.length ?? 0,
       mcpSlots: pkg.mcpSlots.length,
       memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
       redactions: redactions.length,
@@ -298,7 +333,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
 
 export type ImportWarning = { code: string } & Record<string, string | number>;
 export interface ImportConflict {
-  kind: "employee" | "team" | "routine" | "department" | "mcpSlot";
+  kind: "employee" | "team" | "routine" | "department" | "mcpSlot" | "skill";
   name: string;
   /** the name it will be created under, when it differs */
   as?: string;
@@ -310,16 +345,18 @@ interface Existing {
   routineNames: Set<string>;
   departmentKeys: Set<string>;
   mcpNames: Set<string>;
+  skillSlugs: Set<string>;
 }
 
 async function loadExisting(q: Q, workspaceId: string): Promise<Existing> {
   const lower = (xs: { name: string }[]) => new Set(xs.map((x) => x.name.trim().toLowerCase()));
-  const [emps, ts, rs, ds, ms] = await Promise.all([
+  const [emps, ts, rs, ds, ms, ss] = await Promise.all([
     q.select({ name: employees.name, status: employees.status }).from(employees).where(eq(employees.workspaceId, workspaceId)),
     q.select({ name: teams.name }).from(teams).where(eq(teams.workspaceId, workspaceId)),
     q.select({ name: routines.name }).from(routines).where(eq(routines.workspaceId, workspaceId)),
     q.select({ key: departments.key }).from(departments).where(eq(departments.workspaceId, workspaceId)),
     q.select({ name: credentials.name }).from(credentials).where(and(eq(credentials.workspaceId, workspaceId), eq(credentials.kind, "mcp"))),
+    q.select({ slug: skills.slug }).from(skills).where(eq(skills.workspaceId, workspaceId)),
   ]);
   return {
     employeeNames: lower(emps.filter((e) => e.status !== "ARCHIVED")),
@@ -327,11 +364,14 @@ async function loadExisting(q: Q, workspaceId: string): Promise<Existing> {
     routineNames: lower(rs),
     departmentKeys: new Set(ds.map((d) => d.key)),
     mcpNames: new Set(ms.map((m) => m.name)),
+    skillSlugs: new Set(ss.map((s) => s.slug)),
   };
 }
 
 interface Plan {
   mcpRenames: Map<string, string>;
+  /** package skill slug → the slug it is created under (a clash gets -2, -3 …) */
+  skillRenames: Map<string, string>;
   newDepartments: PackageDepartment[];
   /** employee key → department key to store (null when it exists neither in the package nor the workspace) */
   departmentOf: Map<string, string | null>;
@@ -360,6 +400,21 @@ function plan(pkg: WfosPackage, ex: Existing): Plan {
       warnings.push({ code: "mcp_renamed", from: s.name, to: name });
     }
   }
+
+  const skillRenames = new Map<string, string>();
+  const takenSlugs = new Set(ex.skillSlugs);
+  for (const s of pkg.skills ?? []) {
+    const slug = uniqueSkillSlug(s.slug, takenSlugs);
+    takenSlugs.add(slug);
+    skillRenames.set(s.slug, slug);
+    if (slug !== s.slug) {
+      conflicts.push({ kind: "skill", name: s.slug, as: slug });
+      // pdf, docx, xlsx and pptx name Claude Code's own document skills: never shadowed
+      warnings.push({ code: !ex.skillSlugs.has(s.slug) && isReservedSkillSlug(s.slug) ? "skill_reserved_renamed" : "skill_renamed", from: s.slug, to: slug });
+    }
+  }
+  for (const f of skillLeaks(pkg)) warnings.push({ code: "skill_leak_findings", slug: f.slug, rules: f.rules.join(", ") });
+  if (pkg.skills?.length) warnings.push({ code: "skills_untrusted", count: pkg.skills.length });
 
   const newDepartments: PackageDepartment[] = [];
   for (const d of pkg.departments ?? []) {
@@ -391,7 +446,21 @@ function plan(pkg: WfosPackage, ex: Existing): Plan {
     }
   }
   for (const server of unknown) warnings.push({ code: "mcp_unknown", server });
-  return { mcpRenames, newDepartments, departmentOf, warnings, conflicts };
+  return { mcpRenames, skillRenames, newDepartments, departmentOf, warnings, conflicts };
+}
+
+/**
+ * What the leak screen finds in each package skill (description and body), as on a save in Settings: skills are read
+ * back into prompts. A high finding (a key, a password) refuses the import; the others are shown as warnings.
+ */
+export function skillLeaks(pkg: WfosPackage): { slug: string; rules: string[]; high: string[] }[] {
+  const out: { slug: string; rules: string[]; high: string[] }[] = [];
+  for (const s of pkg.skills ?? []) {
+    const findings = [...screenLeakage(s.description), ...screenLeakage(s.body)];
+    if (!findings.length) continue;
+    out.push({ slug: s.slug, rules: [...new Set(findings.map((f) => f.rule))], high: [...new Set(findings.filter((f) => f.severity === "high").map((f) => f.rule))] });
+  }
+  return out;
 }
 
 function cronError(r: PackageRoutine): string | null {
@@ -435,6 +504,8 @@ export interface ImportPreviewEmployee {
   instructions: string;
   businessContext: string;
   seedMemories: { kind: string; content: string }[];
+  /** the slugs its skills are created under */
+  skillSlugs: string[];
   toolPermissions: string[];
   egressDomains: string[];
   executionMode: string;
@@ -450,9 +521,19 @@ export interface ImportPreviewDepartment {
   subagents: { name: string; description: { en: string; id: string }; prompt: { en: string; id: string }; tools: string[] | null }[];
 }
 
+export interface ImportPreviewSkill {
+  slug: string;
+  /** the slug it is created under, when that differs (a skill with this slug exists here) */
+  as: string | null;
+  description: string;
+  body: string;
+}
+
 export interface ImportPreviewDetails {
   employees: ImportPreviewEmployee[];
   departments: ImportPreviewDepartment[];
+  /** every skill in full: imported skills are untrusted and read back into prompts */
+  skills: ImportPreviewSkill[];
   teams: { name: string; description: string }[];
   routines: { name: string; cron: string; timezone: string; brief: string }[];
   mcpSlots: { name: string; url: string }[];
@@ -480,12 +561,17 @@ function previewDetails(pkg: WfosPackage, p: Plan): ImportPreviewDetails {
       instructions: e.instructions,
       businessContext: e.businessContext,
       seedMemories: (e.seedMemories ?? []).map((m) => ({ kind: m.kind, content: m.content })),
+      skillSlugs: (e.skillSlugs ?? []).map((s) => p.skillRenames.get(s) ?? s),
       toolPermissions: e.toolPermissions,
       egressDomains: e.egressDomains,
       executionMode: e.executionMode,
       department: e.department ?? null,
     })),
     departments,
+    skills: (pkg.skills ?? []).map((s) => {
+      const as = p.skillRenames.get(s.slug) ?? s.slug;
+      return { slug: s.slug, as: as === s.slug ? null : as, description: s.description, body: s.body };
+    }),
     teams: pkg.teams.map((t) => ({ name: t.name, description: t.description })),
     routines: pkg.routines.map((r) => ({ name: r.name, cron: r.cron, timezone: r.timezone, brief: r.brief })),
     mcpSlots: pkg.mcpSlots.map((s) => ({ name: s.name, url: s.url })),
@@ -499,7 +585,7 @@ export interface ImportPreview {
   name: string;
   /** the full text of what would be imported (instructions, memories, SOPs, subagent prompts), for review */
   details: ImportPreviewDetails;
-  will: { employees: number; teams: number; routines: number; departments: number; mcpSlots: number; memories: number };
+  will: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number };
   warnings: ImportWarning[];
   conflicts: ImportConflict[];
   /** problems that make the commit fail */
@@ -515,6 +601,7 @@ export async function previewImport(workspaceId: string, pkg: WfosPackage, opts:
     if (err) errors.push({ code: "invalid_cron", name: r.name, detail: err });
   }
   errors.push(...(await mcpSlotUrlErrors(pkg, opts.resolver)));
+  for (const f of skillLeaks(pkg)) if (f.high.length) errors.push({ code: "skill_leak", slug: f.slug, rules: f.high.join(", ") });
   return {
     ok: errors.length === 0,
     name: pkg.meta.name,
@@ -524,6 +611,7 @@ export async function previewImport(workspaceId: string, pkg: WfosPackage, opts:
       teams: pkg.teams.length,
       routines: pkg.routines.length,
       departments: p.newDepartments.length,
+      skills: pkg.skills?.length ?? 0,
       mcpSlots: pkg.mcpSlots.length,
       memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
     },
@@ -538,6 +626,7 @@ export interface ImportResult {
   teams: { key: string; id: string; name: string }[];
   routines: { id: string; name: string }[];
   departments: string[];
+  skills: { id: string; slug: string; from: string }[];
   mcpSlots: { id: string; name: string; from: string }[];
   memories: number;
   warnings: ImportWarning[];
@@ -545,19 +634,25 @@ export interface ImportResult {
 
 /**
  * Create everything in one transaction, additive only: employees at DRAFT with every tool disabled and no
- * allow-list, routines disabled, MCP slots disabled without a secret, departments only where the key is new.
+ * allow-list, routines disabled, MCP slots disabled without a secret, departments only where the key is new, skills
+ * marked untrusted (source "import", a clashing slug renamed) and assigned to the imported employees.
  * Any failure (e.g. an invalid cron) rolls the whole import back.
  */
-export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: { resolver?: Resolver } = {}): Promise<ImportResult> {
+export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: { resolver?: Resolver; userId?: string } = {}): Promise<ImportResult> {
   // resolved again now (the preview may be minutes old): a slot that is not public is a validation error
   const [bad] = await mcpSlotUrlErrors(pkg, opts.resolver);
   if (bad) {
     throw new HttpError(400, `MCP server ${bad.name} in the package does not point to a public address`, { code: "package_mcp_url_not_public", name: bad.name, host: bad.host });
   }
+  // as POST /api/skills: a skill carrying a secret is not saved (the rule names, never the matched text)
+  const leak = skillLeaks(pkg).find((f) => f.high.length);
+  if (leak) {
+    throw new HttpError(400, `Skill ${leak.slug} in the package contains secrets`, { code: "package_skill_leak", slug: leak.slug, rules: leak.high.join(", "), ruleList: leak.high });
+  }
   await workspaceDepartments(workspaceId);
   return db.transaction(async (tx) => {
     const p = plan(pkg, await loadExisting(tx, workspaceId));
-    const out: ImportResult = { employees: [], teams: [], routines: [], departments: [], mcpSlots: [], memories: 0, warnings: p.warnings };
+    const out: ImportResult = { employees: [], teams: [], routines: [], departments: [], skills: [], mcpSlots: [], memories: 0, warnings: p.warnings };
 
     for (const s of pkg.mcpSlots) {
       const name = p.mcpRenames.get(s.name)!;
@@ -574,6 +669,35 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
         .onConflictDoNothing()
         .returning({ key: departments.key });
       out.departments = rows.map((r) => r.key);
+    }
+
+    // someone else's instructions: read back as data, and reading one taints the run. Enabled, so that the imported
+    // employees work as packaged; the admin read every body in the preview
+    const skillIds = new Map<string, string>();
+    const insertSkill = async (s: PackageSkill, slug: string) => {
+      const [row] = await tx
+        .insert(skills)
+        .values({ workspaceId, slug, description: s.description, body: s.body, source: "import", enabled: true, untrusted: true, provenanceHash: skillProvenanceHash(slug, s.description, s.body), createdBy: opts.userId ?? null })
+        .onConflictDoNothing({ target: [skills.workspaceId, skills.slug] })
+        .returning({ id: skills.id });
+      return row;
+    };
+    const planned = new Set(p.skillRenames.values());
+    for (const s of pkg.skills ?? []) {
+      let slug = p.skillRenames.get(s.slug)!;
+      let row = await insertSkill(s, slug);
+      if (!row) {
+        // someone saved a skill with this slug after the plan was made: allocate once more from what exists now
+        const now = await tx.select({ slug: skills.slug }).from(skills).where(eq(skills.workspaceId, workspaceId));
+        const next = uniqueSkillSlug(s.slug, new Set([...planned, ...now.map((r) => r.slug)]));
+        planned.add(next);
+        row = await insertSkill(s, next);
+        if (!row) throw new HttpError(409, "A skill with this name exists", { code: "skill_slug_taken", slug: next });
+        out.warnings.push({ code: "skill_renamed", from: s.slug, to: next });
+        slug = next;
+      }
+      skillIds.set(s.slug, row.id);
+      out.skills.push({ id: row.id, slug, from: s.slug });
     }
 
     const empIds = new Map<string, string>();
@@ -603,6 +727,8 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
         .returning({ id: employees.id });
       empIds.set(e.key, row!.id);
       out.employees.push({ key: e.key, id: row!.id, name: e.name });
+      const assigned = [...new Set((e.skillSlugs ?? []).map((slug) => skillIds.get(slug)!))];
+      if (assigned.length) await tx.insert(employeeSkills).values(assigned.map((skillId) => ({ employeeId: row!.id, skillId })));
       const seeds = e.seedMemories ?? [];
       if (seeds.length) {
         // embeddings are back-filled by the worker (backfillMemoryEmbeddings). Seed memories came from someone

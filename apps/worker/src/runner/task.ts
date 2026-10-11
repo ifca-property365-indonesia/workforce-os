@@ -22,6 +22,7 @@ import { applyRecoveries } from "./incidents";
 import { persistRunTaint, untrustedLineage } from "./taint";
 import { errorMessage } from "../lib/errors";
 import { scriptedTaskRun } from "../simulation/demo";
+import { loadAssignedSkills } from "./skills";
 
 type Task = typeof tasks.$inferSelect;
 
@@ -215,13 +216,17 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
       : {}),
   };
 
-  const [mem, directory, context, inbox, recent] = await Promise.all([
+  const [mem, directory, context, inbox, recent, assignedSkills] = await Promise.all([
     recallMemories(emp.id, `${task.title}\n${task.brief}`),
     workspaceDirectory(ws.id),
     taskContext(task),
     unreadMessagesFor(emp.id),
     recentWorkBrief(emp.id, { excludeTaskId: task.id }).catch((e: unknown) => (log.warn({ err: e, taskId }, "recent work brief failed"), "")),
+    loadAssignedSkills(emp.id, ws.id, ctx.employee.toolPermissions),
   ]);
+  // listed in the system prompt; skill_read is granted implicitly while there is one. Workspace mode: the runner
+  // writes the TRUSTED ones as SKILL.md files each run; untrusted skills are reachable only via skill_read (which taints)
+  ctx.skills = assignedSkills;
 
   // stored content written by a tainted run (or imported) is fenced as data in the prompt and taints this run
   await taintFromStoredInput(ctx, mem, inbox);
@@ -255,6 +260,7 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     workspace: ctx.workspace ? { egressDomains: ctx.workspace.egressDomains, hasRepository: !!task.repositoryId } : undefined,
     department: dept ? { name: dept.name[lang], sop: dept.sop[lang], subagents: agents ? Object.keys(agents) : [] } : undefined,
     outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
+    skills: assignedSkills,
   });
 
   let out;

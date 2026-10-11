@@ -28,6 +28,7 @@ import { getExternalMcpServers } from "../lib/settings";
 import { guardOutput, guardToolResult } from "../guards/content";
 import { redactSecrets } from "@wfos/shared/server";
 import { registerRun, unregisterRun } from "../guards/killswitch";
+import { loadSkillFiles } from "./skills";
 import { buildToolServer, createApproval, grantedToolNames, pushAutoAction, WFOS_SERVER, type RunContext } from "../tools/registry";
 
 export interface AgentRunInput {
@@ -123,7 +124,7 @@ export async function gateExternalTool(ctx: RunContext, toolName: string, input:
   }
   if (decision.kind === "deny") return { behavior: "deny", message: decision.reason };
   if (decision.kind === "approval") {
-    const id = await createApproval(ctx, toolName, `${tool} via ${server}`, decision.reason, input, []);
+    const id = await createApproval(ctx, toolName, `${tool} via ${server}`, decision.reason, input, [], decision.rule);
     return { behavior: "deny", message: `Queued for human approval (id ${id}); not executed yet. Do not retry this call.` };
   }
   await recordStep({
@@ -527,6 +528,8 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
       egressAllow: ctx.workspace.egressDomains,
       gitIdentity: { name: `${ctx.employee.name} (AI)`, email: `agent+${ctx.employee.id.slice(0, 8)}@workforce-os.local` },
       host,
+      // trusted skills only, bodies loaded now; none while skill_read is not granted (an explicit disable wins)
+      skills: allowed.has(`mcp__${WFOS_SERVER}__skill_read`) ? await loadSkillFiles(ctx.employee.id, ctx.workspaceId, ctx.skills ?? []) : [],
       onGatewayEvent: (e) => {
         if (e.kind === "egress_denied") {
           void recordStep({ workspaceId: ctx.workspaceId, taskId: ctx.taskId, employeeId: ctx.employee.id, kind: "guard", name: "egress_blocked", status: "blocked", output: e.detail });

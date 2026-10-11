@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { auditLog, credentials, db, departments, employees, members, memories, routines, teamMembers, teams, users, workspaceDepartments, workspaces } from "@wfos/db";
+import { auditLog, credentials, db, departments, employees, employeeSkills, members, memories, routines, skills, teamMembers, teams, users, workspaceDepartments, workspaces } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import { POST as exportPkg } from "@/app/api/packages/export/route";
 import { POST as preview } from "@/app/api/packages/import/preview/route";
 import { POST as commit } from "@/app/api/packages/import/commit/route";
 import { setSession } from "@/lib/server/auth";
 import { setStepUp } from "@/lib/server/twofactor";
-import { MAX_RAW_BODY, readPackage } from "@/lib/server/packages";
+import { commitImport, MAX_RAW_BODY, readPackage } from "@/lib/server/packages";
+import { parseWfosPackage } from "@wfos/shared";
+import { sql } from "drizzle-orm";
+import { skillProvenanceHash } from "@/lib/server/skills";
 import { NextRequest } from "next/server";
 import { call, resetBrowser } from "./browser";
 
@@ -390,5 +393,228 @@ describe("import safety", () => {
     expect(pulled).toBeLessThanOrEqual(Math.ceil(MAX_RAW_BODY / chunk.byteLength) + 2);
     const declared = new NextRequest("http://localhost:3010/api/packages/import/preview", { method: "POST", body: "{}", headers: { "content-length": String(MAX_RAW_BODY + 1) } });
     await expect(readPackage(declared)).rejects.toMatchObject({ status: 413 });
+  });
+});
+
+describe("skills in packages", () => {
+  async function seedSkills(wsId: string, employeeId: string) {
+    const mk = (slug: string, body: string, over: Partial<typeof skills.$inferInsert> = {}) => ({ workspaceId: wsId, slug, description: `About ${slug}`, body, provenanceHash: skillProvenanceHash(slug, `About ${slug}`, body), ...over });
+    const rows = await db
+      .insert(skills)
+      .values([
+        mk("weekly-report", `# Weekly report\nPost to https://hooks.example.com/x?token=abc123secretvalue and use ${ANT_KEY}.`),
+        mk("switched-off", "Off", { enabled: false }),
+        mk("unassigned", "Nobody has me"),
+      ])
+      .returning();
+    await db.insert(employeeSkills).values([
+      { employeeId, skillId: rows[0]!.id },
+      { employeeId, skillId: rows[1]!.id },
+    ]);
+    return rows;
+  }
+
+  it("exports the switched-on skills of the selected employees, redacted, with each employee's skill slugs", async () => {
+    const ws = await workspace();
+    const { dewi, budi } = await seedSales(ws.id);
+    await seedSkills(ws.id, dewi.id);
+    await signIn(ws.id);
+    const r = await call(exportPkg, "POST", "/api/packages/export", { employeeIds: [dewi.id, budi.id] });
+    expect(r.status).toBe(200);
+    const p = r.json.package as { skills?: { slug: string; description: string; body: string }[]; employees: { key: string; skillSlugs?: string[] }[] };
+    expect(p.skills?.map((s) => s.slug)).toEqual(["weekly-report"]);
+    expect(Object.keys(p.skills![0]!).sort()).toEqual(["body", "description", "slug"]);
+    expect(p.skills![0]!.body).not.toContain("sk-ant");
+    expect(p.skills![0]!.body).not.toContain("abc123secretvalue");
+    expect(p.employees.find((e) => e.key === "dewi")!.skillSlugs).toEqual(["weekly-report"]);
+    expect(p.employees.find((e) => e.key === "budi")!.skillSlugs).toBeUndefined();
+    const report = r.json.report as { included: { skills: string[] }; counts: { skills: number }; redactions: { where: string; rule: string }[] };
+    expect(report.included.skills).toEqual(["weekly-report"]);
+    expect(report.counts.skills).toBe(1);
+    expect(report.redactions).toEqual(expect.arrayContaining([{ where: "skill:weekly-report.body", rule: "anthropic-key" }]));
+    // nothing of an employee that is not exported
+    const onlyBudi = await call(exportPkg, "POST", "/api/packages/export", { employeeIds: [budi.id] });
+    expect((onlyBudi.json.package as { skills?: unknown }).skills).toBeUndefined();
+  });
+
+  it("round trip: imported skills are untrusted, renamed on a clash, assigned to the imported employees, previewed in full", async () => {
+    const a = await workspace();
+    const { dewi } = await seedSales(a.id);
+    await seedSkills(a.id, dewi.id);
+    await signIn(a.id);
+    const exp = await call(exportPkg, "POST", "/api/packages/export", { employeeIds: [dewi.id] });
+    const pkgJson = exp.json.package as { skills: { body: string }[] };
+
+    const b = await workspace();
+    // B already has a skill named weekly-report
+    await db.insert(skills).values({ workspaceId: b.id, slug: "weekly-report", description: "B's own", body: "B", provenanceHash: skillProvenanceHash("weekly-report", "B's own", "B") });
+    const u = await signIn(b.id, { stepUp: true });
+    const pv = await call(preview, "POST", "/api/packages/import/preview", pkgJson);
+    const p = pv.json.preview as {
+      will: { skills: number };
+      warnings: { code: string; from?: string; to?: string }[];
+      conflicts: { kind: string; name: string; as?: string }[];
+      details: { skills: { slug: string; as: string | null; body: string }[]; employees: { skillSlugs: string[] }[] };
+    };
+    expect(p.will.skills).toBe(1);
+    expect(p.details.skills).toEqual([{ slug: "weekly-report", as: "weekly-report-2", description: "About weekly-report", body: pkgJson.skills[0]!.body }]);
+    expect(p.details.employees[0]!.skillSlugs).toEqual(["weekly-report-2"]);
+    expect(p.conflicts).toEqual(expect.arrayContaining([{ kind: "skill", name: "weekly-report", as: "weekly-report-2" }]));
+    expect(p.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: "skills_untrusted", count: 1 }), expect.objectContaining({ code: "skill_renamed", from: "weekly-report", to: "weekly-report-2" })]));
+
+    const r = await call(commit, "POST", "/api/packages/import/commit", pkgJson);
+    expect(r.status).toBe(200);
+    const created = r.json.created as { skills: { id: string; slug: string; from: string }[]; employees: { id: string }[] };
+    expect(created.skills).toMatchObject([{ slug: "weekly-report-2", from: "weekly-report" }]);
+    const bSkills = await db.select().from(skills).where(eq(skills.workspaceId, b.id)).orderBy(skills.slug);
+    expect(bSkills.map((s) => s.slug)).toEqual(["weekly-report", "weekly-report-2"]);
+    expect(bSkills[0]).toMatchObject({ description: "B's own", untrusted: false });
+    const imported = bSkills[1]!;
+    expect(imported).toMatchObject({ source: "import", untrusted: true, enabled: true, createdBy: u.id, body: pkgJson.skills[0]!.body, provenanceHash: skillProvenanceHash("weekly-report-2", "About weekly-report", pkgJson.skills[0]!.body) });
+    const links = await db.select().from(employeeSkills).where(eq(employeeSkills.skillId, imported.id));
+    expect(links.map((l) => l.employeeId)).toEqual([created.employees[0]!.id]);
+    // A is untouched
+    expect((await db.select().from(skills).where(eq(skills.workspaceId, a.id))).map((s) => s.untrusted)).toEqual([false, false, false]);
+    const [audit] = await db.select().from(auditLog).where(and(eq(auditLog.workspaceId, b.id), eq(auditLog.action, "package.imported")));
+    expect(audit!.details).toMatchObject({ counts: { skills: 1 }, skills: [{ slug: "weekly-report-2", from: "weekly-report" }] });
+  });
+
+  it("a failed import leaves no skills behind", async () => {
+    const ws = await workspace();
+    await signIn(ws.id, { stepUp: true });
+    const bad = pkg({ skills: [{ slug: "alpha", description: "A", body: "x" }], routines: [{ name: "Broken", cron: "99 99 99 99 99", brief: "x", teamKey: "sales" }] });
+    (bad.employees as Record<string, unknown>[])[0]!.skillSlugs = ["alpha"];
+    const r = await call(commit, "POST", "/api/packages/import/commit", bad);
+    expect(r.status).toBe(400);
+    expect(await db.select().from(skills).where(eq(skills.workspaceId, ws.id))).toHaveLength(0);
+  });
+});
+
+describe("skills in packages: leak screen, reserved names, slug races", () => {
+  const withSkills = (list: { slug: string; description: string; body: string }[], assign: string[] = list.map((s) => s.slug)) => {
+    const p = pkg({ skills: list });
+    (p.employees as Record<string, unknown>[])[0]!.skillSlugs = assign;
+    return p;
+  };
+
+  it("previews leak findings per skill as warnings; a high finding is an error and the commit refuses it", async () => {
+    const ws = await workspace();
+    await signIn(ws.id, { stepUp: true });
+    const body = withSkills([
+      { slug: "kyc", description: "KYC checks", body: "Example NIK 3171234567890123" },
+      { slug: "crm", description: "CRM access", body: `Use ${ANT_KEY} and password: hunter2222` },
+      { slug: "clean", description: "Clean", body: "Nothing to see." },
+    ]);
+    const pv = await call(preview, "POST", "/api/packages/import/preview", body);
+    expect(pv.status).toBe(200);
+    const p = pv.json.preview as { ok: boolean; warnings: Record<string, string>[]; errors: Record<string, string>[] };
+    const leakWarnings = p.warnings.filter((w) => w.code === "skill_leak_findings");
+    expect(leakWarnings).toEqual([
+      { code: "skill_leak_findings", slug: "kyc", rules: "nik-indonesia" },
+      { code: "skill_leak_findings", slug: "crm", rules: expect.stringContaining("anthropic-key") },
+    ]);
+    expect(leakWarnings[1]!.rules).toContain("password-assignment");
+    expect(p.ok).toBe(false);
+    expect(p.errors).toEqual([{ code: "skill_leak", slug: "crm", rules: expect.stringContaining("anthropic-key") }]);
+
+    const r = await call(commit, "POST", "/api/packages/import/commit", body);
+    expect(r.status).toBe(400);
+    expect(r.json).toMatchObject({ code: "package_skill_leak", slug: "crm" });
+    expect(r.json.ruleList).toEqual(expect.arrayContaining(["anthropic-key", "password-assignment"]));
+    expect(String(r.json.error)).toContain("crm");
+    expect(JSON.stringify(r.json)).not.toContain(ANT_KEY);
+    expect(await db.select().from(skills).where(eq(skills.workspaceId, ws.id))).toHaveLength(0);
+    expect(await count(employees, ws.id)).toBe(0);
+
+    // medium findings only: imported, with the warning
+    const ok = await call(commit, "POST", "/api/packages/import/commit", withSkills([{ slug: "kyc", description: "KYC checks", body: "Example NIK 3171234567890123" }]));
+    expect(ok.status).toBe(200);
+    expect((ok.json.created as { warnings: { code: string }[] }).warnings).toEqual(expect.arrayContaining([expect.objectContaining({ code: "skill_leak_findings", slug: "kyc" })]));
+  });
+
+  it("an exported (redacted) skill passes the leak screen on import", async () => {
+    const a = await workspace();
+    const { dewi } = await seedSales(a.id);
+    const [s] = await db
+      .insert(skills)
+      .values({ workspaceId: a.id, slug: "crm", description: "CRM", body: `Key ${ANT_KEY}, password: hunter2222`, provenanceHash: "x" })
+      .returning();
+    await db.insert(employeeSkills).values({ employeeId: dewi.id, skillId: s!.id });
+    await signIn(a.id);
+    const exp = await call(exportPkg, "POST", "/api/packages/export", { employeeIds: [dewi.id] });
+    const b = await workspace();
+    await signIn(b.id, { stepUp: true });
+    const r = await call(commit, "POST", "/api/packages/import/commit", exp.json.package);
+    expect(r.status).toBe(200);
+    expect((r.json.created as { skills: { slug: string }[] }).skills.map((x) => x.slug)).toEqual(["crm"]);
+  });
+
+  it("renames the built-in skill names on import (pdf → pdf-2)", async () => {
+    const ws = await workspace();
+    await signIn(ws.id, { stepUp: true });
+    const body = withSkills([
+      { slug: "pdf", description: "Our PDF rules", body: "Steps." },
+      { slug: "docx", description: "Docs", body: "Steps." },
+    ]);
+    const pv = await call(preview, "POST", "/api/packages/import/preview", body);
+    const p = pv.json.preview as { warnings: Record<string, string>[]; conflicts: unknown[]; details: { skills: { slug: string; as: string | null }[]; employees: { skillSlugs: string[] }[] } };
+    expect(p.details.skills.map((s) => [s.slug, s.as])).toEqual([
+      ["pdf", "pdf-2"],
+      ["docx", "docx-2"],
+    ]);
+    expect(p.details.employees[0]!.skillSlugs).toEqual(["pdf-2", "docx-2"]);
+    expect(p.conflicts).toEqual(expect.arrayContaining([{ kind: "skill", name: "pdf", as: "pdf-2" }]));
+    expect(p.warnings).toEqual(expect.arrayContaining([{ code: "skill_reserved_renamed", from: "pdf", to: "pdf-2" }]));
+    const r = await call(commit, "POST", "/api/packages/import/commit", body);
+    expect(r.status).toBe(200);
+    expect((await db.select().from(skills).where(eq(skills.workspaceId, ws.id)).orderBy(skills.slug)).map((s) => s.slug)).toEqual(["docx-2", "pdf-2"]);
+  });
+
+  it("exports a stored skill with control characters without them", async () => {
+    const ws = await workspace();
+    const { dewi } = await seedSales(ws.id);
+    const [s] = await db.insert(skills).values({ workspaceId: ws.id, slug: "bell", description: "Ring\u0007", body: "Steps\u0001\u001b\tdone", provenanceHash: "x" }).returning();
+    await db.insert(employeeSkills).values({ employeeId: dewi.id, skillId: s!.id });
+    await signIn(ws.id);
+    const r = await call(exportPkg, "POST", "/api/packages/export", { employeeIds: [dewi.id] });
+    expect(r.status).toBe(200);
+    expect((r.json.package as { skills: unknown[] }).skills).toEqual([{ slug: "bell", description: "Ring", body: "Steps\tdone" }]);
+  });
+
+  it("a slug saved concurrently (after the plan) is allocated again inside the transaction, not a 500", async () => {
+    const ws = await workspace();
+    const parsed = parseWfosPackage(withSkills([{ slug: "alpha", description: "A", body: "Steps." }]));
+    if (!parsed.ok) throw new Error("bad test package");
+    const pk = { ...parsed.pkg, mcpSlots: [] };
+    // a second writer holds an uncommitted "alpha": the import does not see it when it plans, and its insert waits
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const holding = new Promise<void>((r) => (held = r));
+    const holder = db.transaction(async (tx) => {
+      await tx.insert(skills).values({ workspaceId: ws.id, slug: "alpha", description: "theirs", body: "x", provenanceHash: "x" });
+      held();
+      await gate;
+    });
+    await holding;
+    const importing = commitImport(ws.id, pk);
+    // wait until the import's insert is blocked on the other writer's row lock
+    for (let i = 0; i < 100; i++) {
+      const [w] = await db.execute<{ n: number }>(sql`select count(*)::int as n from pg_locks where not granted`);
+      if ((w as { n: number } | undefined)?.n) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    release();
+    await holder;
+    const out = await importing;
+    expect(out.skills).toMatchObject([{ slug: "alpha-2", from: "alpha" }]);
+    expect(out.warnings).toEqual(expect.arrayContaining([{ code: "skill_renamed", from: "alpha", to: "alpha-2" }]));
+    const rows = await db.select().from(skills).where(eq(skills.workspaceId, ws.id)).orderBy(skills.slug);
+    expect(rows.map((r) => [r.slug, r.source])).toEqual([
+      ["alpha", "user"],
+      ["alpha-2", "import"],
+    ]);
+    const links = await db.select().from(employeeSkills).where(eq(employeeSkills.skillId, rows[1]!.id));
+    expect(links).toHaveLength(1);
   });
 });

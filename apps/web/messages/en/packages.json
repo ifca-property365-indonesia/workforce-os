@@ -11,13 +11,14 @@
     "checking": "Checking what goes into the package…",
     "nothing": "There is nothing to export yet.",
     "included": "Included",
-    "counts": "{employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# team} other {# teams}}, {routines, plural, one {# routine} other {# routines}}, {departments, plural, one {# department} other {# departments}}, {mcpSlots, plural, one {# MCP slot} other {# MCP slots}}, {memories, plural, one {# memory} other {# memories}}",
+    "counts": "{employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# team} other {# teams}}, {routines, plural, one {# routine} other {# routines}}, {departments, plural, one {# department} other {# departments}}, {skills, plural, one {# skill} other {# skills}}, {mcpSlots, plural, one {# MCP slot} other {# MCP slots}}, {memories, plural, one {# memory} other {# memories}}",
     "groups": {
       "employees": "Employees",
       "teams": "Teams",
       "routines": "Routines",
       "departments": "Departments",
-      "mcpSlots": "MCP slots (URL only)"
+      "mcpSlots": "MCP slots (URL only)",
+      "skills": "Skills (switched-on skills of these employees)"
     },
     "redactions": "Redacted ({count})",
     "noRedactions": "Nothing looked like a secret or personal data.",
@@ -37,7 +38,7 @@
     "notJson": "That is not valid JSON.",
     "tooLarge": "The package is larger than 2 MB.",
     "will": "Will create",
-    "willCounts": "{employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# team} other {# teams}}, {routines, plural, one {# routine} other {# routines}}, {departments, plural, one {# new department} other {# new departments}}, {mcpSlots, plural, one {# MCP slot} other {# MCP slots}}, {memories, plural, one {# memory} other {# memories}}",
+    "willCounts": "{employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# team} other {# teams}}, {routines, plural, one {# routine} other {# routines}}, {departments, plural, one {# new department} other {# new departments}}, {skills, plural, one {# skill} other {# skills}}, {mcpSlots, plural, one {# MCP slot} other {# MCP slots}}, {memories, plural, one {# memory} other {# memories}}",
     "errors": "Fix these first",
     "warnings": "Good to know",
     "conflicts": "Name clashes",
@@ -62,7 +63,13 @@
     "none": "None",
     "back": "Choose another package",
     "confirm": "Import",
-    "done": "Imported {employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# team} other {# teams}} and {routines, plural, one {# routine} other {# routines}}."
+    "done": "Imported {employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# team} other {# teams}} and {routines, plural, one {# routine} other {# routines}}.",
+    "skills": "Skills",
+    "skill": "Skill {slug}",
+    "skillAs": "added as {slug}",
+    "skillDescription": "Description",
+    "skillBody": "Instructions",
+    "employeeSkills": "Skills"
   },
   "warnings": {
     "employees_draft": "{count, plural, one {The employee starts} other {All # employees start}} at Draft autonomy.",
@@ -73,11 +80,16 @@
     "mcp_renamed": "MCP server {from} already exists here, so it is added as {to} and the permissions point to {to}.",
     "mcp_unknown": "Some permissions use MCP server {server}, which neither this workspace nor the package has.",
     "department_exists": "Department {key} already exists here and is kept as it is.",
-    "department_missing": "{name} belongs to department {key}, which does not exist here. The department is left empty."
+    "department_missing": "{name} belongs to department {key}, which does not exist here. The department is left empty.",
+    "skills_untrusted": "{count, plural, one {# skill is} other {# skills are}} imported as untrusted: employees read them as data, not as your instructions. Read each one below.",
+    "skill_renamed": "A skill named {from} already exists here, so it is added as {to}.",
+    "skill_reserved_renamed": "{from} is the name of a built-in skill, so it is added as {to}.",
+    "skill_leak_findings": "Skill {slug} may contain secrets or personal data ({rules}). Read it below before importing."
   },
   "issues": {
     "invalid_cron": "Routine {name}: the schedule is not valid ({detail}).",
-    "mcp_url_not_public": "MCP server {name} points to {host}, which is private, local or does not resolve. Remove it from the package or fix its URL."
+    "mcp_url_not_public": "MCP server {name} points to {host}, which is private, local or does not resolve. Remove it from the package or fix its URL.",
+    "skill_leak": "Skill {slug} contains what looks like a secret ({rules}). Remove it from the package: a skill with a secret is not imported."
   },
   "conflicts": {
     "employee": "Employee",
@@ -85,7 +97,8 @@
     "routine": "Routine",
     "department": "Department",
     "mcpSlot": "MCP server",
-    "renamed": "{name} (added as {as})"
+    "renamed": "{name} (added as {as})",
+    "skill": "Skill"
   },
   "rules": {
     "anthropic-key": "Anthropic API key",

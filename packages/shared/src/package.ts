@@ -7,13 +7,16 @@ import {
   EXECUTION_MODES,
   officeLookSchema,
   OUTPUT_LANGUAGES,
+  SKILL_BODY_MAX,
+  SKILL_DESCRIPTION_MAX,
+  SKILL_SLUG_RE,
   TEAM_RESPONDER_MODES,
   toolPermissionSchema,
 } from "./index";
 
 // ---------------------------------------------------------------------------
 // Team / employee packages (wfos.package v1): a portable, secret-free description of employees, teams,
-// routines, departments and MCP server slots. Never contains allow-lists, credentials, chats, tasks or DB ids.
+// routines, departments, skills (SKILL.md) and MCP server slots. Never contains allow-lists, credentials, chats, tasks or DB ids.
 // ---------------------------------------------------------------------------
 
 export const PACKAGE_FORMAT = "wfos.package";
@@ -27,6 +30,31 @@ export const PACKAGE_KEY_RE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** Same rule as the MCP settings route: [a-z0-9-] parts joined by single "_", 2–32 chars. */
 export const MCP_SLOT_NAME_RE = /^(?=.{2,32}$)[a-z0-9-]+(?:_[a-z0-9-]+)*$/;
 const DEPARTMENT_KEY_RE = /^[a-z0-9_-]{1,40}$/;
+/** Longest skill slug (the SKILL.md `name`). */
+export const SKILL_SLUG_MAX = 64;
+/** Most skills one package carries / one employee lists. */
+export const PACKAGE_SKILLS_MAX = 200;
+/**
+ * Skill slugs that name a skill Claude Code ships with (document skills). A workspace skill must not shadow one:
+ * POST /api/skills refuses them and an import renames them (pdf → pdf-2), as the worker installs trusted skills as
+ * ~/.claude/skills/wfos-<slug>/.
+ */
+export const SKILL_RESERVED_SLUGS: readonly string[] = ["pdf", "docx", "xlsx", "pptx"];
+export const isReservedSkillSlug = (slug: string): boolean => SKILL_RESERVED_SLUGS.includes(slug);
+
+/** C0 control characters other than tab, line feed and carriage return (NUL, ESC, …): never in a skill. */
+const isForbiddenControl = (code: number): boolean => code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
+export function hasControlChars(text: string): boolean {
+  for (let i = 0; i < text.length; i++) if (isForbiddenControl(text.charCodeAt(i))) return true;
+  return false;
+}
+/** `text` without those control characters (an export never fails on a stored skill that has one). */
+export function stripControlChars(text: string): string {
+  if (!hasControlChars(text)) return text;
+  let out = "";
+  for (let i = 0; i < text.length; i++) if (!isForbiddenControl(text.charCodeAt(i))) out += text[i];
+  return out;
+}
 
 /** What an export never contains (shown in the export report; translated as packages.leftOut.<key>). */
 export const PACKAGE_LEFT_OUT = [
@@ -50,6 +78,25 @@ export type PackageFailure = "not_a_package" | "newer_version" | "too_large" | "
 
 const NEWER_VERSION_MESSAGE = "This package was made by a newer version of Workforce OS. Update this installation to import it.";
 
+/** UTF-8 length of a string in bytes (skill bodies are limited in bytes, not characters). */
+export function utf8Bytes(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/** The longest prefix of `text` that fits in `maxBytes` UTF-8 bytes (never splits a character). */
+export function truncateUtf8(text: string, maxBytes: number): string {
+  if (utf8Bytes(text) <= maxBytes) return text;
+  let out = "";
+  let n = 0;
+  for (const ch of text) {
+    const b = utf8Bytes(ch);
+    if (n + b > maxBytes) break;
+    out += ch;
+    n += b;
+  }
+  return out;
+}
+
 export function packageByteSize(value: unknown): number {
   try {
     return new TextEncoder().encode(JSON.stringify(value) ?? "").length;
@@ -59,6 +106,7 @@ export function packageByteSize(value: unknown): number {
 }
 
 const key = () => z.string().regex(PACKAGE_KEY_RE, "a lowercase key like sales-lead");
+const skillSlug = () => z.string().max(SKILL_SLUG_MAX).regex(SKILL_SLUG_RE, "a kebab-case skill name like weekly-report");
 const bilingual = () => z.object({ en: z.string().max(20000), id: z.string().max(20000) });
 
 function buildSchema() {
@@ -84,6 +132,23 @@ function buildSchema() {
       .array(z.object({ kind: z.enum(["fact", "feedback", "preference"]).default("fact"), content: z.string().min(1).max(4000) }))
       .max(500)
       .optional(),
+    /** slugs of the package's skills this employee is assigned */
+    skillSlugs: z.array(skillSlug()).max(PACKAGE_SKILLS_MAX).optional(),
+  });
+  /** a SKILL.md without scripts or resources: its name, description and markdown body */
+  const skill = z.object({
+    slug: skillSlug(),
+    description: z
+      .string()
+      .min(1)
+      .max(SKILL_DESCRIPTION_MAX)
+      .refine((d) => !hasControlChars(d), { message: "control characters are not allowed in a skill" }),
+    /** SKILL_BODY_MAX is a UTF-8 byte limit (as the worker enforces it) */
+    body: z
+      .string()
+      .max(SKILL_BODY_MAX)
+      .refine((b) => utf8Bytes(b) <= SKILL_BODY_MAX, { message: "the skill body is larger than SKILL_BODY_MAX bytes" })
+      .refine((b) => !hasControlChars(b), { message: "control characters are not allowed in a skill" }),
   });
   const team = z.object({
     key: key(),
@@ -131,6 +196,7 @@ function buildSchema() {
       teams: z.array(team).max(100).default([]),
       routines: z.array(routine).max(200).default([]),
       departments: z.array(department).max(50).optional(),
+      skills: z.array(skill).max(PACKAGE_SKILLS_MAX).optional(),
       mcpSlots: z.array(mcpSlot).max(50).default([]),
     })
     .superRefine((p, ctx) => {
@@ -145,6 +211,13 @@ function buildSchema() {
       dupes(p.teams.map((t, i) => ({ k: t.key, i })), "teams", "key");
       dupes((p.departments ?? []).map((d, i) => ({ k: d.key, i })), "departments", "key");
       dupes(p.mcpSlots.map((s, i) => ({ k: s.name, i })), "mcpSlots", "name");
+      dupes((p.skills ?? []).map((s, i) => ({ k: s.slug, i })), "skills", "slug");
+      const skills = new Set((p.skills ?? []).map((s) => s.slug));
+      p.employees.forEach((e, i) => {
+        e.skillSlugs?.forEach((s, j) => {
+          if (!skills.has(s)) ctx.addIssue({ code: "custom", path: ["employees", i, "skillSlugs", j], message: `unknown skill "${s}"` });
+        });
+      });
       const emps = new Set(p.employees.map((e) => e.key));
       const teams = new Set(p.teams.map((t) => t.key));
       p.teams.forEach((t, i) => {
@@ -191,6 +264,7 @@ export type PackageTeam = WfosPackage["teams"][number];
 export type PackageRoutine = WfosPackage["routines"][number];
 export type PackageDepartment = NonNullable<WfosPackage["departments"]>[number];
 export type PackageMcpSlot = WfosPackage["mcpSlots"][number];
+export type PackageSkill = NonNullable<WfosPackage["skills"]>[number];
 
 export type PackageParseResult =
   | { ok: true; pkg: WfosPackage }
@@ -232,6 +306,21 @@ export function uniqueMcpName(base: string, taken: Set<string>): string {
     const head = base.slice(0, 32 - suffix.length).replace(/_+$/, "");
     const name = `${head}${suffix}`;
     if (!taken.has(name) && MCP_SLOT_NAME_RE.test(name)) return name;
+  }
+}
+
+/**
+ * A skill slug not in `taken` and not reserved (SKILL_RESERVED_SLUGS): weekly-report, weekly-report-2 …, pdf → pdf-2
+ * (always a valid slug of at most SKILL_SLUG_MAX chars).
+ */
+export function uniqueSkillSlug(base: string, taken: Set<string>): string {
+  const free = (slug: string) => !taken.has(slug) && !isReservedSkillSlug(slug);
+  if (free(base)) return base;
+  for (let i = 2; ; i++) {
+    const suffix = `-${i}`;
+    const head = base.slice(0, SKILL_SLUG_MAX - suffix.length).replace(/-+$/, "");
+    const slug = `${head}${suffix}`;
+    if (free(slug)) return slug;
   }
 }
 

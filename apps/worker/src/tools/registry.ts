@@ -16,6 +16,7 @@ import {
   employees,
   memories,
   projects,
+  skills,
   tasks,
   teamMembers,
   teams,
@@ -32,19 +33,23 @@ import {
   invoicePayloadSchema,
   invoiceTotal,
   ROUTINE_OVERLAP_MODES,
+  SKILL_BODY_MAX,
+  SKILL_DESCRIPTION_MAX,
+  SKILL_INDEX_MAX,
   webhookPayloadSchema,
   type AllowListEntry,
   type AutonomyLevel,
   type AutoActionChip,
   type GateDecision,
+  type GateRule,
   type ToolPermission,
 } from "@wfos/shared";
-import { withRetry } from "@wfos/shared/server";
+import { screenLeakage, withRetry } from "@wfos/shared/server";
 import { safeFetch, SsrfBlockedError, type SafeFetchResult } from "@wfos/shared/netguard";
 import { embedOne, toVectorLiteral } from "../lib/embeddings";
 import { recordStep } from "../lib/steps";
 import { publish, miscQueue } from "../lib/redis";
-import { guardOutput, guardToolResult, type GuardCtx } from "../guards/content";
+import { guardOutput, guardToolResult, taintRun, type GuardCtx } from "../guards/content";
 import { cronNextRuns, executeAction, formatRunTime, isTimeZone, routineProposalSchema, routineTargetError } from "./actions";
 import { recordMemoryEvent } from "../lib/memory-journal";
 import { recallableMemory } from "../runner/prompt";
@@ -53,8 +58,11 @@ import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
 import { recoveryRefusal, type RecoveryRequest } from "../runner/incidents";
+import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadText, SKILL_SLUG_MAX, type AssignedSkill } from "../runner/skills";
 
 export const WFOS_SERVER = "wfos";
+/** skill_propose: proposals accepted per run (each is a human approval) */
+export const SKILL_PROPOSALS_PER_RUN = 3;
 
 /** memory_save expiresAt: at most this far ahead. */
 export const MEMORY_MAX_EXPIRY_MS = 2 * 366 * 86_400_000;
@@ -107,6 +115,14 @@ export interface RunContext {
     /** repository checked out in the workspace (git_push / create_pull_request) */
     repository?: RepoRef & { name: string };
   };
+  /**
+   * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the
+   * system prompt (untrusted ones by slug only); in Workspace mode the trusted ones are synced as SKILL.md files by
+   * the runner. While there is at least one, skill_read is granted implicitly.
+   */
+  skills?: AssignedSkill[];
+  /** skill_propose calls accepted in this run (at most SKILL_PROPOSALS_PER_RUN) */
+  skillProposals?: number;
 }
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
@@ -126,6 +142,8 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
     }
   }
   if (ctx.team && !perms.some((p) => p.tool === "message_teammate")) perms.push({ tool: "message_teammate", enabled: true });
+  // an employee with assigned skills can always read them (an explicit grant entry, even a disabled one, wins)
+  if (ctx.skills?.length && !perms.some((p) => p.tool === "skill_read")) perms.push({ tool: "skill_read", enabled: true });
   return perms;
 }
 
@@ -272,6 +290,8 @@ export async function createApproval(
   reason: string,
   payload: Record<string, unknown>,
   guardFindings: unknown[],
+  /** the gate rule that asked for this approval (recorded on the approval_requested step) */
+  rule?: GateRule,
 ): Promise<string> {
   const messageId = ctx.conversationId ? (ctx.messageId ?? null) : null;
   // A reply whose message was edited or regenerated away while it was still running must not leave an actionable
@@ -307,7 +327,7 @@ export async function createApproval(
     kind: "approval",
     name: `approval_requested:${toolName}`,
     status: "pending",
-    input: { approvalId: a!.id, reason },
+    input: { approvalId: a!.id, reason, ...(rule ? { rule } : {}) },
     output: payload,
   });
   await publish(ctx.workspaceId, { type: "approval.created", approvalId: a!.id, taskId: ctx.taskId, conversationId: ctx.conversationId, title });
@@ -377,7 +397,7 @@ async function irreversible(
       return ok(`${decision.reason} Draft saved as deliverable "${meta.title}". Tell the user it was drafted, not sent.`);
     }
     case "approval": {
-      const id = await createApproval(ctx, toolName, meta.title, decision.reason, payload, findings);
+      const id = await createApproval(ctx, toolName, meta.title, decision.reason, payload, findings, decision.rule);
       return ok(
         `Queued for human approval (approval id ${id}). The action has NOT been executed yet. ` +
           `Do not call ${toolName} again for this same action. Continue with any other work, then finish with a short summary that mentions the pending approval.`,
@@ -578,6 +598,74 @@ export function buildTools(ctx: RunContext) {
         return ok(
           `Routine "${p.name}" proposed for approval (approval id ${id}); it has NOT been created yet. ` +
             `Next runs once approved: ${nextRuns.map((d) => formatRunTime(d, p.timezone)).join(", ")}. Do not propose it again; mention the pending approval in your summary.`,
+        );
+      }),
+    ),
+  );
+
+  // one untrusted_skill guard step per run, however many untrusted skills it reads
+  let skillTaintRecorded = false;
+  add(
+    "skill_read",
+    tool(
+      "skill_read",
+      "Read one of your assigned skills by slug (listed under Skills in your instructions): returns its full instructions. Read a skill before you follow it.",
+      { slug: z.string().min(1).max(SKILL_SLUG_MAX) },
+      wrap(ctx, "skill_read", async (a: { slug: string }) => {
+        const slug = a.slug.trim();
+        // live lookup: only a skill of this workspace, assigned to this employee and still enabled
+        const s = await findAssignedSkill(ctx.employee.id, ctx.workspaceId, slug);
+        if (!s) {
+          const all = (ctx.skills ?? []).map((x) => x.slug);
+          const mine = all.length > SKILL_INDEX_MAX ? `${all.slice(0, SKILL_INDEX_MAX).join(", ")}, ...` : all.join(", ");
+          return err(`No enabled skill "${slug.slice(0, SKILL_SLUG_MAX)}" is assigned to you.${all.length ? ` Your skills: ${mine}.` : ""}`);
+        }
+        if (s.untrusted) {
+          if (!skillTaintRecorded) {
+            skillTaintRecorded = true;
+            await taintRun(ctx.guard, "untrusted_skill", "Read a skill learned while handling untrusted content (or imported): every irreversible action in this run needs human approval.", { skill: s.slug, skillId: s.id });
+          } else {
+            ctx.guard.tainted = true;
+          }
+        }
+        return ok(skillReadText(s));
+      }),
+    ),
+  );
+
+  add(
+    "skill_propose",
+    tool(
+      "skill_propose",
+      "Propose a reusable skill (SKILL.md) from what you learned: slug (kebab-case, e.g. weekly-client-report), a one-line description of when to use it, " +
+        "and the markdown body with the steps. Nothing is saved until a human approves it; once approved it is assigned to you. Never include secrets or credentials.",
+      { slug: z.string().min(1).max(SKILL_SLUG_MAX), description: z.string().min(1).max(SKILL_DESCRIPTION_MAX), body: z.string().min(1).max(SKILL_BODY_MAX) },
+      wrap(ctx, "skill_propose", async (a: { slug: string; description: string; body: string }) => {
+        const input = skillProposalSchema.safeParse(a);
+        if (!input.success) return err(`Invalid skill: ${input.error.issues.map((i) => `${i.path.join(".") || "payload"}: ${i.message}`).join("; ")}`);
+        const p = input.data;
+        if (isReservedSkillSlug(p.slug)) return err(`Refused: "${p.slug}" is the name of a built-in skill. Choose another slug (e.g. ${p.slug}-steps) and propose the skill again.`);
+        if ((ctx.skillProposals ?? 0) >= SKILL_PROPOSALS_PER_RUN) {
+          return err(`Refused: at most ${SKILL_PROPOSALS_PER_RUN} skills can be proposed per run, and this run already proposed ${SKILL_PROPOSALS_PER_RUN}. Do not propose more; mention the pending proposals in your summary.`);
+        }
+        const findings = screenLeakage(`${p.description}\n${p.body}`);
+        if (findings.some((f) => f.severity === "high")) return err("Refused: the skill looks like it contains a secret or credential. Remove it and propose the skill again.");
+        ctx.skillProposals = (ctx.skillProposals ?? 0) + 1;
+        if (ctx.dryRun || ctx.sandboxed) return ok(`DRY RUN: skill "${p.slug}" was NOT proposed.`);
+        const [taken] = await db.select({ id: skills.id }).from(skills).where(and(eq(skills.workspaceId, ctx.workspaceId), eq(skills.slug, p.slug))).limit(1);
+        const locale = await workspaceLocale(ctx.workspaceId);
+        const id = await createApproval(
+          ctx,
+          "create_skill",
+          msg(locale, "skill.proposalTitle", { slug: p.slug }),
+          msg(locale, "skill.proposalReason", { employee: ctx.employee.name }),
+          { slug: p.slug, description: p.description, body: p.body, employeeName: ctx.employee.name, untrustedInput: ctx.guard.tainted },
+          findings,
+        );
+        return ok(
+          `Skill "${p.slug}" proposed for approval (approval id ${id}); it has NOT been saved yet.` +
+            (taken ? ` A skill named "${p.slug}" already exists in this workspace, so it will be saved under a numbered name (${p.slug}-2, ...).` : "") +
+            " Do not propose it again; mention the pending approval in your summary.",
         );
       }),
     ),

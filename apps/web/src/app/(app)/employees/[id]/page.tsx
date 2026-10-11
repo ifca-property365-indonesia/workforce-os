@@ -20,6 +20,7 @@ import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { LookEditor } from "@/components/employees/look-editor";
 import { MemoryPanel } from "@/components/employees/memory-panel";
+import { EmployeeSkillsCard } from "@/components/employees/skills-card";
 import { ActivityTab } from "@/components/employees/activity-tab";
 import { ExportButton } from "@/components/packages/export-dialog";
 import { DiffView } from "@/components/inspector/task-detail";
@@ -266,6 +267,7 @@ function ToolsTab({ e }: { e: Employee }) {
         {t("toolsTab.save")}
       </Button>
       <AllowListEditor e={e} canEdit={me?.role === "OWNER"} />
+      <EmployeeSkillsCard employeeId={e.id} admin={!!me && hasRole(me.role, "ADMIN")} />
     </div>
   );
 }

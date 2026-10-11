@@ -11,7 +11,8 @@
     "repositories": "Repositori",
     "departments": "Departemen",
     "webhooks": "Webhook",
-    "apiTokens": "Akses API"
+    "apiTokens": "Akses API",
+    "skills": "Skill"
   },
   "workspace": {
     "title": "Workspace",

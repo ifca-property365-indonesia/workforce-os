@@ -7,7 +7,7 @@ import { commitImport, readPackage } from "@/lib/server/packages";
 export const POST = route("ADMIN", async ({ session, req }) => {
   await requireStepUp(session);
   const pkg = await readPackage(req);
-  const created = await commitImport(session.workspaceId, pkg);
+  const created = await commitImport(session.workspaceId, pkg, { userId: session.userId });
   await audit({
     workspaceId: session.workspaceId,
     actorUserId: session.userId,
@@ -22,10 +22,12 @@ export const POST = route("ADMIN", async ({ session, req }) => {
         teams: created.teams.length,
         routines: created.routines.length,
         departments: created.departments.length,
+        skills: created.skills.length,
         mcpSlots: created.mcpSlots.length,
         memories: created.memories,
       },
       mcpSlots: created.mcpSlots.map((s) => ({ name: s.name, from: s.from })),
+      skills: created.skills.map((s) => ({ slug: s.slug, from: s.from })),
       employeeIds: created.employees.map((e) => e.id),
     },
   });

@@ -94,5 +94,15 @@
       "skip": "skip the next run",
       "queue": "queue another run"
     }
+  },
+  "skill": {
+    "proposed": "New skill {slug}",
+    "description": "Description",
+    "body": "Instructions",
+    "showBody": "Show the instructions ({count, plural, one {# character} other {# characters}})",
+    "untrusted": "Proposed by a run that read outside content (a web page, an e-mail, a file). Read the instructions carefully: if approved, the skill is saved as untrusted and read back as data.",
+    "savedAs": "Approving saves it in Settings → Skills, where you can switch it off, edit or delete it.",
+    "target": "For {name}",
+    "slug": "Name"
   }
 }

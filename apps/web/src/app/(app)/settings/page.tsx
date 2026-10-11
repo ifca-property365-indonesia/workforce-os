@@ -4,6 +4,7 @@ import { RepositoriesSettings } from "@/components/settings/repositories";
 import { DepartmentsSettings } from "@/components/settings/departments";
 import { WebhooksSettings } from "@/components/settings/webhooks";
 import { ApiTokensSettings } from "@/components/settings/api-tokens";
+import { SkillsSettings } from "@/components/settings/skills";
 import { mcpToolsQueryKey, type McpTool } from "@/components/employees/tool-permissions";
 
 import { useEffect, useState } from "react";
@@ -870,6 +871,7 @@ export default function SettingsPage() {
           {admin && <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>}
           {admin && <TabsTrigger value="repositories">{t("tabs.repositories")}</TabsTrigger>}
           <TabsTrigger value="departments">{t("tabs.departments")}</TabsTrigger>
+          <TabsTrigger value="skills">{t("tabs.skills")}</TabsTrigger>
           <TabsTrigger value="pricing">{t("tabs.pricing")}</TabsTrigger>
           <TabsTrigger value="members">{t("tabs.members")}</TabsTrigger>
           {admin && <TabsTrigger value="webhooks">{t("tabs.webhooks")}</TabsTrigger>}
@@ -890,6 +892,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="departments" className="mt-4">
           <DepartmentsSettings admin={admin} />
+        </TabsContent>
+        <TabsContent value="skills" className="mt-4">
+          <SkillsSettings admin={admin} />
         </TabsContent>
         <TabsContent value="repositories" className="mt-4">
           <RepositoriesSettings owner={owner} />

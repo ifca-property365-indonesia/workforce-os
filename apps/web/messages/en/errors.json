@@ -106,5 +106,18 @@
   "memory_event_not_found": "This history entry no longer exists.",
   "memory_event_already_undone": "This change was already undone.",
   "memory_event_not_undoable": "This change cannot be undone.",
-  "memory_changed_since": "The memory changed after this entry. Undoing it now would also throw away the later change."
+  "memory_changed_since": "The memory changed after this entry. Undoing it now would also throw away the later change.",
+  "skill_not_found": "Skill not found.",
+  "unknown_skill": "Unknown skill.",
+  "skill_slug_taken": "A skill named {slug} already exists in this workspace.",
+  "skill_invalid_slug": "Skill names are lowercase letters and digits joined by single hyphens (like weekly-report), at most {max} characters.",
+  "skill_description_required": "A skill needs a description: it tells the employee when to read the skill.",
+  "skill_description_too_long": "The description is longer than {max} characters.",
+  "skill_body_too_long": "The skill is larger than {max} bytes ({bytes} bytes in UTF-8). Shorten its instructions.",
+  "skill_leak": "The skill contains what looks like a secret ({rules}). Remove it and save again: skills are read back into prompts.",
+  "skill_md_invalid": "The SKILL.md could not be read: {reason, select, no_frontmatter {it must start with a --- frontmatter block} unclosed_frontmatter {the frontmatter block is not closed with ---} frontmatter_too_large {the frontmatter block is larger than 8 KB} missing_name {the frontmatter has no name} missing_description {the frontmatter has no description} other {the frontmatter is not valid YAML (line {line})}}.",
+  "skill_body_required": "A skill needs instructions: write what the employee should do.",
+  "skill_slug_reserved": "{slug} is the name of a built-in skill (pdf, docx, xlsx and pptx are taken). Choose another name.",
+  "skill_invalid_chars": "The skill contains control characters (like NUL or ESC). Remove them and save again: only tabs and line breaks are allowed.",
+  "package_skill_leak": "Skill {slug} in the package contains what looks like a secret ({rules}). Remove it from the package and import again: skills are read back into prompts."
 }

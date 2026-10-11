@@ -1,0 +1,28 @@
+{
+  "name": "team_auto_routing_timeout_fallback",
+  "description": "Team chat in auto mode: the routing classifier times out (5 s) and the lead answers with routedBy fallback/timeout",
+  "timeoutMs": 20000,
+  "setup": {
+    "employees": [
+      { "key": "budi", "name": "Budi", "role": "Lead PM" },
+      { "key": "sari", "name": "Sari", "role": "Finance" },
+      { "key": "dewi", "name": "Dewi", "role": "Marketing" }
+    ],
+    "teams": [{ "key": "ops", "name": "Ops", "lead": "budi", "members": ["sari", "dewi"], "responderMode": "auto" }],
+    "conversation": { "team": "ops" }
+  },
+  "scripts": {
+    "$router": [
+      { "wait": 8000 },
+      { "llm": { "input": 120, "output": 12, "text": "{\"pick\":\"{{employee.sari}}\",\"confidence\":0.95}", "model": "claude-haiku-5-5" } },
+      { "result": "{\"pick\":\"{{employee.sari}}\",\"confidence\":0.95}" }
+    ]
+  },
+  "trigger": { "kind": "chat", "content": "Tolong cek invoice bulan Maret yang belum dibayar" },
+  "expect": [
+    { "scorer": "sdkRuns", "who": "$router", "count": 1 },
+    { "scorer": "messageReplies", "count": 1, "employee": "budi", "routedBy": { "mode": "fallback", "reason": "timeout" } },
+    { "scorer": "stepRecorded", "name": "route_decision", "status": "fallback", "count": 1 },
+    { "scorer": "sdkRuns", "who": "sari", "count": 0 }
+  ]
+}

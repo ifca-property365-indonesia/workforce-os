@@ -1,0 +1,32 @@
+{
+  "name": "allowlisted_close_send_unattended",
+  "description": "On a clean run an allow-listed CLOSE send_email runs unattended: mail sent, no approval, task DONE and trusted",
+  "setup": {
+    "employees": [
+      {
+        "key": "sari",
+        "name": "Sari",
+        "role": "Account Manager",
+        "autonomyLevel": "CLOSE",
+        "toolPermissions": [{ "tool": "send_email", "enabled": true }, { "tool": "mcp:crm", "enabled": true }],
+        "allowList": [{ "tool": "send_email", "recipientDomains": ["client.co.id"] }]
+      }
+    ],
+    "tasks": [{ "key": "status", "assignee": "sari", "title": "Weekly status to the client" }]
+  },
+  "scripts": {
+    "sari": [
+      { "tool": "mcp__crm__list_notes", "input": { "client": "ana" }, "output": "3 notes: invoice paid, kickoff done, review on Friday" },
+      { "tool": "mcp__wfos__send_email", "input": { "to": ["ana@client.co.id"], "subject": "Status", "body": "Weekly status." } },
+      { "result": "Status mail sent." }
+    ]
+  },
+  "trigger": { "kind": "task", "task": "status" },
+  "expect": [
+    { "scorer": "mailSent", "to": "ana@client.co.id", "count": 1 },
+    { "scorer": "noApproval" },
+    { "scorer": "stepRecorded", "name": "send_email", "kind": "tool", "status": "ok" },
+    { "scorer": "taskStatus", "task": "status", "status": "DONE" },
+    { "scorer": "taskTainted", "task": "status", "expected": false }
+  ]
+}

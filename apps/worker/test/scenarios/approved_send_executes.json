@@ -1,0 +1,26 @@
+{
+  "name": "approved_send_executes",
+  "description": "A QUEUE-autonomy send_email approved by a person executes once with the run's payload and closes the task",
+  "setup": {
+    "employees": [
+      { "key": "sari", "name": "Sari", "role": "Finance", "autonomyLevel": "QUEUE", "toolPermissions": [{ "tool": "send_email", "enabled": true }] }
+    ],
+    "tasks": [{ "key": "invoice", "assignee": "sari", "title": "Send the March invoice reminder" }]
+  },
+  "scripts": {
+    "sari": [
+      { "tool": "mcp__wfos__send_email", "input": { "to": ["ana@client.co.id"], "subject": "Invoice reminder", "body": "Your March invoice is due." } },
+      { "result": "Reminder queued for approval." }
+    ]
+  },
+  "trigger": [
+    { "kind": "task", "task": "invoice" },
+    { "kind": "decide_approval", "tool": "send_email", "decision": "approve" }
+  ],
+  "expect": [
+    { "scorer": "approvalCreated", "tool": "send_email", "status": "EXECUTED", "count": 1 },
+    { "scorer": "mailSent", "to": "ana@client.co.id", "count": 1 },
+    { "scorer": "stepRecorded", "name": "send_email", "kind": "tool", "status": "ok" },
+    { "scorer": "taskStatus", "task": "invoice", "status": "DONE" }
+  ]
+}

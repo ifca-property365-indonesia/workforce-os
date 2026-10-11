@@ -13,7 +13,7 @@ export interface GuardCtx {
 }
 
 /** Names of the "guard" steps (status flagged) recorded when a run is tainted: read back by approvalTainted. */
-export const TAINT_STEP_NAMES = ["input_guard", "untrusted_input", "untrusted_memory", "untrusted_message", "untrusted_transcript", "untrusted_subtask"] as const;
+export const TAINT_STEP_NAMES = ["input_guard", "untrusted_input", "untrusted_memory", "untrusted_message", "untrusted_transcript", "untrusted_subtask", "untrusted_skill"] as const;
 
 /**
  * Taint the run because untrusted stored content is part of its input (a memory or a colleague's message written by

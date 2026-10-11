@@ -11,13 +11,14 @@
     "checking": "Memeriksa isi paket…",
     "nothing": "Belum ada yang bisa diekspor.",
     "included": "Disertakan",
-    "counts": "{employees, plural, other {# karyawan}}, {teams, plural, other {# tim}}, {routines, plural, other {# rutinitas}}, {departments, plural, other {# departemen}}, {mcpSlots, plural, other {# slot MCP}}, {memories, plural, other {# memori}}",
+    "counts": "{employees, plural, other {# karyawan}}, {teams, plural, other {# tim}}, {routines, plural, other {# rutinitas}}, {departments, plural, other {# departemen}}, {skills, plural, other {# skill}}, {mcpSlots, plural, other {# slot MCP}}, {memories, plural, other {# memori}}",
     "groups": {
       "employees": "Karyawan",
       "teams": "Tim",
       "routines": "Rutinitas",
       "departments": "Departemen",
-      "mcpSlots": "Slot MCP (hanya URL)"
+      "mcpSlots": "Slot MCP (hanya URL)",
+      "skills": "Skill (skill aktif milik karyawan ini)"
     },
     "redactions": "Disamarkan ({count})",
     "noRedactions": "Tidak ada yang tampak seperti rahasia atau data pribadi.",
@@ -37,7 +38,7 @@
     "notJson": "Itu bukan JSON yang valid.",
     "tooLarge": "Paket lebih besar dari 2 MB.",
     "will": "Akan dibuat",
-    "willCounts": "{employees, plural, other {# karyawan}}, {teams, plural, other {# tim}}, {routines, plural, other {# rutinitas}}, {departments, plural, other {# departemen baru}}, {mcpSlots, plural, other {# slot MCP}}, {memories, plural, other {# memori}}",
+    "willCounts": "{employees, plural, other {# karyawan}}, {teams, plural, other {# tim}}, {routines, plural, other {# rutinitas}}, {departments, plural, other {# departemen baru}}, {skills, plural, other {# skill}}, {mcpSlots, plural, other {# slot MCP}}, {memories, plural, other {# memori}}",
     "errors": "Perbaiki dulu",
     "warnings": "Perlu diketahui",
     "conflicts": "Nama yang sama",
@@ -62,7 +63,13 @@
     "none": "Tidak ada",
     "back": "Pilih paket lain",
     "confirm": "Impor",
-    "done": "Berhasil mengimpor {employees, plural, other {# karyawan}}, {teams, plural, other {# tim}}, dan {routines, plural, other {# rutinitas}}."
+    "done": "Berhasil mengimpor {employees, plural, other {# karyawan}}, {teams, plural, other {# tim}}, dan {routines, plural, other {# rutinitas}}.",
+    "skills": "Skill",
+    "skill": "Skill {slug}",
+    "skillAs": "ditambahkan sebagai {slug}",
+    "skillDescription": "Deskripsi",
+    "skillBody": "Instruksi",
+    "employeeSkills": "Skill"
   },
   "warnings": {
     "employees_draft": "{count, plural, one {Karyawan ini mulai} other {Semua # karyawan mulai}} pada otonomi Draf.",
@@ -73,11 +80,16 @@
     "mcp_renamed": "Server MCP {from} sudah ada di sini, jadi ditambahkan sebagai {to} dan izin diarahkan ke {to}.",
     "mcp_unknown": "Beberapa izin memakai server MCP {server}, yang tidak ada di workspace ini maupun di paket.",
     "department_exists": "Departemen {key} sudah ada di sini dan dibiarkan apa adanya.",
-    "department_missing": "{name} termasuk departemen {key}, yang tidak ada di sini. Departemennya dikosongkan."
+    "department_missing": "{name} termasuk departemen {key}, yang tidak ada di sini. Departemennya dikosongkan.",
+    "skills_untrusted": "{count, plural, other {# skill}} diimpor sebagai tidak tepercaya: karyawan membacanya sebagai data, bukan sebagai instruksi Anda. Baca masing-masing di bawah.",
+    "skill_renamed": "Skill bernama {from} sudah ada di sini, jadi ditambahkan sebagai {to}.",
+    "skill_reserved_renamed": "{from} adalah nama skill bawaan, jadi ditambahkan sebagai {to}.",
+    "skill_leak_findings": "Skill {slug} mungkin berisi rahasia atau data pribadi ({rules}). Baca di bawah sebelum mengimpor."
   },
   "issues": {
     "invalid_cron": "Rutinitas {name}: jadwalnya tidak valid ({detail}).",
-    "mcp_url_not_public": "Server MCP {name} mengarah ke {host}, yang privat, lokal, atau tidak dapat ditemukan. Hapus dari paket atau perbaiki URL-nya."
+    "mcp_url_not_public": "Server MCP {name} mengarah ke {host}, yang privat, lokal, atau tidak dapat ditemukan. Hapus dari paket atau perbaiki URL-nya.",
+    "skill_leak": "Skill {slug} berisi sesuatu yang tampak seperti rahasia ({rules}). Hapus dari paket: skill yang berisi rahasia tidak diimpor."
   },
   "conflicts": {
     "employee": "Karyawan",
@@ -85,7 +97,8 @@
     "routine": "Rutinitas",
     "department": "Departemen",
     "mcpSlot": "Server MCP",
-    "renamed": "{name} (ditambahkan sebagai {as})"
+    "renamed": "{name} (ditambahkan sebagai {as})",
+    "skill": "Skill"
   },
   "rules": {
     "anthropic-key": "Kunci API Anthropic",

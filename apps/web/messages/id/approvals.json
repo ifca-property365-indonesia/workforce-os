@@ -94,5 +94,15 @@
       "skip": "lewati eksekusi berikutnya",
       "queue": "antrekan eksekusi baru"
     }
+  },
+  "skill": {
+    "proposed": "Skill baru {slug}",
+    "description": "Deskripsi",
+    "body": "Instruksi",
+    "showBody": "Tampilkan instruksi ({count, plural, other {# karakter}})",
+    "untrusted": "Diusulkan oleh run yang membaca konten dari luar (halaman web, e-mail, file). Baca instruksinya dengan cermat: jika disetujui, skill disimpan sebagai tidak tepercaya dan dibaca kembali sebagai data.",
+    "savedAs": "Jika disetujui, skill disimpan di Pengaturan → Skill, tempat Anda dapat menonaktifkan, mengubah, atau menghapusnya.",
+    "target": "Untuk {name}",
+    "slug": "Nama"
   }
 }

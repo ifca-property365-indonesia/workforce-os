@@ -245,6 +245,14 @@
     "post_webhook": {
       "label": "Publikasikan ke webhook",
       "description": "Memublikasikan pesan ke webhook yang dikonfigurasi (gateway Slack/Telegram/WhatsApp)"
+    },
+    "skill_read": {
+      "label": "Baca skill",
+      "description": "Membaca salah satu skill (SKILL.md) yang ditugaskan kepadanya berdasarkan nama. Diberikan otomatis selama minimal satu skill aktif ditugaskan."
+    },
+    "skill_propose": {
+      "label": "Usulkan skill",
+      "description": "Mengusulkan skill baru yang dapat dipakai ulang (SKILL.md) dari apa yang dipelajarinya. Seseorang menyetujuinya sebelum disimpan dan ditugaskan."
     }
   },
   "executionMode": {

@@ -8,6 +8,8 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eval": "vitest run test/scenarios.test.ts",
+    "eval:live": "vitest run --config evals/vitest.config.ts",
     "test:system": "vitest run --config vitest.system.config.ts"
   },
   "dependencies": {

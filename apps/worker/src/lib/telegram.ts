@@ -10,6 +10,12 @@ import { redis } from "./redis";
 import { getWorkspace } from "./settings";
 
 const BUTTON_TTL_MS = 24 * 3_600_000;
+/**
+ * Approvals with no quick Approve/Reject buttons: what they save keeps acting later (a skill other runs follow, a
+ * routine that creates tasks on its own), so they are decided in the web app, where the full content and the
+ * warnings are shown. The Telegram message says so.
+ */
+export const WEB_ONLY_APPROVAL_TOOLS: readonly string[] = ["create_skill", "create_routine"];
 const TZ = process.env.APP_TIME_ZONE || "Asia/Jakarta";
 const SUMMARY_HOUR = Number(process.env.TELEGRAM_SUMMARY_HOUR ?? 8);
 
@@ -26,18 +32,22 @@ async function linkedMembers(workspaceId: string, only?: string[]) {
 /**
  * Sends a notification to every linked member of the workspace. For an approval, Admins and Owners also get
  * Approve/Reject buttons: each button is a single-use row bound to that user and that approval, and its
- * callback_data is HMAC-signed. Members below Admin get the text only. `recipients` (user ids) limits the
+ * callback_data is HMAC-signed. Members below Admin get the text only; nobody gets buttons for a web-only approval
+ * (WEB_ONLY_APPROVAL_TOOLS) or one that is not in this workspace. `recipients` (user ids) limits the
  * members reached (the caller applies notification preferences); omitted, every linked member is.
  */
 export async function telegramNotify(workspaceId: string, subject: string, text: string, link?: string, approvalId?: string, recipients?: string[]): Promise<number> {
   if (!telegramConfigured()) return 0;
   const ws = await getWorkspace(workspaceId);
   const url = link ? `${env.appUrl}${link}` : env.appUrl;
+  const [approval] = approvalId ? await db.select({ toolName: approvals.toolName }).from(approvals).where(and(eq(approvals.id, approvalId), eq(approvals.workspaceId, workspaceId))) : [];
+  const webOnly = !!approval && WEB_ONLY_APPROVAL_TOOLS.includes(approval.toolName);
   let sent = 0;
   for (const m of await linkedMembers(workspaceId, recipients)) {
     const locale = resolveLocale(m.locale, ws.defaultLocale, null);
-    const payload: Record<string, unknown> = { chat_id: Number(m.chatId), text: `${subject}\n\n${text}\n\n${msg(locale, "notify.open", { url })}`, disable_web_page_preview: true };
-    if (approvalId && hasRole(m.role, "ADMIN")) {
+    const note = webOnly ? `\n\n${msg(locale, "telegram.approveInWeb")}` : "";
+    const payload: Record<string, unknown> = { chat_id: Number(m.chatId), text: `${subject}\n\n${text}${note}\n\n${msg(locale, "notify.open", { url })}`, disable_web_page_preview: true };
+    if (approvalId && approval && !webOnly && hasRole(m.role, "ADMIN")) {
       const expiresAt = new Date(Date.now() + BUTTON_TTL_MS);
       const ids = { approve: newCallbackId(), reject: newCallbackId() };
       await db.insert(telegramCallbacks).values([

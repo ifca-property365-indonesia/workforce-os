@@ -1,0 +1,26 @@
+{
+  "name": "send_email_queue_needs_approval",
+  "description": "At QUEUE autonomy a send_email waits for a human approval: nothing is sent and the task awaits approval",
+  "setup": {
+    "employees": [
+      { "key": "sari", "name": "Sari", "role": "Finance", "autonomyLevel": "QUEUE", "toolPermissions": [{ "tool": "send_email", "enabled": true }] }
+    ],
+    "tasks": [{ "key": "invoice", "assignee": "sari", "title": "Send the March invoice reminder" }]
+  },
+  "scripts": {
+    "sari": [
+      { "llm": { "input": 200, "output": 40 } },
+      { "tool": "mcp__wfos__send_email", "input": { "to": ["ana@client.co.id"], "subject": "Invoice reminder", "body": "Your March invoice is due." } },
+      { "result": "Reminder queued for approval." }
+    ]
+  },
+  "trigger": { "kind": "task", "task": "invoice" },
+  "expect": [
+    { "scorer": "approvalCreated", "tool": "send_email", "rule": "autonomy", "status": "PENDING", "count": 1 },
+    { "scorer": "noMailSent" },
+    { "scorer": "taskStatus", "task": "invoice", "status": "AWAITING_APPROVAL" },
+    { "scorer": "stepRecorded", "name": "approval_requested:send_email", "status": "pending" },
+    { "scorer": "jobQueued", "queue": "misc", "kind": "notify", "count": 1 },
+    { "scorer": "taskTainted", "task": "invoice", "expected": false }
+  ]
+}
