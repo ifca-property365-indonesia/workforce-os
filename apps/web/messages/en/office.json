@@ -1,9 +1,6 @@
 {
   "title": "Office",
   "description": "Your AI employees at work, live. Click a person to open what they are working on.",
-  "view2d": "2D",
-  "view3d": "3D",
-  "viewLabel": "View",
   "loading3d": "Loading 3D view…",
   "empty": "No employees yet. Hire one to fill the office.",
   "live": "Live",
@@ -31,7 +28,7 @@
   },
   "openTask": "Open task",
   "openEmployee": "Open employee",
-  "noWebgl": "3D is not available in this browser. Showing the 2D view.",
+  "noWebgl": "3D is not available in this browser. The list below shows who is doing what.",
   "reception": "Reception",
   "facade": "Employee signs",
   "incident": "incident",

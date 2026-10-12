@@ -196,3 +196,6 @@
   --series-5: var(--sign-magenta); --series-6: var(--sign-hijau); --series-7: var(--sign-ungu); --series-8: var(--sign-oranye);
   --series-other: #8c8194;
 }
+
+/* The desktop (components/desktop): until it mounts, the classic layout the server rendered stays hidden */
+html[data-view="desktop"] [data-shell="classic"] { visibility: hidden; }

@@ -1,9 +1,6 @@
 {
   "title": "Kantor",
   "description": "Karyawan AI Anda sedang bekerja, secara langsung. Klik seseorang untuk membuka pekerjaannya.",
-  "view2d": "2D",
-  "view3d": "3D",
-  "viewLabel": "Tampilan",
   "loading3d": "Memuat tampilan 3D…",
   "empty": "Belum ada karyawan. Rekrut satu untuk mengisi kantor.",
   "live": "Langsung",
@@ -31,7 +28,7 @@
   },
   "openTask": "Buka tugas",
   "openEmployee": "Buka karyawan",
-  "noWebgl": "3D tidak tersedia di browser ini. Menampilkan tampilan 2D.",
+  "noWebgl": "3D tidak tersedia di browser ini. Daftar di bawah menunjukkan siapa sedang apa.",
   "reception": "Resepsionis",
   "facade": "Papan nama karyawan",
   "incident": "insiden",

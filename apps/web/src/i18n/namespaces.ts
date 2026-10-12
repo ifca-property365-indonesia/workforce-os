@@ -26,5 +26,6 @@ export const NAMESPACES = [
   "apitokens",
   "packages",
   "skills",
+  "desktop",
 ] as const;
 export type Namespace = (typeof NAMESPACES)[number];

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/lib/nav";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { AlertOctagon, AlertTriangle, Bot, Cpu, MessageSquare, MessageSquareShare, Minimize2, ShieldAlert, ShieldCheck, Wrench } from "lucide-react";

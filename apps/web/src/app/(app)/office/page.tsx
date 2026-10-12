@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link, { useRouter } from "@/lib/nav";
 import { useTranslations } from "next-intl";
 import { describeOrder, type Activity } from "@wfos/shared/office";
 import { PageHeader } from "@/components/layout/common";
-import { Office2D } from "@/components/office/office-2d";
 import { useOffice, type OfficePerson } from "@/components/office/use-office";
 import { useRealtimeStatus } from "@/lib/events";
 import { cn } from "@/lib/utils";
@@ -31,7 +29,6 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-const VIEW_KEY = "wfos-office-view";
 const WORKING: Activity[] = ["typing", "reading", "terminal", "thinking"];
 
 export default function OfficePage() {
@@ -40,18 +37,7 @@ export default function OfficePage() {
   const live = useRealtimeStatus();
   const reducedMotion = useReducedMotion();
   const state = useOffice(t("generalRoom"));
-  const [view, setView] = useState<"2d" | "3d">("2d");
-  useEffect(() => {
-    try {
-      if (localStorage.getItem(VIEW_KEY) === "3d") setView("3d");
-    } catch {}
-  }, []);
-  const choose = (v: "2d" | "3d") => {
-    setView(v);
-    try {
-      localStorage.setItem(VIEW_KEY, v);
-    } catch {}
-  };
+  const [unavailable, setUnavailable] = useState(false);
 
   const activityLabel = (p: OfficePerson) => t(`activity.${state.activityOf(p)}`);
   const open = (p: OfficePerson) => router.push(p.task ? `/tasks/${p.task.id}` : `/employees/${p.id}`);
@@ -68,30 +54,17 @@ export default function OfficePage() {
         title={t("title")}
         description={t("description")}
         actions={
-          <div className="flex items-center gap-3">
-            <span className={cn("text-xs", live ? "text-success" : "text-muted-foreground")}>{live ? t("live") : t("offline")}</span>
-            <div role="group" aria-label={t("viewLabel")} className="inline-flex rounded-md border p-0.5">
-              {(["2d", "3d"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  aria-pressed={view === v}
-                  onClick={() => choose(v)}
-                  className={cn("rounded px-3 py-1 text-sm", view === v ? "bg-primary text-primary-foreground" : "hover:bg-accent")}
-                >
-                  {v === "2d" ? t("view2d") : t("view3d")}
-                </button>
-              ))}
-            </div>
-          </div>
+          <span className={cn("text-xs", live ? "text-success" : "text-muted-foreground")}>{live ? t("live") : t("offline")}</span>
         }
       />
 
       {!state.loading && people.length === 0 ? (
         <p className="rounded-lg border p-6 text-sm text-muted-foreground">{t("empty")}</p>
+      ) : unavailable ? (
+        <p className="rounded-lg border p-6 text-sm text-muted-foreground">{t("noWebgl")}</p>
       ) : (
         <div role="img" aria-label={summary} aria-describedby="office-people">
-          {view === "3d" ? <Office3D {...viewProps} onUnavailable={() => choose("2d")} /> : <Office2D {...viewProps} />}
+          <Office3D {...viewProps} onUnavailable={() => setUnavailable(true)} />
         </div>
       )}
 

@@ -8,6 +8,7 @@ import { SkillsSettings } from "@/components/settings/skills";
 import { mcpToolsQueryKey, type McpTool } from "@/components/employees/tool-permissions";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "@/lib/nav";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -543,16 +544,20 @@ function McpServerRow({
 const MCP_OAUTH_OUTCOMES = ["connected", "invalid_state", "denied", "failed", "forbidden"] as const;
 function useMcpOAuthOutcome() {
   const t = useTranslations("settings");
+  const params = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const outcome = params.get("mcp");
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const outcome = url.searchParams.get("mcp");
     if (!outcome) return;
     const known = (MCP_OAUTH_OUTCOMES as readonly string[]).includes(outcome) ? (outcome as (typeof MCP_OAUTH_OUTCOMES)[number]) : "failed";
     if (known === "connected") toast.success(t("integrations.oauthResult.connected"));
     else toast.error(t(`integrations.oauthResult.${known}`));
-    url.searchParams.delete("mcp");
-    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
-  }, [t]);
+    const rest = new URLSearchParams(params.toString());
+    rest.delete("mcp");
+    const query = rest.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }, [outcome, params, pathname, router, t]);
 }
 
 function Integrations() {
@@ -854,16 +859,16 @@ export default function SettingsPage() {
   const { data: me } = useMe();
   const admin = me?.role === "OWNER" || me?.role === "ADMIN";
   const owner = me?.role === "OWNER";
-  // ?tab=<tab> opens that tab (the MCP OAuth callback comes back to integrations); the page renders nothing before
-  // its data loads, so reading the URL here cannot cause a hydration mismatch
-  const [requestedTab] = useState(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("tab")));
+  // ?tab=<tab> opens that tab (the MCP OAuth callback comes back to integrations); read through @/lib/nav so it is
+  // this window's address on the desktop, not the browser's
+  const requestedTab = useSearchParams().get("tab");
   // the role decides which tabs exist: wait for it, so ?tab= can only open a tab this person can see
   if (!data || !me) return null;
   const initialTab = settingsTab(requestedTab, admin);
   return (
     <div>
       <PageHeader title={t("title")} />
-      <Tabs defaultValue={initialTab}>
+      <Tabs key={initialTab} defaultValue={initialTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="general">{t("tabs.general")}</TabsTrigger>
           {admin && <TabsTrigger value="email">{t("tabs.email")}</TabsTrigger>}

@@ -10,7 +10,8 @@
     "approvals": "Persetujuan",
     "clients": "Klien",
     "knowledge": "Basis pengetahuan",
-    "settings": "Pengaturan"
+    "settings": "Pengaturan",
+    "account": "Akun"
   },
   "killSwitch": {
     "button": "Kill switch",
@@ -72,5 +73,6 @@
     "knowledge": "Pengetahuan",
     "settings": "Pengaturan"
   },
-  "demoChip": "Demo"
+  "demoChip": "Demo",
+  "desktopView": "Tampilan desktop"
 }

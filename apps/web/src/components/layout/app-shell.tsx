@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import Link, { useOpen, usePathname, useRouter } from "@/lib/nav";
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Monitor,
   Languages,
   MessageSquare,
   Moon,
@@ -49,6 +50,10 @@ import { useTranslations } from "next-intl";
 import { LOCALES, LOCALE_NAMES } from "@wfos/shared";
 import { cn } from "@/lib/utils";
 import { approvalKeys, decidePush, isPushMessage, RecentToasts } from "@/lib/push-toast";
+import { useViewMode } from "@/lib/use-view-mode";
+
+// the desktop (3D office, windows, dock) only loads on screens that show it
+const Desktop = dynamic(() => import("@/components/desktop/desktop").then((m) => m.Desktop), { ssr: false, loading: () => <div className="fixed inset-0 bg-background" /> });
 
 const NAV = [
   { href: "/dashboard", key: "dashboard", icon: LayoutDashboard },
@@ -123,7 +128,7 @@ function Nav({ onNavigate, layout }: { onNavigate?: () => void; layout: "rail" |
   );
 }
 
-function KillSwitch({ placement }: { placement: "rail" | "header" }) {
+export function KillSwitch({ placement }: { placement: "rail" | "header" }) {
   const t = useTranslations("nav");
   const tc = useTranslations("common");
   const qc = useQueryClient();
@@ -186,11 +191,11 @@ function KillSwitch({ placement }: { placement: "rail" | "header" }) {
   );
 }
 
-function Notifications() {
+export function Notifications({ buttonClassName }: { buttonClassName?: string } = {}) {
   const t = useTranslations("nav");
   const f = useFormat();
   const qc = useQueryClient();
-  const router = useRouter();
+  const open = useOpen();
   const { data } = useQuery({
     queryKey: ["notifications"],
     queryFn: () => api.get<{ notifications: { id: string; title: string; body: string; link: string | null; createdAt: string; read: boolean }[]; unread: number }>("/api/notifications"),
@@ -209,19 +214,19 @@ function Notifications() {
       ev.ports[0]?.postMessage({ ack: d.ack });
       if (d.ack && d.toast) {
         const { url } = d.toast;
-        toast.info(d.toast.title, { id: d.toast.id, description: d.toast.body, action: { label: t("live.open"), onClick: () => router.push(url) } });
+        toast.info(d.toast.title, { id: d.toast.id, description: d.toast.body, action: { label: t("live.open"), onClick: () => open(url) } });
       }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onMessage);
-  }, [qc, router, t]);
+  }, [qc, open, t]);
   useRealtime((ev) => {
     if (ev.type === "approval.created") {
       // one toast per approval, whether its push or its realtime event came first
       const keys = approvalKeys(ev.approvalId, ev.conversationId);
       const id = recent.current.find(keys) ?? `approval:${ev.approvalId}`;
       recent.current.mark(keys, id);
-      toast.warning(t("live.approvalNeeded", { title: ev.title }), { id, action: { label: t("live.open"), onClick: () => (location.href = "/approvals") } });
+      toast.warning(t("live.approvalNeeded", { title: ev.title }), { id, action: { label: t("live.open"), onClick: () => open("/approvals") } });
     }
     if (ev.type === "task.updated" && ev.status === "FAILED") toast.error(ev.title ? t("live.taskFailedNamed", { title: ev.title }) : t("live.taskFailed"));
     if (ev.type === "demo.stage") toast.info(ev.detail);
@@ -234,7 +239,7 @@ function Notifications() {
   return (
     <Popover onOpenChange={(o) => !o && data?.unread && markRead.mutate()}>
       <PopoverTrigger asChild>
-        <Button size="icon" variant="ghost" className="relative" aria-label={t("notifications.title")}>
+        <Button size="icon" variant="ghost" className={cn("relative", buttonClassName)} aria-label={t("notifications.title")}>
           <Bell className="size-4" />
           {!!data?.unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-approval" />}
         </Button>
@@ -256,12 +261,13 @@ function Notifications() {
   );
 }
 
-function ThemeToggle() {
+export function ThemeToggle({ className }: { className?: string } = {}) {
   const t = useTranslations("nav");
   return (
     <Button
       size="icon"
       variant="ghost"
+      className={className}
       aria-label={t("toggleTheme")}
       onClick={() => {
         const dark = document.documentElement.classList.toggle("dark");
@@ -278,10 +284,111 @@ function ThemeToggle() {
   );
 }
 
-function Shell({ children }: { children: ReactNode }) {
+/** the account menu (avatar button): account, workspace settings, language, the view switch, sign out */
+export function AccountMenu({ view, triggerClassName }: { view?: { label: string; onSelect: () => void }; triggerClassName?: string }) {
+  const t = useTranslations("nav");
+  const router = useRouter();
+  const { data: me } = useMe();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="icon" variant="ghost" className={cn("rounded-full", triggerClassName)} aria-label={t("accountMenu")}>
+          <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold text-foreground ring-1 ring-border">
+            {(me?.user.name ?? "?").trim().charAt(0).toUpperCase()}
+          </span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="font-normal">
+          <div className="truncate text-sm font-medium">{me?.user.name}</div>
+          <div className="truncate text-xs text-muted-foreground">{me?.user.email}</div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/account">
+            <UserRound className="size-4" /> {t("account")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/settings">
+            <Settings className="size-4" /> {t("workspaceSettings")}
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("language")}</DropdownMenuLabel>
+        {LOCALES.map((l) => (
+          <DropdownMenuItem
+            key={l}
+            onSelect={async () => {
+              await api.patch("/api/me", { locale: l });
+              window.location.reload();
+            }}
+          >
+            <Languages className="size-4" /> {LOCALE_NAMES[l]}
+            {me?.user.locale === l && <CheckCircle2 className="ml-auto size-3.5" />}
+          </DropdownMenuItem>
+        ))}
+        {view && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={view.onSelect}>
+              <Monitor className="size-4" /> {view.label}
+            </DropdownMenuItem>
+          </>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onSelect={async () => {
+            await api.post("/api/auth/logout");
+            router.replace("/login");
+          }}
+        >
+          <LogOut className="size-4" /> {t("signOut")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** quota, kill switch, demo mode and missing-credential strips */
+export function Banners() {
+  const t = useTranslations("nav");
+  const { data: me } = useMe();
+  return (
+    <>
+      <QuotaBanner />
+      {me?.workspace.killSwitch && (
+        <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-semibold text-white sm:px-6 lg:px-8">
+          <OctagonX className="size-4" /> {t("killSwitch.banner")}
+        </div>
+      )}
+      {me?.workspace.demoMode && (
+        <div className="flex items-center gap-2 border-b bg-secondary px-4 py-1.5 text-sm sm:px-6 lg:px-8">
+          <span className="shrink-0 rounded-md bg-[var(--sign-ungu)] px-1.5 text-xs font-bold leading-5 text-white">{t("demoChip")}</span>
+          <span className="min-w-0 flex-1 truncate text-muted-foreground">{t("demoBanner")}</span>
+          <Link href="/settings" className="shrink-0 font-semibold underline underline-offset-2">
+            {t("turnOff")}
+          </Link>
+        </div>
+      )}
+      {me && !me.claude.credentialPresent && !me.workspace.demoMode && (
+        <div className="bg-warning/15 px-4 py-1.5 text-sm text-warning sm:px-6 lg:px-8">
+          {t.rich("noCredentialBanner", {
+            link: (c) => (
+              <Link href="/settings" className="underline underline-offset-2">
+                {c}
+              </Link>
+            ),
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Shell({ children, onDesktop }: { children: ReactNode; onDesktop?: () => void }) {
   const t = useTranslations("nav");
   const ts = useTranslations("status");
-  const router = useRouter();
   const { data: me } = useMe();
   const live = useRealtimeStatus();
   const [mobile, setMobile] = useState(false);
@@ -310,7 +417,7 @@ function Shell({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div data-shell="classic" className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-[6.25rem] shrink-0 flex-col items-center gap-4 overflow-y-auto border-r bg-sidebar py-4 [scrollbar-width:none] lg:flex">
         {brand}
         <Nav layout="rail" />
@@ -354,82 +461,9 @@ function Shell({ children }: { children: ReactNode }) {
           </div>
           <Notifications />
           <ThemeToggle />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="rounded-full" aria-label={t("accountMenu")}>
-                <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-xs font-bold text-foreground ring-1 ring-border">
-                  {(me?.user.name ?? "?").trim().charAt(0).toUpperCase()}
-                </span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal">
-                <div className="truncate text-sm font-medium">{me?.user.name}</div>
-                <div className="truncate text-xs text-muted-foreground">{me?.user.email}</div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/account">
-                  <UserRound className="size-4" /> {t("account")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <Settings className="size-4" /> {t("workspaceSettings")}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{t("language")}</DropdownMenuLabel>
-              {LOCALES.map((l) => (
-                <DropdownMenuItem
-                  key={l}
-                  onSelect={async () => {
-                    await api.patch("/api/me", { locale: l });
-                    window.location.reload();
-                  }}
-                >
-                  <Languages className="size-4" /> {LOCALE_NAMES[l]}
-                  {me?.user.locale === l && <CheckCircle2 className="ml-auto size-3.5" />}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={async () => {
-                  await api.post("/api/auth/logout");
-                  router.replace("/login");
-                }}
-              >
-                <LogOut className="size-4" /> {t("signOut")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <AccountMenu view={onDesktop ? { label: t("desktopView"), onSelect: onDesktop } : undefined} />
         </header>
-        <QuotaBanner />
-        {me?.workspace.killSwitch && (
-          <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-semibold text-white sm:px-6 lg:px-8">
-            <OctagonX className="size-4" /> {t("killSwitch.banner")}
-          </div>
-        )}
-        {me?.workspace.demoMode && (
-          <div className="flex items-center gap-2 border-b bg-secondary px-4 py-1.5 text-sm sm:px-6 lg:px-8">
-            <span className="shrink-0 rounded-md bg-[var(--sign-ungu)] px-1.5 text-xs font-bold leading-5 text-white">{t("demoChip")}</span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{t("demoBanner")}</span>
-            <Link href="/settings" className="shrink-0 font-semibold underline underline-offset-2">
-              {t("turnOff")}
-            </Link>
-          </div>
-        )}
-        {me && !me.claude.credentialPresent && !me.workspace.demoMode && (
-          <div className="bg-warning/15 px-4 py-1.5 text-sm text-warning sm:px-6 lg:px-8">
-            {t.rich("noCredentialBanner", {
-              link: (c) => (
-                <Link href="/settings" className="underline underline-offset-2">
-                  {c}
-                </Link>
-              ),
-            })}
-          </div>
-        )}
+        <Banners />
         </div>
         <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
       </div>
@@ -437,10 +471,16 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Desktop (the 3D office with windows and a dock) on wide screens unless the person chose the classic layout;
+ * the classic layout (icon rail, one page at a time) on phones and tablets. The first render is always classic,
+ * as on the server; the theme script in app/layout.tsx hides it until the desktop takes over.
+ */
 export function AppShell({ children }: { children: ReactNode }) {
+  const { mode, canDesktop, setMode } = useViewMode();
   return (
     <EventsProvider>
-      <Shell>{children}</Shell>
+      {mode === "desktop" ? <Desktop onClassic={() => setMode("classic")} /> : <Shell onDesktop={canDesktop ? () => setMode("desktop") : undefined}>{children}</Shell>}
     </EventsProvider>
   );
 }

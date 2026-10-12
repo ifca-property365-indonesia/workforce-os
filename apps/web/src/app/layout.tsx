@@ -5,6 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
 import { Providers } from "./providers";
 import { RegisterServiceWorker } from "@/components/pwa/register";
+import { VIEW_SCRIPT } from "@/lib/view-mode";
 
 const figtree = Figtree({ subsets: ["latin"], variable: "--font-figtree" });
 // sign-painter capitals for titles and the employee signs (see globals.css font-display)
@@ -31,7 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang={locale} suppressHydrationWarning className={`${figtree.variable} ${shoulders.variable} dark`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: themeScript + VIEW_SCRIPT }} />
       </head>
       <body className="min-h-screen font-sans">
         <NextIntlClientProvider>

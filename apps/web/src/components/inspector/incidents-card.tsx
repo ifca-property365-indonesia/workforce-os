@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/lib/nav";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { AlertOctagon, CheckCircle2 } from "lucide-react";

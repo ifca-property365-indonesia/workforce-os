@@ -1,0 +1,51 @@
+{
+  "menubar": {
+    "office": "Kantor",
+    "apps": "Aplikasi",
+    "command": "Tugas baru",
+    "showOffice": "Tampilkan kantor",
+    "staff": "Karyawan di kantor",
+    "staffMore": "+{count} lagi",
+    "approvals": "{count, plural, =0 {Tidak ada persetujuan} other {# persetujuan}}",
+    "classic": "Tampilan klasik",
+    "desktop": "Tampilan desktop"
+  },
+  "dock": {
+    "label": "Dock",
+    "allApps": "Semua aplikasi",
+    "showOffice": "Tampilkan kantor",
+    "running": "terbuka"
+  },
+  "launcher": {
+    "title": "Semua aplikasi",
+    "description": "Buka aplikasi apa pun sebagai jendela. Posisi jendela diingat di perangkat ini.",
+    "groups": {
+      "work": "Kerja",
+      "team": "Tim",
+      "operations": "Operasional",
+      "system": "Sistem"
+    },
+    "hire": "Rekrut karyawan",
+    "newTask": "Tugas baru",
+    "classic": "Pindah ke tampilan klasik"
+  },
+  "window": {
+    "close": "Tutup",
+    "minimize": "Minimalkan",
+    "maximize": "Maksimalkan",
+    "restore": "Pulihkan",
+    "back": "Kembali",
+    "loading": "Memuat…",
+    "crashed": "Jendela ini mengalami error.",
+    "reload": "Muat ulang jendela",
+    "detail": {
+      "task": "Tugas",
+      "employee": "Karyawan",
+      "hire": "Rekrut"
+    }
+  },
+  "office": {
+    "unavailable": "Kantor 3D tidak bisa berjalan di perangkat ini. Semua aplikasi tetap bisa dibuka dari dock.",
+    "summary": "{working, plural, =0 {Tidak ada yang bekerja} other {# bekerja}}, {waiting, plural, =0 {tidak ada yang menunggu} other {# menunggu kamu}}"
+  }
+}

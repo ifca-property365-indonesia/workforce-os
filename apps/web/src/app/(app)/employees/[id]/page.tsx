@@ -2,7 +2,7 @@
 
 import { useStepUp } from "@/components/account/step-up";
 
-import Link from "next/link";
+import Link from "@/lib/nav";
 import { use, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -18,7 +18,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
-import { LookEditor } from "@/components/employees/look-editor";
 import { BotEditor } from "@/components/employees/bot-editor";
 import { MemoryPanel } from "@/components/employees/memory-panel";
 import { EmployeeSkillsCard } from "@/components/employees/skills-card";
@@ -475,7 +474,6 @@ export default function EmployeePage({ params }: P) {
           <ExecutionModeCard e={e} />
           <DepartmentCard e={e} />
           <BotEditor e={e} canEdit={!!me && hasRole(me.role, "ADMIN")} />
-          <LookEditor e={e} company={me?.workspace.name ?? ""} canEdit={!!me && hasRole(me.role, "ADMIN")} />
           <div className="grid gap-4 md:grid-cols-3">
             <Card>
               <CardContent className="p-4 text-sm">

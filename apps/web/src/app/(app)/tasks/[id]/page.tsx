@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/lib/nav";
 import { use } from "react";
 import { useTranslations } from "next-intl";
 import { TaskDetail } from "@/components/inspector/task-detail";

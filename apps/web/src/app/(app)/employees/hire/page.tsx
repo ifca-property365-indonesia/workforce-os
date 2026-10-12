@@ -2,8 +2,7 @@
 
 import { useStepUp } from "@/components/account/step-up";
 
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import Link, { useSearchParams } from "@/lib/nav";
 import { Suspense, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";

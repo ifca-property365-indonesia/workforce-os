@@ -1,0 +1,51 @@
+{
+  "menubar": {
+    "office": "Office",
+    "apps": "Apps",
+    "command": "New task",
+    "showOffice": "Show the office",
+    "staff": "Employees in the office",
+    "staffMore": "+{count} more",
+    "approvals": "{count, plural, =0 {No approvals} one {# approval} other {# approvals}}",
+    "classic": "Classic view",
+    "desktop": "Desktop view"
+  },
+  "dock": {
+    "label": "Dock",
+    "allApps": "All apps",
+    "showOffice": "Show the office",
+    "running": "open"
+  },
+  "launcher": {
+    "title": "All apps",
+    "description": "Open any app as a window. Windows stay where you leave them on this device.",
+    "groups": {
+      "work": "Work",
+      "team": "Team",
+      "operations": "Operations",
+      "system": "System"
+    },
+    "hire": "Hire an employee",
+    "newTask": "New task",
+    "classic": "Switch to the classic view"
+  },
+  "window": {
+    "close": "Close",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "back": "Back",
+    "loading": "Loading…",
+    "crashed": "This window hit an error.",
+    "reload": "Reload window",
+    "detail": {
+      "task": "Task",
+      "employee": "Employee",
+      "hire": "Hire"
+    }
+  },
+  "office": {
+    "unavailable": "The 3D office can't run on this device. Every app still works from the dock.",
+    "summary": "{working, plural, =0 {Nobody is working} one {# working} other {# working}}, {waiting, plural, =0 {nothing waiting} one {# waiting for you} other {# waiting for you}}"
+  }
+}
