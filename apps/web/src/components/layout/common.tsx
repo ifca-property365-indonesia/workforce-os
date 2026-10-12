@@ -1,11 +1,11 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { TaskStatus } from "@wfos/shared";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import { STATUS_TONE } from "@/lib/format";
-import { signVars, type SignColor } from "@/lib/sign";
+import { BotAvatar, useBotLook, type BotMood } from "@/components/ui/bot-avatar";
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
@@ -29,13 +29,16 @@ export function StatusBadge({ status, className }: { status: TaskStatus; classNa
   );
 }
 
-/** An employee's avatar on a tile tinted with their sign colour (when known). */
-export function Avatar({ emoji, size = "md", color, className }: { emoji?: string | null; size?: "sm" | "md" | "lg"; color?: SignColor; className?: string }) {
-  const s = size === "sm" ? "size-7 rounded-lg text-sm" : size === "lg" ? "size-14 rounded-2xl text-3xl" : "size-9 rounded-[10px] text-lg";
-  const style: CSSProperties | undefined = color ? { ...signVars(color), background: "color-mix(in srgb, var(--sign) 26%, transparent)", boxShadow: "inset 0 0 0 1px color-mix(in srgb, var(--sign) 45%, transparent)" } : undefined;
+/**
+ * An employee as their bloub bot: a body shape of their own, in their sign colour. `id` is the employee;
+ * without one (a role template) `seed` picks the shape and the bot stays in ink.
+ */
+export function Avatar({ id, seed, mood, size = "md", className }: { id?: string | null; seed?: string; mood?: BotMood; size?: "sm" | "md" | "lg"; className?: string }) {
+  const { shape, color } = useBotLook(id, seed);
+  const s = size === "sm" ? "size-7 p-0.5" : size === "lg" ? "size-14 p-1" : "size-9 p-0.5";
   return (
-    <span className={cn("inline-flex shrink-0 items-center justify-center bg-accent", s, className)} style={style}>
-      {emoji || "🤖"}
+    <span className={cn("inline-flex shrink-0 items-center justify-center", s, className)}>
+      <BotAvatar shape={shape} color={color} mood={mood} seed={id || seed || ""} />
     </span>
   );
 }

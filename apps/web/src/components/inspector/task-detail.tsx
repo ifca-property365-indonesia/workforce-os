@@ -347,7 +347,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
             {task.phase && task.teamId && <span className="rounded-full bg-muted px-2 py-0.5">{t("task.team", { phase: task.phase })}</span>}
             {assignee && (
               <span className="inline-flex items-center gap-1">
-                <Avatar emoji={assignee.avatar} size="sm" /> {assignee.name}
+                <Avatar id={assignee.id} size="sm" /> {assignee.name}
               </span>
             )}
             <span>{t("task.source", { source: t.has(`source.${task.source}`) ? t(`source.${task.source}`) : task.source })}</span>

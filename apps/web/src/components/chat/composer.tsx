@@ -172,7 +172,7 @@ export function Composer({
                   }}
                 >
                   {o.avatar !== null ? (
-                    <Avatar emoji={o.avatar} size="sm" />
+                    <Avatar id={o.key} size="sm" />
                   ) : (
                     <span className="inline-flex size-6 items-center justify-center rounded-full bg-accent">
                       <Users className="size-3.5" />

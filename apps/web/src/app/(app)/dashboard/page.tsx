@@ -14,7 +14,7 @@ import { WeeklySpendChart } from "@/components/inspector/weekly-spend";
 import { LimitsCard } from "@/components/inspector/limits-card";
 import { IncidentsCard } from "@/components/inspector/incidents-card";
 import { PendingApprovalsList, usePendingApprovals } from "@/components/approvals/pending-list";
-import { OfficeFacade, useSignColors } from "@/components/office/employee-sign";
+import { OfficeFacade, useBotMoods } from "@/components/office/employee-sign";
 import { useOffice } from "@/components/office/use-office";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
@@ -77,8 +77,8 @@ export default function DashboardPage() {
   const pct = (n: number | null) => (n == null ? "—" : new Intl.NumberFormat(f.locale, { style: "percent" }).format(n));
   const { data } = useQuery({ queryKey: ["dashboard"], queryFn: () => api.get<Dash>("/api/dashboard"), refetchInterval: 30_000 });
   const { data: emps } = useEmployees();
+  const moods = useBotMoods();
   const { data: pending } = usePendingApprovals();
-  const colors = useSignColors();
   const demo = useMutation({
     mutationFn: () => api.post("/api/demo"),
     onSuccess: () => toast.success(t("demoStarted")),
@@ -183,7 +183,7 @@ export default function DashboardPage() {
             ?.filter((e) => e.status !== "ARCHIVED")
             .map((e) => (
               <Link key={e.id} href={`/employees/${e.id}`} className="flex items-center gap-3 rounded-xl border p-3 hover:bg-secondary/60">
-                <Avatar emoji={e.avatar} color={colors.get(e.id)} />
+                <Avatar id={e.id} mood={moods.get(e.id)} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-semibold">{e.name}</div>
                   <div className="truncate text-xs text-muted-foreground">{e.role}</div>

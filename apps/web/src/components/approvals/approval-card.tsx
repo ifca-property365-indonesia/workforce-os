@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/layout/common";
-import { useSignColors } from "@/components/office/employee-sign";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
@@ -110,7 +109,6 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
   const t = useTranslations("approvals");
   const tc = useTranslations("common");
   const f = useFormat();
-  const colors = useSignColors();
   const reasonText = useReasonText();
   const pending = a.status === "PENDING";
   const [editing, setEditing] = useState(false);
@@ -286,7 +284,7 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
         </div>
       )}
       <div className="flex items-start gap-3 px-5 pb-3 pt-4">
-        <Avatar emoji={a.employee?.avatar} color={a.employee ? colors.get(a.employee.id) : undefined} />
+        <Avatar id={a.employee?.id} mood="approval" />
         <div className="min-w-0 flex-1">
           <div className={cn("break-words", pending ? "font-display mb-1 text-[1.6rem] normal-case !leading-[1.08] tracking-[0.005em]" : "text-base font-semibold leading-snug")}>{a.title}</div>
           <div className="mt-0.5 text-xs text-muted-foreground">

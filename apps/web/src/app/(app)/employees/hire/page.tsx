@@ -26,7 +26,6 @@ import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
 const STEPS = ["template", "persona", "tools", "firstTask"] as const;
-const EMOJIS = ["🤖", "👩‍💻", "🧭", "🧾", "🎧", "📣", "🔎", "🧪", "🦉", "🛠️", "📊", "✍️"];
 
 interface Draft {
   templateKey: string | null;
@@ -158,7 +157,7 @@ function Wizard() {
               className="rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-sm"
             >
               <div className="flex items-center gap-2">
-                <Avatar emoji={tp.avatar} />
+                <Avatar seed={tp.key} />
                 <span className="font-semibold">{tp.role}</span>
               </div>
               <p className="mt-2 text-sm text-muted-foreground">{tp.tagline}</p>
@@ -178,26 +177,9 @@ function Wizard() {
         <Card>
           <CardContent className="grid gap-4 p-5 lg:grid-cols-2">
             <div className="space-y-4">
-              <div className="flex gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="avatar">{t("persona.avatar")}</Label>
-                  <Select value={d.avatar} onValueChange={(v) => set("avatar", v)}>
-                    <SelectTrigger id="avatar" className="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {EMOJIS.map((e) => (
-                        <SelectItem key={e} value={e}>
-                          {e}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1 space-y-1.5">
-                  <Label htmlFor="name">{tc("name")}</Label>
-                  <Input id="name" value={d.name} onChange={(e) => set("name", e.target.value)} />
-                </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="name">{tc("name")}</Label>
+                <Input id="name" value={d.name} onChange={(e) => set("name", e.target.value)} />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="role">{tc("role")}</Label>
@@ -295,7 +277,7 @@ function Wizard() {
             <Card>
               <CardContent className="space-y-3 p-5">
                 <div className="flex items-center gap-2">
-                  <Avatar emoji={employee.avatar} />
+                  <Avatar id={employee.id} />
                   <div>
                     <div className="font-medium">{t("firstTask.heading", { name: employee.name })}</div>
                     <div className="text-xs text-muted-foreground">{t("firstTask.hint")}</div>

@@ -9,7 +9,6 @@ import { FlaskConical, GitBranch, Plus, UsersRound } from "lucide-react";
 import { TASK_STATUSES, type TaskStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Avatar, PageHeader } from "@/components/layout/common";
-import { useSignColors } from "@/components/office/employee-sign";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
 import { api } from "@/lib/api";
 import { STATUS_TONE } from "@/lib/format";
@@ -24,7 +23,6 @@ function Board() {
   const router = useRouter();
   const t = useTranslations("tasks");
   const ts = useTranslations("status");
-  const colors = useSignColors();
   const f = useFormat();
   const [open, setOpen] = useState(false);
   const employeeId = sp.get("employeeId") ?? "";
@@ -103,7 +101,7 @@ function Board() {
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                         {a && (
                           <span className="inline-flex items-center gap-1">
-                            <Avatar emoji={a.avatar} size="sm" color={colors.get(a.id)} className="size-5 rounded-md text-[11px]" /> {a.name}
+                            <Avatar id={a.id} size="sm" className="size-5 p-0" /> {a.name}
                           </span>
                         )}
                         {!a && task.teamId && (

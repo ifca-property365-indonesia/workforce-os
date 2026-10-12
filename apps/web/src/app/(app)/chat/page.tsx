@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState } from "@/components/layout/common";
 import { Composer, type MentionCandidate } from "@/components/chat/composer";
 import { MessageItem } from "@/components/chat/message-item";
-import { OfficeFacade, useSignColors } from "@/components/office/employee-sign";
+import { OfficeFacade, useBotMoods, useSignColors } from "@/components/office/employee-sign";
 import { PendingApprovalsList, usePendingApprovals } from "@/components/approvals/pending-list";
 import type { IncidentRow } from "@/components/inspector/incidents-card";
 import { api, ApiError } from "@/lib/api";
@@ -379,7 +379,7 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
             m={m}
             author={m.employeeId ? empById.get(m.employeeId) : undefined}
             color={m.employeeId ? colors.get(m.employeeId) : emp ? colors.get(emp.id) : undefined}
-            fallbackAvatar={emp?.avatar}
+            fallbackId={emp?.id}
             teamChat={!!conv.teamId}
             canDecide={canDecide}
             highlighted={highlight === m.id}
@@ -484,6 +484,7 @@ function ChatPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { data: emps } = useEmployees();
+  const moods = useBotMoods();
   const { data: teams } = useTeams();
   const { data } = useQuery({ queryKey: ["conversations"], queryFn: () => api.get<{ conversations: Conv[] }>("/api/conversations").then((r) => r.conversations) });
   const selected = sp.get("c");
@@ -524,7 +525,6 @@ function ChatPage() {
     }
   }, [wantEmp, data, router, create]);
 
-  const colors = useSignColors();
   return (
     <div className="grid gap-4 md:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[17rem_minmax(0,1fr)_19rem] [&>*]:min-w-0">
       {/* on a phone an open conversation takes the screen; its header links back to this list */}
@@ -538,7 +538,7 @@ function ChatPage() {
               ?.filter((e) => e.status !== "ARCHIVED")
               .map((e) => (
                 <Button key={e.id} size="sm" variant="outline" className="gap-1.5 px-2" onClick={() => create.mutate({ employeeId: e.id })}>
-                  <Avatar emoji={e.avatar} size="sm" color={colors.get(e.id)} className="size-5 rounded-md text-xs" /> {e.name}
+                  <Avatar id={e.id} size="sm" className="size-5 p-0" /> {e.name}
                 </Button>
               ))}
             {teams
@@ -558,7 +558,7 @@ function ChatPage() {
               <div key={c.id} className={cn("group flex items-center gap-2 rounded-xl px-2.5 py-2 text-sm", active ? "bg-secondary" : "hover:bg-secondary/60")}>
                 <Link href={`/chat?c=${c.id}`} aria-current={active ? "page" : undefined} className="flex min-w-0 flex-1 items-center gap-2.5">
                   {e ? (
-                    <Avatar emoji={e.avatar} size="sm" color={colors.get(e.id)} />
+                    <Avatar id={e.id} size="sm" mood={moods.get(e.id)} />
                   ) : (
                     <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent">
                       <UsersRound className="size-4" aria-hidden />

@@ -9,12 +9,40 @@ import { useEmployees } from "@/lib/hooks";
 import { signColors, signStateOf, signVars, type SignColor, type SignState } from "@/lib/sign";
 import { cn } from "@/lib/utils";
 import type { IncidentRow } from "@/components/inspector/incidents-card";
+import type { BotMood } from "@/components/ui/bot-avatar";
+import type { Activity } from "@wfos/shared/office";
 import { useOffice } from "./use-office";
 
 /** Sign colours for every employee of the workspace (archived ones too, so colours never shift). */
 export function useSignColors(): Map<string, SignColor> {
   const { data } = useEmployees();
   return useMemo(() => signColors((data ?? []).map((e) => e.id)), [data]);
+}
+
+const MOOD: Record<Activity, BotMood> = { typing: "working", reading: "working", terminal: "working", thinking: "working", waiting: "approval", idle: "idle", paused: "off" };
+
+/** What every employee's bot avatar is doing, live from the office snapshot (an open incident wins). */
+export function useBotMoods(): Map<string, BotMood> {
+  const t = useTranslations("office");
+  const { version, people, activityOf } = useOffice(t("generalRoom"));
+  const faulty = useFaulty();
+  return useMemo(() => {
+    void version; // the people map is a ref patched live; version says when it changed
+    const now = Date.now();
+    return new Map([...people.current.values()].map((p) => [p.id, faulty.has(p.id) ? "fault" : MOOD[activityOf(p, now)]]));
+  }, [version, people, activityOf, faulty]);
+}
+
+const OPEN_INCIDENT = new Set(["open", "handling", "escalated"]);
+
+/** employees with an open incident */
+function useFaulty(): Set<string> {
+  const { data: inc } = useQuery({
+    queryKey: ["incidents"],
+    queryFn: () => api.get<{ incidents: IncidentRow[]; resolved7d: number }>("/api/incidents"),
+    refetchInterval: 60_000,
+  });
+  return useMemo(() => new Set((inc?.incidents ?? []).filter((i) => OPEN_INCIDENT.has(i.status) && i.employee).map((i) => i.employee!.id)), [inc]);
 }
 
 const SIZE = {
@@ -81,8 +109,6 @@ export function EmployeeSign({
   );
 }
 
-const OPEN_INCIDENT = new Set(["open", "handling", "escalated"]);
-
 /**
  * The street: a row of employee signs, live from the office snapshot (SSE). `ids` limits and orders it (a team,
  * or one employee); without it the whole office shows, working employees first.
@@ -91,12 +117,7 @@ export function OfficeFacade({ ids, leadId, size = "md", className }: { ids?: re
   const t = useTranslations("office");
   const office = useOffice(t("generalRoom"));
   const colors = useSignColors();
-  const { data: inc } = useQuery({
-    queryKey: ["incidents"],
-    queryFn: () => api.get<{ incidents: IncidentRow[]; resolved7d: number }>("/api/incidents"),
-    refetchInterval: 60_000,
-  });
-  const faulty = useMemo(() => new Set((inc?.incidents ?? []).filter((i) => OPEN_INCIDENT.has(i.status) && i.employee).map((i) => i.employee!.id)), [inc]);
+  const faulty = useFaulty();
   const { version, people, activityOf } = office;
   const signs = useMemo(() => {
     void version; // the people map is a ref patched live; version says when it changed

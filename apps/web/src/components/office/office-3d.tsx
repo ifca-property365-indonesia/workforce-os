@@ -413,7 +413,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
     const renderTag = (a: Avatar, p: OfficePerson, act: Activity, room: string) => {
       const activityText = labelsRef.current.activity(p);
       const tool = p.lastStep?.kind === "tool" ? p.lastStep.name.replace(/^mcp__.+?__/, "") : "";
-      const key = [act, p.name, p.avatar, p.task?.title ?? "", room, activityText, tool].join("|");
+      const key = [act, p.name, p.task?.title ?? "", room, activityText, tool].join("|");
       if (key === a.tagKey) return;
       a.tagKey = key;
       a.card = !!p.task;
@@ -439,7 +439,7 @@ export default function Office3D({ state, reducedMotion, labels, onSelect, onUna
           "pointer-events-auto absolute left-0 top-0 flex origin-bottom cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full bg-[#17151d]/85 px-2 py-0.5 text-[11px] font-medium text-white";
         const dot = node("span", "size-1.5 rounded-full");
         dot.style.background = STATUS_COLOR[act];
-        a.tag.append(dot, node("span", "", `${p.avatar} ${p.name}`));
+        a.tag.append(dot, node("span", "", p.name));
         if (act === "paused") a.tag.append(node("span", "text-white/60", "zz"));
       }
       a.tag.title = `${p.name} · ${activityText}${p.task?.title ? ` · ${p.task.title}` : ""}`;

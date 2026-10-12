@@ -243,7 +243,7 @@ export default function RoutinesPage() {
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
-                      {e ? <Avatar emoji={e.avatar} size="sm" /> : "👥"} {e?.name ?? t?.name ?? tr("unassigned")}
+                      {e ? <Avatar id={e.id} size="sm" /> : "👥"} {e?.name ?? t?.name ?? tr("unassigned")}
                     </span>
                     <span>{tr("nextRun", { when: r.enabled && r.nextRunAt ? `${f.dateTime(r.nextRunAt)} (${f.ago(r.nextRunAt)})` : "—" })}</span>
                     <span>{tr("lastRun", { when: f.ago(r.lastRunAt) })}</span>

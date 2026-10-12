@@ -173,9 +173,17 @@ export function Office2D({ state, reducedMotion, labels, onSelect }: OfficeViewP
         ctx.beginPath();
         ctx.arc(x, y - 0.52, 0.3, 0, Math.PI * 2);
         ctx.fill();
-        ctx.font = "0.38px system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif";
+        // two bloub capsule eyes, leaning the way the avatars' do
+        ctx.fillStyle = "#2a1f1a";
+        for (const dx of [-0.1, 0.1]) {
+          ctx.save();
+          ctx.translate(x + dx, y - 0.54);
+          ctx.rotate(-0.45);
+          roundRect(ctx, -0.035, -0.08, 0.07, 0.16, 0.035);
+          ctx.fill();
+          ctx.restore();
+        }
         ctx.textAlign = "center";
-        ctx.fillText(p.avatar || "🤖", x, y - 0.5);
         if (hover.current === p.id) {
           ctx.strokeStyle = "#6366f1";
           ctx.lineWidth = 0.08;

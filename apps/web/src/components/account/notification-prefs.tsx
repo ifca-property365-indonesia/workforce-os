@@ -97,7 +97,7 @@ export function NotificationPrefsCard() {
                 <li key={e.id}>
                   <label className="flex items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-accent">
                     <Switch checked={muted} onCheckedChange={(v) => toggleMute(e.id, v)} />
-                    <Avatar emoji={e.avatar} size="sm" />
+                    <Avatar id={e.id} size="sm" />
                     <span className="flex-1 truncate">{e.name}</span>
                     {muted && <span className="text-xs text-muted-foreground">{t("notifications.muted")}</span>}
                   </label>

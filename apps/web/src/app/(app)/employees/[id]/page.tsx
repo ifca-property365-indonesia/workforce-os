@@ -17,7 +17,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
-import { useSignColors } from "@/components/office/employee-sign";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { LookEditor } from "@/components/employees/look-editor";
 import { MemoryPanel } from "@/components/employees/memory-panel";
@@ -28,6 +27,7 @@ import { DiffView } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { useMe, useTemplates, type Employee, type TaskRow } from "@/lib/hooks";
+import { useBotMoods } from "@/components/office/employee-sign";
 
 type P = { params: Promise<{ id: string }> };
 
@@ -418,8 +418,8 @@ export default function EmployeePage({ params }: P) {
   });
   const archive = useMutation({ mutationFn: () => api.del(`/api/employees/${id}`), onSuccess: () => (location.href = "/employees") });
   const { data: me } = useMe();
+  const moods = useBotMoods();
   const [k, setK] = useState(0);
-  const colors = useSignColors();
   useEffect(() => {
     setK((x) => x + 1);
   }, [data?.instructionsVersion, data?.autonomyLevel]);
@@ -428,7 +428,7 @@ export default function EmployeePage({ params }: P) {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <Avatar emoji={e.avatar} size="lg" color={colors.get(e.id)} />
+        <Avatar id={e.id} size="lg" mood={moods.get(e.id)} />
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-[2.6rem]">{e.name}</h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">

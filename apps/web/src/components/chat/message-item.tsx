@@ -178,7 +178,7 @@ export const MessageItem = memo(function MessageItem({
   m,
   author,
   color,
-  fallbackAvatar,
+  fallbackId,
   teamChat,
   canDecide,
   highlighted,
@@ -195,7 +195,8 @@ export const MessageItem = memo(function MessageItem({
   author: Employee | undefined;
   /** the author's sign colour (tints the avatar) */
   color?: SignColor;
-  fallbackAvatar: string | undefined;
+  /** whose bot to show when the message has no author (the conversation's employee) */
+  fallbackId: string | undefined;
   teamChat: boolean;
   canDecide: boolean;
   highlighted: boolean;
@@ -230,7 +231,7 @@ export const MessageItem = memo(function MessageItem({
   const approvals = !mine ? (m.approvals ?? []) : [];
   return (
     <div id={`msg-${m.id}`} className={cn("group flex gap-3", mine && "flex-row-reverse")}>
-      {!mine && <Avatar emoji={author?.avatar ?? fallbackAvatar} color={color} className="mt-0.5" />}
+      {!mine && <Avatar id={author?.id ?? fallbackId} className="mt-0.5" />}
       <div className={cn("min-w-0 max-w-[min(46rem,88%)] space-y-1.5", mine && "items-end text-right")}>
         {!mine && (author || m.meta?.routedBy) && (teamChat || author) && (
           <div className="flex flex-wrap items-center gap-1.5 text-xs">

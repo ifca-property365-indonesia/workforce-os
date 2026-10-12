@@ -95,8 +95,8 @@ export interface Team {
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
 export const useEmployees = () =>
   useQuery({ queryKey: ["employees"], queryFn: () => api.get<{ employees: Employee[] }>("/api/employees").then((r) => r.employees) });
-export const useTemplates = () =>
-  useQuery({ queryKey: ["templates"], queryFn: () => api.get<{ templates: RoleTemplate[]; tools: ToolMeta[] }>("/api/templates"), staleTime: Infinity });
+export const useTemplates = (enabled = true) =>
+  useQuery({ queryKey: ["templates"], queryFn: () => api.get<{ templates: RoleTemplate[]; tools: ToolMeta[] }>("/api/templates"), staleTime: Infinity, enabled });
 export const useClients = () => useQuery({ queryKey: ["clients"], queryFn: () => api.get<{ clients: Client[] }>("/api/clients").then((r) => r.clients) });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: () => api.get<{ teams: Team[] }>("/api/teams").then((r) => r.teams) });
 
