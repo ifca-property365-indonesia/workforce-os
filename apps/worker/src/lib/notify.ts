@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
-import { db, members, notificationPrefs, notifications } from "@wfos/db";
-import type { NotificationChannel, NotifyJob } from "@wfos/shared";
+import { and, eq, inArray } from "drizzle-orm";
+import { db, members, notificationPrefs, notifications, users } from "@wfos/db";
+import { notificationEnabled, type NotificationChannel, type NotifyJob } from "@wfos/shared";
 import { sendMail } from "@wfos/shared/mail";
 import { withRetry } from "@wfos/shared/server";
 import { env } from "./env";
@@ -24,9 +24,20 @@ export async function channelRecipients(workspaceId: string, channel: Notificati
     .leftJoin(notificationPrefs, and(eq(notificationPrefs.userId, members.userId), eq(notificationPrefs.workspaceId, members.workspaceId)))
     .where(and(eq(members.workspaceId, workspaceId), ...(n.userId ? [eq(members.userId, n.userId)] : [])));
   return rows
-    .filter((r) => !(n.notificationKind && r.channels?.[n.notificationKind]?.[channel] === false))
+    .filter((r) => !n.notificationKind || notificationEnabled(r.channels, n.notificationKind, channel))
     .filter((r) => !(n.employeeId && r.muted?.includes(n.employeeId)))
     .map((r) => r.userId);
+}
+
+/** Login addresses of these members (undefined = every member of the workspace), lower-cased. */
+async function memberEmails(workspaceId: string, userIds: string[] | undefined): Promise<string[]> {
+  if (userIds && !userIds.length) return [];
+  const rows = await db
+    .select({ email: users.email })
+    .from(members)
+    .innerJoin(users, eq(users.id, members.userId))
+    .where(and(eq(members.workspaceId, workspaceId), ...(userIds ? [inArray(members.userId, userIds)] : [])));
+  return rows.map((r) => r.email.toLowerCase());
 }
 
 /**
@@ -51,12 +62,12 @@ export async function recipientsOrFallback(
 }
 
 /**
- * In-app notification + email to the workspace notify address + optional webhook (WhatsApp/Telegram gateway)
- * + Telegram to linked members (with approval buttons for Admins when `approvalId` is set) + Web Push to subscribed devices.
+ * In-app notification + email + optional webhook (WhatsApp/Telegram gateway) + Telegram to linked members (with
+ * approval buttons for Admins when `approvalId` is set) + Web Push to subscribed devices.
  * The in-app row is stored with its kind / employee / recipient (workspace-wide unless `userId` is set; the web
- * filters what each member sees by their preferences). Telegram and push go only to the members whose
- * preferences allow this kind on that channel and who have not muted the employee (see channelRecipients).
- * Email and the webhook are workspace-level and unchanged.
+ * filters what each member sees by their preferences). Email, Telegram and push go only to the members whose
+ * preferences allow this kind on that channel and who have not muted the employee (see channelRecipients); email
+ * also goes to the workspace's shared notify address when one is set. The webhook is workspace-level.
  */
 export async function notify(n: NotifyInput): Promise<void> {
   const { workspaceId, subject, text, link, approvalId } = n;
@@ -73,11 +84,24 @@ export async function notify(n: NotifyInput): Promise<void> {
   const ws = await getWorkspace(workspaceId);
   const url = link ? `${env.appUrl}${link}` : env.appUrl;
   const smtp = await getSmtp(workspaceId);
-  if (smtp && ws.notifyEmail) {
+  if (smtp) {
+    // each member at their login address (their preferences decide), plus the workspace's shared address if set;
+    // one mail per address, so members never see each other's addresses
+    const to = new Set<string>();
     try {
-      await sendMail(smtp, { to: [ws.notifyEmail], subject: `[Workforce OS] ${subject}`, text: `${text}\n\n${msg(ws.defaultLocale, "notify.open", { url })}` });
+      const ids = await recipientsOrFallback(workspaceId, "email", n);
+      if (ids !== null) for (const e of await memberEmails(workspaceId, ids)) to.add(e);
     } catch (e) {
-      log.warn({ err: e }, "notify email failed");
+      log.warn({ err: e }, "notify email: member lookup failed");
+    }
+    if (ws.notifyEmail) to.add(ws.notifyEmail.toLowerCase());
+    const mail = { subject: `[Workforce OS] ${subject}`, text: `${text}\n\n${msg(ws.defaultLocale, "notify.open", { url })}` };
+    for (const address of to) {
+      try {
+        await sendMail(smtp, { to: [address], ...mail });
+      } catch (e) {
+        log.warn({ err: e }, "notify email failed");
+      }
     }
   }
   const hook = await getWebhookUrl(workspaceId);

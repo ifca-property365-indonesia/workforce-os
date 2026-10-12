@@ -22,7 +22,7 @@ export const IDLE_PERIOD_MS = 45_000;
 const WRITE_TOOLS = new Set([
   "Write", "Edit", "MultiEdit", "NotebookEdit", "TodoWrite",
   "draft_document", "draft_email", "draft_invoice", "memory_save", "create_task", "delegate_subtask", "request_revision",
-  "message_teammate", "send_email", "send_invoice", "post_webhook",
+  "message_teammate", "ask_teammate", "send_email", "send_invoice", "post_webhook",
 ]);
 const READ_TOOLS = new Set([
   "Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "Skill",

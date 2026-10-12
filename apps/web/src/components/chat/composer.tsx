@@ -2,7 +2,9 @@
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
-import { Paperclip, Send, Users, X } from "lucide-react";
+import { toast } from "sonner";
+import { FileText, Paperclip, Send, Users, X } from "lucide-react";
+import { CHAT_ATTACHMENTS_MAX, CHAT_IMAGE_MAX_BYTES, CHAT_IMAGE_TYPES } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/layout/common";
@@ -26,8 +28,29 @@ interface Option {
 
 const MAX_OPTIONS = 8;
 
+const DOC_EXT = [".pdf", ".docx", ".md", ".markdown", ".txt", ".csv", ".json"];
+const IMAGE_EXT = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+const DOC_MAX_BYTES = 20 * 1024 * 1024;
+const ACCEPT = [...DOC_EXT, ...IMAGE_EXT, ...Object.keys(CHAT_IMAGE_TYPES)].join(",");
+const extOf = (name: string) => name.slice(name.lastIndexOf(".")).toLowerCase();
+export const isImageFile = (f: File) => f.type in CHAT_IMAGE_TYPES || IMAGE_EXT.includes(extOf(f.name));
+/** Whether the server will take this file (it checks again, images by their bytes). */
+export const attachable = (f: File) => (isImageFile(f) ? f.size <= CHAT_IMAGE_MAX_BYTES : DOC_EXT.includes(extOf(f.name)) && f.size <= DOC_MAX_BYTES);
+
+/** A picked image, previewed from memory (the object URL is freed when it goes). */
+function Thumb({ file }: { file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  return url ? <img src={url} alt="" className="size-14 rounded-lg object-cover" /> : <span className="block size-14 rounded-lg bg-muted" />;
+}
+
 /**
- * Message box with attachments. In team chats (`members` set) typing "@" opens a list of the team's members
+ * Message box with attachments: the paperclip, pasting (an image copied anywhere, a screenshot) and dropping files
+ * on it; images show as thumbnails. In team chats (`members` set) typing "@" opens a list of the team's members
  * plus @semua / @everyone: arrows move, Enter or Tab inserts "@Name ", Escape closes.
  */
 export function Composer({
@@ -96,6 +119,19 @@ export function Composer({
     setPicked({ start: active.start, text: next.text });
   };
 
+  const [dragging, setDragging] = useState(false);
+  /** add picked / pasted / dropped files: unsupported or too large ones are refused with a note, at most CHAT_ATTACHMENTS_MAX */
+  const addFiles = (incoming: File[]) => {
+    if (!incoming.length) return;
+    const ok = incoming.filter((f) => {
+      if (attachable(f)) return true;
+      toast.error(t("fileRejected", { name: f.name || "image" }));
+      return false;
+    });
+    if (files.length + ok.length > CHAT_ATTACHMENTS_MAX) toast.error(t("tooManyFiles", { max: CHAT_ATTACHMENTS_MAX }));
+    setFiles((cur) => [...cur, ...ok].slice(0, CHAT_ATTACHMENTS_MAX));
+  };
+
   const canSend = !!text.trim() || !!files.length;
   const submit = () => {
     if (!canSend || sending) return;
@@ -119,23 +155,56 @@ export function Composer({
 
   return (
     <form
-      className="border-t bg-card p-3 sm:px-5 sm:py-4"
+      className={cn("relative border-t bg-card p-3 sm:px-5 sm:py-4", dragging && "ring-2 ring-inset ring-ring")}
       onSubmit={(e) => {
         e.preventDefault();
         submit();
       }}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        setDragging(false);
+        addFiles(Array.from(e.dataTransfer.files));
+      }}
     >
+      {dragging && (
+        <div className="pointer-events-none absolute inset-1 z-10 grid place-items-center rounded-xl border-2 border-dashed border-ring bg-card/90 text-sm font-medium">
+          {t("dropFiles")}
+        </div>
+      )}
       {!!files.length && (
-        <div className="mb-2 flex flex-wrap gap-1">
+        <ul className="mb-2 flex flex-wrap gap-2" aria-label={t("attachedFiles")}>
           {files.map((f, i) => (
-            <span key={`${f.name}-${f.size}-${i}`} className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs">
-              {f.name}
-              <button type="button" onClick={() => setFiles((cur) => cur.filter((x) => x !== f))} aria-label={t("removeFile")}>
+            <li key={`${f.name}-${f.size}-${i}`} className="relative">
+              {isImageFile(f) ? (
+                <span className="block" title={f.name}>
+                  <Thumb file={f} />
+                </span>
+              ) : (
+                <span className="inline-flex h-14 max-w-56 items-center gap-1.5 rounded-lg border px-2.5 text-xs">
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate">{f.name}</span>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => setFiles((cur) => cur.filter((x) => x !== f))}
+                aria-label={`${t("removeFile")}: ${f.name}`}
+                className="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full border bg-background shadow-sm hover:bg-secondary"
+              >
                 <X className="size-3" />
               </button>
-            </span>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       <div className="flex items-end gap-2">
         <input
@@ -143,10 +212,9 @@ export function Composer({
           type="file"
           multiple
           hidden
-          accept=".pdf,.docx,.md,.txt,.csv,.json"
+          accept={ACCEPT}
           onChange={(e) => {
-            const chosen = Array.from(e.target.files ?? []);
-            setFiles((cur) => [...cur, ...chosen]);
+            addFiles(Array.from(e.target.files ?? []));
             // so choosing the same file again (after removing it) fires change again
             e.target.value = "";
           }}
@@ -202,6 +270,13 @@ export function Composer({
               if (dismissed !== null && !activeMention(e.target.value, e.target.selectionStart ?? 0)) setDismissed(null);
             }}
             onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onPaste={(e) => {
+              // a copied image or screenshot arrives as a file; text pastes as usual
+              const pasted = Array.from(e.clipboardData.files);
+              if (!pasted.length) return;
+              if (!e.clipboardData.getData("text/plain")) e.preventDefault();
+              addFiles(pasted);
+            }}
             onBlur={() => setDismissed(active?.start ?? null)}
             onFocus={() => setDismissed(null)}
             onKeyDown={(e) => {

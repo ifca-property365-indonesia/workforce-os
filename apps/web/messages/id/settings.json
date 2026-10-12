@@ -76,7 +76,8 @@
   "notifications": {
     "title": "Notifikasi",
     "description": "Saat ada persetujuan yang menunggu atau tugas selesai.",
-    "notifyEmail": "Email notifikasi",
+    "notifyEmail": "Email notifikasi bersama (opsional)",
+    "notifyEmailHelp": "Setiap anggota sudah menerima email di alamat login masing-masing, sesuai pengaturan di Akun → Notifikasi. Isi alamat bersama (mis. ops@perusahaan.com) bila ingin salinan setiap notifikasi juga dikirim ke sana.",
     "webhookUrl": "URL webhook (gateway WhatsApp / Telegram / Slack)",
     "configured": "terkonfigurasi",
     "webhookPlaceholder": "https://… (disimpan terenkripsi)",

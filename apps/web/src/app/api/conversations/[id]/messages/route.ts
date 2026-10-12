@@ -3,12 +3,13 @@ import { conversations, db, messages } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { route } from "@/lib/server/route";
 import { publish, q } from "@/lib/server/queue";
-import { saveDocument } from "@/lib/server/uploads";
+import { saveChatAttachments } from "@/lib/server/uploads";
 import { MAX_MESSAGE, checkLeaf, conversationIn, currentLeaf, expectedLeafOf, mentionMeta, messageDto } from "../thread";
 
 /**
- * Send a chat message (multipart: content + optional files + optional expectedLeafId). Files are indexed into the
- * knowledge base. The message hangs below the thread's current end and becomes its new end, in one transaction.
+ * Send a chat message (multipart: content + optional files + optional expectedLeafId). Documents are indexed into the
+ * knowledge base; images are kept for the employee to see. The message hangs below the thread's current end and
+ * becomes its new end, in one transaction.
  */
 export const POST = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {
   const c = await conversationIn(session.workspaceId, params.id);
@@ -26,11 +27,7 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
   if (content.length > MAX_MESSAGE) throw new HttpError(400, "Message too long", { code: "message_too_long", max: MAX_MESSAGE });
   // checked before the uploads too, so a stale client does not index files for a message that is refused
   checkLeaf(expected, await currentLeaf(c));
-  const attachments: { name: string; size: number; documentId?: string }[] = [];
-  for (const f of files.slice(0, 5)) {
-    const doc = await saveDocument(session.workspaceId, session.userId, f);
-    attachments.push({ name: doc.name, size: doc.size, documentId: doc.id });
-  }
+  const attachments = await saveChatAttachments(session.workspaceId, session.userId, files);
   const meta = await mentionMeta(c, session.workspaceId, content);
   // handledAt stays null: the chat run claims this message (and any sent right after it) as one turn.
   const m = await db.transaction(async (tx) => {

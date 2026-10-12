@@ -5,7 +5,7 @@ import { conversations, db, messages } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
 import { control, publish, q } from "@/lib/server/queue";
-import { saveDocument } from "@/lib/server/uploads";
+import { saveChatAttachments } from "@/lib/server/uploads";
 import { descendantsOf } from "@/lib/chat-thread";
 import {
   MAX_MESSAGE,
@@ -59,10 +59,7 @@ export const PATCH = route<P>("MEMBER", async ({ session, req, params }) => {
   if (!content && !attachments.length && !files.length) throw new HttpError(400, "Message is empty", { code: "message_empty" });
   if (content.length > MAX_MESSAGE) throw new HttpError(400, "Message too long", { code: "message_too_long", max: MAX_MESSAGE });
   checkLeaf(expected, await currentLeaf(c));
-  for (const f of files.slice(0, Math.max(0, 5 - attachments.length))) {
-    const doc = await saveDocument(session.workspaceId, session.userId, f);
-    attachments.push({ name: doc.name, size: doc.size, documentId: doc.id });
-  }
+  attachments.push(...(await saveChatAttachments(session.workspaceId, session.userId, files, attachments.length)));
   // the original's meta carries over (e.g. untrusted), but who is @mentioned is read from the new text
   const meta = await mentionMeta(c, session.workspaceId, content, original.meta);
   const { row, streaming, expired } = await db.transaction(async (tx) => {

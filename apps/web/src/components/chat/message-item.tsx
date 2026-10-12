@@ -234,6 +234,11 @@ export const MessageItem = memo(function MessageItem({
             {author && <span className="font-semibold text-foreground">{author.name}</span>}
             {author && <span className="text-muted-foreground">{author.role}</span>}
             {m.meta?.routedBy && <RoutedByBadge routedBy={m.meta.routedBy} />}
+            {m.meta?.askedBy && (
+              <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                {t("askedBy", { name: names(m.meta.askedBy) ?? "—" })}
+              </span>
+            )}
           </div>
         )}
         {editing ? (
@@ -264,13 +269,29 @@ export const MessageItem = memo(function MessageItem({
             )}
           </div>
         )}
-        {!!m.attachments?.length && (
-          <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
-            {m.attachments.map((a) => (
-              <span key={a.name} className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5">
-                <Paperclip className="size-3" aria-hidden /> {a.name}
-              </span>
-            ))}
+        {!!m.attachments?.some((a) => a.imageId) && (
+          <div className={cn("flex flex-wrap gap-2", mine && "justify-end")}>
+            {m.attachments
+              .filter((a) => a.imageId)
+              .map((a) => {
+                const src = `/api/conversations/${m.conversationId}/images/${a.imageId}`;
+                return (
+                  <a key={a.imageId} href={src} target="_blank" rel="noopener" aria-label={t("openImage", { name: a.name })} className="block max-w-[min(20rem,100%)] overflow-hidden rounded-xl border bg-muted">
+                    <img src={src} alt={a.name} loading="lazy" className="block h-auto max-h-64 w-auto max-w-full object-contain" />
+                  </a>
+                );
+              })}
+          </div>
+        )}
+        {!!m.attachments?.some((a) => !a.imageId) && (
+          <div className={cn("flex flex-wrap gap-1 text-xs text-muted-foreground", mine && "justify-end")}>
+            {m.attachments
+              .filter((a) => !a.imageId)
+              .map((a) => (
+                <span key={a.documentId ?? a.name} className="inline-flex items-center gap-1 rounded-lg border px-2 py-0.5">
+                  <Paperclip className="size-3" aria-hidden /> {a.name}
+                </span>
+              ))}
           </div>
         )}
         {!!chips.length && (

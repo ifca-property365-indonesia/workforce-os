@@ -123,7 +123,12 @@ export interface RunContext {
   skills?: AssignedSkill[];
   /** skill_propose calls accepted in this run (at most SKILL_PROPOSALS_PER_RUN) */
   skillProposals?: number;
+  /** chat runs: colleagues brought in with ask_teammate; the chat turn runs them right after this reply */
+  consults?: { employeeId: string; request: string }[];
 }
+
+/** ask_teammate calls one chat reply may make (the chat turn caps the total again, see MAX_CONSULTS_PER_TURN). */
+export const MAX_CONSULTS_PER_RUN = 2;
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 const ok = (text: string): ToolResult => ({ content: [{ type: "text", text }] });
@@ -144,6 +149,8 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
   if (ctx.team && !perms.some((p) => p.tool === "message_teammate")) perms.push({ tool: "message_teammate", enabled: true });
   // an employee with assigned skills can always read them (an explicit grant entry, even a disabled one, wins)
   if (ctx.skills?.length && !perms.some((p) => p.tool === "skill_read")) perms.push({ tool: "skill_read", enabled: true });
+  // in a chat anyone can bring a colleague in (the colleague acts with their own tools and autonomy)
+  if (ctx.conversationId && !ctx.taskId && !perms.some((p) => p.tool === "ask_teammate")) perms.push({ tool: "ask_teammate", enabled: true });
   return perms;
 }
 
@@ -994,6 +1001,42 @@ export function buildTools(ctx: RunContext) {
           output: text,
         });
         return ok(`Message delivered to ${to.name}.`);
+      }),
+    ),
+  );
+
+  add(
+    "ask_teammate",
+    tool(
+      "ask_teammate",
+      "Chat only: bring a colleague into this chat to help with the user's message. They read this conversation and reply here right after you, " +
+        "with their own role and tools — use it when the work needs a tool or permission you do not have. Then tell the user you asked them; never answer for them.",
+      { employeeId: z.string().uuid(), request: z.string().min(1).max(2000) },
+      wrap(ctx, "ask_teammate", async (a: { employeeId: string; request: string }) => {
+        if (!ctx.conversationId || ctx.taskId) return err("ask_teammate works only in a chat.");
+        if (a.employeeId === ctx.employee.id) return err("You cannot ask yourself.");
+        const consults = (ctx.consults ??= []);
+        if (consults.some((c) => c.employeeId === a.employeeId)) return ok("Already asked: they reply right after you.");
+        if (consults.length >= MAX_CONSULTS_PER_RUN) return err(`You can ask at most ${MAX_CONSULTS_PER_RUN} colleagues per reply.`);
+        const [to] = await db
+          .select({ id: employees.id, name: employees.name, status: employees.status })
+          .from(employees)
+          .where(and(eq(employees.id, a.employeeId), eq(employees.workspaceId, ctx.workspaceId)));
+        if (!to) return err("Unknown employee id");
+        if (to.status !== "ACTIVE") return err(`${to.name} is ${to.status.toLowerCase().replace("_", " ")} and cannot help right now.`);
+        const { text } = await guardOutput(ctx.guard, "ask_teammate", a.request);
+        consults.push({ employeeId: to.id, request: text });
+        await recordStep({
+          workspaceId: ctx.workspaceId,
+          taskId: null,
+          conversationId: ctx.conversationId,
+          employeeId: ctx.employee.id,
+          kind: "agent_message",
+          name: `${ctx.employee.name} → ${to.name}`,
+          input: { intent: "request" },
+          output: text,
+        });
+        return ok(`${to.name} will read this conversation and reply in this chat right after you. Tell the user you asked ${to.name}; do not answer on their behalf.`);
       }),
     ),
   );

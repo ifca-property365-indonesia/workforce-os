@@ -79,7 +79,7 @@
   },
   "notifications": {
     "title": "Notifikasi",
-    "description": "Pilih notifikasi mana yang sampai kepada Anda, dan lewat mana. Pilihan ini hanya berlaku untuk Anda, di workspace ini.",
+    "description": "Pilih notifikasi mana yang sampai kepada Anda, dan lewat mana. Email dikirim ke alamat login Anda. Pilihan ini hanya berlaku untuk Anda, di workspace ini.",
     "saved": "Preferensi notifikasi disimpan",
     "kind": "Notifikasi",
     "channel": {

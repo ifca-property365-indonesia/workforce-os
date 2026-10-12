@@ -234,6 +234,10 @@
       "label": "Message teammate",
       "description": "Send a structured message to another employee"
     },
+    "ask_teammate": {
+      "label": "Ask a colleague",
+      "description": "Chat: bring a colleague into this chat to help; they reply right after (granted automatically in chats)"
+    },
     "send_email": {
       "label": "Send email",
       "description": "Send an email via workspace SMTP"
@@ -300,6 +304,7 @@
       "retry_subtask": "Retried a failed subtask",
       "reassign_subtask": "Reassigned a failed subtask",
       "message_teammate": "Messaged a teammate",
+      "ask_teammate": "Asked a colleague for help",
       "git_push": "Pushed a branch",
       "create_pull_request": "Opened a pull request: {title}",
       "post_webhook": "Published to a webhook",

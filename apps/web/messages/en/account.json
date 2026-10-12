@@ -79,7 +79,7 @@
   },
   "notifications": {
     "title": "Notifications",
-    "description": "Choose which notifications reach you, and where. Your choices apply to you only, in this workspace.",
+    "description": "Choose which notifications reach you, and where. Email goes to your login address. Your choices apply to you only, in this workspace.",
     "saved": "Notification preferences saved",
     "kind": "Notification",
     "channel": {

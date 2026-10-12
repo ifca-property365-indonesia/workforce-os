@@ -8,7 +8,12 @@
   "createTask": "Create task",
   "makeTask": "Create task",
   "removeFile": "Remove file",
-  "attachFiles": "Attach files",
+  "attachFiles": "Attach files or images",
+  "attachedFiles": "Files to send",
+  "dropFiles": "Drop files or images to attach",
+  "fileRejected": "{name} can't be attached. Images: PNG, JPEG, GIF or WebP up to 5 MB. Documents: PDF, DOCX, MD, TXT, CSV or JSON up to 20 MB.",
+  "tooManyFiles": "At most {max} files per message.",
+  "openImage": "Open image {name}",
   "send": "Send",
   "placeholder": "Message (Enter to send, Shift+Enter for newline)",
   "placeholderBusy": "Waiting for the reply…",
@@ -36,6 +41,7 @@
     "listLabel": "Mention a team member",
     "everyone": "Everyone in the team"
   },
+  "askedBy": "Brought in by {name}",
   "routed": {
     "auto": "Picked automatically · {confidence}%",
     "autoNoScore": "Picked automatically",

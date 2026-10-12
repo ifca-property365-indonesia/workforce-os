@@ -234,6 +234,10 @@
       "label": "Kirim pesan ke rekan tim",
       "description": "Mengirim pesan terstruktur ke karyawan lain"
     },
+    "ask_teammate": {
+      "label": "Minta bantuan rekan",
+      "description": "Chat: mengajak rekan ke obrolan ini untuk membantu; rekan langsung membalas setelahnya (otomatis tersedia di chat)"
+    },
     "send_email": {
       "label": "Kirim email",
       "description": "Mengirim email melalui SMTP workspace"
@@ -300,6 +304,7 @@
       "retry_subtask": "Mengulang subtugas yang gagal",
       "reassign_subtask": "Mengalihkan subtugas yang gagal",
       "message_teammate": "Mengirim pesan ke rekan tim",
+      "ask_teammate": "Meminta bantuan rekan",
       "git_push": "Melakukan push branch",
       "create_pull_request": "Membuka pull request: {title}",
       "post_webhook": "Mengirim ke webhook",

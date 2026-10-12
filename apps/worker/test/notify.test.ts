@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { db, members, notificationPrefs, notifications, pushSubscriptions, users } from "@wfos/db";
+import { db, members, notificationPrefs, notifications, pushSubscriptions, users, workspaces } from "@wfos/db";
 import type { NotificationChannelPrefs, NotifyJob } from "@wfos/shared";
 import { setTelegramFetch } from "@wfos/shared/telegram";
 import { channelRecipients, notify, recipientsOrFallback } from "../src/lib/notify";
@@ -118,6 +118,34 @@ describe("per-user notifications", () => {
       ["task_done", emp.id],
       ["task_failed", emp.id],
     ]);
+  });
+
+  it("emails each member at their login address (one mail each), plus the shared notify address, without duplicates", async () => {
+    const ws = await makeWorkspace();
+    const a = await member(ws.id);
+    const b = await member(ws.id);
+    const quiet = await member(ws.id, { channels: { approval: { email: false } } });
+    // the shared address is also a member's address (different case): still one mail
+    await db.update(workspaces).set({ notifyEmail: a.user.email.toUpperCase() }).where(eq(workspaces.id, ws.id));
+
+    await notify(job(ws.id, { notificationKind: "approval" }));
+    const to = transport.mails.map((m) => m.mail.to);
+    expect(to.every((t) => t.length === 1)).toBe(true);
+    expect(to.flat().sort()).toEqual([a.user.email, b.user.email].sort());
+    expect(to.flat()).not.toContain(quiet.user.email);
+  });
+
+  it("email is off by default for chatty kinds; the shared address still gets everything; a targeted one reaches only its user", async () => {
+    const ws = await makeWorkspace({ notifyEmail: "ops@test.local" });
+    const a = await member(ws.id);
+    const keen = await member(ws.id, { channels: { task_done: { email: true } } });
+
+    await notify(job(ws.id, { notificationKind: "task_done", subject: "Task finished" }));
+    expect(transport.mails.map((m) => m.mail.to[0]).sort()).toEqual(["ops@test.local", keen.user.email].sort());
+
+    transport.mails.length = 0;
+    await notify(job(ws.id, { notificationKind: "approval", userId: a.user.id }));
+    expect(transport.mails.map((m) => m.mail.to[0]).sort()).toEqual(["ops@test.local", a.user.email].sort());
   });
 
   it("when the preference lookup fails, approvals still reach every member (Admins keep their buttons); other kinds are skipped", async () => {

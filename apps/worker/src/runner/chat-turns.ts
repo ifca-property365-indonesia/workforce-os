@@ -1,6 +1,6 @@
 import { and, eq, inArray, lt, notInArray, sql, type SQL } from "drizzle-orm";
 import { conversations, db, messages } from "@wfos/db";
-import type { ChatMessageDTO } from "@wfos/shared";
+import { publicAttachment, type ChatMessageDTO } from "@wfos/shared";
 import { publish } from "../lib/redis";
 import { log } from "../lib/logger";
 
@@ -24,7 +24,7 @@ export function chatMessageDto(m: MessageRow): ChatMessageDTO {
     content: m.content,
     employeeId: m.employeeId,
     taskId: m.taskId,
-    attachments: m.attachments,
+    attachments: m.attachments.map(publicAttachment),
     status: m.status,
     meta: m.meta,
     createdAt: m.createdAt.toISOString(),

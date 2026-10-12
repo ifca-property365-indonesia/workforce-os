@@ -362,9 +362,12 @@ function Notifications({ s }: { s: Settings }) {
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 space-y-1.5">
             <Label htmlFor="notify-email">{t("notifications.notifyEmail")}</Label>
-            <Input id="notify-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input id="notify-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-describedby="notify-email-help" />
           </div>
           <Button onClick={() => save.mutate({ notifyEmail: email })}>{tc("save")}</Button>
+          <p id="notify-email-help" className="basis-full text-xs text-muted-foreground">
+            {t("notifications.notifyEmailHelp")}
+          </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex-1 space-y-1.5">

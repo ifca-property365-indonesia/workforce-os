@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray, isNull, not, or, type SQL } from "drizzle-orm";
 import { db, notificationPrefs, notifications } from "@wfos/db";
-import { NOTIFICATION_CHANNELS, NOTIFICATION_KINDS, type NotificationChannelPrefs } from "@wfos/shared";
+import { NOTIFICATION_CHANNELS, NOTIFICATION_KINDS, notificationEnabled, type NotificationChannelPrefs } from "@wfos/shared";
 
 export interface Prefs {
   channels: NotificationChannelPrefs;
@@ -16,9 +16,9 @@ export async function loadPrefs(userId: string, workspaceId: string): Promise<Pr
   return { channels: row?.channels ?? {}, mutedEmployeeIds: row?.mutedEmployeeIds ?? [] };
 }
 
-/** Every kind × channel filled in (missing = on), for the preferences grid. */
+/** Every kind × channel filled in (missing = notificationDefault), for the preferences grid. */
 export function fullMatrix(channels: NotificationChannelPrefs) {
-  return Object.fromEntries(NOTIFICATION_KINDS.map((k) => [k, Object.fromEntries(NOTIFICATION_CHANNELS.map((c) => [c, channels[k]?.[c] !== false]))])) as Required<{
+  return Object.fromEntries(NOTIFICATION_KINDS.map((k) => [k, Object.fromEntries(NOTIFICATION_CHANNELS.map((c) => [c, notificationEnabled(channels, k, c)]))])) as Required<{
     [K in keyof NotificationChannelPrefs]-?: Record<(typeof NOTIFICATION_CHANNELS)[number], boolean>;
   }>;
 }

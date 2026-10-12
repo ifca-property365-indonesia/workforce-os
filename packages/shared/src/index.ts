@@ -209,6 +209,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "retry_subtask", label: "Retry subtask", description: "Team lead: run a failed subtask again (bounded retries)", class: "reversible", credits: 0.05, category: "team" },
   { name: "reassign_subtask", label: "Reassign subtask", description: "Team lead: give a failed subtask to another team member", class: "reversible", credits: 0.05, category: "team" },
   { name: "message_teammate", label: "Message teammate", description: "Send a structured message to another employee", class: "reversible", credits: 0.05, category: "team" },
+  { name: "ask_teammate", label: "Ask a colleague", description: "Chat: bring a colleague into this chat to help; they reply right after you (granted automatically in chats)", class: "reversible", credits: 0.02, category: "team" },
   { name: "send_email", label: "Send email", description: "Send an email via workspace SMTP", class: "irreversible", credits: 1, category: "comms" },
   { name: "send_invoice", label: "Send invoice", description: "Email an invoice PDF to a client", class: "irreversible", credits: 1, category: "billing" },
   { name: "git_push", label: "Push branch", description: "Workspace mode: push your committed work to agent/<task> on the remote (the platform pushes after approval)", class: "irreversible", credits: 0.5, category: "code" },
@@ -591,6 +592,8 @@ export interface MessageMeta {
   mentionAll?: boolean;
   /** assistant messages: how this responder was picked (team chat) */
   routedBy?: RoutedBy;
+  /** assistant messages: the colleague (employee id) who brought this responder in with ask_teammate */
+  askedBy?: string;
   /** assistant messages: irreversible actions that ran via the allow-list */
   chips?: AutoActionChip[];
   /** system messages: the approval this receipt reports on */
@@ -604,6 +607,28 @@ export interface MessageMeta {
    * approval receipts written by a tainted run. Later turns fence these rows and start tainted.
    */
   untrusted?: boolean;
+}
+
+/** A file on a chat message: a knowledge-base document (documentId) or an image the model sees (imageId + mime). */
+export interface ChatAttachment {
+  name: string;
+  size: number;
+  documentId?: string;
+  imageId?: string;
+  mime?: string;
+}
+/** As stored on the message row: images also keep where the file lives (server-only, never sent to a client). */
+export type StoredChatAttachment = ChatAttachment & { storagePath?: string };
+/** Images a chat message can carry, by sniffed type, with the extension they are stored under. */
+export const CHAT_IMAGE_TYPES = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp" } as const;
+export type ChatImageType = keyof typeof CHAT_IMAGE_TYPES;
+/** Per image (the model's own limit for one image is 5 MB). */
+export const CHAT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** Files (images and documents together) on one chat message. */
+export const CHAT_ATTACHMENTS_MAX = 5;
+/** The client-facing view of a stored attachment. */
+export function publicAttachment({ storagePath: _path, ...a }: StoredChatAttachment): ChatAttachment {
+  return a;
 }
 
 /** An approval shown inline under the chat message that raised it. */
@@ -630,7 +655,7 @@ export interface ChatMessageDTO {
   content: string;
   employeeId?: string | null;
   taskId?: string | null;
-  attachments?: { name: string; size: number; documentId?: string }[];
+  attachments?: ChatAttachment[];
   status?: string;
   meta?: MessageMeta;
   /** approvals raised by this (assistant) message */
@@ -790,8 +815,18 @@ export const NOTIFICATION_KINDS = ["approval", "task_done", "task_failed", "inci
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 export const NOTIFICATION_CHANNELS = ["inapp", "email", "telegram", "push"] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
-/** { [kind]: { [channel]: boolean } }; anything missing means "on". */
+/** { [kind]: { [channel]: boolean } }; anything missing takes notificationDefault. */
 export type NotificationChannelPrefs = Partial<Record<NotificationKind, Partial<Record<NotificationChannel, boolean>>>>;
+/** Kinds too frequent for an inbox: email stays off for them until a person switches it on. */
+const EMAIL_OFF_BY_DEFAULT: readonly NotificationKind[] = ["task_done", "chat_reply"];
+/** What a kind × channel is when the person never set it: on, except email for the chatty kinds. */
+export function notificationDefault(kind: NotificationKind, channel: NotificationChannel): boolean {
+  return !(channel === "email" && EMAIL_OFF_BY_DEFAULT.includes(kind));
+}
+/** Whether this person gets `kind` on `channel`: their own switch, else the default. */
+export function notificationEnabled(prefs: NotificationChannelPrefs | null | undefined, kind: NotificationKind, channel: NotificationChannel): boolean {
+  return prefs?.[kind]?.[channel] ?? notificationDefault(kind, channel);
+}
 
 export const clientInputSchema = z.object({
   name: z.string().min(1).max(160),

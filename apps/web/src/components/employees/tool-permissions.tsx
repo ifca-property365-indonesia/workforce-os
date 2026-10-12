@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
  * Granted implicitly, never shown as grantable tools: the lead-only review tools (to a team lead during review), and
  * skill_read (to every employee with at least one switched-on skill assigned; see the Skills card).
  */
-const IMPLICIT_TOOLS = new Set(["request_revision", "retry_subtask", "reassign_subtask", "skill_read"]);
+const IMPLICIT_TOOLS = new Set(["request_revision", "retry_subtask", "reassign_subtask", "skill_read", "ask_teammate"]);
 
 export interface McpTool {
   /** the server's own name, shown to people */

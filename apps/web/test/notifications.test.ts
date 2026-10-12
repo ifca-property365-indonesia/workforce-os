@@ -158,7 +158,7 @@ describe("GET /api/notifications (legacy reads and the unread window)", () => {
 });
 
 describe("/api/me/notification-prefs", () => {
-  it("defaults every kind × channel to on, stores only what is off, and round-trips", async () => {
+  it("defaults every kind × channel to on except email for the chatty kinds, stores only what differs, and round-trips", async () => {
     const { ws, sari } = await workspace();
     const me = await user(ws.id);
     await as(me);
@@ -166,13 +166,18 @@ describe("/api/me/notification-prefs", () => {
     expect(g.status).toBe(200);
     const channels = g.json.channels as Record<string, Record<string, boolean>>;
     expect(Object.keys(channels).sort()).toEqual([...(g.json.kinds as string[])].sort());
-    expect(Object.values(channels).every((c) => Object.values(c).every((v) => v === true))).toBe(true);
+    const off = Object.entries(channels).flatMap(([k, c]) => Object.entries(c).filter(([, v]) => !v).map(([ch]) => `${k}.${ch}`));
+    expect(off.sort()).toEqual(["chat_reply.email", "task_done.email"]);
     expect(g.json.mutedEmployeeIds).toEqual([]);
 
-    const put = await call(putPrefs, "PUT", "/api/me/notification-prefs", { channels: { task_done: { push: false, email: true } }, mutedEmployeeIds: [sari.id, sari.id] });
+    const put = await call(putPrefs, "PUT", "/api/me/notification-prefs", {
+      channels: { task_done: { push: false, email: true }, approval: { email: true } },
+      mutedEmployeeIds: [sari.id, sari.id],
+    });
     expect(put.status).toBe(200);
     const [row] = await db.select().from(notificationPrefs).where(and(eq(notificationPrefs.userId, me.id), eq(notificationPrefs.workspaceId, ws.id)));
-    expect(row!.channels).toEqual({ task_done: { push: false } });
+    // approval.email is on by default anyway: not stored; task_done.email is off by default: stored as on
+    expect(row!.channels).toEqual({ task_done: { push: false, email: true } });
     expect(row!.mutedEmployeeIds).toEqual([sari.id]);
     const again = await call(getPrefs, "GET", "/api/me/notification-prefs");
     expect((again.json.channels as Record<string, Record<string, boolean>>).task_done).toEqual({ inapp: true, email: true, telegram: true, push: false });

@@ -10,6 +10,7 @@ import type {
   PostToolUseFailureHookInput,
   PostToolUseHookInput,
   SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { agentQuery, workspaceQueryOverride } from "./sdk";
 import { createWorkspaceQuery, type WorkspaceRunConfig } from "./workspace/query";
@@ -36,6 +37,8 @@ export interface AgentRunInput {
   model: string;
   systemPrompt: string;
   prompt: string;
+  /** images sent with the prompt (chat attachments): the model sees them after the text */
+  images?: AgentImage[];
   /** credits this run may spend before it is stopped (daily/monthly remaining) */
   creditBudget: number;
   maxTurns?: number;
@@ -44,6 +47,27 @@ export interface AgentRunInput {
   stepName?: string;
   /** department subagents (Workspace mode only: they need Claude Code's Task tool) */
   agents?: Record<string, { description: string; prompt: string; tools?: string[] }>;
+}
+
+export interface AgentImage {
+  mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+  /** base64 */
+  data: string;
+}
+
+/**
+ * The prompt as one user message: the text, then the images. Streamed input; the SDK keeps the session open until
+ * the run ends (it has tool callbacks), so tools and permissions work as with a string prompt.
+ */
+async function* promptWithImages(text: string, images: AgentImage[]): AsyncGenerator<SDKUserMessage> {
+  yield {
+    type: "user",
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content: [{ type: "text", text }, ...images.map((i) => ({ type: "image" as const, source: { type: "base64" as const, media_type: i.mime, data: i.data } }))],
+    },
+  };
 }
 
 export interface AgentRunOutput {
@@ -577,7 +601,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
 
   try {
     const q = runQuery({
-      prompt: input.prompt,
+      prompt: input.images?.length ? promptWithImages(input.prompt, input.images) : input.prompt,
       options: {
         abortController: controller,
         model: input.model,

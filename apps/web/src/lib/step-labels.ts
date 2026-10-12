@@ -71,6 +71,7 @@ const RECEIPT_TOOLS = new Set([
   "retry_subtask",
   "reassign_subtask",
   "message_teammate",
+  "ask_teammate",
   "git_push",
   "create_pull_request",
   "post_webhook",

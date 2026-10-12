@@ -39,6 +39,7 @@ import type {
   OutputLanguage,
   ExecutionMode,
   OfficeLook,
+  StoredChatAttachment,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -440,7 +441,7 @@ export const messages = pgTable(
     content: text("content").notNull(),
     employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
     taskId: uuid("task_id"),
-    attachments: jsonb("attachments").$type<{ name: string; size: number; documentId?: string }[]>().notNull().default([]),
+    attachments: jsonb("attachments").$type<StoredChatAttachment[]>().notNull().default([]),
     status: text("status").notNull().default("done"), // pending | streaming | done | error
     /** user messages: set when a chat run folds the message into a turn (null = still waiting for a reply) */
     handledAt: timestamp("handled_at", { withTimezone: true }),

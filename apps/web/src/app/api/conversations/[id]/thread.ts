@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, gt, inArray } from "drizzle-orm";
 import { approvals, audit, conversations, db, messages } from "@wfos/db";
-import type { ChatApprovalDTO, ChatMessageDTO, MessageMeta } from "@wfos/shared";
+import { publicAttachment, type ChatApprovalDTO, type ChatMessageDTO, type MessageMeta } from "@wfos/shared";
 import { activeBranch, effectiveLeaf, versionsOf, type BranchInfo, type TreeNode } from "@/lib/chat-thread";
 import { HttpError } from "@/lib/server/auth";
 import { notFound } from "@/lib/server/route";
@@ -107,7 +107,7 @@ export function messageDto(m: MessageRow, extra: { approvals?: ChatApprovalDTO[]
     content: m.content,
     employeeId: m.employeeId,
     taskId: m.taskId,
-    attachments: m.attachments,
+    attachments: m.attachments.map(publicAttachment),
     status: m.status,
     meta: m.meta,
     parentId: m.parentId,

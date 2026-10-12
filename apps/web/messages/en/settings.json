@@ -76,7 +76,8 @@
   "notifications": {
     "title": "Notifications",
     "description": "When approvals are waiting or a task finishes.",
-    "notifyEmail": "Notify email",
+    "notifyEmail": "Shared notify email (optional)",
+    "notifyEmailHelp": "Every member already gets email at their own login address, as set under Account → Notifications. Add a shared address (e.g. ops@company.com) to also receive a copy of every notification there.",
     "webhookUrl": "Webhook URL (WhatsApp / Telegram / Slack gateway)",
     "configured": "configured",
     "webhookPlaceholder": "https://… (stored encrypted)",

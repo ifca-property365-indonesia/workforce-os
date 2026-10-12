@@ -8,7 +8,12 @@
   "createTask": "Buat tugas",
   "makeTask": "Buat tugas",
   "removeFile": "Hapus file",
-  "attachFiles": "Lampirkan file",
+  "attachFiles": "Lampirkan file atau gambar",
+  "attachedFiles": "File yang akan dikirim",
+  "dropFiles": "Lepas file atau gambar untuk dilampirkan",
+  "fileRejected": "{name} tidak dapat dilampirkan. Gambar: PNG, JPEG, GIF, atau WebP maks. 5 MB. Dokumen: PDF, DOCX, MD, TXT, CSV, atau JSON maks. 20 MB.",
+  "tooManyFiles": "Maksimal {max} file per pesan.",
+  "openImage": "Buka gambar {name}",
   "send": "Kirim",
   "placeholder": "Pesan (Enter untuk mengirim, Shift+Enter untuk baris baru)",
   "placeholderBusy": "Menunggu balasan…",
@@ -36,6 +41,7 @@
     "listLabel": "Sebut anggota tim",
     "everyone": "Semua anggota tim"
   },
+  "askedBy": "Diajak oleh {name}",
   "routed": {
     "auto": "Dipilih otomatis · {confidence}%",
     "autoNoScore": "Dipilih otomatis",
