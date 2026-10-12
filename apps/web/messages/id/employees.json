@@ -367,5 +367,65 @@
       "error": "Mengalami galat",
       "other": "{name}"
     }
+  },
+  "bot": {
+    "label": "Avatar bot",
+    "help": "Tampilan karyawan ini di obrolan, daftar, dan persetujuan. Bagian yang dibiarkan otomatis dipilihkan supaya tidak kembar dengan karyawan lain.",
+    "adminOnly": "Hanya Owner atau Admin yang bisa mengubah avatar.",
+    "auto": "Otomatis",
+    "save": "Simpan avatar",
+    "saved": "Avatar disimpan",
+    "reset": "Kembali ke otomatis",
+    "shape": "Bentuk",
+    "color": "Warna",
+    "colorHelp": "Warna ini juga warna papan nama karyawan di dasbor dan kantor.",
+    "expression": "Ekspresi",
+    "preview": "Pratinjau",
+    "moods": {
+      "idle": "Santai",
+      "working": "Bekerja",
+      "approval": "Menunggu persetujuan",
+      "fault": "Insiden",
+      "off": "Dijeda"
+    },
+    "shapes": {
+      "papan": "Papan",
+      "squircle": "Kotak bulat",
+      "galet": "Kerikil",
+      "capsule": "Kapsul",
+      "hexagone": "Segi enam",
+      "nuage": "Awan",
+      "goutte": "Tetes",
+      "triangle": "Segitiga",
+      "cercle": "Lingkaran"
+    },
+    "colors": {
+      "merah": "Merah",
+      "biru": "Biru",
+      "tosca": "Tosca",
+      "kuning": "Kuning",
+      "magenta": "Magenta",
+      "hijau": "Hijau",
+      "ungu": "Ungu",
+      "oranye": "Oranye"
+    },
+    "expressions": {
+      "neutre": "Netral",
+      "attentif": "Fokus",
+      "surpris": "Kaget",
+      "excite": "Bersemangat",
+      "heureux": "Senang",
+      "hilare": "Ngakak",
+      "colere": "Marah",
+      "triste": "Sedih",
+      "effraye": "Takut",
+      "mefiant": "Curiga",
+      "confus": "Bingung",
+      "curieux": "Penasaran",
+      "fier": "Bangga",
+      "timide": "Malu",
+      "blase": "Bosan",
+      "somnolent": "Ngantuk"
+    }
   }
 }

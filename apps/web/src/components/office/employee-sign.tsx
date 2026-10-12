@@ -6,17 +6,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import { useEmployees } from "@/lib/hooks";
-import { signColors, signStateOf, signVars, type SignColor, type SignState } from "@/lib/sign";
+import { employeeLooks, signStateOf, signVars, type SignColor, type SignState } from "@/lib/sign";
 import { cn } from "@/lib/utils";
 import type { IncidentRow } from "@/components/inspector/incidents-card";
 import type { BotMood } from "@/components/ui/bot-avatar";
 import type { Activity } from "@wfos/shared/office";
 import { useOffice } from "./use-office";
 
-/** Sign colours for every employee of the workspace (archived ones too, so colours never shift). */
+/** Sign colours for every employee of the workspace (archived ones too, so colours never shift), owners' picks first. */
 export function useSignColors(): Map<string, SignColor> {
   const { data } = useEmployees();
-  return useMemo(() => signColors((data ?? []).map((e) => e.id)), [data]);
+  return useMemo(() => employeeLooks(data ?? []).colors, [data]);
 }
 
 const MOOD: Record<Activity, BotMood> = { typing: "working", reading: "working", terminal: "working", thinking: "working", waiting: "approval", idle: "idle", paused: "off" };

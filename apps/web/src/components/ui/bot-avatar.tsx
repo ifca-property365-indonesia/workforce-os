@@ -7,7 +7,7 @@ import { RAYON } from "@/lib/bloub/repere";
 import { SHAPE_BY_ID } from "@/lib/bloub/skins";
 import type { StateId } from "@/lib/bloub/states";
 import { useEmployees, useTemplates } from "@/lib/hooks";
-import { botShapeOf, botShapes, signColors, signVars, type BotShape, type SignColor } from "@/lib/sign";
+import { botShapeOf, botShapes, employeeLooks, signVars, type BotExpression, type BotShape, type SignColor } from "@/lib/sign";
 import { cn } from "@/lib/utils";
 
 /**
@@ -116,14 +116,15 @@ const offsetOf = (seed: string) => {
  * An employee as a little bloub bot: their own body shape, in their sign colour. Purely decorative (the name
  * always sits next to it), so it is hidden from assistive tech.
  */
-export function BotAvatar({ shape, color, mood = "idle", seed, className }: { shape: BotShape; color?: SignColor; mood?: BotMood; seed: string; className?: string }) {
+export function BotAvatar({ shape, color, expression, mood = "idle", seed, className }: { shape: BotShape; color?: SignColor; expression?: BotExpression; mood?: BotMood; seed: string; className?: string }) {
+  const face = (mood === "off" ? SLEEPY : expression ? EXPRESSION_BY_ID.get(expression) : null) ?? null;
   const mask = `bot${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const radii = SHAPE_BY_ID.get(shape)?.radii ?? null;
   const offset = useMemo(() => offsetOf(seed), [seed]);
   const ref = useRef<SVGSVGElement>(null);
   const live = useRef<Live | null>(null);
   // the engine is a pure function of time: the server and the first client render draw the same still frame
-  const engine = useMemo(() => new BotEngine(RAYON, STATE[mood], radii, mood === "off" ? SLEEPY : null), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const engine = useMemo(() => new BotEngine(RAYON, STATE[mood], radii, face), []); // eslint-disable-line react-hooks/exhaustive-deps
   const first = useMemo(() => markup(engine.sample(STILL), mask), [engine, mask]);
 
   useEffect(() => {
@@ -143,9 +144,9 @@ export function BotAvatar({ shape, color, mood = "idle", seed, className }: { sh
     const now = clock + offset;
     engine.setShape(radii, now);
     engine.setState(STATE[mood], now);
-    engine.setExpression(mood === "off" ? SLEEPY : null, now);
+    engine.setExpression(face, now);
     if (!live.current && ref.current) ref.current.innerHTML = markup(engine.sample(now + STILL), mask);
-  }, [engine, radii, mood, offset, mask]);
+  }, [engine, radii, mood, face, offset, mask]);
 
   // a wink when the pointer comes by, only when the bot is just sitting there
   const wink = () => {
@@ -172,16 +173,14 @@ export function BotAvatar({ shape, color, mood = "idle", seed, className }: { sh
  * Shape and colour of an employee, dealt over the whole workspace (archived ones too, so neither ever shifts).
  * A role template (`seed` is its key) gets a shape dealt over the template catalogue, and no colour.
  */
-export function useBotLook(id: string | null | undefined, seed?: string): { shape: BotShape; color?: SignColor } {
+export function useBotLook(id: string | null | undefined, seed?: string): { shape: BotShape; color?: SignColor; expression?: BotExpression } {
   const { data } = useEmployees();
   const { data: tpl } = useTemplates(!!seed && !id);
-  const deck = useMemo(() => {
-    const ids = (data ?? []).map((e) => e.id);
-    return { shapes: botShapes(ids), colors: signColors(ids) };
-  }, [data]);
+  const deck = useMemo(() => employeeLooks(data ?? []), [data]);
   const templates = useMemo(() => botShapes((tpl?.templates ?? []).map((t) => t.key)), [tpl]);
   return {
     shape: (id ? deck.shapes.get(id) : seed ? templates.get(seed) : undefined) ?? botShapeOf(id || seed || ""),
     color: id ? deck.colors.get(id) : undefined,
+    expression: id ? deck.expressions.get(id) : undefined,
   };
 }

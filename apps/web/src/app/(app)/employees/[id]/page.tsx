@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { LookEditor } from "@/components/employees/look-editor";
+import { BotEditor } from "@/components/employees/bot-editor";
 import { MemoryPanel } from "@/components/employees/memory-panel";
 import { EmployeeSkillsCard } from "@/components/employees/skills-card";
 import { ActivityTab } from "@/components/employees/activity-tab";
@@ -473,6 +474,7 @@ export default function EmployeePage({ params }: P) {
           <OutputLanguageCard e={e} />
           <ExecutionModeCard e={e} />
           <DepartmentCard e={e} />
+          <BotEditor e={e} canEdit={!!me && hasRole(me.role, "ADMIN")} />
           <LookEditor e={e} company={me?.workspace.name ?? ""} canEdit={!!me && hasRole(me.role, "ADMIN")} />
           <div className="grid gap-4 md:grid-cols-3">
             <Card>

@@ -367,5 +367,65 @@
       "error": "Ran into an error",
       "other": "{name}"
     }
+  },
+  "bot": {
+    "label": "Bot avatar",
+    "help": "How this employee looks in chat, lists and approvals. Whatever stays automatic is picked so it doesn't clash with another employee.",
+    "adminOnly": "Only an Owner or Admin can change the avatar.",
+    "auto": "Automatic",
+    "save": "Save avatar",
+    "saved": "Avatar saved",
+    "reset": "Back to automatic",
+    "shape": "Shape",
+    "color": "Colour",
+    "colorHelp": "This is also the employee's sign colour on the dashboard and in the office.",
+    "expression": "Expression",
+    "preview": "Preview",
+    "moods": {
+      "idle": "Idle",
+      "working": "Working",
+      "approval": "Awaiting approval",
+      "fault": "Incident",
+      "off": "Paused"
+    },
+    "shapes": {
+      "papan": "Sign",
+      "squircle": "Squircle",
+      "galet": "Pebble",
+      "capsule": "Capsule",
+      "hexagone": "Hexagon",
+      "nuage": "Cloud",
+      "goutte": "Droplet",
+      "triangle": "Triangle",
+      "cercle": "Circle"
+    },
+    "colors": {
+      "merah": "Red",
+      "biru": "Blue",
+      "tosca": "Teal",
+      "kuning": "Yellow",
+      "magenta": "Magenta",
+      "hijau": "Green",
+      "ungu": "Purple",
+      "oranye": "Orange"
+    },
+    "expressions": {
+      "neutre": "Neutral",
+      "attentif": "Attentive",
+      "surpris": "Surprised",
+      "excite": "Excited",
+      "heureux": "Happy",
+      "hilare": "Laughing",
+      "colere": "Angry",
+      "triste": "Sad",
+      "effraye": "Scared",
+      "mefiant": "Suspicious",
+      "confus": "Confused",
+      "curieux": "Curious",
+      "fier": "Proud",
+      "timide": "Shy",
+      "blase": "Bored",
+      "somnolent": "Sleepy"
+    }
   }
 }

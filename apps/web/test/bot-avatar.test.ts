@@ -4,16 +4,16 @@ import { BotEngine } from "@/lib/bloub/engine";
 import { EXPRESSION_BY_ID } from "@/lib/bloub/expressions";
 import { RAYON } from "@/lib/bloub/repere";
 import { SHAPE_BY_ID } from "@/lib/bloub/skins";
-import { BOT_SHAPES, SIGN_COLORS, botShapeOf, botShapes, signColors } from "@/lib/sign";
+import { BOT_SHAPES, SIGN_COLORS, botShapeOf, botShapes, employeeLooks, formatBotChoice, parseBotChoice, signColors } from "@/lib/sign";
 
 const ids = Array.from({ length: 8 }, (_, i) => `00000000-0000-4000-8000-00000000000${i}`);
 
 describe("bot avatar shapes", () => {
-  it("gives up to eight employees eight different shapes, none of them the x.ai circle", () => {
+  it("gives up to eight employees eight different shapes, never dealing the x.ai circle", () => {
     const shapes = botShapes(ids);
     expect(new Set(shapes.values()).size).toBe(8);
+    expect([...shapes.values()]).not.toContain("cercle");
     for (const s of BOT_SHAPES) expect(SHAPE_BY_ID.has(s)).toBe(true);
-    expect(BOT_SHAPES).not.toContain("cercle");
   });
 
   it("is stable: the same ids in any order deal the same shapes, and a template seed always gets the same one", () => {
@@ -49,5 +49,32 @@ describe("bot avatar shapes", () => {
         }
       }
     }
+  });
+
+  it("reads and writes the owner's choice in the avatar field; old emoji and junk are all automatic", () => {
+    expect(parseBotChoice("bot:papan/-/curieux")).toEqual({ shape: "papan", color: undefined, expression: "curieux" });
+    expect(parseBotChoice("🤖")).toEqual({});
+    expect(parseBotChoice(null)).toEqual({});
+    expect(parseBotChoice("bot:nope/biru/__proto__")).toEqual({ shape: undefined, color: "biru", expression: undefined });
+    expect(formatBotChoice({ color: "ungu" })).toBe("bot:-/ungu/-");
+    expect(formatBotChoice({})).toBe("");
+    const c = { shape: "cercle", color: "magenta", expression: "fier" } as const;
+    expect(parseBotChoice(formatBotChoice(c))).toEqual(c);
+    expect(formatBotChoice(c).length).toBeLessThanOrEqual(64);
+  });
+
+  it("keeps an owner's pick and deals everyone else around it", () => {
+    const auto = employeeLooks(ids.map((id) => ({ id })));
+    const victim = ids.find((id) => id !== ids[0] && auto.colors.get(id) === "merah") ?? ids[1]!;
+    const wanted = auto.colors.get(victim)!;
+    const shape = auto.shapes.get(victim)!;
+    const looks = employeeLooks(ids.map((id) => ({ id, avatar: id === ids[0] ? `bot:${shape}/${wanted}/heureux` : "🤖" })));
+    expect(looks.colors.get(ids[0]!)).toBe(wanted);
+    expect(looks.shapes.get(ids[0]!)).toBe(shape);
+    expect(looks.expressions.get(ids[0]!)).toBe("heureux");
+    expect(looks.expressions.has(ids[1]!)).toBe(false);
+    // the others still don't share a colour or a shape with each other or with the pick
+    expect(new Set(looks.colors.values()).size).toBe(8);
+    expect(new Set(looks.shapes.values()).size).toBe(8);
   });
 });

@@ -707,7 +707,8 @@ export const loginSchema = z.object({ email: z.email(), password: z.string().min
 
 export const employeeInputSchema = z.object({
   name: z.string().min(1).max(80),
-  avatar: z.string().max(16).default("🤖"),
+  // an emoji (older data) or the bot avatar choice, "bot:<shape>/<colour>/<expression>"
+  avatar: z.string().max(64).default("🤖"),
   role: z.string().min(1).max(80),
   templateKey: z.string().optional().nullable(),
   persona: z.string().max(4000).default(""),

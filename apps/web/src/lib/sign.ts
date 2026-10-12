@@ -12,13 +12,24 @@ export type SignColor = (typeof SIGN_COLORS)[number];
 /** colours light enough to need dark lettering */
 const DARK_INK: ReadonlySet<SignColor> = new Set(["kuning", "oranye", "tosca", "hijau"]);
 
-/** Deals one of `deck` to every id: from a hash of the id (plus `salt`), passing on to the next free one while any is left. */
-function deal<T>(ids: readonly string[], deck: readonly T[], salt = ""): Map<string, T> {
+/**
+ * Deals one of `deck` to every id: from a hash of the id (plus `salt`), passing on to the next free one while any
+ * is left. A `fixed` choice (the owner picked it) is kept as is and taken off the deck first.
+ */
+function deal<T>(ids: readonly string[], deck: readonly T[], salt = "", fixed?: ReadonlyMap<string, T>): Map<string, T> {
   const out = new Map<string, T>();
   const taken = new Set<T>();
-  for (const id of [...new Set(ids)].sort()) {
+  const all = [...new Set(ids)].sort();
+  for (const id of all) {
+    const c = fixed?.get(id);
+    if (c === undefined) continue;
+    taken.add(c);
+    out.set(id, c);
+  }
+  for (const id of all) {
+    if (out.has(id)) continue;
     let i = stableHash(id + salt) % deck.length;
-    if (taken.size < deck.length) while (taken.has(deck[i]!)) i = (i + 1) % deck.length;
+    if (deck.some((d) => !taken.has(d))) while (taken.has(deck[i]!)) i = (i + 1) % deck.length;
     const c = deck[i]!;
     taken.add(c);
     out.set(id, c);
@@ -26,24 +37,67 @@ function deal<T>(ids: readonly string[], deck: readonly T[], salt = ""): Map<str
   return out;
 }
 
-export function signColors(ids: readonly string[]): Map<string, SignColor> {
-  return deal(ids, SIGN_COLORS);
+export function signColors(ids: readonly string[], fixed?: ReadonlyMap<string, SignColor>): Map<string, SignColor> {
+  return deal(ids, SIGN_COLORS, "", fixed);
 }
 
 /**
- * Every employee's bot avatar has its own body shape (bloub's customiser shapes). No plain circle: that one is
- * the x.ai bot's. Dealt like the colours, but from another hash, so shape and colour don't travel in pairs.
+ * Every employee's bot avatar has its own body shape (bloub's customiser shapes). The automatic deal leaves out
+ * the plain circle (the x.ai bot's); an owner may still pick it. Dealt like the colours, but from another hash,
+ * so shape and colour don't travel in pairs.
  */
-export const BOT_SHAPES = ["papan", "squircle", "galet", "capsule", "hexagone", "nuage", "goutte", "triangle"] as const;
+export const BOT_SHAPES = ["papan", "squircle", "galet", "capsule", "hexagone", "nuage", "goutte", "triangle", "cercle"] as const;
 export type BotShape = (typeof BOT_SHAPES)[number];
+const DEALT_SHAPES = BOT_SHAPES.filter((s) => s !== "cercle");
 
-export function botShapes(ids: readonly string[]): Map<string, BotShape> {
-  return deal(ids, BOT_SHAPES, ":shape");
+export function botShapes(ids: readonly string[], fixed?: ReadonlyMap<string, BotShape>): Map<string, BotShape> {
+  return deal(ids, DEALT_SHAPES, ":shape", fixed);
 }
 
 /** A shape for something that is not (yet) an employee, such as a role template. */
 export function botShapeOf(seed: string): BotShape {
-  return BOT_SHAPES[stableHash(seed + ":shape") % BOT_SHAPES.length]!;
+  return DEALT_SHAPES[stableHash(seed + ":shape") % DEALT_SHAPES.length]!;
+}
+
+/** bloub's rest expressions (the eyes while the bot sits idle) */
+export const BOT_EXPRESSIONS = ["neutre", "attentif", "surpris", "excite", "heureux", "hilare", "colere", "triste", "effraye", "mefiant", "confus", "curieux", "fier", "timide", "blase", "somnolent"] as const;
+export type BotExpression = (typeof BOT_EXPRESSIONS)[number];
+
+/** What an owner picked for an employee's bot; a missing part is dealt automatically. */
+export interface BotChoice {
+  shape?: BotShape;
+  color?: SignColor;
+  expression?: BotExpression;
+}
+
+const pick = <T extends string>(list: readonly T[], v: string | undefined): T | undefined => (list as readonly string[]).includes(v ?? "") ? (v as T) : undefined;
+
+/** Reads the employee's `avatar` field: "bot:<shape>/<colour>/<expression>", "-" for automatic. Anything else (an old emoji) is all automatic. */
+export function parseBotChoice(avatar: string | null | undefined): BotChoice {
+  if (!avatar?.startsWith("bot:")) return {};
+  const [shape, color, expression] = avatar.slice(4).split("/");
+  return { shape: pick(BOT_SHAPES, shape), color: pick(SIGN_COLORS, color), expression: pick(BOT_EXPRESSIONS, expression) };
+}
+
+/** The `avatar` value for a choice; nothing picked gives "" (all automatic). */
+export function formatBotChoice(c: BotChoice): string {
+  return c.shape || c.color || c.expression ? `bot:${c.shape ?? "-"}/${c.color ?? "-"}/${c.expression ?? "-"}` : "";
+}
+
+/** Shape, colour and rest expression of every employee: their own choices first, the rest dealt around them. */
+export function employeeLooks(emps: readonly { id: string; avatar?: string | null }[]): {
+  shapes: Map<string, BotShape>;
+  colors: Map<string, SignColor>;
+  expressions: Map<string, BotExpression>;
+} {
+  const ids = emps.map((e) => e.id);
+  const choices = emps.map((e) => [e.id, parseBotChoice(e.avatar)] as const);
+  const only = <K extends keyof BotChoice>(k: K): Map<string, NonNullable<BotChoice[K]>> => {
+    const out = new Map<string, NonNullable<BotChoice[K]>>();
+    for (const [id, c] of choices) if (c[k]) out.set(id, c[k]!);
+    return out;
+  };
+  return { shapes: botShapes(ids, only("shape")), colors: signColors(ids, only("color")), expressions: only("expression") };
 }
 
 /** the CSS variables a `.sign` (or a tinted avatar) reads */
