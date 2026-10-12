@@ -234,7 +234,7 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   // memories and recent work lead the user message (data, not instructions): the system prompt stays stable across runs
   const promptParts = [memoryNotesBlock(mem), `# Task: ${task.title}`, task.brief, context && `## Context\n${context}`, recent];
   if (inbox.length) promptParts.push(inboxSection(inbox));
-  if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(task, team));
+  if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);
   if (task.deliverables.length && !(team?.role === "lead" && team.phase === "review")) {

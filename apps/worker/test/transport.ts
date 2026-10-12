@@ -61,10 +61,6 @@ async function set(k: string, v: string, ...opts: unknown[]) {
   kv.set(k, v);
   return "OK";
 }
-export function resetRedis() {
-  zsets.clear();
-  kv.clear();
-}
 
 export const redisModule = {
   newRedis: () => ({ subscribe: vi.fn(), on: vi.fn(), disconnect: vi.fn() }),

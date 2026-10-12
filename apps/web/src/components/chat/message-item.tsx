@@ -10,7 +10,6 @@ import { Avatar } from "@/components/layout/common";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Employee } from "@/lib/hooks";
-import type { SignColor } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -177,7 +176,6 @@ function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (text
 export const MessageItem = memo(function MessageItem({
   m,
   author,
-  color,
   fallbackId,
   teamChat,
   canDecide,
@@ -193,8 +191,6 @@ export const MessageItem = memo(function MessageItem({
 }: {
   m: ChatMessageDTO;
   author: Employee | undefined;
-  /** the author's sign colour (tints the avatar) */
-  color?: SignColor;
   /** whose bot to show when the message has no author (the conversation's employee) */
   fallbackId: string | undefined;
   teamChat: boolean;

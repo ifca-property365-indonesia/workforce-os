@@ -15,7 +15,6 @@
   "loading": "Memuat…",
   "copy": "Salin",
   "copied": "Disalin",
-  "confirm": "Konfirmasi",
   "yes": "Ya",
   "no": "Tidak",
   "none": "Tidak ada",
@@ -25,14 +24,10 @@
   "password": "Kata sandi",
   "role": "Peran",
   "status": "Status",
-  "actions": "Tindakan",
-  "credits": "kredit",
   "language": "Bahasa",
   "more": "Lainnya",
   "or": "atau",
-  "optional": "opsional",
   "never": "tidak pernah",
   "unknown": "Tidak diketahui",
-  "toggleMenu": "Buka/tutup menu",
   "selectPlaceholder": "Pilih…"
 }

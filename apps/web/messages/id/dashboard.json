@@ -13,7 +13,6 @@
   "weeklySpend": "Pengeluaran per karyawan per minggu",
   "weeklySpendHint": "Kredit, 8 minggu terakhir",
   "wip": "Pekerjaan berjalan",
-  "reviewPending": "{count, plural, other {Tinjau # persetujuan yang menunggu}}",
   "yourEmployees": "Karyawan AI Anda",
   "noEmployees": "Belum ada karyawan. <link>Rekrut yang pertama</link>.",
   "limits": {

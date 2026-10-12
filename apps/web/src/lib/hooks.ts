@@ -99,8 +99,3 @@ export const useTemplates = (enabled = true) =>
   useQuery({ queryKey: ["templates"], queryFn: () => api.get<{ templates: RoleTemplate[]; tools: ToolMeta[] }>("/api/templates"), staleTime: Infinity, enabled });
 export const useClients = () => useQuery({ queryKey: ["clients"], queryFn: () => api.get<{ clients: Client[] }>("/api/clients").then((r) => r.clients) });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: () => api.get<{ teams: Team[] }>("/api/teams").then((r) => r.teams) });
-
-export function useEmployeeMap() {
-  const { data } = useEmployees();
-  return new Map((data ?? []).map((e) => [e.id, e]));
-}

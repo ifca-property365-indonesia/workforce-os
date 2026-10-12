@@ -79,7 +79,6 @@
   "unsupported_file_type": "Jenis berkas {ext} tidak didukung. Yang diizinkan: {allowed}",
   "user_not_found": "Pengguna tidak ditemukan.",
   "validation": "Ada isian yang kosong atau tidak valid: {fields}",
-  "request_failed": "Permintaan gagal ({status}).",
   "repository_exists": "Repositori dengan nama ini sudah ada.",
   "repository_not_found": "Repositori tidak ditemukan.",
   "task_not_resumable": "Hanya tugas mode workspace yang bisa dilanjutkan dengan perubahan.",

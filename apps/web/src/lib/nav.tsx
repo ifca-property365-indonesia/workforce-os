@@ -30,11 +30,6 @@ export interface DesktopNav {
 }
 export const DesktopContext = createContext<DesktopNav | null>(null);
 
-/** the desktop, when the app runs as one; null in the classic layout */
-export function useDesktop(): DesktopNav | null {
-  return useContext(DesktopContext);
-}
-
 const hrefOf = (href: ComponentProps<typeof NextLink>["href"]): string => {
   if (typeof href === "string") return href;
   const q = href.query ? new URLSearchParams(href.query as Record<string, string>).toString() : "";

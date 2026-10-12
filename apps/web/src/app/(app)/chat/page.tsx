@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, EmptyState } from "@/components/layout/common";
 import { Composer, type MentionCandidate } from "@/components/chat/composer";
 import { MessageItem } from "@/components/chat/message-item";
-import { OfficeFacade, useBotMoods, useSignColors } from "@/components/office/employee-sign";
+import { OfficeFacade, useBotMoods } from "@/components/office/employee-sign";
 import { PendingApprovalsList, usePendingApprovals } from "@/components/approvals/pending-list";
 import type { IncidentRow } from "@/components/inspector/incidents-card";
 import { api, ApiError } from "@/lib/api";
@@ -350,7 +350,6 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
         .map((e) => ({ id: e.id, name: e.name, avatar: e.avatar, role: e.role }))
     : null;
 
-  const colors = useSignColors();
   const facadeIds = team ? (members ?? []).map((x) => x.id) : emp ? [emp.id] : [];
 
   return (
@@ -377,7 +376,6 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
             key={m.id}
             m={m}
             author={m.employeeId ? empById.get(m.employeeId) : undefined}
-            color={m.employeeId ? colors.get(m.employeeId) : emp ? colors.get(emp.id) : undefined}
             fallbackId={emp?.id}
             teamChat={!!conv.teamId}
             canDecide={canDecide}

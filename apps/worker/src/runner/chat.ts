@@ -691,7 +691,3 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     throw e; // answer() marks this reply as an error
   }
 }
-
-export async function conversationMessages(conversationId: string) {
-  return db.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(asc(messages.createdAt), asc(messages.id));
-}

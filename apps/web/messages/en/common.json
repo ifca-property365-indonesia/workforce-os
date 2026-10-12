@@ -15,7 +15,6 @@
   "loading": "Loading…",
   "copy": "Copy",
   "copied": "Copied",
-  "confirm": "Confirm",
   "yes": "Yes",
   "no": "No",
   "none": "None",
@@ -25,14 +24,10 @@
   "password": "Password",
   "role": "Role",
   "status": "Status",
-  "actions": "Actions",
-  "credits": "credits",
   "language": "Language",
   "more": "More",
   "or": "or",
-  "optional": "optional",
   "never": "never",
   "unknown": "Unknown",
-  "toggleMenu": "Toggle menu",
   "selectPlaceholder": "Select…"
 }

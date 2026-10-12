@@ -54,19 +54,6 @@ export function EmptyState({ icon, title, description, action }: { icon?: ReactN
   );
 }
 
-export function Stat({ label, value, hint, icon }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode }) {
-  return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="flex items-center justify-between gap-2 text-sm font-medium text-muted-foreground">
-        {label}
-        {icon}
-      </div>
-      <div className="font-display mt-2 text-[2.4rem] tabular-nums">{value}</div>
-      {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
-    </div>
-  );
-}
-
 export function AutonomyBadge({ level }: { level: string }) {
   const t = useTranslations("status");
   const tone: Record<string, string> = {

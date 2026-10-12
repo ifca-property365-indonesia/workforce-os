@@ -5,8 +5,6 @@
   "empty": "No webhooks yet.",
   "adminOnly": "Only Admins and Owners manage webhooks.",
   "target": "Creates tasks for",
-  "targetEmployee": "Employee: {name}",
-  "targetTeam": "Team: {name}",
   "targetMissing": "Nobody: deliveries fail until you choose an employee or a team",
   "employees": "Employees",
   "teams": "Teams",

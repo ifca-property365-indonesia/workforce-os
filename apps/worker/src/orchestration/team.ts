@@ -35,7 +35,7 @@ export async function resolveExecutor(task: typeof tasks.$inferSelect): Promise<
   return { employeeId: task.assigneeId };
 }
 
-export async function planPrompt(task: typeof tasks.$inferSelect, team: TeamContext): Promise<string> {
+export async function planPrompt(team: TeamContext): Promise<string> {
   const members = team.memberIds.length
     ? await db.select({ id: employees.id, name: employees.name, role: employees.role }).from(employees).where(inArray(employees.id, team.memberIds))
     : [];

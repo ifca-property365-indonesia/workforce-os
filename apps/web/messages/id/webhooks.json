@@ -5,8 +5,6 @@
   "empty": "Belum ada webhook.",
   "adminOnly": "Hanya Admin dan Pemilik yang dapat mengelola webhook.",
   "target": "Membuat tugas untuk",
-  "targetEmployee": "Karyawan: {name}",
-  "targetTeam": "Tim: {name}",
   "targetMissing": "Tidak ada: pengiriman gagal sampai Anda memilih karyawan atau tim",
   "employees": "Karyawan",
   "teams": "Tim",

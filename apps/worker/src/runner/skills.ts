@@ -45,7 +45,6 @@ export const skillProposalSchema = z.object({
     .min(1)
     .refine((b) => Buffer.byteLength(b, "utf8") <= SKILL_BODY_MAX, `the body is larger than ${SKILL_BODY_MAX / 1024} KB`),
 });
-export type SkillProposal = z.infer<typeof skillProposalSchema>;
 
 /** sha256 of slug + description + body as saved (spots later edits of learned/imported skills). */
 export function skillProvenanceHash(s: { slug: string; description: string; body: string }): string {

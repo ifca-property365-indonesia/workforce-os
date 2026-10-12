@@ -155,7 +155,7 @@ const NEAR_NEIGHBOURS = 5;
  * The older one is superseded by the newer. Per memory (oldest first), its NEAR_NEIGHBOURS nearest live memories of
  * the same employee are looked at; the most similar newer one that passes replaces it.
  */
-async function dedupeNear(employeeId: string, now: Date, live: Memory[], budget: number, changed: Set<string>): Promise<number> {
+async function dedupeNear(now: Date, live: Memory[], budget: number, changed: Set<string>): Promise<number> {
   if (budget <= 0) return 0;
   const byId = new Map(live.map((m) => [m.id, m]));
   const candidates = live.filter((m) => m.embedding).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
@@ -208,7 +208,7 @@ export async function tidyEmployeeMemories(employeeId: string, now: Date = new D
   const changed = new Set<string>();
   result.duplicates = await dedupeExact(live, left, changed);
   left -= result.duplicates;
-  result.nearDuplicates = await dedupeNear(employeeId, now, live, left, changed);
+  result.nearDuplicates = await dedupeNear(now, live, left, changed);
   return result;
 }
 

@@ -13,7 +13,6 @@
   "weeklySpend": "Spend per employee per week",
   "weeklySpendHint": "Credits, last 8 weeks",
   "wip": "Work in progress",
-  "reviewPending": "{count, plural, one {Review # pending approval} other {Review # pending approvals}}",
   "yourEmployees": "Your AI employees",
   "noEmployees": "No employees yet. <link>Hire your first one</link>.",
   "limits": {

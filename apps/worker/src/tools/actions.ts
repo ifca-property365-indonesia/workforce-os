@@ -163,7 +163,6 @@ export const routineProposalSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   overlap: z.enum(ROUTINE_OVERLAP_MODES).optional(),
 });
-export type RoutineProposal = z.infer<typeof routineProposalSchema>;
 
 export function isTimeZone(tz: string): boolean {
   try {
