@@ -20,8 +20,11 @@ function Inbox() {
     queryFn: () => api.get<{ approvals: Approval[] }>(`/api/approvals${tab === "ALL" ? "" : `?status=${tab}`}`).then((r) => r.approvals),
   });
   useEffect(() => {
-    if (focus && data) document.getElementById(focus)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [focus, data]);
+    if (!focus || !data) return;
+    // a link to a decided approval (a task's preview, an app's release) finds it under All
+    if (tab === "PENDING" && !data.some((a) => a.id === focus)) setTab("ALL");
+    else document.getElementById(focus)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [focus, data, tab]);
   return (
     <div>
       <PageHeader title={t("title")} description={t("description")} />

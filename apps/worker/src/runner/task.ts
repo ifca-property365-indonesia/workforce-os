@@ -18,6 +18,7 @@ import { buildSystemPrompt, inboxSection, memoryNotesBlock, recallMemories, rece
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
 import { planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
 import { failTask, setTaskStatus } from "./task-status";
+import { afterApprovalResolved, previewOutstanding } from "./approvals";
 import { applyRecoveries } from "./incidents";
 import { persistRunTaint, untrustedLineage } from "./taint";
 import { errorMessage } from "../lib/errors";
@@ -350,6 +351,12 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     .where(and(eq(approvals.taskId, task.id), eq(approvals.status, "PENDING")));
   if (pending.length > 0) {
     await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: team?.role === "lead" ? "review" : task.phase });
+    return;
+  }
+  // a preview approved while the run went on is still being deployed (or came back failed): the task waits for the
+  // platform's result instead of finishing; afterApprovalResolved decides now that the run is over
+  if (await previewOutstanding(task.id)) {
+    if (await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: team?.role === "lead" ? "review" : task.phase })) await afterApprovalResolved(task.id);
     return;
   }
 

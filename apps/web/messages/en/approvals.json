@@ -20,7 +20,9 @@
     "git_push": "Push branch",
     "create_pull_request": "Open pull request",
     "handoff_prd": "PRD handoff",
-    "create_routine": "Create routine"
+    "create_routine": "Create routine",
+    "list_apps": "List apps",
+    "request_preview": "Publish preview"
   },
   "email": {
     "to": "To:",
@@ -115,5 +117,31 @@
     "leak": "The output guard found possible secrets or personal data in the payload.",
     "taint": "This run handled untrusted content (external input, a web page or tool output), so irreversible actions need approval.",
     "demoDryRun": "Demo: runs as a dry run."
+  },
+  "preview": {
+    "update": "Update",
+    "firstPreview": "First preview",
+    "openApp": "Open the app's address",
+    "server": "Server",
+    "branch": "Branch",
+    "runsNow": "Runs now",
+    "nothingRuns": "Nothing runs here yet",
+    "summary": "{name}'s summary",
+    "theDeveloper": "The developer",
+    "warnings": "Before you approve",
+    "manifest": "What wfos-app.json asks for",
+    "databaseYes": "Own database",
+    "databaseNo": "No database",
+    "migrateYes": "Runs migrations",
+    "migrateNo": "No migrations",
+    "memory": "{mb} MB memory",
+    "migrateCommand": "Migration command (after a database backup):",
+    "commitsSince": "{count, plural, one {# commit} other {# commits}} since the version that runs now",
+    "commitsFirst": "{count, plural, one {# commit} other {# commits}} on top of the default branch",
+    "files": "{count, plural, one {# file changed} other {# files changed}}",
+    "filesTruncated": "More files changed than are listed here.",
+    "liveAt": "Live at {url}",
+    "followOnApp": "Follow the deploy on the app's page",
+    "howItRuns": "Approving deploys exactly commit {commit} to this address. The platform first checks that the branch still points at it, then builds, migrates and health-checks it; if a step fails, the version running now stays."
   }
 }

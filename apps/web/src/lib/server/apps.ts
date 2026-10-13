@@ -1,10 +1,11 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { and, desc, eq, inArray, type SQL } from "drizzle-orm";
-import { appReleases, apps, clients, db, projects, repositories, servers, users, workspaces } from "@wfos/db";
+import { appReleases, apps, clients, db, employees, projects, repositories, servers, tasks, users, workspaces } from "@wfos/db";
 import { APP_PORT_MAX, APP_PORT_MIN, type AppDTO, type AppEnv, type ReleaseDTO } from "@wfos/shared";
 import { decryptSecret } from "@wfos/shared/server";
 import { HttpError } from "./auth";
+import type { ReleaseOrigin, TaskPreview } from "@/lib/app-previews";
 import { notFound } from "./route";
 
 export type AppRow = typeof apps.$inferSelect;
@@ -66,6 +67,47 @@ export async function releasesWithNames(where: SQL | undefined, limit?: number):
     .orderBy(desc(appReleases.createdAt));
   const rows = limit ? await q.limit(limit) : await q;
   return rows.map((x) => releaseDTO(x.r, x.by));
+}
+
+/**
+ * The previews a task published (releases it triggered through request_preview), newest first. Scoped twice to
+ * the workspace: the release row and its app.
+ */
+export async function taskPreviews(workspaceId: string, taskId: string): Promise<TaskPreview[]> {
+  const rows = await db
+    .select({ r: appReleases, appName: apps.name, domain: apps.domain })
+    .from(appReleases)
+    .innerJoin(apps, eq(apps.id, appReleases.appId))
+    .where(and(eq(appReleases.workspaceId, workspaceId), eq(apps.workspaceId, workspaceId), eq(appReleases.taskId, taskId)))
+    .orderBy(desc(appReleases.createdAt))
+    .limit(RELEASES_SHOWN);
+  return rows.map(({ r, appName, domain }) => ({
+    id: r.id,
+    appId: r.appId,
+    appName,
+    status: r.status,
+    step: r.step,
+    commit: r.commit,
+    commitSubject: r.commitSubject,
+    warnings: r.warnings,
+    error: r.error,
+    approvalId: r.approvalId,
+    url: r.status === "deployed" ? `https://${domain}` : null,
+    createdAt: r.createdAt.toISOString(),
+    finishedAt: r.finishedAt?.toISOString() ?? null,
+  }));
+}
+
+/** The task and employee behind each release that came from a task, keyed by task id (tasks of this workspace only). */
+export async function releaseOrigins(workspaceId: string, releases: Pick<ReleaseDTO, "taskId">[]): Promise<Record<string, ReleaseOrigin>> {
+  const ids = [...new Set(releases.map((r) => r.taskId).filter((x): x is string => !!x))];
+  if (!ids.length) return {};
+  const rows = await db
+    .select({ id: tasks.id, title: tasks.title, employeeId: employees.id, employeeName: employees.name })
+    .from(tasks)
+    .leftJoin(employees, and(eq(employees.id, tasks.assigneeId), eq(employees.workspaceId, workspaceId)))
+    .where(and(eq(tasks.workspaceId, workspaceId), inArray(tasks.id, ids)));
+  return Object.fromEntries(rows.map((t) => [t.id, { taskId: t.id, taskTitle: t.title, employeeId: t.employeeId, employeeName: t.employeeName }]));
 }
 
 /**

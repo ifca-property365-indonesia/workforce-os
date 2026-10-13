@@ -4,6 +4,7 @@ import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
 import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
+import { queuePreviewRelease } from "../deploy/preview";
 import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, webhookPayloadSchema, type OutboundEmailTrigger } from "@wfos/shared";
 import { decryptSecret, screenLeakage, withRetry } from "@wfos/shared/server";
 import { msg } from "@wfos/shared/messages";
@@ -380,6 +381,8 @@ export async function executeAction(
       return doGitPush(workspaceId, payload, context);
     case "create_pull_request":
       return doCreatePullRequest(workspaceId, payload);
+    case "request_preview":
+      return queuePreviewRelease(workspaceId, payload, context);
     case "send_email":
       return sendEmailPayload(workspaceId, emailPayloadSchema.parse(payload), send);
     case "send_invoice":

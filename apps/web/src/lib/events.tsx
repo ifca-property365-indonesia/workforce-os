@@ -93,10 +93,12 @@ export function EventsProvider({ children }: { children: ReactNode }) {
             invalidate("app");
             break;
           case "release.updated":
-            // ["app", appId] releases table, ["release", id] log viewer; the list shows the current release too
+            // ["app", appId] releases table, ["release", id] log viewer; the list shows the current release too;
+            // ["task", id] lists the previews a task published
             invalidate("app");
             invalidate("release");
             invalidate("apps");
+            invalidate("task");
             break;
           case "server.updated":
             // ["servers"] list, ["servers", "ssh-key", id] prepare command (domain/user may have changed)

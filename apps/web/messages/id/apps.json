@@ -232,6 +232,25 @@
     "logWaiting": "Menunggu worker mulai…",
     "logLive": "Langsung: diperbarui setiap 2 detik",
     "noLogs": "Log bisa dilihat oleh Anggota ke atas.",
-    "copyLog": "Salin log"
+    "copyLog": "Salin log",
+    "warningHelp": {
+      "first_publish": "Belum pernah ada yang berjalan di alamat ini: ini akan menjadi versi pertama aplikasi.",
+      "manifest_changed": "Cara aplikasi di-install, di-build, dijalankan, dimigrasi, atau dicek berbeda dari versi yang berjalan sekarang.",
+      "scripts_changed": "Perintah build dan start di package.json berubah, jadi server bisa menjalankan sesuatu yang baru.",
+      "new_database": "Platform membuatkan database PostgreSQL untuk aplikasi ini dan memberinya DATABASE_URL.",
+      "destructive_migration": "Ada migrasi yang bisa menghapus atau mengubah data. Database dicadangkan dulu, tetapi baca migrasinya sebelum menyetujui.",
+      "public_access": "Aplikasi ini publik: siapa pun yang punya tautannya bisa melihatnya tanpa password."
+    },
+    "byTask": "<b>{employee}</b> lewat <task>{title}</task>",
+    "unknownEmployee": "Seorang karyawan",
+    "approvedBy": "disetujui oleh {name}",
+    "viewApproval": "lihat persetujuannya"
+  },
+  "taskPreviews": {
+    "title": "Preview",
+    "failedAttempts": "{count} dari {max} percobaan gagal",
+    "waiting": "Tugas menunggu di sini sampai platform melaporkan hasil penerbitan; karyawan belum melanjutkan sebelum itu.",
+    "openApp": "Buka halaman aplikasi",
+    "approval": "Persetujuan"
   }
 }

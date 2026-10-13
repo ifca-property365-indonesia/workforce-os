@@ -184,7 +184,9 @@
     "billing": "Billing",
     "team": "Team",
     "web": "Web",
-    "tasks": "Tasks"
+    "tasks": "Tasks",
+    "code": "Code",
+    "routines": "Routines"
   },
   "tools": {
     "kb_search": {
@@ -274,6 +276,22 @@
     "report_progress": {
       "label": "Report progress",
       "description": "Report how much of the current task is done (0–100%) with a short note"
+    },
+    "git_push": {
+      "label": "Push branch",
+      "description": "Workspace mode: push the committed work to agent/<task> on the remote (the platform pushes after approval)"
+    },
+    "create_pull_request": {
+      "label": "Open pull request",
+      "description": "Workspace mode: open a pull/merge request from the branch (after approval)"
+    },
+    "list_apps": {
+      "label": "List apps",
+      "description": "Workspace mode: the workspace's apps (preview address, status, repository, branch, the version that runs) so the employee knows which app to preview"
+    },
+    "request_preview": {
+      "label": "Publish preview",
+      "description": "Workspace mode: publish the pushed branch as a preview of an app at its address (the platform deploys after approval)"
     }
   },
   "executionMode": {
@@ -341,7 +359,11 @@
       "error": "Ran into an error",
       "other": "{name}",
       "list_invoices": "Looked up invoices",
-      "report_progress": "Reported progress: {percent}%"
+      "report_progress": "Reported progress: {percent}%",
+      "list_apps": "Looked up the workspace's apps",
+      "request_preview": "Asked to publish a preview",
+      "waiting_for_preview": "Waiting for the platform to deploy the approved preview",
+      "preview_deployed": "Preview is live at {url}"
     }
   },
   "bot": {

@@ -1,0 +1,10 @@
+{
+  "type": "nextjs",
+  "install": "pnpm install --frozen-lockfile",
+  "build": "pnpm build",
+  "start": "pnpm start -H 127.0.0.1 -p $PORT",
+  "migrate": "pnpm migrate",
+  "health": "/api/health",
+  "database": true,
+  "memoryMb": 512
+}

@@ -71,6 +71,8 @@ export const SANDBOX = {
   nodeDir: "/mnt/wfos/node",
   node: "/mnt/wfos/node/bin/node",
   runner: "/mnt/wfos/runner/runner.mjs",
+  /** built-in skills shipped with the runner (docx, pdf, pptx, xlsx, app-nextjs), synced into ~/.claude/skills */
+  builtinSkills: "/mnt/wfos/runner/skills",
   /** systemd resolves ExecStart on the host, so start through /bin/sh and exec into the sandbox paths */
   startCommand: ["/bin/sh", "-c", "exec /mnt/wfos/node/bin/node /mnt/wfos/runner/runner.mjs"],
 } as const;

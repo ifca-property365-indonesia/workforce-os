@@ -122,7 +122,9 @@
     "nothingPending": "Nothing is waiting for approval: the employee has not proposed a push yet, or it was already decided.",
     "feedbackPlaceholder": "What should change? The employee continues in the same session and workspace.",
     "requestChanges": "Request changes",
-    "changesRequested": "Changes requested: the employee will continue"
+    "changesRequested": "Changes requested: the employee will continue",
+    "previewPending": "A preview of this branch is waiting for approval.",
+    "reviewPreview": "Review the preview"
   },
   "gateRule": {
     "not_granted": "not granted",

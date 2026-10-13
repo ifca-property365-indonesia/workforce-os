@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { agentMessages, approvals, db, employees, tasks } from "@wfos/db";
 import { notFound, route } from "@/lib/server/route";
+import { taskPreviews } from "@/lib/server/apps";
 import { progressFromChildren } from "@/lib/server/tasks";
 
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
@@ -12,5 +13,13 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
   const ids = [t.id, ...children.map((c) => c.id)];
   const msgs = await db.select().from(agentMessages).where(eq(agentMessages.workspaceId, session.workspaceId)).orderBy(asc(agentMessages.createdAt));
   const emps = await db.select({ id: employees.id, name: employees.name, avatar: employees.avatar }).from(employees).where(eq(employees.workspaceId, session.workspaceId));
-  return { task: progressFromChildren(t, children), children, parent, approvals: appr, messages: msgs.filter((m) => m.taskId && ids.includes(m.taskId)), employees: emps };
+  return {
+    task: progressFromChildren(t, children),
+    children,
+    parent,
+    approvals: appr,
+    messages: msgs.filter((m) => m.taskId && ids.includes(m.taskId)),
+    employees: emps,
+    previews: await taskPreviews(session.workspaceId, t.id),
+  };
 });

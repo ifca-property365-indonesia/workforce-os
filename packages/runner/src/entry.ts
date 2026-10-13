@@ -14,7 +14,7 @@ import path from "node:path";
 import { z } from "zod";
 import { createSdkMcpServer, query, tool, type PermissionResult, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { SANDBOX, ndjson, type PermissionReply, type RunnerToWorker, type RunSpec, type ToolReply, type WorkerToRunner } from "./protocol";
-import { syncSkillFiles } from "./skills";
+import { syncBuiltinSkills, syncSkillFiles } from "./skills";
 
 const runToken = process.env.WFOS_RUN_TOKEN ?? "";
 const socketDir = process.env.WFOS_SOCKET_DIR ?? SANDBOX.socketDir;
@@ -115,6 +115,15 @@ async function main(): Promise<void> {
 
   send({ t: "hello", token: runToken, pid: process.pid });
   const s = await started;
+
+  // built-in skills: a workspace home made before a built-in existed (or changed) gets the current one; only
+  // directories the platform copied are replaced, nothing else in ~/.claude/skills is touched
+  try {
+    const b = await syncBuiltinSkills(SANDBOX.builtinSkills, path.join(process.env.HOME ?? "/tmp", ".claude", "skills"));
+    if (b.installed.length || b.updated.length) send({ t: "log", level: "info", msg: `built-in skills: installed ${b.installed.join(", ") || "-"}, updated ${b.updated.join(", ") || "-"}` });
+  } catch (e) {
+    send({ t: "log", level: "warn", msg: `built-in skills sync failed: ${(e as Error).message}`.slice(0, 2000) });
+  }
 
   // the employee's trusted skills, as of THIS run (written as the sandbox user, in its own home); a failure only
   // costs the files: the skills stay listed in the system prompt and readable with skill_read

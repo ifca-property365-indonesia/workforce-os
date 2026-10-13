@@ -13,6 +13,7 @@ import { api } from "@/lib/api";
 import { useClients, useEmployees, useTeams } from "@/lib/hooks";
 import { SchedulePreviewView, useSchedulePreview } from "@/components/routines/schedule-preview";
 import { useFormat } from "@/lib/use-format";
+import { PreviewApprovalPreview } from "./preview-approval";
 import type { Approval, Email } from "./types";
 
 export function EmailPreview({ p }: { p: Email }) {
@@ -282,6 +283,8 @@ export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; e
       </div>
     );
   }
+  // approved or rejected for exactly the pushed commit: never an editor
+  if (a.toolName === "request_preview") return <PreviewApprovalPreview a={a} payload={a.payload} />;
   if (a.toolName === "create_routine" && !editing) return <RoutineApprovalPreview p={p} />;
   if (a.toolName === "create_skill") return editing ? <SkillApprovalEditor p={p} onChange={setDraft} /> : <SkillApprovalPreview p={p} />;
   if (a.toolName === "post_webhook") {

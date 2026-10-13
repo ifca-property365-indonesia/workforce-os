@@ -3,15 +3,16 @@ import { appReleases, apps, audit, db } from "@wfos/db";
 import { appRemoveLockKey, appUpdateSchema } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { serverEnv } from "@/lib/server/env";
-import { appDTO, appDuplicate, loadApp, RELEASES_SHOWN, releasesWithNames, resolveClientProject } from "@/lib/server/apps";
+import { appDTO, appDuplicate, loadApp, releaseOrigins, RELEASES_SHOWN, releasesWithNames, resolveClientProject } from "@/lib/server/apps";
 import { publish, q, redis } from "@/lib/server/queue";
 import { patchBody, route } from "@/lib/server/route";
 import { requireStepUp } from "@/lib/server/twofactor";
 
-/** One app and its latest releases (no logs: GET /api/releases/[id] has them, for Members and up). */
+/** One app and its latest releases (no logs: GET /api/releases/[id] has them, for Members and up), with the tasks behind them. */
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
   const a = await loadApp(session.workspaceId, params.id);
-  return { app: await appDTO(session.workspaceId, a.id), releases: await releasesWithNames(eq(appReleases.appId, a.id), RELEASES_SHOWN) };
+  const releases = await releasesWithNames(eq(appReleases.appId, a.id), RELEASES_SHOWN);
+  return { app: await appDTO(session.workspaceId, a.id), releases, origins: await releaseOrigins(session.workspaceId, releases) };
 });
 
 /** Rename, relink, change the default branch or the access mode; branch and access apply at the next deploy or start. */

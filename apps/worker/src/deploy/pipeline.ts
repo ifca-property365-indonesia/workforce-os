@@ -36,6 +36,7 @@ import { helper, helperCall, HELPER_EXIT_GUARD, HelperError, statusCodeOf, type 
 import { Redactor, ReleaseLog } from "./log";
 import { assertCommit, commitSubject, DeployInputError, parseManifest, readManifest, releaseWarnings, resolveBranch } from "./manifest";
 import { appMsg } from "./messages";
+import { afterReleaseSettled } from "../runner/approvals";
 
 /** git archive of a release, at most */
 const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
@@ -426,7 +427,8 @@ async function succeed(c: Ctx): Promise<ReleaseStatus> {
   await publish(c.app.workspaceId, { type: "app.updated", appId: c.app.id, status: "running" });
   c.log.line(`deployed ${c.sha} at ${appUrl(c.app)}`);
   await auditRelease(c, "app.deployed", { warnings: c.rel.warnings });
-  await notifyApp({
+  // a preview a task asked for is announced by that task (done, with the URL): one notification, not two
+  if (!c.rel.taskId) await notifyApp({
     workspaceId: c.app.workspaceId,
     appId: c.app.id,
     userId: c.rel.createdBy,
@@ -638,6 +640,7 @@ export async function runRelease(releaseId: string, workspaceId: string): Promis
   }
   if ("error" in loaded) {
     await updateRelease(rel, { status: "failed", error: loaded.error.slice(0, 1000), finishedAt: new Date() }).catch((e) => log.error({ err: e, releaseId }, "release could not be failed"));
+    await handBack(rel.id);
     return "failed";
   }
   const { c, ws } = loaded;
@@ -649,7 +652,18 @@ export async function runRelease(releaseId: string, workspaceId: string): Promis
   } catch (e) {
     error = e;
   }
-  return settle(c, error);
+  const status = await settle(c, error);
+  await handBack(rel.id);
+  return status;
+}
+
+/**
+ * A release a task asked for (request_preview) hands its outcome back to that task once it is stored: deliverable +
+ * DONE, or the task goes back to the Developer with the log tail (afterReleaseSettled). Never throws: the release
+ * itself is settled either way, and the reaper picks a stuck task up later.
+ */
+export async function handBack(releaseId: string): Promise<void> {
+  await afterReleaseSettled(releaseId).catch((e: unknown) => log.error({ err: e, releaseId }, "preview outcome could not be handed back to its task"));
 }
 
 const stepAtLeast = (s: ReleaseStep | null, than: ReleaseStep) => !!s && stepIndex(s) >= stepIndex(than);
@@ -661,7 +675,13 @@ const stepAtLeast = (s: ReleaseStep | null, than: ReleaseStep) => !!s && stepInd
  * `failed` with statusMessage "interrupted". Otherwise only the rows are settled: the release failed
  * ("interrupted"), the app back to the status it had before.
  */
-export async function settleInterrupted(rel: Release): Promise<ReleaseStatus> {
+export async function settleInterrupted(rel: Release, reason: "interrupted" | "lost" = "interrupted"): Promise<ReleaseStatus> {
+  const status = await settleInterruptedRows(rel, reason);
+  await handBack(rel.id);
+  return status;
+}
+
+async function settleInterruptedRows(rel: Release, reason: string): Promise<ReleaseStatus> {
   const cp = rel.checkpoint;
   let manifest: AppManifest | null = null;
   try {
@@ -676,7 +696,7 @@ export async function settleInterrupted(rel: Release): Promise<ReleaseStatus> {
   const touchedServer = !!cp?.activated || !!cp?.migrated || oldStopped;
 
   const settleRows = async (appPatch: { status: AppStatus; statusMessage?: string | null } | null) => {
-    const [row] = await db.update(appReleases).set({ status: "failed", error: "interrupted", finishedAt: new Date() }).where(eq(appReleases.id, rel.id)).returning();
+    const [row] = await db.update(appReleases).set({ status: "failed", error: reason, finishedAt: new Date() }).where(eq(appReleases.id, rel.id)).returning();
     if (row) await publishRelease(row);
     if (app && appPatch && app.status === "deploying") await updateApp(app, appPatch);
     await audit({
@@ -685,7 +705,7 @@ export async function settleInterrupted(rel: Release): Promise<ReleaseStatus> {
       action: "app.deploy_failed",
       targetType: "app",
       targetId: rel.appId,
-      details: { releaseId: rel.id, commit: rel.commit || null, branch: rel.branch, trigger: rel.trigger, step: rel.step, error: "interrupted" },
+      details: { releaseId: rel.id, commit: rel.commit || null, branch: rel.branch, trigger: rel.trigger, step: rel.step, error: reason },
     });
     return "failed" as const;
   };
@@ -722,6 +742,6 @@ export async function settleInterrupted(rel: Release): Promise<ReleaseStatus> {
     await c.log.close().catch(() => null);
     return settleRows({ status: "failed", statusMessage: "interrupted" });
   }
-  c.log.line(`interrupted at ${rel.step ?? "prepare"} (the worker stopped): undoing it`);
-  return settle(c, new Error("interrupted"));
+  c.log.line(`${reason} at ${rel.step ?? "prepare"} (the worker stopped): undoing it`);
+  return settle(c, new Error(reason));
 }

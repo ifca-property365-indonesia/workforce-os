@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "@/lib/nav";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GitBranch, GitCommitHorizontal, ShieldCheck } from "lucide-react";
+import { GitBranch, GitCommitHorizontal, Rocket, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
@@ -35,6 +36,8 @@ export function CodePanel({ taskId }: { taskId: string }) {
   const pendingDeliveries = (data?.approvals ?? []).filter((a) => a.status === "PENDING" && (a.toolName === "git_push" || a.toolName === "create_pull_request"));
   // push first, then the pull request
   const ordered = [...pendingDeliveries].sort((a, b) => (a.toolName === "git_push" ? -1 : 1) - (b.toolName === "git_push" ? -1 : 1));
+  // a preview is its own decision (exact commit, app, warnings): reviewed on its card, never approved in bulk here
+  const pendingPreview = (data?.approvals ?? []).find((a) => a.status === "PENDING" && a.toolName === "request_preview");
   const approve = useMutation({
     mutationFn: async () => {
       for (const a of ordered) await api.post(`/api/approvals/${a.id}/decide`, { decision: "approve" });
@@ -108,7 +111,16 @@ export function CodePanel({ taskId }: { taskId: string }) {
             {t("code.discard")}
           </Button>
         </div>
-        {!ordered.length && <p className="text-xs text-muted-foreground">{t("code.nothingPending")}</p>}
+        {!ordered.length && !pendingPreview && <p className="text-xs text-muted-foreground">{t("code.nothingPending")}</p>}
+        {pendingPreview && (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-approval/15 px-2 py-1.5 text-xs">
+            <Rocket className="size-3.5 shrink-0" aria-hidden />
+            <span className="flex-1">{t("code.previewPending")}</span>
+            <Link href={`/approvals?focus=${pendingPreview.id}`} className="font-semibold underline-offset-2 hover:underline">
+              {t("code.reviewPreview")}
+            </Link>
+          </p>
+        )}
         {data.task.resumable && (
           <form
             className="space-y-2"

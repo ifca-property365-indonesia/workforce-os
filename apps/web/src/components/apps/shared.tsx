@@ -4,6 +4,7 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { APP_IDLE_STOP_DAYS, hasRole, type AppDTO, type AppStatus, type ReleaseDTO, type ReleaseStatus } from "@wfos/shared";
 import { api } from "@/lib/api";
+import type { ReleaseOrigin } from "@/lib/app-previews";
 import { useMe } from "@/lib/hooks";
 import { signColors, signVars, type SignColor, type SignState } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
@@ -17,6 +18,8 @@ export const releaseQueryKey = (id: string) => ["release", id] as const;
 export interface AppDetail {
   app: AppDTO;
   releases: ReleaseDTO[];
+  /** the task behind each release a task triggered (request_preview), keyed by task id */
+  origins: Record<string, ReleaseOrigin>;
 }
 
 export const ACTIVE_RELEASE: readonly ReleaseStatus[] = ["queued", "deploying"];

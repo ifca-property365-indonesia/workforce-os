@@ -199,6 +199,14 @@ export async function workspaceDirectory(workspaceId: string): Promise<string> {
     .join("\n");
 }
 
+/** Workspace mode with list_apps / request_preview granted (Phase A3): how an app gets built and published. */
+export const APP_PREVIEW_RULES =
+  "## Apps and previews\n" +
+  "- An app the platform previews must follow the app-nextjs skill (~/.claude/skills/app-nextjs/SKILL.md): read it before you start an app or change its wfos-app.json, build, start, health check, database or environment.\n" +
+  "- To publish: commit, git_push (a person approves the push), then list_apps to find the app linked to your repository, then request_preview { appId, summary } (a person approves the preview, then the platform builds and deploys exactly that commit).\n" +
+  "- Never claim an app is deployed, live or updated until the platform has reported the release as deployed (a \"Preview: <url>\" deliverable or the update note on this task says so). Until then say plainly what is pending (the push approval, the preview approval, the deploy).\n" +
+  "- After request_preview, stop: end your run with a short summary. Do not poll list_apps or wait in a loop; the platform resumes this task with the result (and the end of the build log when it failed).";
+
 export function buildSystemPrompt(opts: {
   employee: PromptEmployee;
   overrides?: { persona?: string; instructions?: string; businessContext?: string };
@@ -276,7 +284,8 @@ export function buildSystemPrompt(opts: {
         ".\n- Commit locally with git when a piece of work is done. Never push: use the git_push and create_pull_request tools; the platform pushes after a human approves.\n" +
         "- Commands that are not provably local and reversible (network access, installs, publishing, writing outside the workspace, git config/hooks) are sent to a human for approval with the exact command. Do not try to work around a pending approval.\n" +
         `- Network: the sandbox has no internet access except through a proxy that allows only: ${opts.workspace.egressDomains.length ? opts.workspace.egressDomains.join(", ") : "(no extra hosts)"}.\n` +
-        "- Run the tests before you finish, and end with a summary of what changed, the test result and anything pending."
+        "- Run the tests before you finish, and end with a summary of what changed, the test result and anything pending." +
+        (opts.grantedTools.includes("list_apps") || opts.grantedTools.includes("request_preview") ? `\n\n${APP_PREVIEW_RULES}` : "")
       : "",
     opts.dryRun ? "## DRY RUN\nThis is a simulation. Irreversible tools are mocked and record what would have happened." : "",
   ]

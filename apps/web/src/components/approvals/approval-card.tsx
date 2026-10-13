@@ -17,6 +17,8 @@ import { PayloadPreview } from "./payload-preview";
 import { resultSummary, type Approval } from "./types";
 
 const DEMO_SUFFIX = " Demo: executes as a dry run.";
+/** approved for one exact commit: approve or reject, never Edit & approve (decideApproval refuses it too) */
+const NOT_EDITABLE: ReadonlySet<string> = new Set(["git_push", "request_preview"]);
 
 /**
  * The gate writes its reason in English (packages/shared decideGate/screen). The known reasons are shown in the
@@ -197,7 +199,7 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
         <Button size={size} onClick={() => decide.mutate({ decision: "approve" })} disabled={decide.isPending} className="gap-1">
           <ShieldCheck className="size-3.5" /> {t("card.approve")}
         </Button>
-        {a.toolName !== "git_push" && (
+        {!NOT_EDITABLE.has(a.toolName) && (
           <Button size={size} variant="outline" onClick={() => (setEditing(true), setOpen(true))} className="gap-1">
             <Pencil className="size-3.5" /> {t("card.editAndApprove")}
           </Button>

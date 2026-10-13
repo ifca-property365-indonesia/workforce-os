@@ -6,7 +6,8 @@ import { log } from "../lib/logger";
 import { activeConversationIds, isTaskRunActive } from "../guards/killswitch";
 import { tasksHoldingLease } from "../guards/lease";
 import { failTask, settleDispatchedRoutineRuns } from "../runner/task-status";
-import { afterApprovalResolved } from "../runner/approvals";
+import { afterApprovalResolved, handBackMissedReleases } from "../runner/approvals";
+import { sweepLostReleases } from "../deploy";
 import { onChildFinished } from "../orchestration/team";
 import { CHAT_TURN_STALE_MS, closeStaleTurns } from "../runner/chat-turns";
 import { activeQuotaPause } from "../lib/limits";
@@ -43,7 +44,9 @@ import { failStuckSends } from "../lib/outbox";
  * - QUEUED tasks older than LOST_QUEUED_AFTER_MS that no BullMQ job will ever run (the enqueue was lost):
  *   re-enqueued, unless held (phase hold), behind the kill switch, a quota pause or an employee that is not active,
  * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches),
- * - outbox rows left `sending` for more than STUCK_SENDING_MS (failed with an "interrupted, check before resending" note).
+ * - outbox rows left `sending` for more than STUCK_SENDING_MS (failed with an "interrupted, check before resending" note),
+ * - app releases whose job was lost (queued) or whose worker died (deploying, no progress), settled "lost", and settled
+ *   preview releases whose hand-back to the waiting task was missed (sweepLostReleases, handBackMissedReleases).
  */
 export const ORPHAN_AFTER_MS = 35 * 60_000;
 export const REAP_EVERY_MS = 5 * 60_000;
@@ -109,6 +112,10 @@ export interface ReapResult {
   webhookDeliveriesPruned: number;
   /** outbox rows stuck in `sending`, marked failed */
   stuckEmailsFailed: string[];
+  /** app releases left queued without a job, or deploying without progress, settled failed "lost" */
+  releasesLost: string[];
+  /** settled preview releases handed back to their waiting task (the hand-back after the deploy was missed) */
+  releasesHandedBack: string[];
 }
 
 export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapResult> {
@@ -142,6 +149,11 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
   }
 
   const leadsChecked = await recheckWaitingLeads(cutoff);
+  // preview releases first: a lost one is settled and a missed hand-back done before resolved approvals close a task
+  const releasesLost = await sweep("lost releases", [], () => sweepLostReleases(now.getTime()));
+  if (releasesLost.length) log.warn({ releasesLost }, "reaper: lost releases settled");
+  const releasesHandedBack = await sweep("release hand-back", [], () => handBackMissedReleases(now));
+  if (releasesHandedBack.length) log.warn({ releasesHandedBack }, "reaper: settled releases handed back to their tasks");
   const approvalsResumed = await resumeResolvedApprovals(cutoff);
   const chatTurnsClosed = await sweep("chat turns", [], async () =>
     (await closeStaleTurns(new Date(now.getTime() - CHAT_TURN_STALE_MS), activeConversationIds())).map((m) => m.id),
@@ -154,7 +166,7 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
   if (stuckEmailsFailed.length) log.warn({ stuckEmailsFailed }, "reaper: outbox rows stuck in sending marked failed");
 
   const routineRunsSettled = await settleDispatchedRoutineRuns();
-  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, stuckEmailsFailed };
+  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, stuckEmailsFailed, releasesLost, releasesHandedBack };
 }
 
 /**
@@ -286,6 +298,8 @@ async function resumeResolvedApprovals(cutoff: Date): Promise<string[]> {
           sql`exists (select 1 from approvals a where a.task_id = ${tasks.id})`,
           sql`not exists (select 1 from approvals a where a.task_id = ${tasks.id}
                 and (a.status in ('PENDING', 'APPROVED', 'EXECUTING') or a.decided_at > ${cutoff.toISOString()}::timestamptz))`,
+          // waiting on a preview the platform is still deploying (afterReleaseSettled resumes it)
+          sql`not exists (select 1 from app_releases r where r.task_id = ${tasks.id} and r.status in ('queued', 'deploying'))`,
         ),
       )
       .limit(200);

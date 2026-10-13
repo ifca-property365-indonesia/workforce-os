@@ -1,12 +1,12 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import type { Options, Query, SDKMessage, SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 import { WORKSPACE_BUILTIN_TOOLS } from "@wfos/shared";
 import type { ClaudeCredential } from "@wfos/db/claude";
 import type { RunSpec } from "@wfos/runner/protocol";
-import type { SkillFileSpec } from "@wfos/runner/skills";
+import { syncBuiltinSkills, type SkillFileSpec } from "@wfos/runner/skills";
 import { toolDefsOf } from "../../tools/registry";
 import type { QueryFn } from "../sdk";
 import { log } from "../../lib/logger";
@@ -45,8 +45,9 @@ export async function prepareWorkspaceDirs(layout: RunLayout, seed?: { skillsDir
   await mkdir(path.join(layout.hostStateDir, "repo"), { mode: 0o700 });
   await mkdir(path.join(layout.hostStateDir, "home", ".claude"), { recursive: true, mode: 0o700 });
   if (seed?.skillsDir && (await stat(seed.skillsDir).then(() => true, () => false))) {
-    // built-in skills (docx/xlsx/pptx/pdf); copied once into the fresh, root-created home
-    await cp(seed.skillsDir, path.join(layout.hostStateDir, "home", ".claude", "skills"), { recursive: true, dereference: false, verbatimSymlinks: true });
+    // built-in skills (docx/xlsx/pptx/pdf/app-nextjs), marked with their version, into the fresh, root-created home;
+    // afterwards the runner (as the sandbox user) adds or refreshes them on every run (syncBuiltinSkills)
+    await syncBuiltinSkills(seed.skillsDir, path.join(layout.hostStateDir, "home", ".claude", "skills"));
   }
   // the employee's own skills are NOT written here: the runner syncs them (as the sandbox user) on every run
 }

@@ -4,7 +4,7 @@ import { notFound, route } from "@/lib/server/route";
 
 const TEST_COMMAND = /\b(test|vitest|jest|pytest|mocha|go test|cargo test|phpunit|rspec)\b|\.test\.|\bspec\b/;
 
-/** The code deliverable of a Workspace-mode task: branch, commits, files, diff, last test run and pending delivery approvals. */
+/** The code deliverable of a Workspace-mode task: branch, commits, files, diff, last test run and its delivery approvals (push, pull request, preview, commands). */
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
   const [t] = await db.select().from(tasks).where(and(eq(tasks.id, params.id), eq(tasks.workspaceId, session.workspaceId)));
   if (!t) notFound("task_not_found");
@@ -20,7 +20,7 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
   const pending = await db
     .select({ id: approvals.id, toolName: approvals.toolName, title: approvals.title, status: approvals.status, createdAt: approvals.createdAt })
     .from(approvals)
-    .where(and(eq(approvals.taskId, t.id), inArray(approvals.toolName, ["git_push", "create_pull_request", "bash"])))
+    .where(and(eq(approvals.taskId, t.id), inArray(approvals.toolName, ["git_push", "create_pull_request", "request_preview", "bash"])))
     .orderBy(approvals.createdAt);
   return {
     task: { id: t.id, status: t.status, workspaceStatus: t.workspaceStatus, resumable: !!t.agentSessionId },

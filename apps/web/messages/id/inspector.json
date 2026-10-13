@@ -122,7 +122,9 @@
     "nothingPending": "Tidak ada yang menunggu persetujuan: karyawan belum mengusulkan push, atau sudah diputuskan.",
     "feedbackPlaceholder": "Apa yang perlu diubah? Karyawan melanjutkan di sesi dan workspace yang sama.",
     "requestChanges": "Minta perubahan",
-    "changesRequested": "Perubahan diminta: karyawan akan melanjutkan"
+    "changesRequested": "Perubahan diminta: karyawan akan melanjutkan",
+    "previewPending": "Preview dari branch ini sedang menunggu persetujuan.",
+    "reviewPreview": "Tinjau preview"
   },
   "gateRule": {
     "not_granted": "tidak diizinkan",

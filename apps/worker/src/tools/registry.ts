@@ -66,6 +66,7 @@ import { cronNextRuns, executeAction, formatRunTime, isTimeZone, routineProposal
 import { recordMemoryEvent } from "../lib/memory-journal";
 import { recallableMemory } from "../runner/prompt";
 import { exportAgentBranch, type RepoRef } from "../runner/workspace/git";
+import { buildPreviewRequest, listApps, previewRequestText } from "../deploy/preview";
 import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
@@ -377,11 +378,21 @@ async function irreversible(
   ctx: RunContext,
   toolName: string,
   payload: Record<string, unknown>,
-  meta: { title: string; textForGuard: string; scope: NonNullable<GateInput["scope"]>; draftKind: Deliverable["kind"]; draftContent: string },
+  meta: {
+    title: string;
+    textForGuard: string;
+    scope: NonNullable<GateInput["scope"]>;
+    draftKind: Deliverable["kind"];
+    draftContent: string;
+    /** never runs without a person, not even through an Owner allow-list rule (request_preview) */
+    approvalOnly?: string;
+    /** appended to the "queued for approval" answer */
+    queuedNote?: string;
+  },
 ): Promise<ToolResult> {
   const { findings } = await guardOutput(ctx.guard, `${toolName} payload`, meta.textForGuard);
   const highLeak = findings.some((f) => f.severity === "high");
-  const decision = applyRunSignals(
+  const gated = applyRunSignals(
     decideGate({
       toolName,
       toolClass: "irreversible",
@@ -393,6 +404,7 @@ async function irreversible(
     }),
     { toolClass: "irreversible", tainted: ctx.guard.tainted, highLeak },
   );
+  const decision: GateDecision = gated.kind === "run" && meta.approvalOnly ? { kind: "approval", reason: meta.approvalOnly, rule: "autonomy" } : gated;
 
   switch (decision.kind) {
     case "deny":
@@ -425,7 +437,8 @@ async function irreversible(
       const id = await createApproval(ctx, toolName, meta.title, decision.reason, payload, findings, decision.rule);
       return ok(
         `Queued for human approval (approval id ${id}). The action has NOT been executed yet. ` +
-          `Do not call ${toolName} again for this same action. Continue with any other work, then finish with a short summary that mentions the pending approval.`,
+          `Do not call ${toolName} again for this same action. Continue with any other work, then finish with a short summary that mentions the pending approval.` +
+          (meta.queuedNote ? ` ${meta.queuedNote}` : ""),
       );
     }
     case "run": {
@@ -1288,6 +1301,59 @@ export function buildTools(ctx: RunContext) {
           scope: {},
           draftKind: "document",
           draftContent: `${a.title}\n\n${a.body ?? ""}`,
+        });
+      }),
+    ),
+  );
+
+  // ---- Workspace mode: app previews (Phase A3; the platform deploys after approval) ----
+  add(
+    "list_apps",
+    tool(
+      "list_apps",
+      "The workspace's apps: id, name, preview URL, status, health, repository and branch, the version that runs now (currentRelease) and when it was last deployed. " +
+        "linkedToYourRepository marks the apps built from the repository of this task: only those can be previewed with request_preview.",
+      {},
+      wrap(ctx, "list_apps", async () => {
+        const list = await listApps(ctx.workspaceId, ctx.workspace?.repository?.id ?? null);
+        // app names and commit subjects are written by people and agents: screened like any other tool data
+        return ok(await guardToolResult(ctx.guard, "list_apps", JSON.stringify({ apps: list }, null, 2)));
+      }),
+    ),
+  );
+
+  add(
+    "request_preview",
+    tool(
+      "request_preview",
+      "Workspace mode: propose publishing the commit you pushed with git_push (the head of agent/<task>) as a preview of an app linked to your repository (see list_apps). " +
+        "IRREVERSIBLE: a human approves the exact commit first, then the platform builds and deploys it. The push must have been approved and executed. " +
+        "Nothing is live until the platform reports the release as deployed; after calling this, end your run and wait.",
+      { appId: z.string().uuid(), summary: z.string().min(1).max(2000) },
+      wrap(ctx, "request_preview", async (a: { appId: string; summary: string }) => {
+        const repo = ctx.workspace?.repository;
+        if (!ctx.workspace || !repo || !ctx.taskId) return err("request_preview works only in Workspace mode, on a task with a connected repository.");
+        const r = await buildPreviewRequest({
+          workspaceId: ctx.workspaceId,
+          taskId: ctx.taskId,
+          repo,
+          appId: a.appId,
+          summary: a.summary,
+          // a dry run never pushes (git_push is simulated): only the exported branch is needed, nothing is deployed
+          requirePushed: !ctx.dryRun && !ctx.sandboxed,
+        });
+        if ("error" in r) return err(r.error);
+        const p = r.payload;
+        return irreversible(ctx, "request_preview", p, {
+          title: `Preview ${p.appName}: ${p.commit.slice(0, 8)} (${p.repository})`,
+          textForGuard: `${p.summary}\n${p.commitSubject ?? ""}\n${p.commits.map((c) => c.subject).join("\n")}`,
+          scope: {},
+          draftKind: "document",
+          draftContent: previewRequestText(p),
+          approvalOnly: "A preview is deployed only after a person approves it.",
+          queuedNote:
+            `Nothing is deployed yet: a person must approve it, then the platform builds and deploys ${p.url} and reports the result on this task. ` +
+            "Never say the app is live or updated until then. End your run now; do not poll.",
         });
       }),
     ),

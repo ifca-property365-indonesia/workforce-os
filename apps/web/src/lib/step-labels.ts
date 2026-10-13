@@ -76,6 +76,8 @@ const RECEIPT_TOOLS = new Set([
   "ask_teammate",
   "git_push",
   "create_pull_request",
+  "list_apps",
+  "request_preview",
   "post_webhook",
   "propose_routine",
 ]);
@@ -114,5 +116,8 @@ export function describeReceipt(s: { kind: string; name: string; input: unknown;
   if (s.kind === "agent_message") return { key: "agent_message", values: { name: clip(s.name) } };
   if (s.kind === "guard") return { key: "guard", values: { name: clip(s.name) } };
   if (s.kind === "llm" || s.kind === "compaction" || s.kind === "budget" || s.kind === "error") return { key: s.kind, values: {} };
+  // the platform's own preview steps (A3): waiting for a deploy, and the preview that went live
+  if (s.name === "waiting_for_preview") return { key: "waiting_for_preview", values: {} };
+  if (s.name === "preview_deployed") return { key: "preview_deployed", values: { url: isObj(s.output) && typeof s.output.url === "string" ? clip(s.output.url) : "" } };
   return { key: "other", values: { name: clip(s.name) } };
 }

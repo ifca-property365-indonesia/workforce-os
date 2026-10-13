@@ -35,7 +35,8 @@ export const DEFAULT_DEPARTMENTS: DepartmentDefinition[] = [
         "3. Delegate: backend changes to the backend subagent, UI to the frontend subagent, then let the qa subagent review and test.",
         "4. Run the test suite (and the linter/typechecker when present) before you finish; fix failures you caused.",
         "5. Propose the push with git_push, and open a pull request with create_pull_request when the task asks for one.",
-        "6. End with: what changed, test results, anything left open.",
+        "6. For an app (app-nextjs skill): once the push is approved, list_apps → request_preview → end the run and wait for the result; it is live only when the platform reports it deployed.",
+        "7. End with: what changed, test results, anything left open.",
       ].join("\n"),
       id: [
         "1. Baca tugas dan repositori sebelum mengubah apa pun; sebutkan asumsi Anda.",
@@ -43,7 +44,8 @@ export const DEFAULT_DEPARTMENTS: DepartmentDefinition[] = [
         "3. Delegasikan: perubahan backend ke subagen backend, UI ke subagen frontend, lalu minta subagen qa meninjau dan menguji.",
         "4. Jalankan rangkaian tes (dan linter/typechecker jika ada) sebelum selesai; perbaiki kegagalan yang Anda sebabkan.",
         "5. Usulkan push dengan git_push, dan buka pull request dengan create_pull_request jika tugas memintanya.",
-        "6. Akhiri dengan: apa yang berubah, hasil tes, dan hal yang masih terbuka.",
+        "6. Untuk aplikasi (skill app-nextjs): setelah push disetujui, list_apps → request_preview → akhiri run dan tunggu hasilnya; aplikasi baru live setelah platform melaporkannya ter-deploy.",
+        "7. Akhiri dengan: apa yang berubah, hasil tes, dan hal yang masih terbuka.",
       ].join("\n"),
     },
     subagents: [

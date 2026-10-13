@@ -182,6 +182,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
         <h2 className="font-display text-[1.7rem] leading-none">{t("releases.title")}</h2>
         <ReleasesTable
           releases={releases}
+          origins={data.origins}
           currentId={cur?.id ?? null}
           logs={logs}
           admin={admin && !running}

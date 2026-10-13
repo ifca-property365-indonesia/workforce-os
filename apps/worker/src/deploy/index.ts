@@ -8,7 +8,7 @@ import { log } from "../lib/logger";
 import { deploysQueue } from "../lib/redis";
 import { runAppAction } from "./actions";
 import { publishRelease } from "./common";
-import { deployControl, runRelease, settleInterrupted } from "./pipeline";
+import { deployControl, handBack, runRelease, settleInterrupted } from "./pipeline";
 
 export { deployControl } from "./pipeline";
 
@@ -102,24 +102,84 @@ export async function recoverInterruptedReleases(): Promise<string[]> {
         continue;
       }
       if (waiting.has(r.id)) continue;
-      const [row] = await db
-        .update(appReleases)
-        .set({ status: "failed", error: "interrupted", finishedAt: new Date() })
-        .where(and(eq(appReleases.id, r.id), eq(appReleases.status, "queued")))
-        .returning();
-      if (!row) continue;
-      settled.push(row.id);
-      await publishRelease(row);
-      await audit({
-        workspaceId: row.workspaceId,
-        actorLabel: "system",
-        action: "app.deploy_failed",
-        targetType: "app",
-        targetId: row.appId,
-        details: { releaseId: row.id, commit: row.commit || null, branch: row.branch, trigger: row.trigger, step: row.step, error: "interrupted" },
-      });
+      if (await failQueuedRelease(r, "interrupted")) settled.push(r.id);
     } catch (e) {
       log.error({ err: e, releaseId: r.id }, "interrupted release could not be settled");
+    }
+  }
+  return settled;
+}
+
+/**
+ * A `queued` release no job will ever run: failed with `reason` (it never touched the app), audited, and handed
+ * back to the task that asked for it. Conditional on `queued`: false when it started (or ended) meanwhile.
+ */
+async function failQueuedRelease(r: { id: string }, reason: "interrupted" | "lost"): Promise<boolean> {
+  const [row] = await db
+    .update(appReleases)
+    .set({ status: "failed", error: reason, finishedAt: new Date() })
+    .where(and(eq(appReleases.id, r.id), eq(appReleases.status, "queued")))
+    .returning();
+  if (!row) return false;
+  await publishRelease(row);
+  await audit({
+    workspaceId: row.workspaceId,
+    actorLabel: "system",
+    action: "app.deploy_failed",
+    targetType: "app",
+    targetId: row.appId,
+    details: { releaseId: row.id, commit: row.commit || null, branch: row.branch, trigger: row.trigger, step: row.step, error: reason },
+  });
+  await handBack(row.id);
+  return true;
+}
+
+/** A queued release without a job this old is lost (a normal job starts within seconds, or waits behind one build). */
+export const LOST_QUEUED_RELEASE_MS = 15 * 60_000;
+/** A deploying release whose step and log did not change for this long, with nothing running it, is lost. */
+export const LOST_DEPLOYING_RELEASE_MS = 30 * 60_000;
+/** what the sweep last saw of each deploying release: step + log length, and since when */
+const progressSeen = new Map<string, { mark: string; since: number }>();
+
+/**
+ * Reaper sweep (recovery at boot covers a restart; this covers a job lost while the worker keeps running):
+ * - `queued` releases older than LOST_QUEUED_RELEASE_MS with no job in the deploys queue → failed "lost";
+ * - `deploying` releases without progress (step and log unchanged across sweeps) for LOST_DEPLOYING_RELEASE_MS, no
+ *   active job in the queue, and no deploy running in this process → settled like an interrupted one, "lost"
+ *   (undone on the server when it had switched or migrated anything).
+ * Each one is handed back to its task (a preview the task waits for). Returns the ids settled.
+ */
+export async function sweepLostReleases(now: number = Date.now()): Promise<string[]> {
+  const rows = await db.select().from(appReleases).where(inArray(appReleases.status, ["queued", "deploying"]));
+  for (const id of progressSeen.keys()) if (!rows.some((r) => r.id === id && r.status === "deploying")) progressSeen.delete(id);
+  if (!rows.length) return [];
+  const jobs = new Set<string>();
+  for (const j of await deploysQueue.getJobs(["active", "waiting", "delayed", "prioritized", "waiting-children"])) {
+    if (j?.data?.kind === "release") jobs.add(j.data.releaseId);
+  }
+  const settled: string[] = [];
+  for (const r of rows) {
+    try {
+      if (r.status === "queued") {
+        if (jobs.has(r.id) || now - r.createdAt.getTime() < LOST_QUEUED_RELEASE_MS) continue;
+        if (await failQueuedRelease(r, "lost")) settled.push(r.id);
+        continue;
+      }
+      const mark = `${r.step ?? ""}:${r.log.length}`;
+      const seen = progressSeen.get(r.id);
+      if (!seen || seen.mark !== mark) {
+        progressSeen.set(r.id, { mark, since: now });
+        continue;
+      }
+      if (now - seen.since < LOST_DEPLOYING_RELEASE_MS || jobs.has(r.id) || active > 0) continue;
+      const [still] = await db.select().from(appReleases).where(and(eq(appReleases.id, r.id), eq(appReleases.status, "deploying")));
+      if (!still) continue;
+      progressSeen.delete(r.id);
+      const status = await settleInterrupted(still, "lost");
+      log.warn({ releaseId: r.id, step: r.step, status }, "lost release settled");
+      settled.push(r.id);
+    } catch (e) {
+      log.error({ err: e, releaseId: r.id }, "lost release could not be settled");
     }
   }
   return settled;

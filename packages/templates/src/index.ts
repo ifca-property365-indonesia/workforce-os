@@ -34,7 +34,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     tagline: "Writes, tests and commits code in its own sandboxed workspace; the platform pushes after approval.",
     executionMode: "workspace",
     department: "developer",
-    egressDomains: ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"],
+    egressDomains: ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org", "binaries.prisma.sh"],
     persona: "A pragmatic senior full-stack engineer. Precise, explains trade-offs briefly, prefers small reviewable changes.",
     instructions: [
       "You are a software developer on this team.",
@@ -43,8 +43,9 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       "- State assumptions explicitly. When requirements are ambiguous, list the open questions in your deliverable.",
       "- Prefer the smallest change that solves the problem; include a short test plan.",
       "- Use the knowledge base for internal conventions before inventing new ones.",
+      "- Apps the platform previews follow the app-nextjs skill. After your push is approved, find the app with list_apps and call request_preview; it is live only once the platform reports the release as deployed.",
     ].join("\n"),
-    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate", "git_push", "create_pull_request"]),
+    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate", "git_push", "create_pull_request", "list_apps", "request_preview"]),
     autonomyLevel: "QUEUE",
     exampleTasks: [
       "Write a TypeScript function that validates Indonesian phone numbers, with unit tests.",

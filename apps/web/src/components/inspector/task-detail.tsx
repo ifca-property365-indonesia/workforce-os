@@ -28,9 +28,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodePanel } from "./code-panel";
+import { TaskPreviews } from "@/components/apps/task-previews";
 import { TaskProgressHeader } from "@/components/tasks/task-progress";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
+import type { TaskPreview } from "@/lib/app-previews";
 import { describeStep } from "@/lib/step-labels";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
@@ -92,6 +94,8 @@ interface Detail {
   approvals: { id: string; title: string; status: string; toolName: string; createdAt: string }[];
   messages: { id: string; fromEmployeeId: string | null; toEmployeeId: string | null; intent: string; content: string; createdAt: string; taskId: string | null }[];
   employees: { id: string; name: string; avatar: string }[];
+  /** previews this task published (request_preview), newest first */
+  previews: TaskPreview[];
 }
 
 const KIND_ICON: Record<StepKind, typeof Cpu> = {
@@ -308,7 +312,12 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
   const tc = useTranslations("common");
   const ts = useTranslations("status");
   const f = useFormat();
-  const { data, refetch } = useQuery({ queryKey: ["task", taskId], queryFn: () => api.get<Detail>(`/api/tasks/${taskId}`) });
+  const { data, refetch } = useQuery({
+    queryKey: ["task", taskId],
+    queryFn: () => api.get<Detail>(`/api/tasks/${taskId}`),
+    // release.updated refreshes it; while a preview deploys, also poll (a dropped stream must not freeze it)
+    refetchInterval: (q) => (q.state.data?.previews?.some((p) => p.status === "queued" || p.status === "deploying") ? 5000 : false),
+  });
   const { data: stepsData } = useQuery({
     queryKey: ["steps", taskId],
     queryFn: () => api.get<{ steps: Step[] }>(`/api/tasks/${taskId}/steps?include=children`),
@@ -391,6 +400,8 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           {task.error}
         </div>
       )}
+
+      {!!data.previews?.length && <TaskPreviews previews={data.previews} />}
 
       <div className={cn("grid gap-4", !compact && "lg:grid-cols-5")}>
         <div className={cn("space-y-4", !compact && "lg:col-span-2")}>

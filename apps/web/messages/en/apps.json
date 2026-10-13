@@ -232,6 +232,25 @@
     "logWaiting": "Waiting for the worker to start…",
     "logLive": "Live: refreshes every 2 seconds",
     "noLogs": "Logs are visible to Members and up.",
-    "copyLog": "Copy log"
+    "copyLog": "Copy log",
+    "warningHelp": {
+      "first_publish": "Nothing has run at this address yet: this becomes the app's first version.",
+      "manifest_changed": "How the app is installed, built, started, migrated or checked differs from the version that runs now.",
+      "scripts_changed": "The build and start commands in package.json changed, so the server may run something new.",
+      "new_database": "The platform creates a PostgreSQL database for this app and gives it DATABASE_URL.",
+      "destructive_migration": "A migration may drop or rewrite data. The database is backed up first, but read the migration before you approve.",
+      "public_access": "The app is public: anyone with the link sees it, without a password."
+    },
+    "byTask": "<b>{employee}</b> via <task>{title}</task>",
+    "unknownEmployee": "An employee",
+    "approvedBy": "approved by {name}",
+    "viewApproval": "view the approval"
+  },
+  "taskPreviews": {
+    "title": "Previews",
+    "failedAttempts": "{count} of {max} tries failed",
+    "waiting": "The task waits here until the platform reports how the deploy went; the employee does not continue before that.",
+    "openApp": "Open the app's page",
+    "approval": "Approval"
   }
 }

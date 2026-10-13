@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "@/lib/nav";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -10,12 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/layout/common";
 import { api } from "@/lib/api";
+import type { ReleaseOrigin } from "@/lib/app-previews";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { CommitChip, copyText, isActiveRelease, ReleaseStatusBadge, releaseQueryKey, shortSha, useDuration } from "./shared";
 
 /** warnings that ask a person to look twice are amber; the rest are informational */
-const LOUD_WARNINGS = new Set(["destructive_migration", "new_database", "public_access"]);
+export const LOUD_WARNINGS: ReadonlySet<string> = new Set(["destructive_migration", "new_database", "public_access"]);
 
 export function WarningChips({ warnings }: { warnings: ReleaseDTO["warnings"] }) {
   const t = useTranslations("apps");
@@ -39,11 +41,42 @@ export function WarningChips({ warnings }: { warnings: ReleaseDTO["warnings"] })
 }
 
 /**
+ * Who a release came from. A release a task asked for (request_preview) reads "<employee> via <task>", with the
+ * person who approved it underneath (linked to the approval); any other release names the person who started it.
+ */
+function ReleaseBy({ release: r, origin }: { release: ReleaseDTO; origin: ReleaseOrigin | undefined }) {
+  const t = useTranslations("apps");
+  if (!origin) return <>{r.createdByName ?? "—"}</>;
+  return (
+    <div className="max-w-[15rem] space-y-0.5">
+      <div className="line-clamp-2">
+        {t.rich("releases.byTask", {
+          employee: origin.employeeName ?? t("releases.unknownEmployee"),
+          title: origin.taskTitle,
+          b: (c) => <span className="font-semibold">{c}</span>,
+          task: (c) => (
+            <Link href={`/tasks/${origin.taskId}`} className="text-foreground underline decoration-dotted underline-offset-2 hover:decoration-solid">
+              {c}
+            </Link>
+          ),
+        })}
+      </div>
+      {r.approvalId && (
+        <Link href={`/approvals?focus=${r.approvalId}`} className="text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+          {r.createdByName ? t("releases.approvedBy", { name: r.createdByName }) : t("releases.viewApproval")}
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/**
  * The releases of one app, newest first: what ran, how it got there and how long it took. Members open a log;
  * Admins bring back an earlier version that ran.
  */
 export function ReleasesTable({
   releases,
+  origins = {},
   currentId,
   logs,
   admin,
@@ -51,6 +84,7 @@ export function ReleasesTable({
   rollbackPending,
 }: {
   releases: ReleaseDTO[];
+  origins?: Record<string, ReleaseOrigin>;
   currentId: string | null;
   logs: boolean;
   admin: boolean;
@@ -128,7 +162,9 @@ export function ReleasesTable({
                     {r.error && <p className="mt-1 line-clamp-2 text-xs text-destructive">{r.error}</p>}
                   </td>
                   <td className="px-3 py-2.5 text-xs whitespace-nowrap">{t(`releases.trigger.${r.trigger}`)}</td>
-                  <td className="px-3 py-2.5 text-xs">{r.createdByName ?? "—"}</td>
+                  <td className="px-3 py-2.5 text-xs">
+                    <ReleaseBy release={r} origin={r.taskId ? origins[r.taskId] : undefined} />
+                  </td>
                   <td className="px-3 py-2.5 text-xs whitespace-nowrap">
                     <time dateTime={r.createdAt} title={f.dateTime(r.createdAt)}>
                       {f.ago(r.createdAt)}

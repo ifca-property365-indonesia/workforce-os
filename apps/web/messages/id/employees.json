@@ -184,7 +184,9 @@
     "billing": "Penagihan",
     "team": "Tim",
     "web": "Web",
-    "tasks": "Tugas"
+    "tasks": "Tugas",
+    "code": "Kode",
+    "routines": "Rutinitas"
   },
   "tools": {
     "kb_search": {
@@ -274,6 +276,22 @@
     "report_progress": {
       "label": "Laporkan kemajuan",
       "description": "Melaporkan seberapa banyak tugas saat ini yang sudah selesai (0–100%) dengan catatan singkat"
+    },
+    "git_push": {
+      "label": "Push branch",
+      "description": "Mode Workspace: push pekerjaan yang sudah di-commit ke agent/<task> di remote (platform yang melakukan push setelah disetujui)"
+    },
+    "create_pull_request": {
+      "label": "Buka pull request",
+      "description": "Mode Workspace: membuka pull/merge request dari branch tersebut (setelah disetujui)"
+    },
+    "list_apps": {
+      "label": "Lihat daftar aplikasi",
+      "description": "Mode Workspace: aplikasi di workspace (alamat preview, status, repository, branch, versi yang berjalan) agar karyawan tahu aplikasi mana yang akan di-preview"
+    },
+    "request_preview": {
+      "label": "Terbitkan preview",
+      "description": "Mode Workspace: menerbitkan branch yang sudah di-push sebagai preview aplikasi di alamatnya (platform yang menerbitkan setelah disetujui)"
     }
   },
   "executionMode": {
@@ -341,7 +359,11 @@
       "error": "Mengalami galat",
       "other": "{name}",
       "list_invoices": "Melihat daftar faktur",
-      "report_progress": "Melaporkan kemajuan: {percent}%"
+      "report_progress": "Melaporkan kemajuan: {percent}%",
+      "list_apps": "Melihat daftar aplikasi workspace",
+      "request_preview": "Meminta preview diterbitkan",
+      "waiting_for_preview": "Menunggu platform menerbitkan preview yang sudah disetujui",
+      "preview_deployed": "Preview sudah jalan di {url}"
     }
   },
   "bot": {
