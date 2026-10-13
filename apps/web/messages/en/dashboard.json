@@ -66,5 +66,10 @@
     "empty": "Nothing is waiting for you.",
     "all": "Open the approvals inbox"
   },
-  "numbers": "This month in numbers"
+  "numbers": "This month in numbers",
+  "running": {
+    "title": "Working on now",
+    "description": "Running tasks and how far along each one is.",
+    "empty": "Nobody is working on a task right now."
+  }
 }

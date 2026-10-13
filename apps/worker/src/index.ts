@@ -15,6 +15,8 @@ import { notify } from "./lib/notify";
 import { runReplay } from "./simulation/replay";
 import { runDemoLifecycle } from "./simulation/demo";
 import { backfillMemoryEmbeddings, runRoutineJob, tickRoutines } from "./scheduler/routines";
+import { tickBilling } from "./scheduler/billing";
+import { resendOutbound } from "./lib/outbox";
 import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { acquireEmployeeLease, releaseEmployeeLease } from "./guards/lease";
 import { handleRunJobFailed } from "./runner/task-status";
@@ -87,6 +89,9 @@ const workers = [
         case "routine_run":
           await runRoutineJob(d.routineId, d.userId);
           return;
+        case "outbox_resend":
+          await resendOutbound(d.emailId, d.workspaceId, d.userId);
+          return;
       }
     },
     { connection, prefix, concurrency: 2, lockDuration: 10 * 60 * 1000 },
@@ -120,7 +125,7 @@ sub.on("message", (_ch, raw) => {
 });
 
 // ---------------------------------------------------------------------------
-// Scheduler: routines every 30s; memory embedding backfill every 2 min; orphan reaper every 5 min.
+// Scheduler: routines and recurring billing every 30s; memory embedding backfill every 2 min; orphan reaper every 5 min.
 // ---------------------------------------------------------------------------
 let ticking = false;
 const schedTimer = setInterval(async () => {
@@ -130,6 +135,11 @@ const schedTimer = setInterval(async () => {
     await tickRoutines();
   } catch (e) {
     log.error({ err: e }, "routine tick failed");
+  }
+  try {
+    await tickBilling();
+  } catch (e) {
+    log.error({ err: e }, "billing tick failed");
   } finally {
     ticking = false;
   }

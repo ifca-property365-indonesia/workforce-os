@@ -62,6 +62,8 @@ const RECEIPT_TOOLS = new Set([
   "memory_save",
   "list_clients",
   "get_client",
+  "list_invoices",
+  "report_progress",
   "list_tasks",
   "web_fetch",
   "draft_document",
@@ -92,6 +94,7 @@ function toolReceipt(tool: string, input: unknown): Receipt {
   if (tool === "web_fetch") values.url = text(a.url) || "—";
   if (tool === "draft_document" || tool === "create_task" || tool === "delegate_subtask" || tool === "create_pull_request") values.title = text(a.title) || "—";
   if (tool === "propose_routine") values.name = text(a.name) || "—";
+  if (tool === "report_progress") values.percent = typeof a.percent === "number" ? String(Math.round(a.percent)) : "—";
   if (tool === "kb_search" && text(a.query)) return { key: "kb_search_query", values: { query: text(a.query) }, tool };
   return { key: tool, values, tool };
 }

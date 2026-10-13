@@ -4,7 +4,7 @@ import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ShieldAlert } from "lucide-react";
-import { invoiceTotal, type InvoicePayload } from "@wfos/shared";
+import { invoiceSubtotal, invoiceTax, invoiceTotal, type InvoicePayload } from "@wfos/shared";
 import { CodeDiff } from "@/components/inspector/code-view";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -217,6 +217,18 @@ export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; e
         <div className="text-xs text-muted-foreground">
           {t("invoice.attachment", { file: `${inv.invoiceNumber}.pdf`, lines: inv.lines.length, total, due: inv.dueDate ? f.date(inv.dueDate) : "—" })}
         </div>
+        <dl className="ml-auto grid w-full max-w-xs grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-sm tabular-nums">
+          <dt className="text-muted-foreground">{t("invoice.subtotal")}</dt>
+          <dd className="text-right">{f.money(invoiceSubtotal(inv), inv.currency)}</dd>
+          {(inv.taxPercent ?? 0) > 0 && (
+            <>
+              <dt className="text-muted-foreground">{t("invoice.tax", { percent: inv.taxPercent })}</dt>
+              <dd className="text-right">{f.money(invoiceTax(inv), inv.currency)}</dd>
+            </>
+          )}
+          <dt className="border-t pt-1 font-semibold">{t("invoice.total")}</dt>
+          <dd className="border-t pt-1 text-right font-semibold">{total}</dd>
+        </dl>
         <iframe title={t("invoice.pdfTitle")} src={`/api/approvals/${a.id}/invoice`} className="h-[480px] w-full rounded-lg border bg-white" />
       </div>
     );

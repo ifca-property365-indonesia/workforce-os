@@ -31,7 +31,7 @@ export function EventsProvider({ children }: { children: ReactNode }) {
         }, 250);
     };
     /** events published while the stream was down are lost: on a reconnect, refetch what they would have updated */
-    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard", "incidents"];
+    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard", "incidents", "outbox", "clients", "client", "invoices"];
     let wasConnected = false;
     const connect = () => {
       es = new EventSource("/api/events");
@@ -55,16 +55,34 @@ export function EventsProvider({ children }: { children: ReactNode }) {
             invalidate("task");
             invalidate("dashboard");
             invalidate("incidents");
+            invalidate("client");
             break;
           case "step.created":
             invalidate("steps");
             invalidate("dashboard");
+            break;
+          case "task.progress":
+            invalidate("tasks");
+            invalidate("task");
             break;
           case "approval.created":
           case "approval.updated":
             invalidate("approvals");
             invalidate("task");
             invalidate("notifications");
+            // email proposals are listed in the outbox until the worker writes their attempt
+            invalidate("outbox");
+            break;
+          case "outbox.updated":
+            invalidate("outbox");
+            // a client's History tab lists its emails
+            invalidate("client");
+            break;
+          case "invoice.updated":
+            // ["clients"] list totals, ["client", id] detail, ["invoices", …] ledgers
+            invalidate("clients");
+            invalidate("client");
+            invalidate("invoices");
             break;
           case "employee.updated":
             invalidate("employees");

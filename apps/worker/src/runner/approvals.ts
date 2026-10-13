@@ -102,7 +102,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
       // the taint mark is read from the payload the run wrote, never from the human-edited copy; a skill also takes the
       // run's own taint (its guard steps / lineage), in case the payload flag is missing
       const untrusted = a.payload.untrustedInput === true || (a.toolName === "create_skill" && (await approvalTainted(a)));
-      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId, approvalId: a.id, untrusted });
+      result = await executeAction(a.workspaceId, a.toolName, payload, { taskId: a.taskId, employeeId: a.employeeId, approvalId: a.id, untrusted, trigger: "approval" });
     } catch (e) {
       result = { ok: false, summary: errorMessage(e) };
     }

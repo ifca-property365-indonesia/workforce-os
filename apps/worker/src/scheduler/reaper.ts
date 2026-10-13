@@ -10,6 +10,7 @@ import { afterApprovalResolved } from "../runner/approvals";
 import { onChildFinished } from "../orchestration/team";
 import { CHAT_TURN_STALE_MS, closeStaleTurns } from "../runner/chat-turns";
 import { activeQuotaPause } from "../lib/limits";
+import { failStuckSends } from "../lib/outbox";
 
 /**
  * Stale RUNNING reaper.
@@ -41,7 +42,8 @@ import { activeQuotaPause } from "../lib/limits";
  * - dispatched routine runs whose tasks all ended,
  * - QUEUED tasks older than LOST_QUEUED_AFTER_MS that no BullMQ job will ever run (the enqueue was lost):
  *   re-enqueued, unless held (phase hold), behind the kill switch, a quota pause or an employee that is not active,
- * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches).
+ * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches),
+ * - outbox rows left `sending` for more than STUCK_SENDING_MS (failed with an "interrupted, check before resending" note).
  */
 export const ORPHAN_AFTER_MS = 35 * 60_000;
 export const REAP_EVERY_MS = 5 * 60_000;
@@ -105,6 +107,8 @@ export interface ReapResult {
   requeued: string[];
   /** webhook deliveries deleted for age */
   webhookDeliveriesPruned: number;
+  /** outbox rows stuck in `sending`, marked failed */
+  stuckEmailsFailed: string[];
 }
 
 export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapResult> {
@@ -146,9 +150,11 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
 
   const requeued = await requeueLostTasks(now, opts.liveElsewhere ?? probeLiveElsewhere);
   const webhookDeliveriesPruned = await sweep("webhook deliveries", 0, () => pruneWebhookDeliveries(now));
+  const stuckEmailsFailed = await sweep("outbox sending", [], () => failStuckSends(now));
+  if (stuckEmailsFailed.length) log.warn({ stuckEmailsFailed }, "reaper: outbox rows stuck in sending marked failed");
 
   const routineRunsSettled = await settleDispatchedRoutineRuns();
-  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned };
+  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, stuckEmailsFailed };
 }
 
 /**

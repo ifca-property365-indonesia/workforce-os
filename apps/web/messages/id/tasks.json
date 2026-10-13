@@ -30,5 +30,14 @@
     "repository": "Repositori",
     "noRepository": "Tanpa repositori (workspace kosong)",
     "repositoryHelp": "Di-checkout ke branch sendiri agent/<task> di sandbox karyawan. Push memerlukan persetujuan Anda."
+  },
+  "progress": {
+    "title": "Kemajuan",
+    "working": "Dikerjakan",
+    "percent": "{value}%",
+    "label": "Kemajuan: {value}",
+    "derived": "Dihitung dari subtugas yang sudah selesai",
+    "notReported": "Sedang dikerjakan — belum ada laporan kemajuan.",
+    "reportedAgo": "Dilaporkan {when}"
   }
 }

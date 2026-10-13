@@ -1,0 +1,88 @@
+{
+  "title": "Outbox",
+  "description": "Every email your employees sent or tried to send — and the ones still waiting for your approval. Check who each one went to before it goes out.",
+  "paused": "Outgoing email is paused: nothing employees send will go out until it is switched back on.",
+  "openSettings": "Email settings",
+  "stats": {
+    "label": "Today",
+    "sentToday": "Sent today",
+    "ofLimit": "{count} / {limit}",
+    "failedToday": "Failed today",
+    "pending": "Waiting for approval"
+  },
+  "tabs": {
+    "all": "All",
+    "pending": "Waiting",
+    "sent": "Sent",
+    "failed": "Failed",
+    "refused": "Rejected & expired"
+  },
+  "filters": {
+    "kind": "Type",
+    "allKinds": "All types"
+  },
+  "kind": {
+    "email": "Email",
+    "invoice": "Invoice"
+  },
+  "status": {
+    "pending_approval": "Waiting for approval",
+    "rejected": "Rejected",
+    "expired": "Expired",
+    "sending": "Sending",
+    "sent": "Sent",
+    "failed": "Failed"
+  },
+  "trigger": {
+    "approval": "Sent after approval",
+    "allow_list": "Sent under the Owner allow-list",
+    "resend": "Sent again by a person"
+  },
+  "list": {
+    "to": "To",
+    "more": "+{count}",
+    "unknown": "{count, plural, one {# not on file} other {# not on file}}"
+  },
+  "empty": {
+    "title": "Nothing sent yet",
+    "filtered": "Nothing here",
+    "description": "Emails and invoices your employees send, or ask to send, show up here."
+  },
+  "roles": {
+    "project": "Project",
+    "billing": "Billing",
+    "director": "Director",
+    "technical": "Technical",
+    "other": "Other"
+  },
+  "detail": {
+    "title": "Email",
+    "description": "The message exactly as it was (or would be) sent.",
+    "invoiceDescription": "The invoice email exactly as it was (or would be) sent, with the PDF attached.",
+    "loading": "Loading…",
+    "notFound": "This email is no longer in the outbox.",
+    "noSubject": "(no subject)",
+    "noRecipients": "No recipients yet: whoever approves it must add one.",
+    "cc": "cc",
+    "notOnClientFile": "Not on {client}'s file",
+    "notInMaster": "Not in the client master",
+    "openInApprovals": "Open it in Approvals",
+    "created": "Created {when}",
+    "sent": "Sent {when}",
+    "task": "Task",
+    "rejectedBecause": "Rejected",
+    "failedBecause": "Could not be sent",
+    "resend": "Send again",
+    "resendAdminOnly": "An Owner or Admin can send it again.",
+    "resendHint": "Sends the same message as a new attempt; the pause and the daily limit still apply.",
+    "resendQueued": "Sending it again…",
+    "recipients": "Recipients",
+    "unknownWarning": "{count, plural, one {# recipient is not in the client master — check before approving.} other {# recipients are not in the client master — check before approving.}}",
+    "decision": "Your decision",
+    "message": "Message",
+    "attachments": "Attachments",
+    "resentAs": "Already sent again — open the newer attempt",
+    "resendOf": "A resend of an earlier failed attempt",
+    "unknownWarningSent": "{count, plural, one {# recipient is not in the client master.} other {# recipients are not in the client master.}}"
+  }
+}

@@ -21,17 +21,26 @@ import {
   teamMembers,
   teams,
   TaskInputError,
+  workspaces,
   type Deliverable,
   type TaskRow,
 } from "@wfos/db";
 import {
+  BUILTIN_TOOLS,
+  INVOICE_STATUSES,
   TOOL_BY_NAME,
   applyRunSignals,
   classifyTool,
   decideGate,
   emailPayloadSchema,
   invoicePayloadSchema,
+  invoiceSubtotal,
+  invoiceTax,
   invoiceTotal,
+  clientRecipientAddresses,
+  parseCompanyProfile,
+  parseContacts,
+  progressInputSchema,
   ROUTINE_OVERLAP_MODES,
   SKILL_BODY_MAX,
   SKILL_DESCRIPTION_MAX,
@@ -41,7 +50,10 @@ import {
   type AutonomyLevel,
   type AutoActionChip,
   type GateDecision,
+  type GateInput,
   type GateRule,
+  type InvoicePayload,
+  type InvoiceStatus,
   type ToolPermission,
 } from "@wfos/shared";
 import { screenLeakage, withRetry } from "@wfos/shared/server";
@@ -58,6 +70,8 @@ import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
 import { recoveryRefusal, type RecoveryRequest } from "../runner/incidents";
+import { clientRecipientsFor, invoiceNumberRefusal, invoiceRecipients, listInvoices, nextInvoiceNumber, upsertDraftInvoice, workspaceClient } from "../lib/invoices";
+import { formatMoney } from "@wfos/shared/invoice";
 import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadText, SKILL_SLUG_MAX, type AssignedSkill } from "../runner/skills";
 
 export const WFOS_SERVER = "wfos";
@@ -151,6 +165,10 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
   if (ctx.skills?.length && !perms.some((p) => p.tool === "skill_read")) perms.push({ tool: "skill_read", enabled: true });
   // in a chat anyone can bring a colleague in (the colleague acts with their own tools and autonomy)
   if (ctx.conversationId && !ctx.taskId && !perms.some((p) => p.tool === "ask_teammate")) perms.push({ tool: "ask_teammate", enabled: true });
+  // tools every task run has (report_progress), unless an explicit entry says otherwise
+  if (ctx.taskId) {
+    for (const t of BUILTIN_TOOLS) if (t.implicit === "task" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
+  }
   return perms;
 }
 
@@ -359,7 +377,7 @@ async function irreversible(
   ctx: RunContext,
   toolName: string,
   payload: Record<string, unknown>,
-  meta: { title: string; textForGuard: string; scope: { recipients?: string[]; clientId?: string | null; amount?: number }; draftKind: Deliverable["kind"]; draftContent: string },
+  meta: { title: string; textForGuard: string; scope: NonNullable<GateInput["scope"]>; draftKind: Deliverable["kind"]; draftContent: string },
 ): Promise<ToolResult> {
   const { findings } = await guardOutput(ctx.guard, `${toolName} payload`, meta.textForGuard);
   const highLeak = findings.some((f) => f.severity === "high");
@@ -412,15 +430,62 @@ async function irreversible(
     }
     case "run": {
       // irreversible + run can only mean an Owner allow-list rule matched (CLOSE): no human saw it, so show a chip
-      const r = await executeAction(ctx.workspaceId, toolName, payload);
+      const r = await executeAction(ctx.workspaceId, toolName, payload, { taskId: ctx.taskId, employeeId: ctx.employee.id, trigger: "allow_list" });
       if (r.ok) await pushAutoAction(ctx, toolName, payload);
       return r.ok ? ok(r.summary) : err(r.summary);
     }
   }
 }
 
+/** Zod issues as one line for a tool error ("to.0: Each recipient must be …"). */
+function issuesText(e: z.ZodError): string {
+  return e.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message)).join("; ");
+}
+
 function extractRecipients(p: { to?: string[]; cc?: string[] }): string[] {
   return [...(p.to ?? []), ...(p.cc ?? [])];
+}
+
+/** Input shared by draft_invoice and send_invoice. */
+const invoiceInputShape = {
+  clientId: z.string().uuid(),
+  invoiceNumber: z.string().min(3),
+  currency: z.string().optional(),
+  lines: z.array(z.object({ description: z.string(), quantity: z.number(), unitPrice: z.number() })).min(1),
+  taxPercent: z.number().min(0).max(100).optional(),
+  dueDate: z.string(),
+  notes: z.string().optional(),
+  projectId: z.string().uuid().optional(),
+};
+
+/**
+ * An invoice payload from tool input: the client (and project) must belong to the workspace; currency defaults to the
+ * client's, taxPercent to the company's default.
+ */
+async function invoiceFromInput(ctx: RunContext, a: Record<string, unknown>): Promise<{ error: string } | { invoice: InvoicePayload; client: typeof clients.$inferSelect }> {
+  const client = await workspaceClient(ctx.workspaceId, typeof a.clientId === "string" ? a.clientId : null);
+  if (!client) return { error: "Client not found in this workspace (see list_clients)." };
+  if (typeof a.projectId === "string") {
+    const [pr] = await db.select({ id: projects.id }).from(projects).where(and(eq(projects.id, a.projectId), eq(projects.workspaceId, ctx.workspaceId), eq(projects.clientId, client.id)));
+    if (!pr) return { error: "Project not found for this client (see get_client)." };
+  }
+  let taxPercent = typeof a.taxPercent === "number" ? a.taxPercent : undefined;
+  if (taxPercent === undefined) {
+    const [ws] = await db.select({ settings: workspaces.settings }).from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
+    taxPercent = parseCompanyProfile(ws?.settings).defaultTaxPercent;
+  }
+  // never a ledger id from the model: only the recurring-billing scheduler sets invoiceId
+  const input = invoicePayloadSchema.safeParse({ ...a, currency: a.currency ?? client.currency, taxPercent, invoiceId: null });
+  if (!input.success) return { error: `Invalid invoice: ${issuesText(input.error)}` };
+  return { invoice: input.data, client };
+}
+
+/** Plain-text invoice for deliverables and drafts: lines, then subtotal / tax when taxed, then the total. */
+function invoiceSummary(p: InvoicePayload): string {
+  const lines = p.lines.map((l) => `${l.description} — ${l.quantity} × ${l.unitPrice}`);
+  if (p.taxPercent) lines.push(`Subtotal: ${p.currency} ${invoiceSubtotal(p)}`, `Tax ${p.taxPercent}%: ${p.currency} ${invoiceTax(p)}`);
+  lines.push(`Total: ${p.currency} ${invoiceTotal(p)}`);
+  return lines.join("\n");
 }
 
 const toolDefs = new WeakMap<object, SdkMcpToolDefinition[]>();
@@ -682,7 +747,7 @@ export function buildTools(ctx: RunContext) {
     "list_clients",
     tool(
       "list_clients",
-      "List clients with their ids, emails and projects.",
+      "List clients with their ids, status (active / prospect / inactive), emails and projects.",
       {},
       wrap(ctx, "list_clients", async () => {
         const cs = await db.select().from(clients).where(eq(clients.workspaceId, ctx.workspaceId));
@@ -690,6 +755,7 @@ export function buildTools(ctx: RunContext) {
         const out = cs.map((c) => ({
           id: c.id,
           name: c.name,
+          status: c.status,
           email: c.email,
           projects: ps.filter((p) => p.clientId === c.id).map((p) => ({ id: p.id, name: p.name, status: p.status })),
         }));
@@ -702,7 +768,7 @@ export function buildTools(ctx: RunContext) {
     "get_client",
     tool(
       "get_client",
-      "Get one client by id: contacts, notes, currency and projects (with description and hourly rate).",
+      "Get one client by id: status, legal name, tax id, address, phone, contacts (role, phone, and which mail each receives: status / minutes / invoice), notes, currency and projects (with description and hourly rate).",
       { clientId: z.string().uuid() },
       wrap(ctx, "get_client", async (a: { clientId: string }) => {
         const [c] = await db.select().from(clients).where(and(eq(clients.id, a.clientId), eq(clients.workspaceId, ctx.workspaceId)));
@@ -714,7 +780,78 @@ export function buildTools(ctx: RunContext) {
           .where(and(eq(tasks.clientId, c.id), eq(tasks.status, "DONE")))
           .orderBy(desc(tasks.completedAt))
           .limit(5);
-        return ok(JSON.stringify({ ...c, projects: ps, recentCompletedTasks: recent }, null, 2));
+        return ok(JSON.stringify({ ...c, contacts: parseContacts(c.contacts), projects: ps, recentCompletedTasks: recent }, null, 2));
+      }),
+    ),
+  );
+
+  add(
+    "list_invoices",
+    tool(
+      "list_invoices",
+      "Read the invoice ledger, newest first (number, client, total incl. tax, status draft/sent/paid/void, due date, sent/paid dates), " +
+        "and the company's invoice prefix, default tax percent and the next free invoice number. Use nextNumber for a new invoice.",
+      { clientId: z.string().uuid().optional(), status: z.enum(INVOICE_STATUSES).optional(), limit: z.number().int().min(1).max(50).optional() },
+      wrap(ctx, "list_invoices", async (a: { clientId?: string; status?: InvoiceStatus; limit?: number }) => {
+        const [ws] = await db.select({ settings: workspaces.settings }).from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
+        const company = parseCompanyProfile(ws?.settings);
+        const rows = await listInvoices(ctx.workspaceId, a);
+        return ok(
+          JSON.stringify(
+            {
+              company: { invoicePrefix: company.invoicePrefix, defaultTaxPercent: company.defaultTaxPercent, nextNumber: await nextInvoiceNumber(ctx.workspaceId) },
+              invoices: rows.map((r) => ({
+                number: r.number,
+                clientId: r.clientId,
+                total: r.total,
+                currency: r.currency,
+                status: r.status,
+                dueDate: r.dueDate,
+                sentAt: r.sentAt?.toISOString() ?? null,
+                paidAt: r.paidAt?.toISOString() ?? null,
+              })),
+            },
+            null,
+            2,
+          ),
+        );
+      }),
+    ),
+  );
+
+  add(
+    "report_progress",
+    tool(
+      "report_progress",
+      "Report how much of this task is done: percent 0-100 (an honest share of the whole request, done and verified) and a short note on what was just finished. " +
+        "100 only when everything is finished. A lower value than before needs a note explaining why (e.g. the scope grew).",
+      { percent: z.number().int().min(0).max(100), note: z.string().max(200).optional() },
+      wrap(ctx, "report_progress", async (a: { percent: number; note?: string }) => {
+        if (!ctx.taskId) return err("report_progress works only in a task.");
+        const p = progressInputSchema.parse(a);
+        const note = p.note.trim();
+        if (ctx.sandboxed) return ok(`Progress ${p.percent}% noted (simulation: not saved).`);
+        // one conditional write: only a running task, and down only with a note, unless the stored value is from an
+        // earlier run (reported before this run started: a revision or retry starts over)
+        const [t] = await db
+          .update(tasks)
+          .set({ progress: p.percent, progressNote: note || null, progressAt: new Date() })
+          .where(
+            and(
+              eq(tasks.id, ctx.taskId),
+              eq(tasks.workspaceId, ctx.workspaceId),
+              eq(tasks.status, "RUNNING"),
+              note ? undefined : sql`(${tasks.progress} is null or ${tasks.progress} <= ${p.percent} or ${tasks.progressAt} < ${tasks.startedAt})`,
+            ),
+          )
+          .returning({ id: tasks.id });
+        if (!t) {
+          const [cur] = await db.select({ status: tasks.status, progress: tasks.progress }).from(tasks).where(eq(tasks.id, ctx.taskId));
+          if (cur?.status !== "RUNNING") return err(`report_progress works only while the task is running (it is ${cur?.status ?? "missing"}).`);
+          return err(`Progress is already ${cur.progress}%. Report a lower value only with a note explaining why (e.g. the scope grew).`);
+        }
+        await publish(ctx.workspaceId, { type: "task.progress", taskId: ctx.taskId, progress: p.percent, note });
+        return ok(`Progress ${p.percent}% recorded.`);
       }),
     ),
   );
@@ -824,25 +961,23 @@ export function buildTools(ctx: RunContext) {
     "draft_invoice",
     tool(
       "draft_invoice",
-      "Create an invoice draft (PDF) for a client. Amounts in the client's currency. Not sent.",
-      {
-        clientId: z.string().uuid(),
-        invoiceNumber: z.string().min(3),
-        currency: z.string().optional(),
-        lines: z.array(z.object({ description: z.string(), quantity: z.number(), unitPrice: z.number() })).min(1),
-        dueDate: z.string(),
-        notes: z.string().optional(),
-      },
+      "Create an invoice draft (PDF) for a client and record it in the invoice ledger as a draft. Amounts in the client's currency, before tax; " +
+        "taxPercent defaults to the company's default (PPN). Take the number from list_invoices (nextNumber). Not sent.",
+      invoiceInputShape,
       wrap(ctx, "draft_invoice", async (a: Record<string, unknown>) => {
-        const inv = invoicePayloadSchema.parse(a);
+        const r = await invoiceFromInput(ctx, a);
+        if ("error" in r) return err(r.error);
+        const inv = r.invoice;
+        if (ctx.dryRun || ctx.sandboxed) {
+          const refusal = await invoiceNumberRefusal(ctx.workspaceId, inv.invoiceNumber);
+          if (refusal) return err(refusal);
+        } else {
+          const led = await upsertDraftInvoice(ctx.workspaceId, inv, { taskId: ctx.taskId });
+          if (led.refusal) return err(led.refusal);
+        }
         const total = invoiceTotal(inv);
-        await addDeliverable(ctx, {
-          kind: "invoice",
-          title: `Invoice ${inv.invoiceNumber}`,
-          content: inv.lines.map((l) => `${l.description} — ${l.quantity} × ${l.unitPrice}`).join("\n") + `\nTotal: ${inv.currency} ${total}`,
-          meta: { invoice: inv, total },
-        });
-        return ok(`Invoice draft ${inv.invoiceNumber} saved. Total ${inv.currency} ${total}.`);
+        await addDeliverable(ctx, { kind: "invoice", title: `Invoice ${inv.invoiceNumber}`, content: invoiceSummary(inv), meta: { invoice: inv, total } });
+        return ok(`Invoice draft ${inv.invoiceNumber} saved${ctx.dryRun || ctx.sandboxed ? "" : " in the ledger"}. Total ${formatMoney(total, inv.currency)}${inv.taxPercent ? ` incl. ${inv.taxPercent}% tax` : ""}.`);
       }),
     ),
   );
@@ -1049,11 +1184,13 @@ export function buildTools(ctx: RunContext) {
       "Send an email. IRREVERSIBLE: depending on your autonomy it is drafted, queued for human approval, or sent. Use addresses from client master data.",
       { to: z.array(z.string()).min(1), cc: z.array(z.string()).optional(), subject: z.string().min(1), body: z.string().min(1), clientId: z.string().uuid().optional() },
       wrap(ctx, "send_email", async (a: Record<string, unknown>) => {
-        const p = emailPayloadSchema.parse(a);
+        const input = emailPayloadSchema.safeParse(a);
+        if (!input.success) return err(`Invalid email: ${issuesText(input.error)}`);
+        const p = input.data;
         return irreversible(ctx, "send_email", p, {
           title: `Email: ${p.subject} → ${p.to.join(", ")}`,
           textForGuard: `${p.subject}\n${p.body}`,
-          scope: { recipients: extractRecipients(p), clientId: p.clientId ?? null },
+          scope: { recipients: extractRecipients(p), clientId: p.clientId ?? null, clientRecipients: await clientRecipientsFor(ctx.workspaceId, p.clientId) },
           draftKind: "email_draft",
           draftContent: `To: ${p.to.join(", ")}\n${p.cc.length ? `Cc: ${p.cc.join(", ")}\n` : ""}Subject: ${p.subject}\n\n${p.body}`,
         });
@@ -1065,27 +1202,23 @@ export function buildTools(ctx: RunContext) {
     "send_invoice",
     tool(
       "send_invoice",
-      "Email an invoice PDF to a client. IRREVERSIBLE: drafted, queued for approval, or sent depending on autonomy.",
-      {
-        clientId: z.string().uuid(),
-        invoiceNumber: z.string().min(3),
-        currency: z.string().optional(),
-        lines: z.array(z.object({ description: z.string(), quantity: z.number(), unitPrice: z.number() })).min(1),
-        dueDate: z.string(),
-        notes: z.string().optional(),
-        to: z.array(z.string()).optional(),
-        subject: z.string().optional(),
-        body: z.string().optional(),
-      },
+      "Email an invoice PDF to a client. IRREVERSIBLE: drafted, queued for approval, or sent depending on autonomy. " +
+        "taxPercent defaults to the company's default; empty `to` = the client's contacts that receive invoices (else its main email).",
+      { ...invoiceInputShape, to: z.array(z.string()).optional(), subject: z.string().optional(), body: z.string().optional() },
       wrap(ctx, "send_invoice", async (a: Record<string, unknown>) => {
-        const p = invoicePayloadSchema.parse(a);
+        const r = await invoiceFromInput(ctx, a);
+        if ("error" in r) return err(r.error);
+        const refusal = await invoiceNumberRefusal(ctx.workspaceId, r.invoice.invoiceNumber);
+        if (refusal) return err(refusal);
+        const p: InvoicePayload = { ...r.invoice, to: invoiceRecipients(r.client, r.invoice.to) };
+        if (!p.to.length) return err("This client has no email address or contact that receives invoices: pass `to` with an address from master data.");
         const total = invoiceTotal(p);
         return irreversible(ctx, "send_invoice", p, {
           title: `Invoice ${p.invoiceNumber} (${p.currency} ${total})`,
           textForGuard: `${p.subject}\n${p.body}\n${p.notes}`,
-          scope: { recipients: p.to, clientId: p.clientId, amount: total },
+          scope: { recipients: p.to, clientId: p.clientId, amount: total, clientRecipients: clientRecipientAddresses(r.client) },
           draftKind: "invoice",
-          draftContent: p.lines.map((l) => `${l.description} — ${l.quantity} × ${l.unitPrice}`).join("\n") + `\nTotal: ${p.currency} ${total}`,
+          draftContent: invoiceSummary(p),
         });
       }),
     ),

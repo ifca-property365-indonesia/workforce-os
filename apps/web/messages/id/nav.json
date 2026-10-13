@@ -11,7 +11,8 @@
     "clients": "Klien",
     "knowledge": "Basis pengetahuan",
     "settings": "Pengaturan",
-    "account": "Akun"
+    "account": "Akun",
+    "outbox": "Kotak keluar"
   },
   "killSwitch": {
     "button": "Kill switch",
@@ -71,7 +72,8 @@
     "approvals": "Persetujuan",
     "clients": "Klien",
     "knowledge": "Pengetahuan",
-    "settings": "Pengaturan"
+    "settings": "Pengaturan",
+    "outbox": "Keluar"
   },
   "demoChip": "Demo",
   "desktopView": "Tampilan desktop"

@@ -3,7 +3,7 @@ import { db, tasks } from "@wfos/db";
 import { taskInputSchema, TASK_STATUSES, type TaskStatus } from "@wfos/shared";
 import { body, route } from "@/lib/server/route";
 import { publish, q } from "@/lib/server/queue";
-import { createTaskOr400 } from "@/lib/server/tasks";
+import { attachProgress, createTaskOr400 } from "@/lib/server/tasks";
 
 export const GET = route("VIEWER", async ({ session, req }) => {
   const sp = req.nextUrl.searchParams;
@@ -29,6 +29,9 @@ export const GET = route("VIEWER", async ({ session, req }) => {
       phase: tasks.phase,
       costCredits: tasks.costCredits,
       error: tasks.error,
+      progress: tasks.progress,
+      progressNote: tasks.progressNote,
+      progressAt: tasks.progressAt,
       createdAt: tasks.createdAt,
       updatedAt: tasks.updatedAt,
     })
@@ -36,7 +39,7 @@ export const GET = route("VIEWER", async ({ session, req }) => {
     .where(and(...conds))
     .orderBy(desc(tasks.updatedAt))
     .limit(Number(sp.get("limit") ?? 300));
-  return { tasks: rows };
+  return { tasks: await attachProgress(session.workspaceId, rows) };
 });
 
 export const POST = route("MEMBER", async ({ session, req }) => {

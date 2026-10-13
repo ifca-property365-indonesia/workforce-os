@@ -66,5 +66,10 @@
     "empty": "Tidak ada yang menunggumu.",
     "all": "Buka antrean persetujuan"
   },
-  "numbers": "Angka bulan ini"
+  "numbers": "Angka bulan ini",
+  "running": {
+    "title": "Sedang dikerjakan",
+    "description": "Tugas yang sedang berjalan dan sejauh mana kemajuannya.",
+    "empty": "Belum ada tugas yang sedang dikerjakan."
+  }
 }

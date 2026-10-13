@@ -71,7 +71,26 @@
     "fromAddress": "Alamat pengirim",
     "testRecipient": "penerima uji coba",
     "sending": "Mengirim…",
-    "sendTest": "Kirim email uji coba"
+    "sendTest": "Kirim email uji coba",
+    "preset": "Penyedia",
+    "presetHelp": "Mengisi host, port, dan TLS sesuai penyedia. Pilih “Server lain” untuk mengisinya sendiri.",
+    "presets": {
+      "google": "Google Workspace / Gmail",
+      "microsoft": "Microsoft 365 / Outlook",
+      "zoho": "Zoho Mail",
+      "ses": "Amazon SES (Singapura)",
+      "mailgun": "Mailgun",
+      "sendgrid": "SendGrid",
+      "other": "Server lain"
+    },
+    "presetUser": {
+      "google": "anda@domainanda.com (pakai sandi aplikasi)",
+      "microsoft": "anda@domainanda.com",
+      "zoho": "anda@domainanda.com",
+      "ses": "Nama pengguna SMTP (AKIA…)",
+      "mailgun": "postmaster@mg.domainanda.com",
+      "sendgrid": "apikey"
+    }
   },
   "notifications": {
     "title": "Notifikasi",
@@ -181,5 +200,19 @@
     "addSubagent": "Tambah subagen",
     "subagentsHelp": "Subagen berjalan di sandbox yang sama, dengan persetujuan yang sama.",
     "saved": "Departemen tersimpan"
+  },
+  "emailPolicy": {
+    "title": "Email keluar",
+    "description": "Batasan untuk email dan faktur yang dikirim karyawan Anda. Notifikasi untuk tim Anda tidak terpengaruh.",
+    "pause": "Jeda email keluar",
+    "pauseHelp": "Tidak ada kiriman karyawan yang keluar; setiap percobaan tercatat gagal di kotak keluar, jadi bisa dikirim ulang nanti.",
+    "dailyLimit": "Batas harian",
+    "dailyLimitHelp": "Jumlah email per hari (dihitung sejak tengah malam di zona waktu workspace). Setelah batas tercapai, percobaan akan gagal sampai besok.",
+    "sentToday": "Terkirim hari ini",
+    "failedToday": "Gagal hari ini",
+    "waiting": "Menunggu persetujuan",
+    "openOutbox": "Buka kotak keluar",
+    "pausedToast": "Email keluar dijeda",
+    "savedToast": "Kebijakan email disimpan"
   }
 }

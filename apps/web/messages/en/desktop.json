@@ -41,7 +41,8 @@
     "detail": {
       "task": "Task",
       "employee": "Employee",
-      "hire": "Hire"
+      "hire": "Hire",
+      "client": "Client"
     }
   },
   "office": {

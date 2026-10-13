@@ -1,82 +1,24 @@
-import { approvals, audit, clients, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, teams, users, workspaces, type TaskRow } from "@wfos/db";
+import { approvals, audit, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, teams, users, type TaskRow } from "@wfos/db";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
 import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
-import {
-  emailPayloadSchema,
-  invoicePayloadSchema,
-  invoiceTotal,
-  ROUTINE_OVERLAP_MODES,
-  routineInputSchema,
-  webhookPayloadSchema,
-  type EmailPayload,
-  type InvoicePayload,
-} from "@wfos/shared";
+import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, webhookPayloadSchema, type OutboundEmailTrigger } from "@wfos/shared";
 import { decryptSecret, screenLeakage, withRetry } from "@wfos/shared/server";
-import { sendMail } from "@wfos/shared/mail";
-import { renderInvoicePdf, formatMoney } from "@wfos/shared/invoice";
 import { msg } from "@wfos/shared/messages";
 import { and, desc, eq } from "drizzle-orm";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { getExternalMcpServers, getSmtp, getWebhookUrl, workspaceLocale } from "../lib/settings";
+import { getExternalMcpServers, getWebhookUrl, workspaceLocale } from "../lib/settings";
+import { sendEmailPayload, sendInvoicePayload } from "../lib/outbox";
 import { isReservedSkillSlug, skillProposalSchema, skillProvenanceHash, SKILL_SLUG_MAX } from "../runner/skills";
 
 export interface ActionResult {
   ok: boolean;
   summary: string;
   details?: Record<string, unknown>;
-}
-
-function htmlEscape(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
-
-export function emailHtml(body: string): string {
-  return `<div style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.55;color:#18181b;white-space:pre-wrap">${htmlEscape(body)}</div>`;
-}
-
-async function doSendEmail(workspaceId: string, p: EmailPayload): Promise<ActionResult> {
-  const smtp = await getSmtp(workspaceId);
-  if (!smtp) return { ok: false, summary: "SMTP is not configured for this workspace (Settings → Email)." };
-  const r = await sendMail(smtp, { to: p.to, cc: p.cc, subject: p.subject, text: p.body, html: p.html ? p.body : emailHtml(p.body) });
-  return { ok: true, summary: `Email sent to ${p.to.join(", ")}`, details: { messageId: r.messageId, accepted: r.accepted } };
-}
-
-export async function invoiceAttachment(workspaceId: string, p: InvoicePayload, draft: boolean) {
-  const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId));
-  const [client] = await db.select().from(clients).where(eq(clients.id, p.clientId));
-  const pdf = await renderInvoicePdf(p, {
-    workspaceName: ws?.name ?? "Workforce OS",
-    clientName: client?.name ?? "Client",
-    clientEmail: client?.email,
-    draft,
-    locale: ws?.defaultLocale,
-  });
-  return { pdf: Buffer.from(pdf), client, locale: ws?.defaultLocale ?? null };
-}
-
-async function doSendInvoice(workspaceId: string, p: InvoicePayload): Promise<ActionResult> {
-  const smtp = await getSmtp(workspaceId);
-  if (!smtp) return { ok: false, summary: "SMTP is not configured for this workspace (Settings → Email)." };
-  const { pdf, client, locale } = await invoiceAttachment(workspaceId, p, false);
-  const to = p.to.length ? p.to : client?.email ? [client.email] : [];
-  if (!to.length) return { ok: false, summary: "No recipient for invoice" };
-  const total = formatMoney(invoiceTotal(p), p.currency, locale === "en" ? "en-US" : "id-ID");
-  // defaults in the workspace language; an approved (possibly edited) subject/body is always used as-is
-  const subject = p.subject || msg(locale, "invoice.subject", { number: p.invoiceNumber });
-  const body = p.body || msg(locale, "invoice.body", { client: client?.name ?? msg(locale, "invoice.client"), number: p.invoiceNumber, total, due: p.dueDate });
-  const r = await sendMail(smtp, {
-    to,
-    subject,
-    text: body,
-    html: emailHtml(body),
-    attachments: [{ filename: `${p.invoiceNumber}.pdf`, content: pdf, contentType: "application/pdf" }],
-  });
-  return { ok: true, summary: `Invoice ${p.invoiceNumber} (${total}) sent to ${to.join(", ")}`, details: { messageId: r.messageId } };
 }
 
 async function doPostWebhook(workspaceId: string, p: { channel: string; text: string }): Promise<ActionResult> {
@@ -417,10 +359,18 @@ export async function executeAction(
   payload: Record<string, unknown>,
   /**
    * untrusted: the run that asked for this action was tainted (approval payload untrustedInput);
-   * approvalId: the approval being executed (create_routine audits its approver)
+   * approvalId: the approval being executed (create_routine audits its approver);
+   * trigger: what let send_email / send_invoice run, stored on the outbox row (default: approval when approvalId is set,
+   * else allow_list)
    */
-  context: { taskId?: string | null; employeeId?: string | null; untrusted?: boolean; approvalId?: string | null } = {},
+  context: { taskId?: string | null; employeeId?: string | null; untrusted?: boolean; approvalId?: string | null; trigger?: OutboundEmailTrigger } = {},
 ): Promise<ActionResult> {
+  const send = {
+    trigger: context.trigger ?? (context.approvalId ? "approval" : "allow_list"),
+    taskId: context.taskId ?? null,
+    employeeId: context.employeeId ?? null,
+    approvalId: context.approvalId ?? null,
+  } as const;
   switch (toolName) {
     case "bash":
       return doRunApprovedCommand(workspaceId, String(payload.command ?? ""), context);
@@ -431,9 +381,9 @@ export async function executeAction(
     case "create_pull_request":
       return doCreatePullRequest(workspaceId, payload);
     case "send_email":
-      return doSendEmail(workspaceId, emailPayloadSchema.parse(payload));
+      return sendEmailPayload(workspaceId, emailPayloadSchema.parse(payload), send);
     case "send_invoice":
-      return doSendInvoice(workspaceId, invoicePayloadSchema.parse(payload));
+      return sendInvoicePayload(workspaceId, invoicePayloadSchema.parse(payload), send);
     case "post_webhook":
       return doPostWebhook(workspaceId, webhookPayloadSchema.parse(payload));
     case "create_routine":

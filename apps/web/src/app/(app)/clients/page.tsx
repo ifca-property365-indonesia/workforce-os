@@ -1,261 +1,139 @@
 "use client";
 
 import Link from "@/lib/nav";
-import { useId, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Building2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Building2, Plus, Search } from "lucide-react";
+import { CLIENT_STATUSES, type ClientStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, PageHeader } from "@/components/layout/common";
-import { api } from "@/lib/api";
+import { NewClientDialog } from "@/components/clients/new-client-dialog";
+import { ClientStatusBadge, HealthBadge, useClientRights, worstHealth } from "@/components/clients/shared";
 import { useClients, type Client } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
+import { cn } from "@/lib/utils";
 
-type CForm = { name: string; email: string; contacts: { name: string; email: string; role: string }[]; notes: string; currency: string };
-
-function ClientDialog({ client, onClose }: { client?: Client; onClose: () => void }) {
-  const t = useTranslations("clients");
-  const tc = useTranslations("common");
-  const qc = useQueryClient();
-  const [f, setF] = useState<CForm>(client ? { name: client.name, email: client.email, contacts: client.contacts, notes: client.notes, currency: client.currency } : { name: "", email: "", contacts: [], notes: "", currency: "IDR" });
-  const uid = useId();
-  const m = useMutation({
-    mutationFn: () => (client ? api.patch(`/api/clients/${client.id}`, f) : api.post("/api/clients", f)),
-    onSuccess: () => (void qc.invalidateQueries({ queryKey: ["clients"] }), onClose()),
-    onError: (e) => toast.error((e as Error).message),
-  });
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{client ? t("editClient") : t("newClient")}</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 space-y-1.5">
-              <Label htmlFor={`${uid}-name`}>{tc("name")}</Label>
-              <Input id={`${uid}-name`} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${uid}-currency`}>{t("form.currency")}</Label>
-              <Input id={`${uid}-currency`} value={f.currency} onChange={(e) => setF({ ...f, currency: e.target.value.toUpperCase() })} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`${uid}-email`}>{t("form.email")}</Label>
-            <Input id={`${uid}-email`} type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-          </div>
-          <div role="group" aria-labelledby={`${uid}-contacts`} className="space-y-1.5">
-            <Label id={`${uid}-contacts`}>{t("form.contacts")}</Label>
-            {f.contacts.map((c, i) => (
-              <div key={i} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-                <Input aria-label={t("form.contactName")} placeholder={t("form.contactName")} value={c.name} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} />
-                <Input aria-label={t("form.contactEmail")} placeholder={t("form.contactEmail")} value={c.email} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, email: e.target.value } : x)) })} />
-                <Input aria-label={t("form.contactRole")} placeholder={t("form.contactRole")} value={c.role} onChange={(e) => setF({ ...f, contacts: f.contacts.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)) })} />
-                <Button variant="ghost" size="icon" onClick={() => setF({ ...f, contacts: f.contacts.filter((_, j) => j !== i) })} aria-label={t("form.removeContact")}>
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            ))}
-            <Button variant="outline" size="sm" onClick={() => setF({ ...f, contacts: [...f.contacts, { name: "", email: "", role: "" }] })}>
-              {t("form.addContact")}
-            </Button>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`${uid}-notes`}>{t("form.notes")}</Label>
-            <Textarea id={`${uid}-notes`} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={() => m.mutate()} disabled={!f.name || m.isPending}>
-            {tc("save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+/** the person to call about a client: the project contact, else the first one listed */
+function mainContact(c: Client) {
+  return c.contacts.find((x) => x.role === "project") ?? c.contacts[0] ?? null;
 }
 
-const HEALTH_TONE: Record<Client["projects"][number]["health"], string> = {
-  late: "bg-destructive/15 text-destructive",
-  at_risk: "bg-warning/20 text-warning",
-  on_track: "bg-success/15 text-success",
-  done: "bg-muted text-muted-foreground",
-};
-
-/** Per-client health summary: how many projects are late / at risk / on track. */
-function HealthSummary({ projects }: { projects: Client["projects"] }) {
-  const t = useTranslations("clients");
-  const counts = (["late", "at_risk", "on_track"] as const).map((h) => [h, projects.filter((p) => p.health === h).length] as const).filter(([, n]) => n);
-  if (!counts.length) return null;
+function Metric({ label, children, tone }: { label: string; children: ReactNode; tone?: string }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {counts.map(([h, n]) => (
-        <span key={h} className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${HEALTH_TONE[h]}`}>
-          {t("health.count", { count: n, health: t(`health.${h}`) })}
-        </span>
-      ))}
+    <div className="min-w-0">
+      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className={cn("font-display text-base break-words tabular-nums sm:text-xl", tone)}>{children}</div>
     </div>
   );
 }
 
-function ProjectRow({ p, currency }: { p: Client["projects"][number]; currency: string }) {
+function ClientCard({ c }: { c: Client }) {
   const t = useTranslations("clients");
   const f = useFormat();
-  const qc = useQueryClient();
-  const del = useMutation({ mutationFn: () => api.del(`/api/projects/${p.id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }) });
-  const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.patch(`/api/projects/${p.id}`, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }),
-    onError: (e) => toast.error((e as Error).message),
-  });
+  const worst = worstHealth(c.projects);
+  const contact = mainContact(c);
   return (
-    <div className="flex items-start gap-2 rounded-md border p-2 text-sm">
-      <div className="min-w-0 flex-1">
-        <div className="font-medium">
-          {p.name} <span className="ml-1 rounded bg-muted px-1.5 text-[11px]">{t.has(`project.status.${p.status}`) ? t(`project.status.${p.status}`) : p.status}</span>
-        </div>
-        <div className="text-xs text-muted-foreground">{p.description}</div>
-        <div className="text-xs text-muted-foreground">{t("project.rate", { rate: f.money(p.hourlyRate, currency) })}</div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-          <span className={`rounded-full px-2 py-0.5 font-medium ${HEALTH_TONE[p.health]}`} title={p.reasons.map((r) => t(`health.reason.${r}`)).join(" · ")}>
-            {t(`health.${p.health}`)}
-          </span>
-          <label className="flex items-center gap-1 text-muted-foreground">
-            {t("project.deadline")}
-            <input
-              type="date"
-              className="rounded border bg-background px-1 py-0.5"
-              defaultValue={p.deadline ?? ""}
-              onChange={(e) => save.mutate({ deadline: e.target.value || null })}
-            />
-          </label>
-          <label className="flex items-center gap-1 text-muted-foreground">
-            {t("project.progress")}
-            <input
-              type="number"
-              min={0}
-              max={100}
-              className="w-14 rounded border bg-background px-1 py-0.5"
-              defaultValue={p.progress}
-              onBlur={(e) => Number(e.target.value) !== p.progress && save.mutate({ progress: Math.max(0, Math.min(100, Number(e.target.value))) })}
-            />
-            %
-          </label>
-          <span className="text-muted-foreground">
-            {p.daysToDeadline !== null && p.health !== "done" && (p.daysToDeadline < 0 ? t("health.overdue", { count: -p.daysToDeadline }) : t("health.dueIn", { count: p.daysToDeadline }))}
-            {" · "}
-            {t("health.lastActivity", { when: f.ago(p.lastActivityAt) })}
-          </span>
-        </div>
-        <Progress value={p.progress} className="mt-1 h-1" />
-      </div>
-      <Link href={`/tasks?projectId=${p.id}`} className="text-xs text-primary hover:underline">
-        {t("project.tasks")}
-      </Link>
-      <button type="button" onClick={() => confirm(t("project.confirmDelete", { name: p.name })) && del.mutate()} aria-label={t("project.delete")}>
-        <Trash2 className="size-3.5 text-muted-foreground" />
-      </button>
-    </div>
-  );
-}
-
-function AddProject({ clientId }: { clientId: string }) {
-  const t = useTranslations("clients");
-  const qc = useQueryClient();
-  const [f, setF] = useState({ name: "", description: "", hourlyRate: 0 });
-  const [open, setOpen] = useState(false);
-  const m = useMutation({
-    mutationFn: () => api.post("/api/projects", { ...f, clientId }),
-    onSuccess: () => (setF({ name: "", description: "", hourlyRate: 0 }), setOpen(false), void qc.invalidateQueries({ queryKey: ["clients"] })),
-    onError: (e) => toast.error((e as Error).message),
-  });
-  if (!open)
-    return (
-      <Button variant="ghost" size="sm" onClick={() => setOpen(true)} className="gap-1">
-        <Plus className="size-3.5" /> {t("project.add")}
-      </Button>
-    );
-  return (
-    <div className="space-y-2 rounded-md border p-2">
-      <Input placeholder={t("project.namePlaceholder")} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-      <Textarea placeholder={t("project.descriptionPlaceholder")} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
-      <Input type="number" placeholder={t("project.hourlyRatePlaceholder")} value={f.hourlyRate || ""} onChange={(e) => setF({ ...f, hourlyRate: Number(e.target.value) })} />
-      <Button size="sm" onClick={() => m.mutate()} disabled={!f.name}>
-        {t("project.addProject")}
-      </Button>
-    </div>
+    <Link href={`/clients/${c.id}`} className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <Card className={cn("h-full transition-shadow group-hover:shadow-md", c.status === "inactive" && "opacity-75")}>
+        <CardContent className="flex h-full flex-col gap-3 p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="font-display truncate text-[1.65rem]">{c.name}</div>
+              {c.legalName && <div className="truncate text-xs text-muted-foreground">{c.legalName}</div>}
+            </div>
+            <ClientStatusBadge status={c.status} className="mt-1" />
+          </div>
+          <div className="grid grid-cols-3 gap-3 border-y py-3">
+            <Metric label={t("list.projects")}>
+              <span className="flex items-center gap-1.5">
+                {c.projects.length}
+                {worst && worst !== "done" && <HealthBadge health={worst} />}
+              </span>
+            </Metric>
+            <Metric label={t("list.monthly")}>{c.recurringMonthly ? f.money(c.recurringMonthly, c.currency) : "—"}</Metric>
+            <Metric label={t("list.outstanding")} tone={c.overdue ? "text-destructive" : undefined}>
+              {c.outstanding ? f.money(c.outstanding, c.currency) : "—"}
+            </Metric>
+          </div>
+          <div className="mt-auto flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate">
+              {contact ? (
+                <>
+                  <span className="font-medium text-foreground">{contact.name || contact.email}</span>
+                  {contact.name && contact.email && ` · ${contact.email}`}
+                </>
+              ) : (
+                c.email || t("noEmail")
+              )}
+            </span>
+            {c.overdue > 0 && <span className="rounded-full bg-destructive/15 px-2 py-0.5 font-medium text-destructive">{t("list.overdue", { count: c.overdue })}</span>}
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
 
 export default function ClientsPage() {
   const t = useTranslations("clients");
   const tc = useTranslations("common");
-  const qc = useQueryClient();
-  const { data } = useClients();
-  const [edit, setEdit] = useState<{ client?: Client } | null>(null);
-  const del = useMutation({ mutationFn: (id: string) => api.del(`/api/clients/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: ["clients"] }) });
+  const { data, isLoading } = useClients();
+  const { canEdit } = useClientRights();
+  const [creating, setCreating] = useState(false);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState<ClientStatus | "">("");
+  const needle = q.trim().toLowerCase();
+  const shown = (data ?? []).filter(
+    (c) =>
+      (!status || c.status === status) &&
+      (!needle || [c.name, c.legalName, c.email, ...c.contacts.flatMap((x) => [x.name, x.email])].some((s) => s.toLowerCase().includes(needle))),
+  );
+  const count = (s: ClientStatus) => (data ?? []).filter((c) => c.status === s).length;
   return (
     <div>
       <PageHeader
         title={t("title")}
         description={t("description")}
         actions={
-          <Button onClick={() => setEdit({})} className="gap-1.5">
-            <Plus className="size-4" /> {t("newClient")}
-          </Button>
+          canEdit && (
+            <Button onClick={() => setCreating(true)} className="gap-1.5">
+              <Plus className="size-4" /> {t("newClient")}
+            </Button>
+          )
         }
       />
-      {!data?.length && <EmptyState icon={<Building2 className="size-8" />} title={t("empty")} />}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {data?.map((c) => (
-          <Card key={c.id}>
-            <CardHeader className="flex-row items-start justify-between space-y-0">
-              <div>
-                <CardTitle className="text-base">{c.name}</CardTitle>
-                <div className="text-xs text-muted-foreground">
-                  {c.email || t("noEmail")} · {c.currency} · {t("idLabel")} <code className="text-[10px]">{c.id.slice(0, 8)}</code>
-                </div>
-              </div>
-              <div className="flex">
-                <Button size="icon" variant="ghost" onClick={() => setEdit({ client: c })} aria-label={tc("edit")}>
-                  <Pencil className="size-4" />
-                </Button>
-                <Button size="icon" variant="ghost" onClick={() => confirm(t("confirmDelete", { name: c.name })) && del.mutate(c.id)} aria-label={tc("delete")}>
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {!!c.contacts.length && (
-                <div className="space-y-0.5">
-                  {c.contacts.map((x) => (
-                    <div key={x.email + x.name} className="text-xs">
-                      <span className="font-medium">{x.name}</span> {`<${x.email}>`} <span className="text-muted-foreground">{x.role}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {c.notes && <p className="text-xs text-muted-foreground">{c.notes}</p>}
-              <HealthSummary projects={c.projects} />
-              <div className="space-y-2">
-                {c.projects.map((p) => (
-                  <ProjectRow key={p.id} p={p} currency={c.currency} />
-                ))}
-                <AddProject clientId={c.id} />
-              </div>
-            </CardContent>
-          </Card>
+      {!!data?.length && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative sm:w-72">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+            <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("list.search")} aria-label={tc("search")} className="pl-8" />
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={tc("status")}>
+            {(["", ...CLIENT_STATUSES] as const).map((s) => (
+              <button
+                key={s || "all"}
+                type="button"
+                aria-pressed={status === s}
+                onClick={() => setStatus(s)}
+                className={cn("rounded-full border px-3 py-1 text-xs font-medium transition-colors", status === s ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:text-foreground")}
+              >
+                {s ? t(`status.${s}`) : t("list.all")}
+                <span className="ml-1 tabular-nums opacity-70">{s ? count(s) : data.length}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {!isLoading && !data?.length && <EmptyState icon={<Building2 className="size-8" />} title={t("empty")} description={t("emptyHelp")} />}
+      {!!data?.length && !shown.length && <EmptyState icon={<Search className="size-7" />} title={t("list.noMatch")} />}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {shown.map((c) => (
+          <ClientCard key={c.id} c={c} />
         ))}
       </div>
-      {edit && <ClientDialog client={edit.client} onClose={() => setEdit(null)} />}
+      {creating && <NewClientDialog onClose={() => setCreating(false)} />}
     </div>
   );
 }

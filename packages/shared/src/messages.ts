@@ -2,7 +2,7 @@ import { isLocale, type Locale } from "./index";
 
 /**
  * Bilingual templates for text the worker produces outside the web UI: notifications (in-app, email,
- * webhook), chat receipts for decided approvals, default invoice emails and the invoice PDF. Values are substituted for {name} placeholders.
+ * webhook), chat receipts for decided approvals, default invoice emails, the invoice PDF, recurring-billing approvals and outbox policy errors. Values are substituted for {name} placeholders.
  */
 const MESSAGES = {
   en: {
@@ -58,6 +58,18 @@ const MESSAGES = {
     "pdf.amount": "Amount",
     "pdf.total": "Total",
     "pdf.notes": "Notes",
+    "pdf.subtotal": "Subtotal",
+    "pdf.tax": "Tax {percent}%",
+    "pdf.taxId": "Tax ID: {id}",
+    "pdf.bank": "Bank transfer: {bank} {account}",
+    "pdf.bankHolder": "Account holder: {holder}",
+    "billing.approvalTitle": "Recurring invoice {number} — {client} ({total})",
+    "billing.approvalReason": "Recurring billing: approve to email this invoice",
+    "billing.approvalReasonNoRecipient": "Recurring billing: approve to email this invoice. No recipient is on file for this client: edit \"to\" before approving.",
+    "billing.requester": "Recurring billing",
+    "outbox.paused": "Outgoing email is paused (Settings → Email).",
+    "outbox.dailyLimit": "Daily email limit reached ({limit} per day).",
+    "outbox.interrupted": "Interrupted while sending — it may or may not have been delivered; check before resending.",
   },
   id: {
     "notify.approvalNeeded": "Perlu persetujuan: {title}",
@@ -112,6 +124,18 @@ const MESSAGES = {
     "pdf.amount": "Jumlah",
     "pdf.total": "Total",
     "pdf.notes": "Catatan",
+    "pdf.subtotal": "Subtotal",
+    "pdf.tax": "PPN {percent}%",
+    "pdf.taxId": "NPWP: {id}",
+    "pdf.bank": "Transfer ke: {bank} {account}",
+    "pdf.bankHolder": "Atas nama: {holder}",
+    "billing.approvalTitle": "Faktur berulang {number} — {client} ({total})",
+    "billing.approvalReason": "Penagihan berulang: setujui untuk mengirim faktur ini lewat email",
+    "billing.approvalReasonNoRecipient": "Penagihan berulang: setujui untuk mengirim faktur ini lewat email. Klien ini belum punya penerima faktur: isi \"to\" sebelum menyetujui.",
+    "billing.requester": "Penagihan berulang",
+    "outbox.paused": "Email keluar sedang dijeda (Pengaturan → Email).",
+    "outbox.dailyLimit": "Batas email harian tercapai ({limit} per hari).",
+    "outbox.interrupted": "Terputus saat mengirim — email ini mungkin sudah atau belum terkirim; periksa dulu sebelum mengirim ulang.",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 

@@ -76,7 +76,15 @@
     "removeScope": "Hapus cakupan",
     "addScope": "Tambah cakupan",
     "save": "Simpan allow-list",
-    "saved": "Allow-list disimpan (tercatat di audit)"
+    "saved": "Allow-list disimpan (tercatat di audit)",
+    "tool": "Alat",
+    "recipientDomainsLabel": "Domain penerima",
+    "recipientsLabel": "Alamat penerima persis",
+    "recipients": "ana@klien.co.id, keuangan@klien.co.id",
+    "clientContactsOnly": "Penerima yang terdaftar di data klien",
+    "clientContactsOnlyHelp": "Mengizinkan alamat utama klien pada email itu dan semua kontak yang tersimpan untuk klien tersebut.",
+    "recipientRule": "Setiap penerima harus cocok dengan minimal satu aturan ini (domain, alamat persis, atau data klien); jika tidak, email menunggu persetujuan.",
+    "noRecipientRule": "Belum ada aturan penerima: penerima siapa pun diizinkan dalam cakupan ini."
   },
   "toolsTab": {
     "dailyBudget": "Anggaran harian (kredit)",
@@ -160,7 +168,8 @@
     "selectorPlaceholder": "mis. delete_*",
     "addRule": "Tambah aturan",
     "selectorInvalid": "Gunakan hanya huruf, angka, _ . - dan * (paling banyak 8 *, dan bukan hanya *).",
-    "selectorHelp": "Nama tool atau pola dengan * (list_* cocok dengan list_contacts); disimpan dalam huruf kecil dengan karakter lain menjadi _ (Contacts.Delete → contacts_delete). Aturan baru memblokir tool-nya; nyalakan untuk mengizinkannya."
+    "selectorHelp": "Nama tool atau pola dengan * (list_* cocok dengan list_contacts); disimpan dalam huruf kecil dengan karakter lain menjadi _ (Contacts.Delete → contacts_delete). Aturan baru memblokir tool-nya; nyalakan untuk mengizinkannya.",
+    "implicitTask": "Otomatis diberikan dalam tugas; matikan agar karyawan ini tidak melaporkan kemajuan."
   },
   "toolClass": {
     "reversible": "bisa dibatalkan",
@@ -257,6 +266,14 @@
     "skill_propose": {
       "label": "Usulkan skill",
       "description": "Mengusulkan skill baru yang dapat dipakai ulang (SKILL.md) dari apa yang dipelajarinya. Seseorang menyetujuinya sebelum disimpan dan ditugaskan."
+    },
+    "list_invoices": {
+      "label": "Lihat daftar faktur",
+      "description": "Membaca buku faktur (nomor, total, status, jatuh tempo) dan prefiks faktur perusahaan"
+    },
+    "report_progress": {
+      "label": "Laporkan kemajuan",
+      "description": "Melaporkan seberapa banyak tugas saat ini yang sudah selesai (0–100%) dengan catatan singkat"
     }
   },
   "executionMode": {
@@ -322,7 +339,9 @@
       "compaction": "Meringkas catatannya",
       "budget": "Mencapai batas anggaran",
       "error": "Mengalami galat",
-      "other": "{name}"
+      "other": "{name}",
+      "list_invoices": "Melihat daftar faktur",
+      "report_progress": "Melaporkan kemajuan: {percent}%"
     }
   },
   "bot": {

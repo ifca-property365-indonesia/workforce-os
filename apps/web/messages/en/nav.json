@@ -11,7 +11,8 @@
     "clients": "Clients",
     "knowledge": "Knowledge base",
     "settings": "Settings",
-    "account": "Account"
+    "account": "Account",
+    "outbox": "Outbox"
   },
   "killSwitch": {
     "button": "Kill switch",
@@ -71,7 +72,8 @@
     "approvals": "Approvals",
     "clients": "Clients",
     "knowledge": "Knowledge",
-    "settings": "Settings"
+    "settings": "Settings",
+    "outbox": "Outbox"
   },
   "demoChip": "Demo",
   "desktopView": "Desktop view"

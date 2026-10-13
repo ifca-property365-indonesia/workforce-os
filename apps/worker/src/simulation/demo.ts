@@ -31,6 +31,13 @@ async function fakeTool(workspaceId: string, taskId: string, employeeId: string,
   await recordStep({ workspaceId, taskId, employeeId, kind: "tool", name, input, output, latencyMs: 120 + Math.round(Math.random() * 300), credits: 0, status });
 }
 
+/** What report_progress does in a real run: the task's progress, a tool step and the realtime event. */
+async function fakeProgress(workspaceId: string, taskId: string, employeeId: string, progress: number, note: string) {
+  await db.update(tasks).set({ progress, progressNote: note, progressAt: new Date() }).where(eq(tasks.id, taskId));
+  await fakeTool(workspaceId, taskId, employeeId, "report_progress", { percent: progress, note }, `Progress ${progress}% recorded.`);
+  await publish(workspaceId, { type: "task.progress", taskId, progress, note });
+}
+
 async function addDeliverable(taskId: string, d: Omit<Deliverable, "id" | "createdAt">) {
   const full: Deliverable = { ...d, id: randomUUID(), createdAt: new Date().toISOString() };
   await db.update(tasks).set({ deliverables: sql`${tasks.deliverables} || ${JSON.stringify([full])}::jsonb` }).where(eq(tasks.id, taskId));
@@ -143,6 +150,7 @@ export async function runDemoLifecycle(workspaceId: string, userId: string): Pro
   await setTaskStatus(tDev, "RUNNING");
   await stage(workspaceId, "build", `${dev.name} is building the feature.`);
   await fakeTool(workspaceId, tDev.id, dev.id, "kb_search", { query: "CSV export conventions" }, "[Engineering handbook §4] Use streaming responses for large exports.");
+  await fakeProgress(workspaceId, tDev.id, dev.id, 25, "Plan clear: streaming endpoint, then the download button");
   await fakeLlm(workspaceId, tDev.id, dev.id, "build", 3100, 1450);
   await addDeliverable(tDev.id, {
     kind: "code",
@@ -151,6 +159,7 @@ export async function runDemoLifecycle(workspaceId: string, userId: string): Pro
       'export async function GET(req: Request) {\n  const { searchParams } = new URL(req.url);\n  const stream = routeHistoryCsv(searchParams.get("from"), searchParams.get("to"));\n  return new Response(stream, { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": "attachment; filename=routes.csv" } });\n}\n',
   });
   await fakeTool(workspaceId, tDev.id, dev.id, "draft_document", { title: "app/api/routes/export/route.ts" }, "Saved deliverable");
+  await fakeProgress(workspaceId, tDev.id, dev.id, 80, "Endpoint streams 100k rows; button wired up");
   await pause(700);
   await setTaskStatus({ ...tDev, status: "RUNNING" }, "DONE", { result: "Endpoint + button implemented (draft diff ready for review)." });
 

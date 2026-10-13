@@ -19,7 +19,8 @@ import { useOffice } from "@/components/office/use-office";
 import { api } from "@/lib/api";
 import { useTranslations } from "next-intl";
 import { useFormat } from "@/lib/use-format";
-import { useEmployees } from "@/lib/hooks";
+import { useEmployees, type TaskRow } from "@/lib/hooks";
+import { TaskProgressInline } from "@/components/tasks/task-progress";
 import { cn } from "@/lib/utils";
 
 interface Dash {
@@ -67,6 +68,49 @@ function OfficeStreet() {
       </div>
       {!loading && counts.total === 0 ? <p className="pb-5 text-sm text-muted-foreground">{t("office.empty")}</p> : <OfficeFacade size="lg" />}
     </section>
+  );
+}
+
+/** What employees are working on right now, with how far along each task is. */
+function RunningTasks() {
+  const t = useTranslations("dashboard");
+  const f = useFormat();
+  const { data } = useQuery({
+    queryKey: ["tasks", "running"],
+    queryFn: () => api.get<{ tasks: TaskRow[] }>("/api/tasks?status=RUNNING&limit=8").then((r) => r.tasks),
+    refetchInterval: 60_000,
+  });
+  const { data: emps } = useEmployees();
+  const emp = new Map((emps ?? []).map((e) => [e.id, e]));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("running.title")}</CardTitle>
+        <CardDescription>{t("running.description")}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {data && !data.length && <p className="text-sm text-muted-foreground">{t("running.empty")}</p>}
+        <ul className="grid gap-2 md:grid-cols-2">
+          {data?.map((task) => {
+            const a = task.assigneeId ? emp.get(task.assigneeId) : undefined;
+            return (
+              <li key={task.id}>
+                <Link href={`/tasks/${task.id}`} className="flex items-start gap-3 rounded-xl border p-3 hover:bg-secondary/60">
+                  <Avatar id={task.assigneeId} mood="working" size="sm" className="mt-0.5" />
+                  <span className="min-w-0 flex-1 space-y-1.5">
+                    <span className="line-clamp-2 text-sm font-medium leading-snug">{task.title}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {a?.name ?? ""} · {f.ago(task.updatedAt)}
+                    </span>
+                    <TaskProgressInline task={task} />
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -138,6 +182,8 @@ export default function DashboardPage() {
         </section>
         <IncidentsCard />
       </div>
+
+      <RunningTasks />
 
       <section aria-label={t("numbers")} className="grid grid-cols-2 overflow-hidden rounded-2xl border bg-card xl:grid-cols-4">
         {numbers.map((n, i) => (

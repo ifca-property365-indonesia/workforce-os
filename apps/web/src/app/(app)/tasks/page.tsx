@@ -9,6 +9,7 @@ import { TASK_STATUSES, type TaskStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Avatar, PageHeader } from "@/components/layout/common";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
+import { TaskProgressInline } from "@/components/tasks/task-progress";
 import { api } from "@/lib/api";
 import { STATUS_TONE } from "@/lib/format";
 import { useClients, useEmployees, useTeams, type TaskRow } from "@/lib/hooks";
@@ -97,6 +98,7 @@ function Board() {
                   return (
                     <Link key={task.id} href={`/tasks/${task.id}`} className="block rounded-xl border bg-card p-3 text-sm transition-colors hover:border-input hover:bg-secondary/40">
                       <div className="line-clamp-3 font-medium">{task.title}</div>
+                      <TaskProgressInline task={task} className="mt-2" />
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                         {a && (
                           <span className="inline-flex items-center gap-1">

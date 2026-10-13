@@ -120,5 +120,9 @@
   "skill_body_required": "Skill memerlukan instruksi: tuliskan apa yang harus dilakukan karyawan.",
   "skill_slug_reserved": "{slug} adalah nama skill bawaan (pdf, docx, xlsx, dan pptx sudah dipakai). Pilih nama lain.",
   "skill_invalid_chars": "Skill ini berisi karakter kontrol (seperti NUL atau ESC). Hapus lalu simpan lagi: hanya tab dan baris baru yang diizinkan.",
-  "package_skill_leak": "Skill {slug} di dalam paket berisi sesuatu yang tampak seperti rahasia ({rules}). Hapus dari paket lalu impor lagi: skill dibaca kembali ke dalam prompt."
+  "package_skill_leak": "Skill {slug} di dalam paket berisi sesuatu yang tampak seperti rahasia ({rules}). Hapus dari paket lalu impor lagi: skill dibaca kembali ke dalam prompt.",
+  "outbox_not_found": "Email itu tidak ada di kotak keluar.",
+  "outbox_not_failed": "Hanya email yang gagal terkirim yang bisa dikirim ulang.",
+  "outbox_already_resent": "Email ini sudah dikirim ulang: kirim ulang percobaan yang lebih baru saja.",
+  "invoice_transition": "Status invoice ini tidak bisa diubah ke status tersebut."
 }

@@ -14,14 +14,18 @@ import { useClients, useEmployees, useTeams } from "@/lib/hooks";
 
 const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
-export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+const EMPTY = { title: "", brief: "", assignee: "", clientId: "", projectId: "", repositoryId: "", dryRun: false, start: true };
+/** what a quick action fills in; `assignee` is "e:<employeeId>" or "t:<teamId>". Read when the dialog mounts: give it a new `key` per prefill. */
+export type NewTaskPrefill = Partial<Pick<typeof EMPTY, "title" | "brief" | "assignee" | "clientId" | "projectId">>;
+
+export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (o: boolean) => void; initial?: NewTaskPrefill }) {
   const qc = useQueryClient();
   const t = useTranslations("tasks");
   const tc = useTranslations("common");
   const { data: emps } = useEmployees();
   const { data: teams } = useTeams();
   const { data: clients } = useClients();
-  const [f, setF] = useState({ title: "", brief: "", assignee: "", clientId: "", projectId: "", repositoryId: "", dryRun: false, start: true });
+  const [f, setF] = useState(() => ({ ...EMPTY, ...initial }));
   const uid = useId();
   const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
   const assignedEmployee = f.assignee.startsWith("e:") ? emps?.find((e) => e.id === f.assignee.slice(2)) : undefined;
@@ -45,8 +49,10 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     onSuccess: () => {
       toast.success(t("newTask.created"));
       onOpenChange(false);
-      setF({ title: "", brief: "", assignee: "", clientId: "", projectId: "", repositoryId: "", dryRun: false, start: true });
+      setF(EMPTY);
       void qc.invalidateQueries({ queryKey: ["tasks"] });
+      // the client's page lists its tasks
+      if (f.clientId) void qc.invalidateQueries({ queryKey: ["client", f.clientId] });
     },
     onError: (e) => toast.error((e as Error).message),
   });

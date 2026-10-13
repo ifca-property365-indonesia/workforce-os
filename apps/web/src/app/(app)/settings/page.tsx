@@ -5,6 +5,8 @@ import { DepartmentsSettings } from "@/components/settings/departments";
 import { WebhooksSettings } from "@/components/settings/webhooks";
 import { ApiTokensSettings } from "@/components/settings/api-tokens";
 import { SkillsSettings } from "@/components/settings/skills";
+import { CompanyProfileSettings } from "@/components/settings/company-profile";
+import { EmailPolicySettings, SmtpPresetPicker, useSmtpUserHint } from "@/components/settings/email-policy";
 import { mcpToolsQueryKey, type McpTool } from "@/components/employees/tool-permissions";
 
 import { useEffect, useState } from "react";
@@ -275,6 +277,7 @@ function Email() {
   const [f, setF] = useState({ host: "", port: 587, secure: false, user: "", password: "", fromAddress: "" });
   const [to, setTo] = useState("");
   const me = useMe();
+  const userHint = useSmtpUserHint(f);
   useEffect(() => {
     if (data?.smtp) setF({ ...data.smtp, password: "" });
   }, [data]);
@@ -292,52 +295,56 @@ function Email() {
     onError: (e) => toast.error((e as Error).message),
   });
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">SMTP</CardTitle>
-        <CardDescription>{t("email.description")}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="smtp-host">{t("email.host")}</Label>
-          {/* i18n-ignore: example host name */}
-          <Input id="smtp-host" value={f.host} onChange={(e) => setF({ ...f, host: e.target.value })} placeholder="smtp.gmail.com" />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">SMTP</CardTitle>
+          <CardDescription>{t("email.description")}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <SmtpPresetPicker value={f} onPick={(p) => setF({ ...f, ...p })} />
           <div className="space-y-1.5">
-            <Label htmlFor="smtp-port">{t("email.port")}</Label>
-            <Input id="smtp-port" type="number" value={f.port} onChange={(e) => setF({ ...f, port: Number(e.target.value) })} />
+            <Label htmlFor="smtp-host">{t("email.host")}</Label>
+            {/* i18n-ignore: example host name */}
+            <Input id="smtp-host" value={f.host} onChange={(e) => setF({ ...f, host: e.target.value })} placeholder="smtp.gmail.com" />
           </div>
-          <label className="flex items-end gap-2 pb-2 text-sm">
-            <Switch checked={f.secure} onCheckedChange={(v) => setF({ ...f, secure: v })} /> {t("email.tls")}
-          </label>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="smtp-user">{t("email.user")}</Label>
-          <Input id="smtp-user" value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} autoComplete="off" />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="smtp-password">
-            {tc("password")} {data?.smtp?.passwordSet && <span className="text-xs text-muted-foreground">{t("email.passwordSet")}</span>}
-          </Label>
-          <Input id="smtp-password" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="smtp-from">{t("email.fromAddress")}</Label>
-          {/* i18n-ignore: example sender address */}
-          <Input id="smtp-from" value={f.fromAddress} onChange={(e) => setF({ ...f, fromAddress: e.target.value })} placeholder='"Acme Studio" <hello@acme.com>' />
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-          <Button onClick={() => save.mutate()} disabled={!f.host || !f.fromAddress}>
-            {tc("save")}
-          </Button>
-          <Input className="max-w-60" value={to} onChange={(e) => setTo(e.target.value)} placeholder={t("email.testRecipient")} aria-label={t("email.testRecipient")} />
-          <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending || !to}>
-            {test.isPending ? t("email.sending") : t("email.sendTest")}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="smtp-port">{t("email.port")}</Label>
+              <Input id="smtp-port" type="number" value={f.port} onChange={(e) => setF({ ...f, port: Number(e.target.value) })} />
+            </div>
+            <label className="flex items-end gap-2 pb-2 text-sm">
+              <Switch checked={f.secure} onCheckedChange={(v) => setF({ ...f, secure: v })} /> {t("email.tls")}
+            </label>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-user">{t("email.user")}</Label>
+            <Input id="smtp-user" value={f.user} onChange={(e) => setF({ ...f, user: e.target.value })} autoComplete="off" placeholder={userHint} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="smtp-password">
+              {tc("password")} {data?.smtp?.passwordSet && <span className="text-xs text-muted-foreground">{t("email.passwordSet")}</span>}
+            </Label>
+            <Input id="smtp-password" type="password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} autoComplete="new-password" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="smtp-from">{t("email.fromAddress")}</Label>
+            {/* i18n-ignore: example sender address */}
+            <Input id="smtp-from" value={f.fromAddress} onChange={(e) => setF({ ...f, fromAddress: e.target.value })} placeholder='"Acme Studio" <hello@acme.com>' />
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+            <Button onClick={() => save.mutate()} disabled={!f.host || !f.fromAddress}>
+              {tc("save")}
+            </Button>
+            <Input className="max-w-60" value={to} onChange={(e) => setTo(e.target.value)} placeholder={t("email.testRecipient")} aria-label={t("email.testRecipient")} />
+            <Button variant="outline" onClick={() => test.mutate()} disabled={test.isPending || !to}>
+              {test.isPending ? t("email.sending") : t("email.sendTest")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <EmailPolicySettings />
+    </div>
   );
 }
 
@@ -888,6 +895,7 @@ export default function SettingsPage() {
         </TabsList>
         <TabsContent value="general" className="mt-4">
           <General s={data} owner={owner} admin={admin} />
+          <CompanyProfileSettings admin={admin} />
         </TabsContent>
         <TabsContent value="email" className="mt-4">
           <Email />

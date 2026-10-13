@@ -1,22 +1,24 @@
 {
   "title": "Klien",
-  "description": "Data induk yang dipakai bersama oleh semua karyawan untuk email status dan invoice. Karyawan merujuk klien berdasarkan id.",
+  "description": "Data induk yang dipakai semua karyawan: siapa yang dihubungi, berapa tagihan tiap klien, dan invoice mana yang belum lunas. Karyawan merujuk klien berdasarkan id.",
   "newClient": "Klien baru",
-  "editClient": "Ubah klien",
   "empty": "Belum ada klien",
   "noEmail": "tanpa email",
-  "idLabel": "id",
   "confirmDelete": "Hapus {name} beserta proyek-proyeknya?",
   "form": {
     "currency": "Mata uang",
     "email": "Email penagihan / utama",
-    "contacts": "Kontak",
     "contactName": "Nama",
     "contactEmail": "Email",
     "contactRole": "Jabatan",
     "removeContact": "Hapus kontak",
     "addContact": "Tambah kontak",
-    "notes": "Catatan (terlihat oleh karyawan)"
+    "notes": "Catatan (terlihat oleh karyawan)",
+    "legalName": "Nama resmi",
+    "legalNamePlaceholder": "mis. PT Contoh Jaya Abadi",
+    "phone": "Telepon",
+    "taxId": "NPWP",
+    "address": "Alamat penagihan"
   },
   "project": {
     "rate": "Tarif: {rate}/jam",
@@ -35,7 +37,8 @@
       "archived": "diarsipkan"
     },
     "deadline": "Tenggat",
-    "progress": "Progres"
+    "progress": "Progres",
+    "empty": "Belum ada proyek"
   },
   "health": {
     "late": "Terlambat",
@@ -51,5 +54,164 @@
       "deadline_soon": "Tenggat kurang dari 14 hari dengan progres di bawah 70%",
       "no_activity": "Tidak ada aktivitas selama 7 hari"
     }
+  },
+  "emptyHelp": "Tambahkan perusahaan yang Anda layani: karyawan memakainya untuk laporan status, notulen, dan invoice.",
+  "deleteClient": "Hapus klien",
+  "status": {
+    "active": "Aktif",
+    "prospect": "Prospek",
+    "inactive": "Tidak aktif"
+  },
+  "list": {
+    "projects": "Proyek",
+    "monthly": "Per bulan",
+    "outstanding": "Belum dibayar",
+    "overdue": "{count, plural, other {# lewat jatuh tempo}}",
+    "search": "Cari klien atau kontak",
+    "all": "Semua",
+    "noMatch": "Tidak ada klien yang cocok"
+  },
+  "detail": {
+    "back": "Klien",
+    "notFound": "Klien ini tidak ada (atau milik workspace lain).",
+    "beforeTax": "rutin, sebelum pajak",
+    "unpaid": "sudah dikirim, belum dibayar",
+    "overdue": "Lewat jatuh tempo",
+    "overdueNote": "invoice yang lewat jatuh tempo"
+  },
+  "quick": {
+    "status": "Kirim laporan status",
+    "invoice": "Buat invoice sekarang",
+    "statusTitle": "Laporan status untuk {name}",
+    "statusBrief": "Buat laporan status untuk {name}: untuk setiap proyek aktif, tuliskan progresnya, apa yang sudah dikerjakan sejak laporan terakhir, langkah berikutnya, serta risiko atau keputusan yang perlu diambil klien. Kirim lewat email ke kontak {name} yang menerima laporan status (email melalui persetujuan dulu).",
+    "invoiceTitle": "Invoice untuk {name}",
+    "invoiceBrief": "Siapkan dan kirim invoice berikutnya untuk {name}. Cek buku invoice untuk nomor berikutnya dan tagihan yang masih terbuka, pakai pajak default perusahaan, lalu kirim ke kontak {name} yang menerima invoice (email melalui persetujuan dulu)."
+  },
+  "tabs": {
+    "info": "Info",
+    "contacts": "Kontak ({count})",
+    "projects": "Proyek ({count})",
+    "recurring": "Tagihan rutin ({count})",
+    "invoices": "Invoice ({count})",
+    "history": "Riwayat"
+  },
+  "contacts": {
+    "help": "Siapa yang dihubungi di klien ini, dan email apa yang diterima masing-masing. Karyawan mengirim laporan status, notulen, dan invoice ke kontak yang dicentang.",
+    "empty": "Belum ada kontak",
+    "receives": "Menerima",
+    "role": {
+      "project": "Kontak proyek",
+      "billing": "Penagihan / keuangan",
+      "director": "Direktur",
+      "technical": "Teknis",
+      "other": "Lainnya"
+    },
+    "receive": {
+      "status": "Laporan status",
+      "minutes": "Notulen",
+      "invoice": "Invoice"
+    }
+  },
+  "recurring": {
+    "help": "Setiap jadwalnya tiba, tagihan rutin membuat draf invoice (nomornya mengikuti profil perusahaan) lalu meminta persetujuan seseorang sebelum dikirim.",
+    "empty": "Belum ada tagihan rutin",
+    "add": "Tambah tagihan rutin",
+    "edit": "Ubah tagihan rutin",
+    "dialogHelp": "Draf invoice dibuat pukul 08.00 pada tanggal yang dipilih (waktu workspace) dan menunggu di Persetujuan sampai ada yang mengirimnya.",
+    "description": "Keterangan",
+    "descriptionPlaceholder": "mis. Biaya pemeliharaan bulanan",
+    "amount": "Nominal per periode ({currency}, sebelum pajak)",
+    "taxPercent": "Pajak (%)",
+    "dueDays": "Jatuh tempo (hari)",
+    "period": "Setiap",
+    "periods": {
+      "monthly": "Bulan",
+      "yearly": "Tahun"
+    },
+    "month": "Bulan",
+    "day": "Tanggal",
+    "project": "Proyek",
+    "employee": "Diajukan oleh",
+    "noEmployee": "Sistem",
+    "finance": "Keuangan",
+    "otherEmployees": "Karyawan lain",
+    "recipients": "Kirim ke",
+    "recipientsPlaceholder": "finance@klien.co.id, ap@klien.co.id",
+    "recipientsHelp": "Kosongkan untuk mengirim ke kontak yang menerima invoice (atau email utama klien).",
+    "active": "Aktif",
+    "paused": "Dijeda",
+    "perMonth": "per bulan",
+    "perYear": "per tahun",
+    "plusTax": "+ PPN {percent}%",
+    "scheduleMonthly": "Setiap bulan tanggal {day}",
+    "scheduleYearly": "Setiap tahun tanggal {day} {month}",
+    "dueAfter": "{count, plural, =0 {jatuh tempo saat diterima} other {jatuh tempo # hari}}",
+    "requester": "Diajukan oleh {name}",
+    "sendTo": "ke {to}",
+    "sendToContacts": "ke kontak penerima invoice",
+    "nextRun": "Invoice berikutnya: {when}",
+    "confirmDelete": "Hapus tagihan rutin \"{name}\"? Invoice yang sudah dibuat tetap ada di buku invoice."
+  },
+  "invoices": {
+    "filter": "Saring menurut status",
+    "all": "Semua",
+    "empty": "Belum ada invoice",
+    "emptyHelp": "Invoice muncul di sini setelah karyawan membuat draf atau mengirimnya, atau saat tagihan rutin berjalan.",
+    "overdue": "Lewat jatuh tempo",
+    "status": {
+      "draft": "Draf",
+      "sent": "Terkirim",
+      "paid": "Lunas",
+      "void": "Dibatalkan"
+    },
+    "period": "periode {period}",
+    "due": "jatuh tempo {date}",
+    "noDue": "tanpa jatuh tempo",
+    "sentOn": "dikirim {date}",
+    "paidOn": "dibayar {date}",
+    "inclTax": "termasuk PPN {percent}% ({tax})",
+    "actions": {
+      "markPaid": "Tandai lunas",
+      "void": "Batalkan",
+      "backToSent": "Kembalikan ke terkirim"
+    },
+    "confirmVoid": "Batalkan invoice {number}? Invoice tetap tercatat, tetapi tidak lagi dihitung sebagai tagihan.",
+    "downloadPdf": "Unduh {number} sebagai PDF"
+  },
+  "history": {
+    "empty": "Belum ada aktivitas dengan klien ini",
+    "kind": {
+      "task": "Tugas",
+      "email": "Email",
+      "invoice": "Invoice"
+    },
+    "noSubject": "(tanpa subjek)",
+    "emailStatus": {
+      "sending": "Mengirim",
+      "sent": "Terkirim",
+      "failed": "Gagal"
+    }
+  },
+  "company": {
+    "title": "Profil perusahaan",
+    "description": "Dicetak di setiap invoice: siapa yang menagih, ke mana pembayaran ditransfer, dan format nomor invoice.",
+    "readOnly": "Dicetak di setiap invoice. Hanya Admin yang bisa mengubahnya.",
+    "legalName": "Nama resmi",
+    "legalNamePlaceholder": "mis. PT Usaha Kita Sejahtera",
+    "taxId": "NPWP",
+    "address": "Alamat",
+    "phone": "Telepon",
+    "email": "Email penagihan",
+    "bankSection": "Pembayaran",
+    "bankName": "Bank",
+    "bankAccount": "Nomor rekening",
+    "bankHolder": "Atas nama",
+    "invoiceSection": "Invoice",
+    "invoicePrefix": "Awalan nomor invoice",
+    "invoicePrefixHelp": "Nomor berikutnya akan seperti {example}.",
+    "defaultTaxPercent": "Pajak default (%)",
+    "defaultTaxHelp": "Dipakai jika invoice tidak menyebutkan lain, mis. 11 untuk PPN.",
+    "invoiceFooter": "Catatan kaki invoice",
+    "invoiceFooterPlaceholder": "mis. Terima kasih atas kepercayaan Anda. Cantumkan nomor invoice saat melakukan pembayaran."
   }
 }

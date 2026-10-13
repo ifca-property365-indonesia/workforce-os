@@ -16,6 +16,7 @@ export const NAMESPACES = [
   "inspector",
   "chat",
   "approvals",
+  "outbox",
   "teams",
   "clients",
   "routines",

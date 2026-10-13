@@ -1,22 +1,24 @@
 {
   "title": "Clients",
-  "description": "Master data shared by every employee for status emails and invoices. Employees reference clients by id.",
+  "description": "Master data shared by every employee: who to talk to, what each client is billed and which invoices are still open. Employees reference clients by id.",
   "newClient": "New client",
-  "editClient": "Edit client",
   "empty": "No clients yet",
   "noEmail": "no email",
-  "idLabel": "id",
   "confirmDelete": "Delete {name} and its projects?",
   "form": {
     "currency": "Currency",
     "email": "Billing / main email",
-    "contacts": "Contacts",
     "contactName": "Name",
     "contactEmail": "Email",
     "contactRole": "Role",
     "removeContact": "Remove contact",
     "addContact": "Add contact",
-    "notes": "Notes (visible to employees)"
+    "notes": "Notes (visible to employees)",
+    "legalName": "Legal name",
+    "legalNamePlaceholder": "e.g. PT Contoh Jaya Abadi",
+    "phone": "Phone",
+    "taxId": "Tax ID (NPWP)",
+    "address": "Billing address"
   },
   "project": {
     "rate": "Rate: {rate}/h",
@@ -35,7 +37,8 @@
       "archived": "archived"
     },
     "deadline": "Deadline",
-    "progress": "Progress"
+    "progress": "Progress",
+    "empty": "No projects yet"
   },
   "health": {
     "late": "Late",
@@ -51,5 +54,164 @@
       "deadline_soon": "Deadline in less than 14 days with progress below 70%",
       "no_activity": "No activity for 7 days"
     }
+  },
+  "emptyHelp": "Add the companies you work for: employees use them for status reports, minutes and invoices.",
+  "deleteClient": "Delete client",
+  "status": {
+    "active": "Active",
+    "prospect": "Prospect",
+    "inactive": "Inactive"
+  },
+  "list": {
+    "projects": "Projects",
+    "monthly": "Monthly",
+    "outstanding": "Outstanding",
+    "overdue": "{count, plural, one {# overdue} other {# overdue}}",
+    "search": "Search clients or contacts",
+    "all": "All",
+    "noMatch": "No client matches"
+  },
+  "detail": {
+    "back": "Clients",
+    "notFound": "This client doesn't exist (or belongs to another workspace).",
+    "beforeTax": "recurring, before tax",
+    "unpaid": "sent, not yet paid",
+    "overdue": "Overdue",
+    "overdueNote": "invoices past due"
+  },
+  "quick": {
+    "status": "Send status report",
+    "invoice": "Create invoice now",
+    "statusTitle": "Status report for {name}",
+    "statusBrief": "Write a status report for {name}: for each active project, the progress, what was done since the last report, next steps and any risks or decisions needed from the client. Email it to {name}'s contacts who receive status reports (the email goes through approval).",
+    "invoiceTitle": "Invoice for {name}",
+    "invoiceBrief": "Prepare and send the next invoice for {name}. Check the invoice ledger for the next number and what is still open, use the company's default tax, and send it to {name}'s contacts who receive invoices (the email goes through approval)."
+  },
+  "tabs": {
+    "info": "Info",
+    "contacts": "Contacts ({count})",
+    "projects": "Projects ({count})",
+    "recurring": "Recurring billing ({count})",
+    "invoices": "Invoices ({count})",
+    "history": "History"
+  },
+  "contacts": {
+    "help": "Who to talk to at this client, and which mail each person gets. Employees send status reports, minutes and invoices to the ticked contacts.",
+    "empty": "No contacts yet",
+    "receives": "Receives",
+    "role": {
+      "project": "Project contact",
+      "billing": "Billing / finance",
+      "director": "Director",
+      "technical": "Technical",
+      "other": "Other"
+    },
+    "receive": {
+      "status": "Status reports",
+      "minutes": "Minutes",
+      "invoice": "Invoices"
+    }
+  },
+  "recurring": {
+    "help": "On its day each billing drafts an invoice (numbered from the company profile) and asks a person to approve sending it.",
+    "empty": "No recurring billing",
+    "add": "Add recurring billing",
+    "edit": "Edit recurring billing",
+    "dialogHelp": "The invoice is drafted at 08:00 on the chosen day (workspace time) and waits in Approvals until someone sends it.",
+    "description": "Description",
+    "descriptionPlaceholder": "e.g. Monthly maintenance retainer",
+    "amount": "Amount per period ({currency}, before tax)",
+    "taxPercent": "Tax (%)",
+    "dueDays": "Due after (days)",
+    "period": "Every",
+    "periods": {
+      "monthly": "Month",
+      "yearly": "Year"
+    },
+    "month": "Month",
+    "day": "Day of month",
+    "project": "Project",
+    "employee": "Requested by",
+    "noEmployee": "The system",
+    "finance": "Finance",
+    "otherEmployees": "Other employees",
+    "recipients": "Send to",
+    "recipientsPlaceholder": "finance@client.com, ap@client.com",
+    "recipientsHelp": "Leave empty to send to the contacts who receive invoices (or the client's main email).",
+    "active": "Active",
+    "paused": "Paused",
+    "perMonth": "per month",
+    "perYear": "per year",
+    "plusTax": "+ tax {percent}%",
+    "scheduleMonthly": "Every month on day {day}",
+    "scheduleYearly": "Every year on {day} {month}",
+    "dueAfter": "{count, plural, =0 {due on receipt} one {due after # day} other {due after # days}}",
+    "requester": "Requested by {name}",
+    "sendTo": "to {to}",
+    "sendToContacts": "to the invoice contacts",
+    "nextRun": "Next invoice: {when}",
+    "confirmDelete": "Delete the recurring billing \"{name}\"? Invoices already drafted stay in the ledger."
+  },
+  "invoices": {
+    "filter": "Filter by status",
+    "all": "All",
+    "empty": "No invoices",
+    "emptyHelp": "Invoices appear here once an employee drafts or sends one, or a recurring billing runs.",
+    "overdue": "Overdue",
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "paid": "Paid",
+      "void": "Void"
+    },
+    "period": "period {period}",
+    "due": "due {date}",
+    "noDue": "no due date",
+    "sentOn": "sent {date}",
+    "paidOn": "paid {date}",
+    "inclTax": "incl. tax {percent}% ({tax})",
+    "actions": {
+      "markPaid": "Mark paid",
+      "void": "Void",
+      "backToSent": "Back to sent"
+    },
+    "confirmVoid": "Void invoice {number}? It stays in the ledger but no longer counts as outstanding.",
+    "downloadPdf": "Download {number} as PDF"
+  },
+  "history": {
+    "empty": "Nothing has happened with this client yet",
+    "kind": {
+      "task": "Task",
+      "email": "Email",
+      "invoice": "Invoice"
+    },
+    "noSubject": "(no subject)",
+    "emailStatus": {
+      "sending": "Sending",
+      "sent": "Sent",
+      "failed": "Failed"
+    }
+  },
+  "company": {
+    "title": "Company profile",
+    "description": "Printed on every invoice: who is billing, where to pay, and how invoices are numbered.",
+    "readOnly": "Printed on every invoice. Only Admins can change it.",
+    "legalName": "Legal name",
+    "legalNamePlaceholder": "e.g. PT Usaha Kita Sejahtera",
+    "taxId": "Tax ID (NPWP)",
+    "address": "Address",
+    "phone": "Phone",
+    "email": "Billing email",
+    "bankSection": "Payment",
+    "bankName": "Bank",
+    "bankAccount": "Account number",
+    "bankHolder": "Account holder",
+    "invoiceSection": "Invoices",
+    "invoicePrefix": "Invoice number prefix",
+    "invoicePrefixHelp": "Next numbers look like {example}.",
+    "defaultTaxPercent": "Default tax (%)",
+    "defaultTaxHelp": "Used when an invoice doesn't say otherwise, e.g. 11 for PPN.",
+    "invoiceFooter": "Invoice footer",
+    "invoiceFooterPlaceholder": "e.g. Thank you for your business. Please include the invoice number with your payment."
   }
 }

@@ -103,14 +103,14 @@ export const DEFAULT_DEPARTMENTS: DepartmentDefinition[] = [
     sop: {
       en: [
         "1. Use client and project rates from master data; never invent amounts.",
-        "2. Invoice numbers: INV-YYYYMM-NNN. Check that line items add up before proposing to send.",
+        "2. Invoice numbers: the next number from list_invoices (the ledger); never reuse one. Check that line items and tax add up before proposing to send.",
         "3. Cash-flow analysis: monthly in/out, running balance, the three largest items, and a short risk note.",
         "4. Recurring billing: list which invoices are due this period and draft them; sending needs approval.",
         "5. Show money in the client's currency; Rupiah as Rp 1.234.567.",
       ].join("\n"),
       id: [
         "1. Gunakan tarif klien dan proyek dari master data; jangan mengarang angka.",
-        "2. Nomor faktur: INV-YYYYMM-NNN. Pastikan rincian dijumlahkan dengan benar sebelum mengusulkan pengiriman.",
+        "2. Nomor faktur: nomor berikutnya dari list_invoices (buku faktur); jangan pernah memakai ulang nomor. Pastikan rincian dan pajak dijumlahkan dengan benar sebelum mengusulkan pengiriman.",
         "3. Analisis arus kas: masuk/keluar per bulan, saldo berjalan, tiga pos terbesar, dan catatan risiko singkat.",
         "4. Penagihan berulang: daftar faktur yang jatuh tempo periode ini dan buat drafnya; pengiriman memerlukan persetujuan.",
         "5. Tampilkan uang dalam mata uang klien; Rupiah sebagai Rp 1.234.567.",

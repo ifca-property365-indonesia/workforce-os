@@ -76,7 +76,15 @@
     "removeScope": "Remove scope",
     "addScope": "Add scope",
     "save": "Save allow-list",
-    "saved": "Allow-list saved (audited)"
+    "saved": "Allow-list saved (audited)",
+    "tool": "Tool",
+    "recipientDomainsLabel": "Recipient domains",
+    "recipientsLabel": "Exact recipient addresses",
+    "recipients": "ana@client.co.id, finance@client.co.id",
+    "clientContactsOnly": "Recipients on the client's file",
+    "clientContactsOnlyHelp": "Allows the email's client's main address and any contact saved for that client.",
+    "recipientRule": "Every recipient must match at least one of these rules (a domain, an exact address, or the client's file); otherwise the email stops at an approval.",
+    "noRecipientRule": "No recipient rule: any recipient is allowed within this scope."
   },
   "toolsTab": {
     "dailyBudget": "Daily budget (credits)",
@@ -160,7 +168,8 @@
     "selectorPlaceholder": "e.g. delete_*",
     "addRule": "Add rule",
     "selectorInvalid": "Use only letters, digits, _ . - and * (at most 8 *, and not just *).",
-    "selectorHelp": "A tool name or a pattern with * (list_* matches list_contacts); saved in lower case with other characters as _ (Contacts.Delete → contacts_delete). New rules block their tools; switch one on to allow it instead."
+    "selectorHelp": "A tool name or a pattern with * (list_* matches list_contacts); saved in lower case with other characters as _ (Contacts.Delete → contacts_delete). New rules block their tools; switch one on to allow it instead.",
+    "implicitTask": "Granted automatically in tasks; switch it off to stop this employee from reporting progress."
   },
   "toolClass": {
     "reversible": "reversible",
@@ -257,6 +266,14 @@
     "skill_propose": {
       "label": "Propose skill",
       "description": "Propose a new reusable skill (SKILL.md) from what it learned. A person approves it before it is saved and assigned."
+    },
+    "list_invoices": {
+      "label": "List invoices",
+      "description": "Read the invoice ledger (numbers, totals, status, due dates) and the company's invoice prefix"
+    },
+    "report_progress": {
+      "label": "Report progress",
+      "description": "Report how much of the current task is done (0–100%) with a short note"
     }
   },
   "executionMode": {
@@ -322,7 +339,9 @@
       "compaction": "Condensed its notes",
       "budget": "Hit a budget limit",
       "error": "Ran into an error",
-      "other": "{name}"
+      "other": "{name}",
+      "list_invoices": "Looked up invoices",
+      "report_progress": "Reported progress: {percent}%"
     }
   },
   "bot": {

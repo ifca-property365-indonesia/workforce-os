@@ -1,16 +1,19 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { AUTONOMY_LEVELS, type AutonomyLevel, type ToolClass, type ToolMeta, type ToolPermission } from "@wfos/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { AUTONOMY_LEVELS, type AllowListEntry, type AutonomyLevel, type ToolClass, type ToolMeta, type ToolPermission } from "@wfos/shared";
 import { ChevronRight, Lock, Plus, RotateCcw, Trash2, Unlock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/api";
-import { useMe } from "@/lib/hooks";
+import { useMe, type Employee } from "@/lib/hooks";
 import {
   mcpToolKey,
   mcpToolRules,
@@ -293,6 +296,8 @@ export function ToolPermissionsEditor({
       return next;
     });
   const get = (name: string) => value.find((p) => p.tool === name);
+  /** a tool granted to every task run (report_progress) is on until someone switches it off explicitly */
+  const implicitOn = (tool: ToolMeta) => tool.implicit === "task" && !get(tool.name);
   const set = (name: string, patch: Partial<ToolPermission>) =>
     onChange((cur) =>
       cur.some((p) => p.tool === name) ? cur.map((p) => (p.tool === name ? { ...p, ...patch } : p)) : [...cur, { tool: name, enabled: true, ...patch }],
@@ -319,7 +324,7 @@ export function ToolPermissionsEditor({
     <div className="divide-y rounded-lg border">
       {rows.map((tool) => {
         const p = get(tool.name);
-        const enabled = !!p?.enabled;
+        const enabled = implicitOn(tool) || !!p?.enabled;
         const irreversible = tool.class === "irreversible";
         const server = tool.name.startsWith("mcp:") ? tool.name.slice(4) : null;
         const isOpen = server !== null && expanded.has(server);
@@ -336,6 +341,7 @@ export function ToolPermissionsEditor({
                 <div className="text-xs text-muted-foreground">
                   {tool.description} · {t(`toolCategories.${tool.category}`)} · <code>{tool.name}</code>
                 </div>
+                {tool.implicit === "task" && <div className="text-xs text-muted-foreground">{t("toolPermissions.implicitTask")}</div>}
               </div>
               {server !== null && (
                 <Button type="button" size="sm" variant="ghost" className="gap-1 self-start sm:self-auto" onClick={() => toggleExpanded(server)} aria-expanded={isOpen}>
@@ -352,5 +358,166 @@ export function ToolPermissionsEditor({
         );
       })}
     </div>
+  );
+}
+
+const EMAIL_TOOLS = new Set(["send_email", "send_invoice"]);
+const list = (v: string) => v.split(",").map((s) => s.trim()).filter(Boolean);
+
+/**
+ * One allow-list scope. For email tools, the recipient rules: domains, exact addresses, and "on the client's file"
+ * (the payload's client: its main email or a contact). Once any of them is set, every recipient must match one.
+ */
+function AllowListScope({
+  entry,
+  tools,
+  canEdit,
+  onChange,
+  onRemove,
+  index,
+}: {
+  entry: AllowListEntry;
+  tools: string[];
+  canEdit: boolean;
+  onChange: (next: AllowListEntry) => void;
+  onRemove: () => void;
+  index: number;
+}) {
+  const t = useTranslations("employees");
+  const email = EMAIL_TOOLS.has(entry.tool);
+  const id = (k: string) => `allow-${index}-${k}`;
+  const ruled = entry.recipientDomains.length > 0 || (entry.recipients?.length ?? 0) > 0 || entry.clientContactsOnly === true;
+  return (
+    <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <Select disabled={!canEdit} value={entry.tool} onValueChange={(v) => onChange({ ...entry, tool: v })}>
+          <SelectTrigger className="min-w-0 flex-1 sm:max-w-72" aria-label={t("allowList.tool")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[...new Set([entry.tool, ...tools])].map((tool) => (
+              <SelectItem key={tool} value={tool}>
+                {tool}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button variant="ghost" size="icon" className="ml-auto" disabled={!canEdit} onClick={onRemove} aria-label={t("allowList.removeScope")}>
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+      {email && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor={id("domains")} className="text-xs">
+              {t("allowList.recipientDomainsLabel")}
+            </Label>
+            <Input
+              id={id("domains")}
+              disabled={!canEdit}
+              placeholder={t("allowList.recipientDomains")}
+              defaultValue={entry.recipientDomains.join(", ")}
+              onBlur={(x) => onChange({ ...entry, recipientDomains: list(x.target.value) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={id("recipients")} className="text-xs">
+              {t("allowList.recipientsLabel")}
+            </Label>
+            <Input
+              id={id("recipients")}
+              disabled={!canEdit}
+              placeholder={t("allowList.recipients")}
+              defaultValue={(entry.recipients ?? []).join(", ")}
+              onBlur={(x) => onChange({ ...entry, recipients: list(x.target.value) })}
+            />
+          </div>
+          <label className="flex items-start gap-2 text-sm sm:col-span-2">
+            <Switch className="mt-0.5" disabled={!canEdit} checked={entry.clientContactsOnly === true} onCheckedChange={(v) => onChange({ ...entry, clientContactsOnly: v })} />
+            <span>
+              <span className="font-medium">{t("allowList.clientContactsOnly")}</span>
+              <span className="block text-xs text-muted-foreground">{t("allowList.clientContactsOnlyHelp")}</span>
+            </span>
+          </label>
+          <p className={cn("text-xs sm:col-span-2", ruled ? "text-muted-foreground" : "text-warning")}>{ruled ? t("allowList.recipientRule") : t("allowList.noRecipientRule")}</p>
+        </div>
+      )}
+      {entry.tool === "send_invoice" && (
+        <div className="space-y-1.5 sm:max-w-60">
+          <Label htmlFor={id("max")} className="text-xs">
+            {t("allowList.maxAmount")}
+          </Label>
+          <Input
+            id={id("max")}
+            disabled={!canEdit}
+            type="number"
+            min={0}
+            value={entry.maxAmount ?? ""}
+            onChange={(x) => onChange({ ...entry, maxAmount: x.target.value ? Number(x.target.value) : undefined })}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The Owner allow-list: scopes in which irreversible actions run without a per-action approval (CLOSE autonomy only). */
+export function AllowListEditor({ e, canEdit }: { e: Employee; canEdit: boolean }) {
+  const t = useTranslations("employees");
+  const ts = useTranslations("status");
+  const qc = useQueryClient();
+  const [entries, setEntries] = useState<AllowListEntry[]>(e.allowList);
+  /** a key per scope, so removing one does not hand its typed-in text to the next */
+  const keys = useRef<number[]>(e.allowList.map((_, i) => i));
+  const nextKey = useRef(e.allowList.length);
+  const tools = e.toolPermissions.filter((p) => p.enabled && (["send_email", "send_invoice", "post_webhook"].includes(p.tool) || p.tool.startsWith("mcp:"))).map((p) => p.tool);
+  const save = useMutation({
+    mutationFn: () => api.patch(`/api/employees/${e.id}`, { allowList: entries }),
+    onSuccess: () => {
+      toast.success(t("allowList.saved"));
+      void qc.invalidateQueries({ queryKey: ["employee", e.id] });
+    },
+    onError: (x) => toast.error((x as Error).message),
+  });
+  const remove = (i: number) => {
+    keys.current = keys.current.filter((_, j) => j !== i);
+    setEntries(entries.filter((_, j) => j !== i));
+  };
+  const add = () => {
+    keys.current = [...keys.current, nextKey.current++];
+    setEntries([...entries, { tool: tools[0]!, recipientDomains: [], clientIds: [] }]);
+  };
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("allowList.title")}</CardTitle>
+        <CardDescription>
+          {t("allowList.description", { level: ts("autonomy.CLOSE") })} {canEdit ? null : t("allowList.ownerOnly")}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {entries.map((entry, i) => (
+          <AllowListScope
+            key={keys.current[i]}
+            index={keys.current[i]!}
+            entry={entry}
+            tools={tools}
+            canEdit={canEdit}
+            onChange={(next) => setEntries((cur) => cur.map((x, j) => (j === i ? next : x)))}
+            onRemove={() => remove(i)}
+          />
+        ))}
+        {canEdit && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={!tools.length} onClick={add} className="gap-1">
+              <Plus className="size-3.5" /> {t("allowList.addScope")}
+            </Button>
+            <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
+              {t("allowList.save")}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

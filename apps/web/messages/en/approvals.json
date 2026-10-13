@@ -37,7 +37,10 @@
     "subject": "Invoice {number}",
     "defaultBody": "(default invoice email) Invoice {number}, total {total}",
     "attachment": "Attachment: {file} — {lines, plural, one {# line} other {# lines}}, total {total} · due {due}",
-    "pdfTitle": "Invoice PDF"
+    "pdfTitle": "Invoice PDF",
+    "subtotal": "Subtotal",
+    "tax": "Tax {percent}%",
+    "total": "Total"
   },
   "webhook": {
     "channel": "Channel: {channel}",

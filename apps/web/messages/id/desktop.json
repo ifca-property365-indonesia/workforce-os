@@ -41,7 +41,8 @@
     "detail": {
       "task": "Tugas",
       "employee": "Karyawan",
-      "hire": "Rekrut"
+      "hire": "Rekrut",
+      "client": "Klien"
     }
   },
   "office": {

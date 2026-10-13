@@ -430,24 +430,52 @@ export function effectiveAutonomy(toolName: string, employeeAutonomy: AutonomyLe
   return p?.autonomy ?? employeeAutonomy;
 }
 
-/** Bare lower-cased address: `"Ana" <Ana@X.com>` → `ana@x.com`. */
+/** Bare lower-cased address for display: `"Ana" <Ana@X.com>` → `ana@x.com`. Not a validator: the gate uses parseSingleAddress. */
 export function normalizeEmail(raw: string): string {
   const m = /<([^>]+)>/.exec(raw);
   return (m ? m[1]! : raw).trim().toLowerCase();
 }
 
+const LOCAL_PART_RE = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+$/;
+const DOMAIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*$/;
+
+/**
+ * Exactly one address, lower-cased: `local@domain` or `Display Name <local@domain>` (the name without `<>,;@`).
+ * Anything a mailer could read as several addresses (`,` `;` a newline, a second `@` or `<`) is null, so
+ * `"evil@x.com, <ok@allowed.com>"` never passes as ok@allowed.com.
+ */
+export function parseSingleAddress(raw: string): string | null {
+  if (typeof raw !== "string" || /[,;\r\n]/.test(raw)) return null;
+  const s = raw.trim();
+  const named = /^([^<>,;@]*)<([^<>]*)>$/.exec(s);
+  const addr = (named ? named[2]! : s).trim();
+  const at = addr.indexOf("@");
+  if (at <= 0 || at !== addr.lastIndexOf("@")) return null;
+  const local = addr.slice(0, at);
+  const domain = addr.slice(at + 1);
+  if (!LOCAL_PART_RE.test(local) || !DOMAIN_RE.test(domain)) return null;
+  return addr.toLowerCase();
+}
+
+/** A payload recipient: one address per entry (see parseSingleAddress). */
+export const singleAddressSchema = z.string().refine((s) => parseSingleAddress(s) !== null, {
+  message: "Each recipient must be a single email address (name@domain or Name <name@domain>)",
+});
+
 export function allowListMatches(entry: AllowListEntry, scope: GateInput["scope"]): boolean {
-  // recipient rules (any configured): every recipient must satisfy at least one of them
+  // recipient rules (any configured): every recipient must satisfy at least one of them. A rule configured with only
+  // blank or invalid values matches nobody (it never widens to "any recipient").
   const domains = entry.recipientDomains.map((d) => d.toLowerCase().trim().replace(/^@/, "")).filter(Boolean);
-  const exact = (entry.recipients ?? []).map(normalizeEmail).filter(Boolean);
+  const exact = (entry.recipients ?? []).map(parseSingleAddress).filter((x): x is string => !!x);
   const contactsOnly = entry.clientContactsOnly === true;
-  if (domains.length > 0 || exact.length > 0 || contactsOnly) {
-    const recips = (scope?.recipients ?? []).map(normalizeEmail);
-    if (recips.length === 0) return false;
-    const known = new Set((scope?.clientRecipients ?? []).map(normalizeEmail));
-    const ok = recips.every((r) => {
-      const domain = r.split("@")[1]?.trim();
-      if (domain && domains.includes(domain)) return true;
+  if (entry.recipientDomains.length > 0 || (entry.recipients?.length ?? 0) > 0 || contactsOnly) {
+    const recips = (scope?.recipients ?? []).map(parseSingleAddress);
+    // a recipient that is not exactly one address (e.g. "evil@x.com, <ok@allowed.com>") matches nothing
+    if (recips.length === 0 || recips.some((r) => r === null)) return false;
+    const known = new Set((scope?.clientRecipients ?? []).map(parseSingleAddress).filter((x): x is string => !!x));
+    const ok = (recips as string[]).every((r) => {
+      const domain = r.split("@")[1]!;
+      if (domains.includes(domain)) return true;
       if (exact.includes(r)) return true;
       return contactsOnly && !!scope?.clientId && known.has(r);
     });
@@ -1052,8 +1080,8 @@ export const approvalDecisionSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const emailPayloadSchema = z.object({
-  to: z.array(z.string()).min(1),
-  cc: z.array(z.string()).default([]),
+  to: z.array(singleAddressSchema).min(1),
+  cc: z.array(singleAddressSchema).default([]),
   subject: z.string().min(1),
   body: z.string().min(1),
   html: z.boolean().default(false),
@@ -1072,7 +1100,7 @@ export const invoicePayloadSchema = z.object({
   taxPercent: z.number().min(0).max(100).default(0),
   dueDate: z.string(),
   notes: z.string().default(""),
-  to: z.array(z.string()).default([]),
+  to: z.array(singleAddressSchema).default([]),
   subject: z.string().default(""),
   body: z.string().default(""),
   projectId: z.string().nullable().optional(),

@@ -6,9 +6,9 @@ import Link from "@/lib/nav";
 import { use, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Archive, MessageSquare, Pause, Play, Plus, Trash2, FlaskConical } from "lucide-react";
+import { Archive, MessageSquare, Pause, Play, FlaskConical } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { hasRole, OUTPUT_LANGUAGES, type AllowListEntry, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
+import { hasRole, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AutonomyBadge, StatusBadge } from "@/components/layout/common";
-import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
+import { AllowListEditor, AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { BotEditor } from "@/components/employees/bot-editor";
 import { MemoryPanel } from "@/components/employees/memory-panel";
 import { EmployeeSkillsCard } from "@/components/employees/skills-card";
@@ -157,82 +157,6 @@ function InstructionsTab({ e }: { e: Employee }) {
         </Card>
       )}
     </div>
-  );
-}
-
-function AllowListEditor({ e, canEdit }: { e: Employee; canEdit: boolean }) {
-  const t = useTranslations("employees");
-  const ts = useTranslations("status");
-  const qc = useQueryClient();
-  const [list, setList] = useState<AllowListEntry[]>(e.allowList);
-  const irreversible = e.toolPermissions.filter((p) => p.enabled && (["send_email", "send_invoice", "post_webhook"].includes(p.tool) || p.tool.startsWith("mcp:")));
-  const save = useMutation({
-    mutationFn: () => api.patch(`/api/employees/${e.id}`, { allowList: list }),
-    onSuccess: () => {
-      toast.success(t("allowList.saved"));
-      void qc.invalidateQueries({ queryKey: ["employee", e.id] });
-    },
-    onError: (x) => toast.error((x as Error).message),
-  });
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t("allowList.title")}</CardTitle>
-        <CardDescription>
-          {t("allowList.description", { level: ts("autonomy.CLOSE") })} {canEdit ? null : t("allowList.ownerOnly")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {list.map((entry, i) => (
-          <div key={i} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-4">
-            <Select disabled={!canEdit} value={entry.tool} onValueChange={(v) => setList(list.map((x, j) => (j === i ? { ...x, tool: v } : x)))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {irreversible.map((p) => (
-                  <SelectItem key={p.tool} value={p.tool}>
-                    {p.tool}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input
-              disabled={!canEdit}
-              placeholder={t("allowList.recipientDomains")}
-              value={entry.recipientDomains.join(", ")}
-              onChange={(x) => setList(list.map((y, j) => (j === i ? { ...y, recipientDomains: x.target.value.split(",").map((s) => s.trim()).filter(Boolean) } : y)))}
-            />
-            <Input
-              disabled={!canEdit}
-              type="number"
-              placeholder={t("allowList.maxAmount")}
-              value={entry.maxAmount ?? ""}
-              onChange={(x) => setList(list.map((y, j) => (j === i ? { ...y, maxAmount: x.target.value ? Number(x.target.value) : undefined } : y)))}
-            />
-            <Button variant="ghost" disabled={!canEdit} onClick={() => setList(list.filter((_, j) => j !== i))} aria-label={t("allowList.removeScope")}>
-              <Trash2 className="size-4" />
-            </Button>
-          </div>
-        ))}
-        {canEdit && (
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!irreversible.length}
-              onClick={() => setList([...list, { tool: irreversible[0]!.tool, recipientDomains: [], clientIds: [] }])}
-              className="gap-1"
-            >
-              <Plus className="size-3.5" /> {t("allowList.addScope")}
-            </Button>
-            <Button size="sm" onClick={() => save.mutate()} disabled={save.isPending}>
-              {t("allowList.save")}
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
   );
 }
 

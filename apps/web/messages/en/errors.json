@@ -120,5 +120,9 @@
   "skill_body_required": "A skill needs instructions: write what the employee should do.",
   "skill_slug_reserved": "{slug} is the name of a built-in skill (pdf, docx, xlsx and pptx are taken). Choose another name.",
   "skill_invalid_chars": "The skill contains control characters (like NUL or ESC). Remove them and save again: only tabs and line breaks are allowed.",
-  "package_skill_leak": "Skill {slug} in the package contains what looks like a secret ({rules}). Remove it from the package and import again: skills are read back into prompts."
+  "package_skill_leak": "Skill {slug} in the package contains what looks like a secret ({rules}). Remove it from the package and import again: skills are read back into prompts.",
+  "outbox_not_found": "That email is not in the outbox.",
+  "outbox_not_failed": "Only an email that failed can be sent again.",
+  "outbox_already_resent": "This email has already been sent again: retry the newer attempt instead.",
+  "invoice_transition": "That status change isn't possible for this invoice."
 }

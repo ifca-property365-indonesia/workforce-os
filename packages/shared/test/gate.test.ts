@@ -4,6 +4,9 @@ import {
   allowListMatches,
   applyRunSignals,
   decideGate,
+  emailPayloadSchema,
+  invoicePayloadSchema,
+  parseSingleAddress,
   type AllowListEntry,
   type AutonomyLevel,
   type GateDecision,
@@ -99,6 +102,68 @@ describe("allowListMatches scope", () => {
     expect(allowListMatches({ ...base, maxAmount: 100 }, { amount: 100 })).toBe(true);
     expect(allowListMatches({ ...base, maxAmount: 100 }, { amount: 101 })).toBe(false);
     expect(allowListMatches({ ...base, maxAmount: 100 }, {})).toBe(false);
+  });
+});
+
+describe("parseSingleAddress", () => {
+  it("accepts one bare or named address, lower-cased", () => {
+    expect(parseSingleAddress("Ana@Client.co.id")).toBe("ana@client.co.id");
+    expect(parseSingleAddress("  Ana Wijaya <ana@client.co.id> ")).toBe("ana@client.co.id");
+    expect(parseSingleAddress('"Ana" <Ana@X.com>')).toBe("ana@x.com");
+    expect(parseSingleAddress("first.last+tag@sub.client.co.id")).toBe("first.last+tag@sub.client.co.id");
+  });
+  it("rejects anything a mailer could split into several addresses", () => {
+    for (const raw of [
+      "evil@x.com, <ok@allowed.com>",
+      "evil@x.com; ok@allowed.com",
+      "evil@x.com\nok@allowed.com",
+      "Evil <evil@x.com> <ok@allowed.com>",
+      "evil@x.com <ok@allowed.com>",
+      "a@b@allowed.com",
+      "Name <a@x.com",
+      '"a@x.com" <ok@allowed.com>',
+      "no-at-sign",
+      "@allowed.com",
+      "a@",
+      "a b@allowed.com",
+      "a@allowed..com",
+      "",
+    ]) {
+      expect(parseSingleAddress(raw), raw).toBeNull();
+    }
+  });
+});
+
+describe("allow-list: multi-address recipient strings never match", () => {
+  const exploit = "evil@x.com, <ok@allowed.com>";
+  const base: AllowListEntry = { tool: "send_email", recipientDomains: [], clientIds: [], note: "" };
+  it("domain, exact and clientContactsOnly rules all refuse it", () => {
+    expect(allowListMatches({ ...base, recipientDomains: ["allowed.com"] }, { recipients: [exploit] })).toBe(false);
+    expect(allowListMatches({ ...base, recipients: ["ok@allowed.com"] }, { recipients: [exploit] })).toBe(false);
+    expect(allowListMatches({ ...base, clientContactsOnly: true }, { recipients: [exploit], clientId: "c1", clientRecipients: ["ok@allowed.com"] })).toBe(false);
+    expect(decideGate(input({ employeeAutonomy: "CLOSE", allowList: [{ ...base, recipientDomains: ["allowed.com"] }], scope: { recipients: [exploit] } })).kind).toBe("approval");
+  });
+  it("a named single address still matches; domain-only entries are unchanged", () => {
+    expect(allowListMatches({ ...base, recipientDomains: ["b.com"] }, { recipients: ["Name <a@b.com>"] })).toBe(true);
+    expect(allowListMatches({ ...base, recipients: ["A@B.com"] }, { recipients: ["Name <a@b.com>"] })).toBe(true);
+    expect(allowListMatches({ ...base, clientContactsOnly: true }, { recipients: ["Ana <ana@b.com>"], clientId: "c1", clientRecipients: ["ana@b.com"] })).toBe(true);
+    expect(allowListMatches({ ...base, recipientDomains: ["client.co.id"] }, { recipients: ["a@client.co.id", "b@client.co.id"] })).toBe(true);
+  });
+  it("a rule configured with only blank values matches nobody", () => {
+    expect(allowListMatches({ ...base, recipientDomains: [""] }, { recipients: ["a@client.co.id"] })).toBe(false);
+    expect(allowListMatches({ ...base, recipientDomains: ["  ", "@"] }, { recipients: ["a@client.co.id"] })).toBe(false);
+    expect(allowListMatches({ ...base, recipients: [""] }, { recipients: ["a@client.co.id"] })).toBe(false);
+    // no recipient rule at all: recipients are not restricted
+    expect(allowListMatches(base, { recipients: ["a@client.co.id"] })).toBe(true);
+  });
+  it("payload schemas refuse a recipient that is not exactly one address", () => {
+    const email = { subject: "s", body: "b" };
+    expect(emailPayloadSchema.safeParse({ ...email, to: [exploit] }).success).toBe(false);
+    expect(emailPayloadSchema.safeParse({ ...email, to: ["ok@allowed.com"], cc: [exploit] }).success).toBe(false);
+    expect(emailPayloadSchema.safeParse({ ...email, to: ["Ana <ana@allowed.com>"] }).success).toBe(true);
+    const inv = { clientId: "c", invoiceNumber: "INV-1", lines: [{ description: "x", quantity: 1, unitPrice: 1 }], dueDate: "2026-11-30" };
+    expect(invoicePayloadSchema.safeParse({ ...inv, to: [exploit] }).success).toBe(false);
+    expect(invoicePayloadSchema.safeParse({ ...inv, to: [] }).success).toBe(true);
   });
 });
 

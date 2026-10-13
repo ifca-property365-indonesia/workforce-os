@@ -37,7 +37,10 @@
     "subject": "Faktur {number}",
     "defaultBody": "(email faktur bawaan) Faktur {number}, total {total}",
     "attachment": "Lampiran: {file} — {lines, plural, other {# baris}}, total {total} · jatuh tempo {due}",
-    "pdfTitle": "PDF faktur"
+    "pdfTitle": "PDF faktur",
+    "subtotal": "Subtotal",
+    "tax": "PPN {percent}%",
+    "total": "Total"
   },
   "webhook": {
     "channel": "Kanal: {channel}",

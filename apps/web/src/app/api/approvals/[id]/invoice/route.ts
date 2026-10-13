@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { approvals, clients, db, workspaces } from "@wfos/db";
 import { invoicePayloadSchema } from "@wfos/shared";
-import { renderInvoicePdf } from "@wfos/shared/invoice";
+import { invoicePdfMeta, renderInvoicePdf } from "@wfos/shared/invoice";
 import { HttpError } from "@/lib/server/auth";
 import { notFound, route } from "@/lib/server/route";
 
@@ -12,7 +12,8 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
   if (a.toolName !== "send_invoice") throw new HttpError(400, "Not an invoice approval", { code: "not_invoice_approval" });
   const inv = invoicePayloadSchema.parse(a.editedPayload ?? a.payload);
   const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, a.workspaceId));
-  const [client] = await db.select().from(clients).where(eq(clients.id, inv.clientId));
-  const pdf = await renderInvoicePdf(inv, { workspaceName: ws!.name, clientName: client?.name ?? "Client", clientEmail: client?.email, draft: a.status === "PENDING" });
-  return new Response(Buffer.from(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${inv.invoiceNumber}.pdf"` } });
+  const [client] = await db.select().from(clients).where(and(eq(clients.id, inv.clientId), eq(clients.workspaceId, a.workspaceId)));
+  const pdf = await renderInvoicePdf(inv, invoicePdfMeta(ws, client, a.status === "PENDING"));
+  const filename = inv.invoiceNumber.replace(/[^A-Za-z0-9._-]/g, "_") || "invoice";
+  return new Response(Buffer.from(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${filename}.pdf"` } });
 });

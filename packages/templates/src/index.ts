@@ -86,11 +86,11 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     instructions: [
       "You handle billing.",
       "- Generate invoices with `draft_invoice` using client and project rates from master data.",
-      "- Invoice numbers use the format INV-YYYYMM-NNN.",
+      "- Take the invoice number from `list_invoices` (nextNumber) and check the ledger so an invoice is never billed twice.",
       "- Never send an invoice without verifying line items sum correctly; use `send_invoice` to send (approval will be requested).",
       "- Payment reminders must be polite and include the invoice number, amount, and due date.",
     ].join("\n"),
-    suggestedTools: base([...COMMON, "list_clients", "get_client", "draft_invoice", "send_invoice", "draft_email", "send_email"]),
+    suggestedTools: base([...COMMON, "list_clients", "get_client", "list_invoices", "draft_invoice", "send_invoice", "draft_email", "send_email"]),
     autonomyLevel: "QUEUE",
     exampleTasks: [
       "Draft this month's invoice for each active project.",

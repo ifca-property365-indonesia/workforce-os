@@ -1,4 +1,4 @@
-import { Bot, BookOpen, Building2, CalendarClock, KanbanSquare, LayoutDashboard, MessageSquare, Settings, ShieldCheck, UserRound, UsersRound, type LucideIcon } from "lucide-react";
+import { Bot, BookOpen, Building2, CalendarClock, KanbanSquare, LayoutDashboard, MessageSquare, Send, Settings, ShieldCheck, UserRound, UsersRound, type LucideIcon } from "lucide-react";
 import type { SignColor } from "@/lib/sign";
 
 /**
@@ -6,10 +6,10 @@ import type { SignColor } from "@/lib/sign";
  * and the size its window opens at. The page modules themselves are loaded in pages.tsx.
  */
 
-export const PAGE_KEYS = ["dashboard", "chat", "tasks", "task", "approvals", "employees", "hire", "employee", "teams", "routines", "clients", "knowledge", "settings", "account"] as const;
+export const PAGE_KEYS = ["dashboard", "chat", "tasks", "task", "approvals", "outbox", "employees", "hire", "employee", "teams", "routines", "clients", "client", "knowledge", "settings", "account"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
-export type AppKey = "dashboard" | "chat" | "tasks" | "approvals" | "employees" | "teams" | "routines" | "clients" | "knowledge" | "settings" | "account";
+export type AppKey = "dashboard" | "chat" | "tasks" | "approvals" | "outbox" | "employees" | "teams" | "routines" | "clients" | "knowledge" | "settings" | "account";
 export type AppGroup = "work" | "team" | "operations" | "system";
 
 export interface DesktopApp {
@@ -29,6 +29,7 @@ export const APPS: readonly DesktopApp[] = [
   { key: "chat", href: "/chat", icon: MessageSquare, color: "tosca", group: "work", dock: true, size: [1200, 800] },
   { key: "tasks", href: "/tasks", icon: KanbanSquare, color: "ungu", group: "work", dock: true, size: [1260, 780] },
   { key: "approvals", href: "/approvals", icon: ShieldCheck, color: "kuning", group: "work", dock: true, size: [900, 740] },
+  { key: "outbox", href: "/outbox", icon: Send, color: "hijau", group: "work", dock: true, size: [1080, 760] },
   { key: "employees", href: "/employees", icon: Bot, color: "oranye", group: "team", dock: true, size: [1120, 760] },
   { key: "teams", href: "/teams", icon: UsersRound, color: "magenta", group: "team", dock: true, size: [1040, 720] },
   { key: "routines", href: "/routines", icon: CalendarClock, color: "hijau", group: "operations", dock: true, size: [1040, 720] },
@@ -43,8 +44,8 @@ export const APP_BY_KEY = new Map(APPS.map((a) => [a.key, a]));
 export interface Route {
   app: DesktopApp;
   page: PageKey;
-  /** a detail page under the app (task, employee, hire): named next to the app in the title bar */
-  detail: "task" | "employee" | "hire" | null;
+  /** a detail page under the app (task, employee, hire, client): named next to the app in the title bar */
+  detail: "task" | "employee" | "hire" | "client" | null;
   params: Record<string, string>;
 }
 
@@ -54,12 +55,14 @@ const TABLE: { re: RegExp; app: AppKey; page: PageKey; detail?: Route["detail"];
   { re: /^\/tasks$/, app: "tasks", page: "tasks" },
   { re: /^\/tasks\/([^/]+)$/, app: "tasks", page: "task", detail: "task", param: "id" },
   { re: /^\/approvals$/, app: "approvals", page: "approvals" },
+  { re: /^\/outbox$/, app: "outbox", page: "outbox" },
   { re: /^\/employees$/, app: "employees", page: "employees" },
   { re: /^\/employees\/hire$/, app: "employees", page: "hire", detail: "hire" },
   { re: /^\/employees\/([^/]+)$/, app: "employees", page: "employee", detail: "employee", param: "id" },
   { re: /^\/teams$/, app: "teams", page: "teams" },
   { re: /^\/routines$/, app: "routines", page: "routines" },
   { re: /^\/clients$/, app: "clients", page: "clients" },
+  { re: /^\/clients\/([^/]+)$/, app: "clients", page: "client", detail: "client", param: "id" },
   { re: /^\/knowledge$/, app: "knowledge", page: "knowledge" },
   { re: /^\/settings$/, app: "settings", page: "settings" },
   { re: /^\/account$/, app: "account", page: "account" },

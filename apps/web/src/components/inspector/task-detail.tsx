@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodePanel } from "./code-panel";
+import { TaskProgressHeader } from "@/components/tasks/task-progress";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import { describeStep } from "@/lib/step-labels";
@@ -58,6 +59,10 @@ interface TaskFull {
   result: string | null;
   error: string | null;
   costCredits: number;
+  progress: number | null;
+  progressNote: string | null;
+  progressAt: string | null;
+  progressDerived?: boolean;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -376,6 +381,8 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           </Button>
         </div>
       </div>
+
+      <TaskProgressHeader task={task} />
 
       {task.error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">

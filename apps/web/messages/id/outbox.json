@@ -1,0 +1,88 @@
+{
+  "title": "Kotak keluar",
+  "description": "Semua email yang dikirim atau coba dikirim karyawan Anda — termasuk yang masih menunggu persetujuan. Periksa penerimanya sebelum email terkirim.",
+  "paused": "Email keluar sedang dijeda: tidak ada kiriman karyawan yang keluar sampai diaktifkan lagi.",
+  "openSettings": "Pengaturan email",
+  "stats": {
+    "label": "Hari ini",
+    "sentToday": "Terkirim hari ini",
+    "ofLimit": "{count} / {limit}",
+    "failedToday": "Gagal hari ini",
+    "pending": "Menunggu persetujuan"
+  },
+  "tabs": {
+    "all": "Semua",
+    "pending": "Menunggu",
+    "sent": "Terkirim",
+    "failed": "Gagal",
+    "refused": "Ditolak & kedaluwarsa"
+  },
+  "filters": {
+    "kind": "Jenis",
+    "allKinds": "Semua jenis"
+  },
+  "kind": {
+    "email": "Email",
+    "invoice": "Faktur"
+  },
+  "status": {
+    "pending_approval": "Menunggu persetujuan",
+    "rejected": "Ditolak",
+    "expired": "Kedaluwarsa",
+    "sending": "Sedang dikirim",
+    "sent": "Terkirim",
+    "failed": "Gagal"
+  },
+  "trigger": {
+    "approval": "Dikirim setelah disetujui",
+    "allow_list": "Dikirim lewat allow-list Pemilik",
+    "resend": "Dikirim ulang oleh seseorang"
+  },
+  "list": {
+    "to": "Kepada",
+    "more": "+{count}",
+    "unknown": "{count, plural, other {# tidak terdaftar}}"
+  },
+  "empty": {
+    "title": "Belum ada yang dikirim",
+    "filtered": "Tidak ada di sini",
+    "description": "Email dan faktur yang dikirim karyawan, atau yang mereka minta untuk dikirim, akan muncul di sini."
+  },
+  "roles": {
+    "project": "Proyek",
+    "billing": "Penagihan",
+    "director": "Direktur",
+    "technical": "Teknis",
+    "other": "Lainnya"
+  },
+  "detail": {
+    "title": "Email",
+    "description": "Pesan persis seperti yang dikirim (atau akan dikirim).",
+    "invoiceDescription": "Email faktur persis seperti yang dikirim (atau akan dikirim), dengan PDF terlampir.",
+    "loading": "Memuat…",
+    "notFound": "Email ini sudah tidak ada di kotak keluar.",
+    "noSubject": "(tanpa subjek)",
+    "noRecipients": "Belum ada penerima: yang menyetujui harus menambahkannya.",
+    "cc": "cc",
+    "notOnClientFile": "Tidak terdaftar di data {client}",
+    "notInMaster": "Tidak ada di data klien",
+    "openInApprovals": "Buka di Persetujuan",
+    "created": "Dibuat {when}",
+    "sent": "Terkirim {when}",
+    "task": "Tugas",
+    "rejectedBecause": "Ditolak",
+    "failedBecause": "Gagal dikirim",
+    "resend": "Kirim ulang",
+    "resendAdminOnly": "Pemilik atau Admin dapat mengirim ulang.",
+    "resendHint": "Mengirim pesan yang sama sebagai percobaan baru; jeda dan batas harian tetap berlaku.",
+    "resendQueued": "Sedang dikirim ulang…",
+    "recipients": "Penerima",
+    "unknownWarning": "{count, plural, other {# penerima tidak ada di data klien — periksa dulu sebelum menyetujui.}}",
+    "decision": "Keputusan Anda",
+    "message": "Pesan",
+    "attachments": "Lampiran",
+    "resentAs": "Sudah dikirim ulang — buka percobaan yang lebih baru",
+    "resendOf": "Kiriman ulang dari percobaan sebelumnya yang gagal",
+    "unknownWarningSent": "{count, plural, other {# penerima tidak ada di data klien.}}"
+  }
+}

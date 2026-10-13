@@ -251,8 +251,11 @@ export function buildSystemPrompt(opts: {
       "- Only say you did something (sent, saved, created, messaged or asked a colleague) when a tool call of yours did it. " +
       "If you lack the tool or the permission, say so plainly and name the colleague who has it.\n" +
       (opts.mode === "task"
-        ? "- Save substantive outputs with draft_* tools so they become deliverables. End with a concise summary of what you did, what is pending, and any open questions."
-        : `- This is a chat. Answer directly and concisely${opts.outputLocale ? "" : " in the user's language"}. Use create_task when the user asks for work that should be tracked.` +
+        ? "- Save substantive outputs with draft_* tools so they become deliverables. End with a concise summary of what you did, what is pending, and any open questions." +
+          (opts.grantedTools.includes("report_progress")
+            ? "\n- For work with several steps, call report_progress once the plan is clear and after each major step: an honest share of the whole request that is done and verified. Report 100 only when everything is finished."
+            : "")
+        :`- This is a chat. Answer directly and concisely${opts.outputLocale ? "" : " in the user's language"}. Use create_task when the user asks for work that should be tracked.` +
           (opts.grantedTools.includes("ask_teammate")
             ? "\n- When a colleague's role or tools are needed (see \"can:\" under Colleagues), call ask_teammate: they reply in this chat right after you. Tell the user you asked them."
             : "")),

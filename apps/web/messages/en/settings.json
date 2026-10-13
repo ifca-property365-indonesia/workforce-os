@@ -71,7 +71,26 @@
     "fromAddress": "From address",
     "testRecipient": "test recipient",
     "sending": "Sending…",
-    "sendTest": "Send test email"
+    "sendTest": "Send test email",
+    "preset": "Provider",
+    "presetHelp": "Fills in host, port and TLS for the provider. Pick “Other server” to type them yourself.",
+    "presets": {
+      "google": "Google Workspace / Gmail",
+      "microsoft": "Microsoft 365 / Outlook",
+      "zoho": "Zoho Mail",
+      "ses": "Amazon SES (Singapore)",
+      "mailgun": "Mailgun",
+      "sendgrid": "SendGrid",
+      "other": "Other server"
+    },
+    "presetUser": {
+      "google": "you@yourdomain.com (use an app password)",
+      "microsoft": "you@yourdomain.com",
+      "zoho": "you@yourdomain.com",
+      "ses": "SMTP username (AKIA…)",
+      "mailgun": "postmaster@mg.yourdomain.com",
+      "sendgrid": "apikey"
+    }
   },
   "notifications": {
     "title": "Notifications",
@@ -181,5 +200,19 @@
     "addSubagent": "Add subagent",
     "subagentsHelp": "Subagents run inside the same sandbox, with the same approvals.",
     "saved": "Department saved"
+  },
+  "emailPolicy": {
+    "title": "Outgoing email",
+    "description": "Limits for the email and invoices your employees send. Notifications to your team are not affected.",
+    "pause": "Pause outgoing email",
+    "pauseHelp": "Nothing employees send goes out; each attempt shows in the outbox as failed, so you can send it again later.",
+    "dailyLimit": "Daily limit",
+    "dailyLimitHelp": "Emails per day (counted from midnight in the workspace's time zone). Past the limit, attempts fail until tomorrow.",
+    "sentToday": "Sent today",
+    "failedToday": "Failed today",
+    "waiting": "Waiting for approval",
+    "openOutbox": "Open the outbox",
+    "pausedToast": "Outgoing email paused",
+    "savedToast": "Email policy saved"
   }
 }
