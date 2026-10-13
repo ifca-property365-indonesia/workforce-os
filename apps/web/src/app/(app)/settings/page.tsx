@@ -3,6 +3,7 @@
 import { RepositoriesSettings } from "@/components/settings/repositories";
 import { DepartmentsSettings } from "@/components/settings/departments";
 import { WebhooksSettings } from "@/components/settings/webhooks";
+import { ServersSettings } from "@/components/settings/servers";
 import { ApiTokensSettings } from "@/components/settings/api-tokens";
 import { SkillsSettings } from "@/components/settings/skills";
 import { CompanyProfileSettings } from "@/components/settings/company-profile";
@@ -885,6 +886,7 @@ export default function SettingsPage() {
           {admin && <TabsTrigger value="notifications">{t("tabs.notifications")}</TabsTrigger>}
           {admin && <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>}
           {admin && <TabsTrigger value="repositories">{t("tabs.repositories")}</TabsTrigger>}
+          <TabsTrigger value="servers">{t("tabs.servers")}</TabsTrigger>
           <TabsTrigger value="departments">{t("tabs.departments")}</TabsTrigger>
           <TabsTrigger value="skills">{t("tabs.skills")}</TabsTrigger>
           <TabsTrigger value="pricing">{t("tabs.pricing")}</TabsTrigger>
@@ -914,6 +916,9 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="repositories" className="mt-4">
           <RepositoriesSettings owner={owner} />
+        </TabsContent>
+        <TabsContent value="servers" className="mt-4">
+          <ServersSettings owner={owner} admin={admin} />
         </TabsContent>
         <TabsContent value="pricing" className="mt-4">
           <Pricing owner={owner} />

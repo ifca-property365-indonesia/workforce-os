@@ -25,6 +25,8 @@ export const env = {
   /** a run with no SDK event (message, stream delta, tool call) for this many minutes is stopped as stalled */
   runIdleTimeoutMin: Number(process.env.RUN_IDLE_TIMEOUT_MIN) > 0 ? Number(process.env.RUN_IDLE_TIMEOUT_MIN) : 20,
   namespace: wfosNamespace(),
+  /** app servers on private / loopback addresses are allowed (this VPS registers itself as 127.0.0.1) */
+  appServersAllowPrivate: process.env.APP_SERVERS_ALLOW_PRIVATE === "true",
 };
 
 /**

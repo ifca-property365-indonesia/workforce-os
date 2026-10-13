@@ -1,0 +1,130 @@
+{
+  "title": "App servers",
+  "description": "Servers that run the apps your employees build. Workforce OS logs in over SSH with this workspace's own key and never needs the root password.",
+  "add": "Add server",
+  "empty": "No server yet. Add one so your employees can publish previews of the apps they build.",
+  "emptyReadOnly": "No server yet. An Owner can add one here.",
+  "ownerOnly": "Only an Owner can add, verify, edit or remove servers.",
+  "privateAllowed": "This installation may also use servers on private addresses (such as 127.0.0.1).",
+  "status": {
+    "pending": "Not verified",
+    "ready": "Ready",
+    "error": "Problem"
+  },
+  "role": {
+    "dev": "Previews",
+    "live": "Live"
+  },
+  "fields": {
+    "name": "Name",
+    "namePlaceholder": "Preview server",
+    "host": "Server address",
+    "hostHelp": "Its hostname or public IP address, the one you use to log in with SSH.",
+    "port": "SSH port",
+    "username": "Login user",
+    "usernameHelp": "The user the setup script creates for the apps. Keep wfos-apps unless you have a reason to change it.",
+    "baseDomain": "App domain",
+    "baseDomainPlaceholder": "preview.example.com",
+    "baseDomainHelp": "Each app gets its own address under this domain (app-name.preview.example.com). Point a wildcard DNS record (*.preview.example.com) at this server.",
+    "maxRunningApps": "Apps running at once",
+    "maxRunningAppsHelp": "At most this many apps run on this server at the same time. Keep it low on a small server."
+  },
+  "addTitle": "Add a server",
+  "addDescription": "Register the server first. Next you prepare it with one command and confirm its identity.",
+  "editTitle": "Edit {name}",
+  "resetWarning": "Changing the address, port, user or domain resets verification: you will compare the fingerprint again.",
+  "added": "Server added. Next: prepare it.",
+  "saved": "Server saved.",
+  "deleted": "Server removed.",
+  "deleteConfirm": "Remove {name} from Workforce OS? Nothing on the server itself is changed.",
+  "card": {
+    "address": "Address",
+    "domain": "Apps at",
+    "fingerprint": "Host key fingerprint",
+    "notPinned": "Not verified yet",
+    "lastCheck": "Last check",
+    "neverChecked": "Not checked yet",
+    "limit": "Running apps",
+    "limitValue": "up to {count}"
+  },
+  "info": {
+    "node": "Node",
+    "pnpm": "pnpm",
+    "helper": "Helper",
+    "helperValue": "version {version}",
+    "disk": "Free disk",
+    "memory": "Free memory",
+    "memoryValue": "{free} of {total}",
+    "postgres": "Apps database",
+    "postgresValue": "port {port}",
+    "postgresMissing": "not installed",
+    "gb": "{value} GB"
+  },
+  "actions": {
+    "setup": "Set up",
+    "guide": "Setup guide",
+    "check": "Check now"
+  },
+  "checkedReady": "{name} is ready.",
+  "verifiedReady": "{name} is verified and ready.",
+  "setup": {
+    "title": "Set up {name}",
+    "description": "Four steps. You need a terminal on that server, logged in as root or as a user who can use sudo.",
+    "ownerOnlySteps": "Steps 2 to 4 (checking and confirming the server's identity) are for an Owner.",
+    "step1": {
+      "title": "Prepare the server",
+      "intro": "Run the setup script once, as root, on the server you are adding.",
+      "installs": "It installs and sets up:",
+      "itemUser": "a user named {user} without general sudo rights, which accepts this workspace's key",
+      "itemWeb": "nginx and certbot, to give every app an HTTPS address",
+      "itemNode": "Node.js and pnpm, to build and run the apps",
+      "itemPostgres": "a separate PostgreSQL just for the apps (port 5433), apart from any database already on the server",
+      "itemHelper": "a small root helper (wfos-app-helper): the only command {user} may run with sudo, and it accepts only a fixed list of checked actions",
+      "noPassword": "Workforce OS never sees or stores the root password. It logs in as {user} with its own key; anything that needs root goes through the helper.",
+      "requirements": "Ubuntu or Debian only. It takes about 5 to 10 minutes and is safe to run again.",
+      "optionA": "Easiest: one command",
+      "optionAHelp": "Paste it into the server's terminal. It saves both files in a folder named wfos-setup and runs the setup.",
+      "copyAll": "Copy setup command",
+      "optionB": "Or download the two files",
+      "optionBHelp": "Put prepare.sh and wfos-app-helper in the same folder on the server, then run this command in that folder:",
+      "download": "Download {file}",
+      "publicKey": "This workspace's public key",
+      "publicKeyHelp": "Safe to share: it only lets Workforce OS log in as {user}. It is already part of the commands above.",
+      "done": "At the end it prints WFOS_SERVER_READY and the server's fingerprint. Keep that window open for the next step.",
+      "scriptsMissing": "The setup scripts are missing from this installation. Ask whoever runs Workforce OS to update it."
+    },
+    "step2": {
+      "title": "Compare the fingerprint",
+      "intro": "The fingerprint is the server's ID card. Comparing it makes sure Workforce OS talks to your server and not to an impostor.",
+      "scan": "Scan the server",
+      "rescan": "Scan again",
+      "found": "Workforce OS sees this fingerprint:",
+      "compare": "Run this on the server. The SHA256:… part it prints must be exactly the same, character for character:",
+      "match": "The fingerprints are exactly the same",
+      "mismatch": "Different? Stop here. Check the address, and ask your hosting provider whether the server was reinstalled."
+    },
+    "step3": {
+      "title": "Confirm and verify",
+      "intro": "Workforce OS remembers this fingerprint and refuses the server if it ever changes. You will be asked for your password and authenticator code.",
+      "verify": "Confirm and verify",
+      "needsMatch": "Scan the server and tick the box in step 2 first."
+    },
+    "step4": {
+      "title": "Result",
+      "ready": "{name} is verified and ready for app previews.",
+      "error": "The fingerprint is saved, but the check found a problem:",
+      "retry": "Fix it on the server, then press Check now.",
+      "pending": "Not verified yet."
+    }
+  },
+  "error": {
+    "host_key_mismatch": "The server's identity (host key) changed after it was verified. If the server was reinstalled, edit it and verify it again; otherwise someone may be intercepting the connection.",
+    "ssh_auth_failed": "The server did not accept this workspace's key. Run the setup script again (step 1) and check the login user.",
+    "ssh_unreachable": "The server could not be reached. Check the address and the SSH port, and that its firewall allows SSH.",
+    "server_host_not_allowed": "This address is private. This installation only connects to servers on public addresses.",
+    "helper_missing": "The helper is not installed on the server. Run the setup script (step 1).",
+    "helper_outdated": "The helper on the server is too old. Run the latest setup script again (step 1).",
+    "server_domain_mismatch": "The server was prepared for a different domain. Run the setup script again with --domain {domain}, or change the server's domain here.",
+    "unknown": "The check failed for an unexpected reason. Try again in a moment."
+  }
+}

@@ -31,7 +31,7 @@ export function EventsProvider({ children }: { children: ReactNode }) {
         }, 250);
     };
     /** events published while the stream was down are lost: on a reconnect, refetch what they would have updated */
-    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard", "incidents", "outbox", "clients", "client", "invoices"];
+    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard", "incidents", "outbox", "clients", "client", "invoices", "servers"];
     let wasConnected = false;
     const connect = () => {
       es = new EventSource("/api/events");
@@ -86,6 +86,10 @@ export function EventsProvider({ children }: { children: ReactNode }) {
             break;
           case "employee.updated":
             invalidate("employees");
+            break;
+          case "server.updated":
+            // ["servers"] list, ["servers", "ssh-key", id] prepare command (domain/user may have changed)
+            invalidate("servers");
             break;
           case "killswitch":
             invalidate("me");

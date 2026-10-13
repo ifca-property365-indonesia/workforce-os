@@ -1,0 +1,151 @@
+#!/bin/bash
+# wfos-app-helper — the only way Workforce OS gets root on an app server.
+#
+# Installed by prepare.sh as /usr/local/sbin/wfos-app-helper (root:root 0755). The apps user (default wfos-apps) may
+# run exactly this file with `sudo -n`, nothing else. Every argument is validated here; anything unexpected exits 2
+# with a one-line error and changes nothing. Settings come from /etc/wfos-app-helper.conf (written by prepare.sh,
+# never sourced: only known KEY=value lines are read and validated).
+#
+# Phase A1 (register servers) needs only two read-only commands:
+#   version     helper version (one number)
+#   info        one JSON line: versions, disk, memory, base domain (never touches the network)
+# Running, building and publishing apps comes in Phase A2.
+#
+# WFOS_HELPER_DRY_RUN=1 changes nothing (this version changes nothing anyway); only then may WFOS_HELPER_CONF point
+# at another config file (sudo drops both variables, so they cannot reach a real run).
+set -euo pipefail
+umask 022
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export LC_ALL=C
+
+# keep in step with WFOS_HELPER_VERSION in packages/shared
+HELPER_VERSION=1
+
+usage() { echo "wfos-app-helper: $*" >&2; exit 2; }
+fail() { echo "wfos-app-helper: $*" >&2; exit 1; }
+
+DRY=0
+CONF=/etc/wfos-app-helper.conf
+if [[ "${WFOS_HELPER_DRY_RUN:-}" == 1 ]]; then
+  DRY=1
+  CONF="${WFOS_HELPER_CONF:-$CONF}"
+fi
+[[ "$DRY" == 1 || "$(id -u)" == 0 ]] || fail "must run as root (sudo -n $0 ...)"
+
+# ---------------------------------------------------------------------------
+# config
+# ---------------------------------------------------------------------------
+
+C_USER="" C_BASE_DOMAIN="" C_PG_PORT="" C_APPS_ROOT="" C_PORT_MIN="" C_PORT_MAX=""
+DOMAIN_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
+
+is_uint() { [[ "$1" =~ ^[1-9][0-9]{0,5}$ ]]; }
+
+# root-owned and not writable by group/others (also its directory), or it could steer the helper
+check_conf_owner() {
+  local dir
+  [[ ! -L "$CONF" ]] || fail "$CONF must not be a symlink"
+  [[ "$(stat -c '%u' -- "$CONF")" == 0 && $(( 8#$(stat -c '%a' -- "$CONF") & 8#022 )) == 0 ]] || fail "$CONF must be owned by root and not group/world writable"
+  dir="$(dirname -- "$CONF")"
+  [[ "$(stat -c '%u' -- "$dir")" == 0 && $(( 8#$(stat -c '%a' -- "$dir") & 8#022 )) == 0 ]] || fail "$dir must be owned by root and not group/world writable"
+}
+
+read_conf() {
+  [[ -f "$CONF" ]] || fail "missing $CONF (run prepare.sh)"
+  [[ "$DRY" == 1 ]] || check_conf_owner
+  local line key val
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*(#.*)?$ ]] && continue
+    [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]] || fail "bad line in $CONF"
+    key="${BASH_REMATCH[1]}"
+    val="${BASH_REMATCH[2]}"
+    case "$key" in
+      USER) C_USER="$val" ;;
+      BASE_DOMAIN) C_BASE_DOMAIN="$val" ;;
+      PG_PORT) C_PG_PORT="$val" ;;
+      APPS_ROOT) C_APPS_ROOT="$val" ;;
+      PORT_MIN) C_PORT_MIN="$val" ;;
+      PORT_MAX) C_PORT_MAX="$val" ;;
+      *) ;; # unknown keys are ignored (newer prepare.sh)
+    esac
+  done < "$CONF"
+  [[ "$C_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$C_USER" != root ]] || fail "$CONF: bad USER"
+  [[ ${#C_BASE_DOMAIN} -le 200 && "$C_BASE_DOMAIN" =~ $DOMAIN_RE ]] || fail "$CONF: bad BASE_DOMAIN"
+  [[ "$C_APPS_ROOT" =~ ^/[A-Za-z0-9._/-]+$ && ! "$C_APPS_ROOT" =~ (^|/)\.\.?(/|$) && "$C_APPS_ROOT" != */ ]] || fail "$CONF: bad APPS_ROOT"
+  is_uint "$C_PG_PORT" && (( C_PG_PORT >= 1024 && C_PG_PORT <= 65535 )) || fail "$CONF: bad PG_PORT"
+  is_uint "$C_PORT_MIN" && is_uint "$C_PORT_MAX" && (( C_PORT_MIN >= 1024 && C_PORT_MIN <= C_PORT_MAX && C_PORT_MAX <= 65535 )) || fail "$CONF: bad PORT_MIN/PORT_MAX"
+}
+
+# ---------------------------------------------------------------------------
+# info
+# ---------------------------------------------------------------------------
+
+json_str() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="$(printf '%s' "$s" | tr -d '\000-\037')"
+  printf '"%s"' "$s"
+}
+
+# a version command as the apps user (HOME = its home; as the caller in dry-run), first line only, empty when it
+# fails or takes longer than 5 s. Corepack may not download anything: without a cached pnpm the answer is empty.
+version_line() {
+  local home out=""
+  local -a envs=(PATH="$PATH" COREPACK_ENABLE_NETWORK=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 COREPACK_ENABLE_AUTO_PIN=0 CI=1)
+  if [[ "$DRY" == 0 ]] && id -u "$C_USER" > /dev/null 2>&1; then
+    home="$(getent passwd "$C_USER" | cut -d: -f6)"
+    out="$(cd / && timeout -k 2 5 runuser -u "$C_USER" -- env -i HOME="$home" "${envs[@]}" "$@" < /dev/null 2> /dev/null | head -1)" || out=""
+  elif [[ "$DRY" == 1 ]]; then
+    out="$(cd / && timeout -k 2 5 env "${envs[@]}" "$@" < /dev/null 2> /dev/null | head -1)" || out=""
+  fi
+  # a version looks like v24.3.0 / 10.12.1: anything else (a prompt, an error) is not one
+  [[ "$out" =~ ^v?[0-9]+(\.[0-9A-Za-z.+-]+)?$ ]] || out=""
+  printf '%s' "$out"
+}
+
+cmd_info() {
+  local os node="" pnpm="" nginx=false certbot=false pg=null disk=0 mem_total=0 mem_avail=0 dir
+  os="$(sed -nE 's/^PRETTY_NAME="?([^"]*)"?$/\1/p' /etc/os-release 2> /dev/null | head -1)"
+  command -v node > /dev/null && node="$(version_line node -v)"
+  command -v pnpm > /dev/null && pnpm="$(version_line pnpm -v)"
+  command -v nginx > /dev/null && nginx=true
+  command -v certbot > /dev/null && certbot=true
+  if command -v pg_lsclusters > /dev/null && pg_lsclusters --no-header 2> /dev/null | awk -v p="$C_PG_PORT" '$2 == "apps" && $3 == p && $4 ~ /^online/ { found = 1 } END { exit !found }'; then
+    pg="$C_PG_PORT"
+  fi
+  dir="$C_APPS_ROOT"
+  while [[ ! -d "$dir" && "$dir" != / ]]; do dir="$(dirname -- "$dir")"; done
+  disk="$(df -Pm -- "$dir" 2> /dev/null | awk 'NR == 2 { print $4 + 0 }')"
+  mem_total="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo)"
+  mem_avail="$(awk '/^MemAvailable:/ { printf "%d", $2 / 1024 }' /proc/meminfo)"
+  printf '{"helperVersion":%d,"os":%s,"node":%s,"pnpm":%s,"nginx":%s,"certbot":%s,"postgresPort":%s,"diskFreeMb":%d,"memTotalMb":%d,"memAvailableMb":%d,"baseDomain":%s}\n' \
+    "$HELPER_VERSION" "$(json_str "$os")" "$(json_str "$node")" "$(json_str "$pnpm")" "$nginx" "$certbot" "$pg" \
+    "${disk:-0}" "${mem_total:-0}" "${mem_avail:-0}" "$(json_str "$C_BASE_DOMAIN")"
+}
+
+# ---------------------------------------------------------------------------
+# dispatch
+# ---------------------------------------------------------------------------
+
+cmd="${1:-}"
+[[ $# -gt 0 ]] && shift
+nargs() { [[ "$1" == "$2" ]] || usage "$cmd: wrong number of arguments"; }
+
+case "$cmd" in
+  version)
+    nargs $# 0
+    echo "$HELPER_VERSION"
+    ;;
+  info)
+    nargs $# 0
+    read_conf
+    cmd_info
+    ;;
+  "")
+    usage "missing command (version, info)"
+    ;;
+  *)
+    usage "unknown command ${cmd@Q}"
+    ;;
+esac

@@ -12,7 +12,8 @@
     "departments": "Departemen",
     "webhooks": "Webhook",
     "apiTokens": "Akses API",
-    "skills": "Skill"
+    "skills": "Skill",
+    "servers": "Server"
   },
   "workspace": {
     "title": "Workspace",

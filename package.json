@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "build:runner": "pnpm --filter @wfos/runner build",
     "test:system": "pnpm --filter @wfos/runner build && pnpm --filter @wfos/worker test:system",
-    "test:deploy": "bash deploy/test/upgrade.sh && bash deploy/test/backup-restore.sh"
+    "test:deploy": "bash deploy/test/upgrade.sh && bash deploy/test/backup-restore.sh && bash deploy/app-server/test/app-server.sh"
   },
   "devDependencies": {
     "eslint": "^10.12.0",

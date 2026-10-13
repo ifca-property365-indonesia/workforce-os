@@ -20,7 +20,9 @@
     "./telegram": "./src/telegram.ts",
     "./push": "./src/push.ts",
     "./office": "./src/office.ts",
-    "./ops": "./src/ops.ts"
+    "./ops": "./src/ops.ts",
+    "./ssh": "./src/ssh.ts",
+    "./ssh-keys": "./src/ssh-keys.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -30,11 +32,13 @@
     "mvdan-sh": "^0.10.1",
     "nodemailer": "^7",
     "pdf-lib": "^1.17.1",
+    "ssh2": "^1.17.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/node": "^24",
     "@types/nodemailer": "^7",
+    "@types/ssh2": "^1.15.6",
     "typescript": "^5.9.3"
   }
 }

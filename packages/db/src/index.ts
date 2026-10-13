@@ -8,6 +8,7 @@ export { audit } from "./audit";
 export { seedSampleData, seedPrices, nextCronRun } from "./sample";
 export * from "./claude";
 export { workspaceDepartments } from "./departments";
+export { getOrCreateWorkspaceSshKey, workspaceSshPrivateKey, type WorkspaceSshKey } from "./ssh-key";
 export { createTask, TaskInputError, TASK_INPUT_ERROR_CODES, type CreateTaskInput, type TaskInputErrorCode, type TaskRow } from "./tasks";
 
 export type DB = PostgresJsDatabase<typeof schema>;

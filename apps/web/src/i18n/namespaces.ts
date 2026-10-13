@@ -28,4 +28,5 @@ export const NAMESPACES = [
   "packages",
   "skills",
   "desktop",
+  "servers",
 ] as const;

@@ -22,6 +22,7 @@ import { acquireEmployeeLease, releaseEmployeeLease } from "./guards/lease";
 import { handleRunJobFailed } from "./runner/task-status";
 import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
 import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
+import { recheckServers, SERVER_RECHECK_TICK_MS } from "./scheduler/servers";
 import { collectWorkspaces } from "./runner/workspace/gc";
 import { telegramDailySummary } from "./lib/telegram";
 import { writeHeartbeat } from "./lib/heartbeat";
@@ -170,6 +171,20 @@ const summaryTimer = setInterval(() => void telegramDailySummary().catch((e) => 
 const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e) => log.warn({ err: e }, "backfill failed")), 120_000);
 // nightly memory tidy at 02:00 APP_TIME_ZONE (checked every 10 min, claimed once per day in Redis)
 const tidyTimer = setInterval(() => void memoryTidyTick().catch((e) => log.warn({ err: e }, "memory tidy failed")), MEMORY_TIDY_CHECK_MS);
+// app servers: each verified server is probed again hourly (looked for every 10 min); ready → error notifies Owners
+let rechecking = false;
+const recheck = async () => {
+  if (rechecking) return;
+  rechecking = true;
+  try {
+    await recheckServers();
+  } catch (e) {
+    log.warn({ err: e }, "server re-check failed");
+  } finally {
+    rechecking = false;
+  }
+};
+const serversTimer = setInterval(() => void recheck(), SERVER_RECHECK_TICK_MS);
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
 log.info(
@@ -183,6 +198,7 @@ async function shutdown(sig: string) {
   clearInterval(reapTimer);
   clearInterval(backfillTimer);
   clearInterval(tidyTimer);
+  clearInterval(serversTimer);
   clearInterval(gcTimer);
   clearInterval(summaryTimer);
   clearInterval(heartbeatTimer);

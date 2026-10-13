@@ -124,5 +124,18 @@
   "outbox_not_found": "That email is not in the outbox.",
   "outbox_not_failed": "Only an email that failed can be sent again.",
   "outbox_already_resent": "This email has already been sent again: retry the newer attempt instead.",
-  "invoice_transition": "That status change isn't possible for this invoice."
+  "invoice_transition": "That status change isn't possible for this invoice.",
+  "server_not_found": "Server not found.",
+  "server_name_taken": "A server with this name already exists.",
+  "server_domain_taken": "Another server already uses this domain.",
+  "server_host_not_allowed": "This address is private. This installation only connects to servers on public addresses.",
+  "server_not_verified": "Verify this server first.",
+  "host_key_changed": "The server's fingerprint is not the one you confirmed. Scan again and compare it on the server.",
+  "host_key_mismatch": "The server's identity (host key) changed after it was verified.",
+  "ssh_auth_failed": "The server did not accept this workspace's key. Run the setup script on it again.",
+  "ssh_unreachable": "The server could not be reached. Check the address, the SSH port and its firewall.",
+  "helper_missing": "The Workforce OS helper is not installed on the server. Run the setup script on it.",
+  "helper_outdated": "The helper on the server is too old. Run the latest setup script on it again.",
+  "ssh_failed": "The SSH connection failed. Try again in a moment.",
+  "prepare_script_missing": "The setup scripts are missing from this installation."
 }

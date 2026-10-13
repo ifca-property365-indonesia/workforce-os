@@ -1,0 +1,130 @@
+{
+  "title": "Server aplikasi",
+  "description": "Server tempat aplikasi buatan karyawan Anda berjalan. Workforce OS masuk lewat SSH dengan kunci milik workspace ini dan tidak pernah membutuhkan password root.",
+  "add": "Tambah server",
+  "empty": "Belum ada server. Tambahkan satu agar karyawan Anda bisa menerbitkan preview aplikasi yang mereka buat.",
+  "emptyReadOnly": "Belum ada server. Pemilik bisa menambahkannya di sini.",
+  "ownerOnly": "Hanya Pemilik yang bisa menambah, memverifikasi, mengubah, atau menghapus server.",
+  "privateAllowed": "Instalasi ini juga boleh memakai server dengan alamat privat (misalnya 127.0.0.1).",
+  "status": {
+    "pending": "Belum diverifikasi",
+    "ready": "Siap",
+    "error": "Bermasalah"
+  },
+  "role": {
+    "dev": "Preview",
+    "live": "Live"
+  },
+  "fields": {
+    "name": "Nama",
+    "namePlaceholder": "Server preview",
+    "host": "Alamat server",
+    "hostHelp": "Hostname atau alamat IP publiknya, yang Anda pakai untuk masuk lewat SSH.",
+    "port": "Port SSH",
+    "username": "User login",
+    "usernameHelp": "User yang dibuat skrip persiapan untuk aplikasi. Biarkan wfos-apps kecuali ada alasan untuk menggantinya.",
+    "baseDomain": "Domain aplikasi",
+    "baseDomainPlaceholder": "preview.contoh.co.id",
+    "baseDomainHelp": "Setiap aplikasi mendapat alamat sendiri di bawah domain ini (nama-aplikasi.preview.contoh.co.id). Arahkan record DNS wildcard (*.preview.contoh.co.id) ke server ini.",
+    "maxRunningApps": "Aplikasi berjalan bersamaan",
+    "maxRunningAppsHelp": "Paling banyak sejumlah ini aplikasi berjalan di server ini pada saat yang sama. Pakai angka kecil untuk server kecil."
+  },
+  "addTitle": "Tambah server",
+  "addDescription": "Daftarkan servernya dulu. Setelah itu Anda menyiapkannya dengan satu perintah dan mengonfirmasi identitasnya.",
+  "editTitle": "Ubah {name}",
+  "resetWarning": "Mengubah alamat, port, user, atau domain akan mengulang verifikasi: Anda perlu mencocokkan sidik jari lagi.",
+  "added": "Server ditambahkan. Berikutnya: siapkan servernya.",
+  "saved": "Server disimpan.",
+  "deleted": "Server dihapus.",
+  "deleteConfirm": "Hapus {name} dari Workforce OS? Tidak ada yang diubah di server itu sendiri.",
+  "card": {
+    "address": "Alamat",
+    "domain": "Aplikasi di",
+    "fingerprint": "Sidik jari host key",
+    "notPinned": "Belum diverifikasi",
+    "lastCheck": "Pemeriksaan terakhir",
+    "neverChecked": "Belum pernah diperiksa",
+    "limit": "Aplikasi berjalan",
+    "limitValue": "maksimal {count}"
+  },
+  "info": {
+    "node": "Node",
+    "pnpm": "pnpm",
+    "helper": "Helper",
+    "helperValue": "versi {version}",
+    "disk": "Disk kosong",
+    "memory": "Memori kosong",
+    "memoryValue": "{free} dari {total}",
+    "postgres": "Database aplikasi",
+    "postgresValue": "port {port}",
+    "postgresMissing": "belum terpasang",
+    "gb": "{value} GB"
+  },
+  "actions": {
+    "setup": "Siapkan",
+    "guide": "Panduan persiapan",
+    "check": "Periksa sekarang"
+  },
+  "checkedReady": "{name} siap.",
+  "verifiedReady": "{name} sudah diverifikasi dan siap.",
+  "setup": {
+    "title": "Siapkan {name}",
+    "description": "Empat langkah. Anda perlu terminal di server tersebut, masuk sebagai root atau sebagai user yang bisa memakai sudo.",
+    "ownerOnlySteps": "Langkah 2 sampai 4 (memeriksa dan mengonfirmasi identitas server) dilakukan oleh Pemilik.",
+    "step1": {
+      "title": "Siapkan server",
+      "intro": "Jalankan skrip persiapan sekali, sebagai root, di server yang sedang Anda tambahkan.",
+      "installs": "Skrip ini memasang dan mengatur:",
+      "itemUser": "user bernama {user} tanpa hak sudo umum, yang menerima kunci workspace ini",
+      "itemWeb": "nginx dan certbot, agar setiap aplikasi punya alamat HTTPS",
+      "itemNode": "Node.js dan pnpm, untuk membangun dan menjalankan aplikasi",
+      "itemPostgres": "PostgreSQL terpisah khusus aplikasi (port 5433), tidak tercampur dengan database yang sudah ada di server",
+      "itemHelper": "helper root kecil (wfos-app-helper): satu-satunya perintah yang boleh dijalankan {user} dengan sudo, dan hanya menerima daftar tindakan tetap yang sudah diperiksa",
+      "noPassword": "Workforce OS tidak pernah melihat atau menyimpan password root. Ia masuk sebagai {user} dengan kuncinya sendiri; semua yang butuh root lewat helper.",
+      "requirements": "Hanya untuk Ubuntu atau Debian. Prosesnya sekitar 5 sampai 10 menit dan aman dijalankan ulang.",
+      "optionA": "Paling mudah: satu perintah",
+      "optionAHelp": "Tempelkan ke terminal server. Perintah ini menyimpan kedua file di folder wfos-setup lalu menjalankan persiapan.",
+      "copyAll": "Salin perintah persiapan",
+      "optionB": "Atau unduh kedua file",
+      "optionBHelp": "Taruh prepare.sh dan wfos-app-helper di folder yang sama di server, lalu jalankan perintah ini di folder itu:",
+      "download": "Unduh {file}",
+      "publicKey": "Public key workspace ini",
+      "publicKeyHelp": "Aman dibagikan: kunci ini hanya membuat Workforce OS bisa masuk sebagai {user}. Kunci ini sudah termasuk dalam perintah di atas.",
+      "done": "Di akhir, skrip mencetak WFOS_SERVER_READY dan sidik jari server. Biarkan jendela itu terbuka untuk langkah berikutnya.",
+      "scriptsMissing": "Skrip persiapan tidak ada di instalasi ini. Minta pengelola Workforce OS untuk memperbaruinya."
+    },
+    "step2": {
+      "title": "Cocokkan sidik jari",
+      "intro": "Sidik jari adalah KTP server. Dengan mencocokkannya, Anda yakin Workforce OS berbicara dengan server Anda, bukan dengan penyamar.",
+      "scan": "Pindai server",
+      "rescan": "Pindai ulang",
+      "found": "Workforce OS melihat sidik jari ini:",
+      "compare": "Jalankan ini di server. Bagian SHA256:… yang dicetaknya harus persis sama, huruf demi huruf:",
+      "match": "Sidik jarinya persis sama",
+      "mismatch": "Berbeda? Berhenti di sini. Periksa alamatnya, dan tanyakan ke penyedia hosting apakah server baru saja diinstal ulang."
+    },
+    "step3": {
+      "title": "Konfirmasi dan verifikasi",
+      "intro": "Workforce OS mengingat sidik jari ini dan menolak server jika suatu saat berubah. Anda akan diminta kata sandi dan kode autentikator.",
+      "verify": "Konfirmasi dan verifikasi",
+      "needsMatch": "Pindai server dan centang kotak di langkah 2 terlebih dahulu."
+    },
+    "step4": {
+      "title": "Hasil",
+      "ready": "{name} sudah diverifikasi dan siap untuk preview aplikasi.",
+      "error": "Sidik jari sudah disimpan, tetapi pemeriksaan menemukan masalah:",
+      "retry": "Perbaiki di server, lalu tekan Periksa sekarang.",
+      "pending": "Belum diverifikasi."
+    }
+  },
+  "error": {
+    "host_key_mismatch": "Identitas server (host key) berubah setelah diverifikasi. Jika server diinstal ulang, ubah lalu verifikasi lagi; jika tidak, mungkin ada yang menyadap koneksi.",
+    "ssh_auth_failed": "Server menolak kunci workspace ini. Jalankan lagi skrip persiapan (langkah 1) dan periksa user login-nya.",
+    "ssh_unreachable": "Server tidak dapat dihubungi. Periksa alamat dan port SSH, serta pastikan firewall-nya mengizinkan SSH.",
+    "server_host_not_allowed": "Alamat ini privat. Instalasi ini hanya terhubung ke server dengan alamat publik.",
+    "helper_missing": "Helper belum terpasang di server. Jalankan skrip persiapan (langkah 1).",
+    "helper_outdated": "Helper di server sudah terlalu lama. Jalankan lagi skrip persiapan versi terbaru (langkah 1).",
+    "server_domain_mismatch": "Server disiapkan untuk domain lain. Jalankan lagi skrip persiapan dengan --domain {domain}, atau ubah domain server di sini.",
+    "unknown": "Pemeriksaan gagal karena alasan yang tidak terduga. Coba lagi sebentar lagi."
+  }
+}

@@ -13,4 +13,11 @@ export const serverEnv = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   /** Public self-service signup. Off by default: admins add members in Settings → Members. */
   allowSignup: process.env.ALLOW_SIGNUP === "true",
+  /**
+   * App servers on private/loopback addresses (127.0.0.1, 10.x, …). Off by default (SSRF guard); an instance that runs
+   * previews on its own host sets APP_SERVERS_ALLOW_PRIVATE=true. Read on each use so tests can switch it.
+   */
+  get appServersAllowPrivate() {
+    return process.env.APP_SERVERS_ALLOW_PRIVATE === "true";
+  },
 };

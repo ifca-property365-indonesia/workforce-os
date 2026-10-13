@@ -1,5 +1,5 @@
 /** Settings tabs everyone sees, and the ones only an Owner or Admin sees (the page renders a trigger for each). */
-export const SETTINGS_TABS = ["general", "departments", "skills", "pricing", "members", "api"] as const;
+export const SETTINGS_TABS = ["general", "departments", "skills", "pricing", "members", "servers", "api"] as const;
 export const ADMIN_SETTINGS_TABS = ["email", "notifications", "integrations", "repositories", "webhooks", "audit"] as const;
 
 /**

@@ -12,7 +12,8 @@
     "departments": "Departments",
     "webhooks": "Webhooks",
     "apiTokens": "API access",
-    "skills": "Skills"
+    "skills": "Skills",
+    "servers": "Servers"
   },
   "workspace": {
     "title": "Workspace",

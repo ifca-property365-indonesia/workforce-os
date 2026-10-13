@@ -124,5 +124,18 @@
   "outbox_not_found": "Email itu tidak ada di kotak keluar.",
   "outbox_not_failed": "Hanya email yang gagal terkirim yang bisa dikirim ulang.",
   "outbox_already_resent": "Email ini sudah dikirim ulang: kirim ulang percobaan yang lebih baru saja.",
-  "invoice_transition": "Status invoice ini tidak bisa diubah ke status tersebut."
+  "invoice_transition": "Status invoice ini tidak bisa diubah ke status tersebut.",
+  "server_not_found": "Server tidak ditemukan.",
+  "server_name_taken": "Sudah ada server dengan nama ini.",
+  "server_domain_taken": "Domain ini sudah dipakai server lain.",
+  "server_host_not_allowed": "Alamat ini privat. Instalasi ini hanya terhubung ke server dengan alamat publik.",
+  "server_not_verified": "Verifikasi server ini terlebih dahulu.",
+  "host_key_changed": "Sidik jari server tidak sama dengan yang Anda konfirmasi. Pindai ulang lalu cocokkan lagi di server.",
+  "host_key_mismatch": "Identitas server (host key) berubah setelah diverifikasi.",
+  "ssh_auth_failed": "Server menolak kunci workspace ini. Jalankan lagi skrip persiapan di server tersebut.",
+  "ssh_unreachable": "Server tidak dapat dihubungi. Periksa alamat, port SSH, dan firewall-nya.",
+  "helper_missing": "Helper Workforce OS belum terpasang di server. Jalankan skrip persiapan di server tersebut.",
+  "helper_outdated": "Helper di server sudah terlalu lama. Jalankan lagi skrip persiapan versi terbaru.",
+  "ssh_failed": "Koneksi SSH gagal. Coba lagi sebentar lagi.",
+  "prepare_script_missing": "Skrip persiapan tidak ada di instalasi ini."
 }

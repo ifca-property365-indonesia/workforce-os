@@ -6,3 +6,7 @@ onlyBuiltDependencies:
   - onnxruntime-node
   - sharp
   - protobufjs
+# ssh2 (app servers) works without its optional native addons (sshcrypto, cpu-features): never build them
+ignoredBuiltDependencies:
+  - ssh2
+  - cpu-features

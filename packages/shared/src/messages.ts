@@ -2,7 +2,7 @@ import { isLocale, type Locale } from "./index";
 
 /**
  * Bilingual templates for text the worker produces outside the web UI: notifications (in-app, email,
- * webhook), chat receipts for decided approvals, default invoice emails, the invoice PDF, recurring-billing approvals and outbox policy errors. Values are substituted for {name} placeholders.
+ * webhook), chat receipts for decided approvals, default invoice emails, the invoice PDF, recurring-billing approvals, outbox policy errors and app server alerts. Values are substituted for {name} placeholders.
  */
 const MESSAGES = {
   en: {
@@ -70,6 +70,16 @@ const MESSAGES = {
     "outbox.paused": "Outgoing email is paused (Settings → Email).",
     "outbox.dailyLimit": "Daily email limit reached ({limit} per day).",
     "outbox.interrupted": "Interrupted while sending — it may or may not have been delivered; check before resending.",
+    "server.down": "Server {name} failed its check",
+    "server.downText": "The hourly check of server {name} ({host}) failed: {reason}\nApps on it may be unreachable. Open Settings → Servers and run \"Check now\" after fixing it.",
+    "server.reason.host_key_mismatch": "the server presented a different host key than the one that was confirmed (it may have been reinstalled, or someone is intercepting the connection).",
+    "server.reason.ssh_auth_failed": "the server refused the workspace SSH key.",
+    "server.reason.ssh_unreachable": "the server could not be reached over SSH.",
+    "server.reason.server_host_not_allowed": "the server's address is not allowed on this instance.",
+    "server.reason.helper_missing": "wfos-app-helper is not installed (run prepare.sh again).",
+    "server.reason.helper_outdated": "wfos-app-helper is outdated (run the new prepare.sh).",
+    "server.reason.server_domain_mismatch": "the server is set up for a different domain.",
+    "server.reason.unknown": "an unexpected error occurred.",
   },
   id: {
     "notify.approvalNeeded": "Perlu persetujuan: {title}",
@@ -136,6 +146,16 @@ const MESSAGES = {
     "outbox.paused": "Email keluar sedang dijeda (Pengaturan → Email).",
     "outbox.dailyLimit": "Batas email harian tercapai ({limit} per hari).",
     "outbox.interrupted": "Terputus saat mengirim — email ini mungkin sudah atau belum terkirim; periksa dulu sebelum mengirim ulang.",
+    "server.down": "Server {name} gagal dicek",
+    "server.downText": "Pengecekan rutin server {name} ({host}) gagal: {reason}\nAplikasi di server itu mungkin tidak bisa diakses. Buka Pengaturan → Server, lalu tekan \"Cek sekarang\" setelah masalahnya dibereskan.",
+    "server.reason.host_key_mismatch": "server menunjukkan host key yang berbeda dari yang sudah dikonfirmasi (mungkin server dipasang ulang, atau ada pihak yang menyadap koneksi).",
+    "server.reason.ssh_auth_failed": "server menolak kunci SSH workspace.",
+    "server.reason.ssh_unreachable": "server tidak bisa dihubungi lewat SSH.",
+    "server.reason.server_host_not_allowed": "alamat server tidak diizinkan di instance ini.",
+    "server.reason.helper_missing": "wfos-app-helper belum terpasang (jalankan prepare.sh lagi).",
+    "server.reason.helper_outdated": "wfos-app-helper sudah usang (jalankan prepare.sh yang baru).",
+    "server.reason.server_domain_mismatch": "server disiapkan untuk domain lain.",
+    "server.reason.unknown": "terjadi kesalahan yang tidak terduga.",
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
