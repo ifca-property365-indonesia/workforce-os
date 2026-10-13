@@ -564,7 +564,10 @@ export type RealtimeEvent =
   | { type: "limits.updated"; windows: { type: string; status: string; utilization: number | null; resetsAt: string | null }[] }
   | { type: "limits.warning"; window: string; threshold: number; resetsAt: string | null }
   | { type: "quota.paused"; until: string | null; reason: string }
-  | { type: "quota.resumed" };
+  | { type: "quota.resumed" }
+  | { type: "task.progress"; taskId: string; progress: number; note: string }
+  | { type: "outbox.updated"; emailId: string | null; status: OutboxStatus }
+  | { type: "invoice.updated"; invoiceId: string; clientId: string; status: InvoiceStatus };
 
 export interface StepDTO {
   id: string;
@@ -726,6 +729,8 @@ export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
   | { kind: "demo"; workspaceId: string; userId: string }
   | { kind: "routine_run"; routineId: string; workspaceId: string; userId?: string }
+  /** a person retries a failed outbox email: the worker sends its stored payload again (policy still applies) */
+  | { kind: "outbox_resend"; emailId: string; workspaceId: string; userId: string }
   | NotifyJob;
 
 /**
