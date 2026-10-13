@@ -187,6 +187,8 @@ export interface ToolMeta {
   /** credits charged per call, on top of tokens */
   credits: number;
   category: "knowledge" | "memory" | "clients" | "drafting" | "comms" | "billing" | "team" | "web" | "tasks" | "code" | "routines";
+  /** granted to every task run without an explicit permission (an explicit disabled entry still wins) */
+  implicit?: "task";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -195,6 +197,8 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "memory_save", label: "Save memory", description: "Store a fact in the employee's long-term memory", class: "reversible", credits: 0.05, category: "memory" },
   { name: "list_clients", label: "List clients", description: "List clients and projects from master data", class: "reversible", credits: 0.05, category: "clients" },
   { name: "get_client", label: "Get client", description: "Read one client with contacts and projects", class: "reversible", credits: 0.05, category: "clients" },
+  { name: "list_invoices", label: "List invoices", description: "Read the invoice ledger (numbers, totals, status, due dates) and the company's invoice prefix", class: "reversible", credits: 0.05, category: "billing" },
+  { name: "report_progress", label: "Report progress", description: "Report how much of the current task is done (0–100%) with a short note; granted automatically in tasks", class: "reversible", credits: 0, category: "tasks", implicit: "task" },
   { name: "list_tasks", label: "List tasks", description: "Read recent tasks and deliverables in the workspace", class: "reversible", credits: 0.05, category: "tasks" },
   { name: "web_fetch", label: "Fetch web page", description: "Read a public web page (text only)", class: "reversible", credits: 0.2, category: "web" },
   { name: "draft_document", label: "Draft document", description: "Create a document or code deliverable (with diff vs previous version)", class: "reversible", credits: 0.05, category: "drafting" },
@@ -312,6 +316,10 @@ export const allowListEntrySchema = z.object({
   tool: z.string().min(1),
   /** e.g. recipient domains for send_email / send_invoice */
   recipientDomains: z.array(z.string()).default([]),
+  /** exact recipient addresses (case-insensitive) */
+  recipients: z.array(z.string()).optional(),
+  /** recipients registered on the payload's client (main email or a contact) are allowed */
+  clientContactsOnly: z.boolean().optional(),
   /** restrict to these client ids (empty = any client) */
   clientIds: z.array(z.string()).default([]),
   /** max invoice amount (send_invoice) */
@@ -408,7 +416,13 @@ export interface GateInput {
   allowList: AllowListEntry[];
   dryRun: boolean;
   /** recipients / client / amount extracted from the proposed payload, used for allow-list scope */
-  scope?: { recipients?: string[]; clientId?: string | null; amount?: number };
+  scope?: {
+    recipients?: string[];
+    clientId?: string | null;
+    amount?: number;
+    /** lower-cased addresses on file for scope.clientId (main email + contacts), looked up by the caller */
+    clientRecipients?: string[];
+  };
 }
 
 export function effectiveAutonomy(toolName: string, employeeAutonomy: AutonomyLevel, permissions: ToolPermission[]): AutonomyLevel {
@@ -416,13 +430,26 @@ export function effectiveAutonomy(toolName: string, employeeAutonomy: AutonomyLe
   return p?.autonomy ?? employeeAutonomy;
 }
 
+/** Bare lower-cased address: `"Ana" <Ana@X.com>` → `ana@x.com`. */
+export function normalizeEmail(raw: string): string {
+  const m = /<([^>]+)>/.exec(raw);
+  return (m ? m[1]! : raw).trim().toLowerCase();
+}
+
 export function allowListMatches(entry: AllowListEntry, scope: GateInput["scope"]): boolean {
-  if (entry.recipientDomains.length > 0) {
-    const recips = scope?.recipients ?? [];
+  // recipient rules (any configured): every recipient must satisfy at least one of them
+  const domains = entry.recipientDomains.map((d) => d.toLowerCase().trim().replace(/^@/, "")).filter(Boolean);
+  const exact = (entry.recipients ?? []).map(normalizeEmail).filter(Boolean);
+  const contactsOnly = entry.clientContactsOnly === true;
+  if (domains.length > 0 || exact.length > 0 || contactsOnly) {
+    const recips = (scope?.recipients ?? []).map(normalizeEmail);
     if (recips.length === 0) return false;
+    const known = new Set((scope?.clientRecipients ?? []).map(normalizeEmail));
     const ok = recips.every((r) => {
-      const domain = r.split("@")[1]?.toLowerCase().trim();
-      return !!domain && entry.recipientDomains.some((d) => d.toLowerCase().replace(/^@/, "") === domain);
+      const domain = r.split("@")[1]?.trim();
+      if (domain && domains.includes(domain)) return true;
+      if (exact.includes(r)) return true;
+      return contactsOnly && !!scope?.clientId && known.has(r);
     });
     if (!ok) return false;
   }
@@ -828,14 +855,149 @@ export function notificationEnabled(prefs: NotificationChannelPrefs | null | und
   return prefs?.[kind]?.[channel] ?? notificationDefault(kind, channel);
 }
 
+export const CLIENT_STATUSES = ["active", "prospect", "inactive"] as const;
+export type ClientStatus = (typeof CLIENT_STATUSES)[number];
+/** suggested contact roles; `role` stays free text so older contacts keep theirs */
+export const CONTACT_ROLES = ["project", "billing", "director", "technical", "other"] as const;
+export const CONTACT_RECEIVES = ["status", "minutes", "invoice"] as const;
+export type ContactReceives = (typeof CONTACT_RECEIVES)[number];
+
+export const clientContactSchema = z.object({
+  name: z.string().max(160),
+  email: z.email().or(z.literal("")),
+  role: z.string().max(60).default(""),
+  phone: z.string().max(40).default(""),
+  /** which mail this contact should get: status reports, meeting minutes, invoices */
+  receives: z.object({ status: z.boolean().default(false), minutes: z.boolean().default(false), invoice: z.boolean().default(false) }).default({ status: false, minutes: false, invoice: false }),
+});
+export type ClientContact = z.infer<typeof clientContactSchema>;
+/** as stored in clients.contacts: rows written before 0025 lack phone/receives */
+export type StoredClientContact = z.input<typeof clientContactSchema>;
+
 export const clientInputSchema = z.object({
   name: z.string().min(1).max(160),
   email: z.email().or(z.literal("")).default(""),
-  contacts: z
-    .array(z.object({ name: z.string(), email: z.email().or(z.literal("")), role: z.string().default("") }))
-    .default([]),
+  contacts: z.array(clientContactSchema).max(50).default([]),
   notes: z.string().max(5000).default(""),
   currency: z.string().default("IDR"),
+  status: z.enum(CLIENT_STATUSES).default("active"),
+  legalName: z.string().max(200).default(""),
+  taxId: z.string().max(40).default(""),
+  address: z.string().max(1000).default(""),
+  phone: z.string().max(40).default(""),
+});
+
+/** Contacts as stored (rows from before 0025 lack phone/receives): always read through this. */
+export function parseContacts(raw: unknown): ClientContact[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((c) => {
+    const r = clientContactSchema.safeParse(c);
+    return r.success ? [r.data] : [];
+  });
+}
+
+/** Lower-cased addresses on file for a client: its main email plus every contact (optionally only those receiving `kind`). */
+export function clientRecipientAddresses(c: { email: string; contacts: unknown }, kind?: ContactReceives): string[] {
+  const contacts = parseContacts(c.contacts).filter((x) => x.email && (!kind || x.receives[kind]));
+  const out = contacts.map((x) => normalizeEmail(x.email));
+  if (!kind && c.email) out.unshift(normalizeEmail(c.email));
+  return [...new Set(out)];
+}
+
+/** Company profile (workspaces.settings.company): printed on invoices, read by agents for numbering. */
+export const companyProfileSchema = z.object({
+  legalName: z.string().max(200).default(""),
+  address: z.string().max(1000).default(""),
+  taxId: z.string().max(40).default(""),
+  phone: z.string().max(40).default(""),
+  email: z.email().or(z.literal("")).default(""),
+  bankName: z.string().max(120).default(""),
+  bankAccount: z.string().max(60).default(""),
+  bankHolder: z.string().max(160).default(""),
+  invoicePrefix: z.string().max(20).regex(/^[A-Za-z0-9/._-]*$/).default("INV"),
+  invoiceFooter: z.string().max(1000).default(""),
+  defaultTaxPercent: z.number().min(0).max(100).default(0),
+});
+export type CompanyProfile = z.infer<typeof companyProfileSchema>;
+export function parseCompanyProfile(settings: unknown): CompanyProfile {
+  const raw = settings && typeof settings === "object" ? (settings as { company?: unknown }).company : undefined;
+  const r = companyProfileSchema.safeParse(raw ?? {});
+  return r.success ? r.data : companyProfileSchema.parse({});
+}
+
+/** `${prefix}-${year}-${seq:4}`, e.g. INV-2026-0007. */
+export function formatInvoiceNumber(prefix: string, year: number, seq: number): string {
+  return `${prefix ? `${prefix}-` : ""}${year}-${String(seq).padStart(4, "0")}`;
+}
+
+export const INVOICE_STATUSES = ["draft", "sent", "paid", "void"] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+export const invoiceStatusPatchSchema = z.object({ status: z.enum(INVOICE_STATUSES) });
+
+export const BILLING_PERIODS = ["monthly", "yearly"] as const;
+export type BillingPeriod = (typeof BILLING_PERIODS)[number];
+export const recurringBillingInputSchema = z
+  .object({
+    clientId: z.string().uuid(),
+    projectId: z.string().uuid().nullable().default(null),
+    description: z.string().min(1).max(300),
+    amount: z.number().positive(),
+    taxPercent: z.number().min(0).max(100).default(0),
+    dueDays: z.number().int().min(0).max(120).default(14),
+    period: z.enum(BILLING_PERIODS).default("monthly"),
+    dayOfMonth: z.number().int().min(1).max(28).default(1),
+    startMonth: z.number().int().min(1).max(12).nullable().default(null),
+    active: z.boolean().default(true),
+    employeeId: z.string().uuid().nullable().default(null),
+    recipients: z.array(z.email()).max(20).default([]),
+  })
+  .refine((v) => v.period !== "yearly" || v.startMonth !== null, { message: "A yearly billing needs its month", path: ["startMonth"] });
+
+/** The billing period a run at `date` (in tz) covers: YYYY-MM (monthly) or YYYY (yearly). */
+export function billingPeriodOf(period: BillingPeriod, ymd: { year: number; month: number }): string {
+  return period === "yearly" ? String(ymd.year) : `${ymd.year}-${String(ymd.month).padStart(2, "0")}`;
+}
+/** Cron expression for a recurring billing: 08:00 on its day (yearly: in its month). */
+export function billingCron(r: { period: BillingPeriod; dayOfMonth: number; startMonth: number | null }): string {
+  return r.period === "yearly" ? `0 8 ${r.dayOfMonth} ${r.startMonth ?? 1} *` : `0 8 ${r.dayOfMonth} * *`;
+}
+
+// ---- outbox ----
+export const OUTBOUND_EMAIL_KINDS = ["email", "invoice"] as const;
+export type OutboundEmailKind = (typeof OUTBOUND_EMAIL_KINDS)[number];
+export type OutboundEmailStatus = "sending" | "sent" | "failed";
+/** approval = a person approved it; allow_list = an Owner allow-list rule let it run; resend = a person retried a failed one */
+export type OutboundEmailTrigger = "approval" | "allow_list" | "resend";
+/** What the outbox shows: attempts (sending/sent/failed) merged with proposals still in approvals. */
+export type OutboxStatus = "pending_approval" | "rejected" | "expired" | OutboundEmailStatus;
+
+/** Outgoing agent email policy (workspaces.settings.email). Notifications are not affected. */
+export const emailPolicySchema = z.object({
+  paused: z.boolean().default(false),
+  dailyLimit: z.number().int().min(1).max(10000).default(100),
+});
+export type EmailPolicy = z.infer<typeof emailPolicySchema>;
+export function parseEmailPolicy(settings: unknown): EmailPolicy {
+  const raw = settings && typeof settings === "object" ? (settings as { email?: unknown }).email : undefined;
+  const r = emailPolicySchema.safeParse(raw ?? {});
+  return r.success ? r.data : emailPolicySchema.parse({});
+}
+
+/** SMTP presets: fill host/port/secure (secure=true is implicit TLS on 465; false uses STARTTLS on 587). */
+export const SMTP_PRESETS = [
+  { key: "google", host: "smtp.gmail.com", port: 465, secure: true, userHint: "you@yourdomain.com" },
+  { key: "microsoft", host: "smtp.office365.com", port: 587, secure: false, userHint: "you@yourdomain.com" },
+  { key: "zoho", host: "smtp.zoho.com", port: 465, secure: true, userHint: "you@yourdomain.com" },
+  { key: "ses", host: "email-smtp.ap-southeast-1.amazonaws.com", port: 587, secure: false, userHint: "SMTP username (AKIA…)" },
+  { key: "mailgun", host: "smtp.mailgun.org", port: 587, secure: false, userHint: "postmaster@mg.yourdomain.com" },
+  { key: "sendgrid", host: "smtp.sendgrid.net", port: 587, secure: false, userHint: "apikey" },
+] as const;
+export type SmtpPresetKey = (typeof SMTP_PRESETS)[number]["key"];
+
+// ---- task progress ----
+export const progressInputSchema = z.object({
+  percent: z.number().int().min(0).max(100),
+  note: z.string().max(200).default(""),
 });
 
 export const projectInputSchema = z.object({
@@ -895,21 +1057,38 @@ export const emailPayloadSchema = z.object({
 export type EmailPayload = z.infer<typeof emailPayloadSchema>;
 
 export const invoiceLineSchema = z.object({ description: z.string(), quantity: z.number(), unitPrice: z.number() });
+export type InvoiceLine = z.infer<typeof invoiceLineSchema>;
 export const invoicePayloadSchema = z.object({
   clientId: z.string(),
   invoiceNumber: z.string(),
   currency: z.string().default("IDR"),
   lines: z.array(invoiceLineSchema).min(1),
+  /** VAT/PPN on the subtotal, e.g. 11 */
+  taxPercent: z.number().min(0).max(100).default(0),
   dueDate: z.string(),
   notes: z.string().default(""),
   to: z.array(z.string()).default([]),
   subject: z.string().default(""),
   body: z.string().default(""),
+  projectId: z.string().nullable().optional(),
+  /** set by the recurring-billing scheduler: the ledger row this approval sends */
+  invoiceId: z.string().nullable().optional(),
 });
 export type InvoicePayload = z.infer<typeof invoicePayloadSchema>;
 
-export function invoiceTotal(p: Pick<InvoicePayload, "lines">): number {
+export function invoiceSubtotal(p: Pick<InvoicePayload, "lines">): number {
   return p.lines.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+}
+
+/** Tax rounded to the currency's minor unit (IDR: whole rupiah). */
+export function invoiceTax(p: Pick<InvoicePayload, "lines" | "currency"> & { taxPercent?: number }): number {
+  const raw = (invoiceSubtotal(p) * (p.taxPercent ?? 0)) / 100;
+  return p.currency === "IDR" ? Math.round(raw) : Math.round(raw * 100) / 100;
+}
+
+/** Amount due: subtotal + tax. */
+export function invoiceTotal(p: Pick<InvoicePayload, "lines"> & { currency?: string; taxPercent?: number }): number {
+  return invoiceSubtotal(p) + invoiceTax({ lines: p.lines, currency: p.currency ?? "IDR", taxPercent: p.taxPercent });
 }
 
 export const webhookPayloadSchema = z.object({ channel: z.string().default("default"), text: z.string().min(1) });

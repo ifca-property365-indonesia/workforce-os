@@ -40,6 +40,14 @@ import type {
   ExecutionMode,
   OfficeLook,
   StoredChatAttachment,
+  StoredClientContact,
+  ClientStatus,
+  InvoiceLine,
+  InvoiceStatus,
+  BillingPeriod,
+  OutboundEmailKind,
+  OutboundEmailStatus,
+  OutboundEmailTrigger,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -204,9 +212,17 @@ export const clients = pgTable("clients", {
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   email: text("email").notNull().default(""),
-  contacts: jsonb("contacts").$type<{ name: string; email: string; role: string }[]>().notNull().default([]),
+  /** read through clientContactSchema: rows written before 0025 lack phone/receives (defaults apply) */
+  contacts: jsonb("contacts").$type<StoredClientContact[]>().notNull().default([]),
   notes: text("notes").notNull().default(""),
   currency: text("currency").notNull().default("IDR"),
+  /** active | prospect | inactive */
+  status: text("status").$type<ClientStatus>().notNull().default("active"),
+  legalName: text("legal_name").notNull().default(""),
+  /** tax id (NPWP) printed on invoices */
+  taxId: text("tax_id").notNull().default(""),
+  address: text("address").notNull().default(""),
+  phone: text("phone").notNull().default(""),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -276,6 +292,10 @@ export const tasks = pgTable(
     retryCount: integer("retry_count").notNull().default(0),
     /** created from untrusted input (webhook payload): the run starts tainted */
     untrustedInput: boolean("untrusted_input").notNull().default(false),
+    /** 0..100 reported by the assignee (report_progress); null = never reported */
+    progress: integer("progress"),
+    progressNote: text("progress_note"),
+    progressAt: timestamp("progress_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
@@ -810,4 +830,113 @@ export const employeeSkills = pgTable(
     skillId: uuid("skill_id").notNull().references(() => skills.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.employeeId, t.skillId] }), index("employee_skills_skill").on(t.skillId)],
+);
+
+// ---------------------------------------------------------------------------
+// Outbox & billing (0025)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every email the platform tried to send on an employee's behalf (send_email / send_invoice), one row per attempt.
+ * Pending, rejected and expired proposals are not here: they live in `approvals` and the outbox API merges them in.
+ */
+export const outboundEmails = pgTable(
+  "outbound_emails",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<OutboundEmailKind>().notNull(),
+    /** sending → sent | failed */
+    status: text("status").$type<OutboundEmailStatus>().notNull().default("sending"),
+    trigger: text("trigger").$type<OutboundEmailTrigger>().notNull(),
+    approvalId: uuid("approval_id").references(() => approvals.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    to: jsonb("to").$type<string[]>().notNull().default([]),
+    cc: jsonb("cc").$type<string[]>().notNull().default([]),
+    subject: text("subject").notNull().default(""),
+    body: text("body").notNull().default(""),
+    attachments: jsonb("attachments").$type<{ filename: string; size: number; contentType?: string }[]>().notNull().default([]),
+    /** the exact payload that was executed (send_email / send_invoice shape): a resend uses it as-is */
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    error: text("error"),
+    messageId: text("message_id"),
+    /** the failed attempt this one retries */
+    resendOf: uuid("resend_of").references((): AnyPgColumn => outboundEmails.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (t) => [index("outbound_emails_ws_created").on(t.workspaceId, t.createdAt), index("outbound_emails_client").on(t.clientId)],
+);
+
+/** Recurring billing per client: on its day the scheduler drafts an invoice and asks a person to approve sending it. */
+export const recurringBillings = pgTable(
+  "recurring_billings",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    /** per period, in the client's currency, before tax */
+    amount: doublePrecision("amount").notNull(),
+    taxPercent: doublePrecision("tax_percent").notNull().default(0),
+    dueDays: integer("due_days").notNull().default(14),
+    period: text("period").$type<BillingPeriod>().notNull().default("monthly"),
+    /** 1..28 */
+    dayOfMonth: integer("day_of_month").notNull().default(1),
+    /** 1..12, yearly only */
+    startMonth: integer("start_month"),
+    active: boolean("active").notNull().default(true),
+    /** shown as the requester on the approval (usually a Finance employee); null = the system */
+    employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    /** empty = the client's contacts that receive invoices, else the client's main email */
+    recipients: jsonb("recipients").$type<string[]>().notNull().default([]),
+    /** last period invoiced: YYYY-MM (monthly) or YYYY (yearly) */
+    lastPeriod: text("last_period"),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("recurring_billings_due").on(t.active, t.nextRunAt), index("recurring_billings_client").on(t.clientId)],
+);
+
+/** Invoice ledger: drafted (draft_invoice / recurring), sent (send_invoice executed), then marked paid or void by a person. */
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    number: text("number").notNull(),
+    currency: text("currency").notNull().default("IDR"),
+    lines: jsonb("lines").$type<InvoiceLine[]>().notNull().default([]),
+    subtotal: doublePrecision("subtotal").notNull().default(0),
+    taxPercent: doublePrecision("tax_percent").notNull().default(0),
+    tax: doublePrecision("tax").notNull().default(0),
+    total: doublePrecision("total").notNull().default(0),
+    /** YYYY-MM-DD */
+    dueDate: date("due_date", { mode: "string" }),
+    notes: text("notes").notNull().default(""),
+    status: text("status").$type<InvoiceStatus>().notNull().default("draft"),
+    /** YYYY-MM / YYYY for recurring invoices */
+    period: text("period"),
+    recurringId: uuid("recurring_id").references(() => recurringBillings.id, { onDelete: "set null" }),
+    approvalId: uuid("approval_id").references(() => approvals.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    emailId: uuid("email_id").references(() => outboundEmails.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("invoices_ws_number").on(t.workspaceId, t.number),
+    index("invoices_client").on(t.clientId, t.createdAt),
+    // one invoice per recurring billing per period, even if two schedulers race
+    uniqueIndex("invoices_recurring_period").on(t.recurringId, t.period),
+  ],
 );

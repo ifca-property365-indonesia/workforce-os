@@ -172,6 +172,7 @@ export async function runDemoLifecycle(workspaceId: string, userId: string): Pro
     clientId: client?.id ?? "00000000-0000-0000-0000-000000000000",
     invoiceNumber: `INV-${new Date().toISOString().slice(0, 7).replace("-", "")}-901`,
     currency: client?.currency ?? "IDR",
+    taxPercent: 0,
     lines: [{ description: "CSV export for route history (build + QA)", quantity: 12, unitPrice: rate }],
     dueDate: new Date(Date.now() + 14 * 86400_000).toISOString().slice(0, 10),
     notes: "Thank you for your business.",
