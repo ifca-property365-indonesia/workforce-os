@@ -395,7 +395,7 @@ for line in \
   "-p OOMScoreAdjust=500 -p LimitNOFILE=4096 -p LimitFSIZE=2G" \
   "--slice=wfos-apps.slice" \
   "-p Requires=wfos-apps-firewall.service -p After=wfos-apps-firewall.service" \
-  "-p IPAddressDeny=localhost\ link-local\ multicast\ 0.0.0.0/8\ 10.0.0.0/8\ 100.64.0.0/10\ 172.16.0.0/12\ 192.168.0.0/16\ fc00::/7" \
+  "-p IPAddressDeny=127.0.0.0/8\ ::1/128\ 169.254.0.0/16\ fe80::/10\ 224.0.0.0/4\ ff00::/8\ 0.0.0.0/8\ 10.0.0.0/8\ 100.64.0.0/10\ 172.16.0.0/12\ 192.168.0.0/16\ fc00::/7" \
   "-p IPAddressAllow=127.0.0.53" \
   "[dry-run] flock /run/wfos-app-helper.build.lock" \
   "[dry-run] unlock /run/wfos-app-helper.lock" \
@@ -763,7 +763,7 @@ pass "stop-all stops and disables every wfos-app-* unit"
 KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXcRLnEUF79Xv5t7O1ZIxo7NbQ5VM/aN67ad/RUhWRA wfos-acme"
 prepare() {
   set +e
-  WFOS_PREPARE_TEST_OLD_CONF="${OLD_CONF:-$WORK/none.conf}" bash "${PREPARE_SCRIPT:-$PREPARE}" "$@" > "$WORK/out" 2>&1
+  WFOS_PREPARE_TEST_FRESH=1 WFOS_PREPARE_TEST_OLD_CONF="${OLD_CONF:-$WORK/none.conf}" bash "${PREPARE_SCRIPT:-$PREPARE}" "$@" > "$WORK/out" 2>&1
   CODE=$?
   set -e
 }

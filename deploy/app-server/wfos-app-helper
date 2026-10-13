@@ -597,7 +597,10 @@ as_app_limited() {
     (umask 077 && "$@")
   else
     # shellcheck disable=SC2016 # expanded by the app user's sh
-    systemd-run --scope --quiet --collect "--slice=$SLICE" -p MemoryMax=1G -p TasksMax=64 -- \
+    # --expand-environment=no: systemd would otherwise replace ${…} in the scripts passed through it (systemd ≥ 254)
+    local -a scope_opts=(--scope --quiet --collect "--slice=$SLICE")
+    if (($(systemd_version) >= 254)); then scope_opts+=(--expand-environment=no); fi
+    systemd-run "${scope_opts[@]}" -p MemoryMax=1G -p TasksMax=64 -- \
       timeout -k 10 900 runuser -u "$user" -g "$RUN_GROUP" -- /bin/sh -c 'umask 077 && exec "$@"' sh "$@"
   fi
 }
@@ -900,7 +903,8 @@ cmd_build_run() {
   # the firewall unit must be up for the whole build; and a build needs no inbound traffic at all, so its cgroup is
   # also kept away from loopback and private ranges by systemd's own IP filter (only the DNS resolvers stay)
   props+=(-p Requires=wfos-apps-firewall.service -p After=wfos-apps-firewall.service)
-  props+=(-p "IPAddressDeny=localhost link-local multicast 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16 fc00::/7")
+  # prefixes only: systemd-run -p does not take the unit-file keywords (localhost, link-local, multicast)
+  props+=(-p "IPAddressDeny=127.0.0.0/8 ::1/128 169.254.0.0/16 fe80::/10 224.0.0.0/4 ff00::/8 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16 fc00::/7")
   props+=(-p "IPAddressAllow=$(dns_servers)")
   opts=(--wait --pipe --collect --quiet "--unit=$unit" "--slice=$SLICE" "--description=Workforce OS build $slug $step ${sha:0:12}" "--uid=$user" "--gid=$RUN_GROUP")
   # the command is the manifest's: $VARS in it are for sh, systemd must not expand them (option from systemd 254)

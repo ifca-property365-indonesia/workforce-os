@@ -146,12 +146,15 @@ write_file() {
   mv -fT "$tmp" "$path"
 }
 
+# dry-run tests set WFOS_PREPARE_TEST_FRESH=1: every step then prints what it would do, even on a prepared host
+fresh_test() { [[ "$DRY" == 1 && "${WFOS_PREPARE_TEST_FRESH:-}" == 1 ]]; }
+
 # write_if_changed PATH MODE OWNER < content: like write_file, but only when the content differs; returns 0 when it
 # wrote (or would write), 1 when the file was already like that
 write_if_changed() {
   local path="$1" content
   content="$(cat)"
-  if [[ -f "$path" && ! -L "$path" && "$(cat "$path")" == "$content" ]]; then
+  if ! fresh_test && [[ -f "$path" && ! -L "$path" && "$(cat "$path")" == "$content" ]]; then
     echo "$path unchanged"
     return 1
   fi
@@ -230,7 +233,7 @@ command -v pnpm > /dev/null || run corepack enable
 # one shared, root-owned pnpm for every app user: COREPACK_HOME is read-only for them and the sandbox never
 # downloads (COREPACK_ENABLE_NETWORK=0), so "--activate" makes this version the default
 run install -d -m 0755 -o root -g root /opt/wfos-apps "$COREPACK_DIR"
-if [[ -d "$COREPACK_DIR/v1/pnpm/$PNPM_VERSION" ]] && grep -qs "\"$PNPM_VERSION\"" "$COREPACK_DIR/lastKnownGood.json"; then
+if ! fresh_test && [[ -d "$COREPACK_DIR/v1/pnpm/$PNPM_VERSION" ]] && grep -qs "\"$PNPM_VERSION\"" "$COREPACK_DIR/lastKnownGood.json"; then
   echo "pnpm $PNPM_VERSION present in $COREPACK_DIR"
 else
   run env COREPACK_HOME="$COREPACK_DIR" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare "pnpm@$PNPM_VERSION" --activate
@@ -240,7 +243,7 @@ run chmod -R a+rX "$COREPACK_DIR"
 # ---------------------------------------------------------------------------
 step "group $RUN_GROUP and user $USER_NAME"
 # ---------------------------------------------------------------------------
-if getent group "$RUN_GROUP" > /dev/null; then
+if ! fresh_test && getent group "$RUN_GROUP" > /dev/null; then
   echo "group $RUN_GROUP exists"
 else
   run groupadd --system "$RUN_GROUP"
