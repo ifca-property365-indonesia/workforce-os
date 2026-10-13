@@ -4,6 +4,7 @@ import { conversations, db, steps, tasks } from "@wfos/db";
 import type { RealtimeEvent } from "@wfos/shared";
 import { buildTools, grantedToolNames } from "../src/tools/registry";
 import { buildSystemPrompt } from "../src/runner/prompt";
+import { setTaskStatus } from "../src/runner/task-status";
 import { makeEmployee, makeTask, makeWorkspace, runContext } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 
@@ -99,5 +100,18 @@ describe("report_progress", () => {
     expect(textOf(r)).toMatch(/only while the task is running \(it is QUEUED\)/);
     expect((await progressOf(task.id)).progress).toBeNull();
     expect(events().some((e) => e.type === "task.progress")).toBe(false);
+  });
+
+  it("a task that becomes DONE shows 100 %, and one that never reported stays empty", async () => {
+    const ws = await makeWorkspace();
+    const emp = await makeEmployee(ws.id);
+    const reported = await makeTask(ws.id, emp.id, { status: "RUNNING" });
+    await db.update(tasks).set({ progress: 80, progressNote: "almost" }).where(eq(tasks.id, reported.id));
+    expect(await setTaskStatus({ id: reported.id, status: "RUNNING" }, "DONE")).toBe(true);
+    expect((await db.select().from(tasks).where(eq(tasks.id, reported.id)))[0]!.progress).toBe(100);
+
+    const silent = await makeTask(ws.id, emp.id, { status: "RUNNING" });
+    await setTaskStatus({ id: silent.id, status: "RUNNING" }, "DONE");
+    expect((await db.select().from(tasks).where(eq(tasks.id, silent.id)))[0]!.progress).toBeNull();
   });
 });

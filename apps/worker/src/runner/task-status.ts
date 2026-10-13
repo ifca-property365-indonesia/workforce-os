@@ -51,6 +51,11 @@ export async function afterTerminal(task: Task, status: TerminalStatus, opts: { 
  * left alone. Returns false (and runs no side effects) when the row no longer matched.
  * Terminal statuses run afterTerminal.
  */
+/** progress of a task that becomes DONE: 100 when the assignee reported any, else left empty */
+export function doneProgress() {
+  return sql<number | null>`case when ${tasks.progress} is null then null else 100 end`;
+}
+
 export async function setTaskStatus(
   task: Pick<Task, "id" | "status">,
   to: Exclude<TaskStatus, "FAILED">,
@@ -64,6 +69,8 @@ export async function setTaskStatus(
       status: to,
       ...(to === "RUNNING" ? { startedAt: now } : {}),
       ...(to === "DONE" || to === "CANCELLED" ? { completedAt: now } : {}),
+      // a finished task is 100 % done, whatever the assignee last reported (never reported stays empty)
+      ...(to === "DONE" ? { progress: doneProgress() } : {}),
       ...extra,
     })
     .where(and(eq(tasks.id, task.id), eq(tasks.status, task.status)))

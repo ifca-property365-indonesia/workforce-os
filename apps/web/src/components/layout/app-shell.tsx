@@ -469,7 +469,7 @@ function Shell({ children, onDesktop }: { children: ReactNode; onDesktop?: () =>
         </header>
         <Banners />
         </div>
-        <main className="mx-auto w-full max-w-[1520px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
+        <main className="mx-auto w-full min-w-0 max-w-[1520px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
       </div>
     </div>
   );

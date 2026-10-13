@@ -10,7 +10,7 @@ import { executeAction } from "../tools/actions";
 import { PREVIEW_MAX_FAILED_ATTEMPTS, TERMINAL_STATUSES, TOOL_BY_NAME } from "@wfos/shared";
 import { ACTIVE_RELEASE_STATUSES, FAILED_RELEASE_STATUSES } from "../deploy/preview";
 import { appUrl, sha8 } from "../deploy/common";
-import { afterTerminal, failTask } from "./task-status";
+import { afterTerminal, doneProgress, failTask } from "./task-status";
 import { errorMessage } from "../lib/errors";
 import { sql } from "drizzle-orm";
 import { msg } from "@wfos/shared/messages";
@@ -339,7 +339,7 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
     // a failure is written after commit by failTask (conditional on AWAITING_APPROVAL, so a concurrent resolver is a no-op);
     // a failure already handed back to the employee (consumed) was dealt with in a later run
     if (all.some((x) => x.status === "FAILED" && !settled(x))) return { kind: "fail" as const, task, result, error: "One or more approved actions failed to execute." };
-    const [done] = await tx.update(tasks).set({ status: "DONE", result, completedAt: new Date(), error: null }).where(eq(tasks.id, task.id)).returning();
+    const [done] = await tx.update(tasks).set({ status: "DONE", result, completedAt: new Date(), error: null, progress: doneProgress() }).where(eq(tasks.id, task.id)).returning();
     return { kind: "close" as const, task: done! };
   });
   if (!outcome) return;

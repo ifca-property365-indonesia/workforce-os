@@ -108,7 +108,7 @@ export function ReleasesTable({
   if (!releases.length) return <EmptyState icon={<History className="size-7" />} title={t("releases.empty")} />;
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border bg-card">
+      <div className="relative overflow-x-auto rounded-xl border bg-card">
         <table className="w-full min-w-[46rem] text-sm">
           <thead>
             <tr className="border-b text-left text-[11px] tracking-wide text-muted-foreground uppercase">

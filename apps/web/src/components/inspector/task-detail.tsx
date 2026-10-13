@@ -404,7 +404,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
       {!!data.previews?.length && <TaskPreviews previews={data.previews} />}
 
       <div className={cn("grid gap-4", !compact && "lg:grid-cols-5")}>
-        <div className={cn("space-y-4", !compact && "lg:col-span-2")}>
+        <div className={cn("min-w-0 space-y-4", !compact && "lg:col-span-2")}>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">{t("task.brief")}</CardTitle>
@@ -430,9 +430,9 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
               </CardHeader>
               <CardContent className="space-y-1">
                 {approvals.map((a) => (
-                  <Link key={a.id} href={`/approvals?focus=${a.id}`} className="flex items-center justify-between rounded px-2 py-1 text-sm hover:bg-accent">
-                    <span className="truncate">{a.title}</span>
-                    <span className={cn("text-xs font-medium", a.status === "PENDING" ? "text-warning" : a.status === "REJECTED" || a.status === "FAILED" ? "text-destructive" : "text-success")}>
+                  <Link key={a.id} href={`/approvals?focus=${a.id}`} className="flex items-center justify-between gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
+                    <span className="min-w-0 truncate">{a.title}</span>
+                    <span className={cn("shrink-0 text-xs font-medium", a.status === "PENDING" ? "text-warning" : a.status === "REJECTED" || a.status === "FAILED" ? "text-destructive" : "text-success")}>
                       {ts(`approval.${a.status}`)}
                     </span>
                   </Link>
@@ -475,7 +475,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
             </Card>
           )}
         </div>
-        <div className={cn(!compact && "lg:col-span-3")}>
+        <div className={cn("min-w-0", !compact && "lg:col-span-3")}>
           <Tabs defaultValue="activity">
             <TabsList>
               <TabsTrigger value="activity">{t("task.activityTab", { count: stepsData?.steps.length ?? 0 })}</TabsTrigger>

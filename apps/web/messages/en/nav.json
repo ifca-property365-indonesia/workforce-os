@@ -13,7 +13,7 @@
     "settings": "Settings",
     "account": "Account",
     "outbox": "Outbox",
-    "apps": "Apps"
+    "apps": "App Factory"
   },
   "killSwitch": {
     "button": "Kill switch",
