@@ -218,6 +218,8 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "send_invoice", label: "Send invoice", description: "Email an invoice PDF to a client", class: "irreversible", credits: 1, category: "billing" },
   { name: "git_push", label: "Push branch", description: "Workspace mode: push your committed work to agent/<task> on the remote (the platform pushes after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "create_pull_request", label: "Open pull request", description: "Workspace mode: open a pull/merge request from your branch (after approval)", class: "irreversible", credits: 0.5, category: "code" },
+  { name: "list_apps", label: "List apps", description: "Workspace mode: the workspace's apps (preview URL, status, repository, branch, the version that runs) so you know which app to preview", class: "reversible", credits: 0.02, category: "code" },
+  { name: "request_preview", label: "Publish preview", description: "Workspace mode: publish the branch you pushed (git_push) as a preview of an app at its URL (the platform deploys after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "post_webhook", label: "Publish to webhook", description: "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)", class: "irreversible", credits: 0.5, category: "comms" },
 ] as const;
 
@@ -1359,6 +1361,35 @@ export interface ReleaseCheckpoint {
   /** the migration ran (dbBackup holds the backup to restore) */
   migrated?: boolean;
 }
+
+/**
+ * Approval payload of request_preview (Phase A3): the exact commit the Developer pushed to agent/<task>, and what
+ * changes against the version that runs now. The executor re-checks that this commit is still the pushed head.
+ */
+export const requestPreviewPayloadSchema = z.object({
+  appId: z.uuid(),
+  appName: z.string(),
+  url: z.string(),
+  serverName: z.string(),
+  repositoryId: z.uuid(),
+  repository: z.string(),
+  branch: z.string(),
+  commit: z.string().regex(/^[0-9a-f]{40}$/),
+  commitSubject: z.string().nullable(),
+  /** the commit that runs now (null: first preview) */
+  currentCommit: z.string().nullable(),
+  /** commits since currentCommit (or since the default branch on a first preview), newest first, capped */
+  commits: z.array(z.object({ sha: z.string(), subject: z.string() })).max(50),
+  files: z.array(z.object({ path: z.string(), added: z.number(), removed: z.number() })).max(300),
+  filesTruncated: z.boolean(),
+  warnings: z.array(z.enum(RELEASE_WARNINGS)),
+  /** the validated wfos-app.json of that commit */
+  manifest: appManifestSchema,
+  summary: z.string().max(2000),
+});
+export type RequestPreviewPayload = z.infer<typeof requestPreviewPayloadSchema>;
+/** a task waits for at most this many failed previews before it fails instead of being sent back again */
+export const PREVIEW_MAX_FAILED_ATTEMPTS = 3;
 
 export interface AppDTO {
   id: string;

@@ -8,7 +8,13 @@ describe("classifyTool", () => {
 
   it("classifies every irreversible builtin as irreversible", () => {
     const irreversible = BUILTIN_TOOLS.filter((t) => t.class === "irreversible").map((t) => t.name).sort();
-    expect(irreversible).toEqual(["create_pull_request", "git_push", "post_webhook", "send_email", "send_invoice"]);
+    expect(irreversible).toEqual(["create_pull_request", "git_push", "post_webhook", "request_preview", "send_email", "send_invoice"]);
+  });
+
+  it("request_preview is irreversible although its name holds the read verb \"preview\" (the registry wins)", () => {
+    expect(classifyTool("request_preview")).toBe("irreversible");
+    expect(classifyTool("mcp__wfos__request_preview")).toBe("irreversible");
+    expect(classifyTool("list_apps")).toBe("reversible");
   });
 
   it("uses the registry for builtins reached through an mcp__ prefix", () => {
