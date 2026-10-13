@@ -51,6 +51,13 @@ import type {
   ServerRole,
   ServerStatus,
   ServerInfo,
+  AppStatus,
+  AppAccessMode,
+  AppManifest,
+  ReleaseStatus,
+  ReleaseTrigger,
+  ReleaseStep,
+  ReleaseWarning,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -982,4 +989,86 @@ export const servers = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("servers_ws_name").on(t.workspaceId, t.name), uniqueIndex("servers_ws_domain").on(t.workspaceId, t.baseDomain)],
+);
+
+/** An app an employee builds, previewed on one of the workspace's servers at https://<slug>.<server baseDomain>. */
+export const apps = pgTable(
+  "apps",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** a server with apps cannot be deleted (remove the apps first) */
+    serverId: uuid("server_id").notNull().references(() => servers.id, { onDelete: "restrict" }),
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    repositoryId: uuid("repository_id").references(() => repositories.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    /** subdomain and name on the server; fixed once created */
+    slug: text("slug").notNull(),
+    /** <slug>.<server baseDomain>, globally unique */
+    domain: text("domain").notNull(),
+    /** branch a manual deploy takes by default */
+    branch: text("branch").notNull().default("main"),
+    /** 127.0.0.1 port on the server, APP_PORT_MIN..APP_PORT_MAX, unique per server */
+    port: integer("port").notNull(),
+    status: text("status").$type<AppStatus>().notNull().default("new"),
+    statusMessage: text("status_message"),
+    currentReleaseId: uuid("current_release_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
+    accessMode: text("access_mode").$type<AppAccessMode>().notNull().default("password"),
+    /** preview password (basic auth, user "preview"), encrypted; the server only gets its bcrypt hash */
+    accessPasswordEnc: text("access_password_enc"),
+    /** extra env (JSON object), encrypted, never sent back to a browser or an agent */
+    envEnc: text("env_enc"),
+    /** APP_SECRET, generated once, encrypted */
+    appSecretEnc: text("app_secret_enc"),
+    /** password of the app's database role, set when the manifest first asks for a database */
+    dbPasswordEnc: text("db_password_enc"),
+    memoryMb: integer("memory_mb").notNull().default(512),
+    healthy: boolean("healthy"),
+    lastHealthAt: timestamp("last_health_at", { withTimezone: true }),
+    lastDeployedAt: timestamp("last_deployed_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("apps_ws_name").on(t.workspaceId, t.name),
+    uniqueIndex("apps_server_slug").on(t.serverId, t.slug),
+    uniqueIndex("apps_server_port").on(t.serverId, t.port),
+    uniqueIndex("apps_domain").on(t.domain),
+  ],
+);
+
+/** One deploy (or rollback) of an app: the exact commit, what happened, and its (redacted, capped) log. */
+export const appReleases = pgTable(
+  "app_releases",
+  {
+    id: id(),
+    appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    commit: text("commit").notNull(),
+    branch: text("branch").notNull(),
+    commitSubject: text("commit_subject"),
+    status: text("status").$type<ReleaseStatus>().notNull().default("queued"),
+    trigger: text("trigger").$type<ReleaseTrigger>().notNull(),
+    /** the step running now, or the one that failed */
+    step: text("step").$type<ReleaseStep>(),
+    warnings: jsonb("warnings").$type<ReleaseWarning[]>().notNull().default([]),
+    /** the validated wfos-app.json of this commit */
+    manifest: jsonb("manifest").$type<AppManifest>(),
+    /** secrets redacted, capped (the tail is kept) */
+    log: text("log").notNull().default(""),
+    error: text("error"),
+    /** name of the database backup taken before this release's migration (on the server) */
+    dbBackup: text("db_backup"),
+    /** rollback: the release whose commit is brought back */
+    rollbackOfId: uuid("rollback_of_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
+    approvalId: uuid("approval_id").references(() => approvals.id, { onDelete: "set null" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("app_releases_app").on(t.appId, t.createdAt), index("app_releases_ws_status").on(t.workspaceId, t.status)],
 );

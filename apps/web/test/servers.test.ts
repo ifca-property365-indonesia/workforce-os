@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { auditLog, credentials, db, members, servers, users, workspaces } from "@wfos/db";
-import type { ServerInfo } from "@wfos/shared";
+import { WFOS_HELPER_VERSION, type ServerInfo } from "@wfos/shared";
 import { totp } from "@wfos/shared/totp";
 import { HelperOutdatedError, HostNotAllowedError, SshAuthError, SshConnectError, probeServer, scanHostKey } from "@wfos/shared/ssh";
 import { POST as login } from "@/app/api/auth/login/route";
@@ -30,7 +30,7 @@ const HOST_KEY = Buffer.from("fake-ed25519-host-key-blob").toString("base64");
 const FINGERPRINT = `SHA256:${"A".repeat(43)}`;
 const OTHER_FINGERPRINT = `SHA256:${"B".repeat(43)}`;
 const INFO: ServerInfo = {
-  helperVersion: 1,
+  helperVersion: WFOS_HELPER_VERSION,
   os: "Ubuntu 24.04",
   node: "v24.3.0",
   pnpm: "10.12.1",

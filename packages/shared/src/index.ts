@@ -596,7 +596,9 @@ export type RealtimeEvent =
   | { type: "task.progress"; taskId: string; progress: number; note: string }
   | { type: "outbox.updated"; emailId: string | null; status: OutboxStatus }
   | { type: "invoice.updated"; invoiceId: string; clientId: string; status: InvoiceStatus }
-  | { type: "server.updated"; serverId: string; status: ServerStatus };
+  | { type: "server.updated"; serverId: string; status: ServerStatus }
+  | { type: "app.updated"; appId: string; status: AppStatus }
+  | { type: "release.updated"; releaseId: string; appId: string; status: ReleaseStatus; step: ReleaseStep | null };
 
 export interface StepDTO {
   id: string;
@@ -743,6 +745,8 @@ export const QUEUE_RUNS = "wfos-runs";
 export const QUEUE_ACTIONS = "wfos-actions";
 export const QUEUE_INGEST = "wfos-ingest";
 export const QUEUE_MISC = "wfos-misc";
+/** app deploys and app start/stop/remove: one job at a time per worker, so one build at a time per server */
+export const QUEUE_DEPLOYS = "wfos-deploys";
 
 export type RunJob =
   | { kind: "task"; taskId: string; workspaceId: string; resumeNote?: string }
@@ -753,6 +757,10 @@ export type RunJob =
 export type ActionJob =
   | { kind: "execute_approval"; approvalId: string; workspaceId: string }
   | { kind: "rejected_approval"; approvalId: string; workspaceId: string };
+export type DeployJob =
+  /** run this queued release (a deploy, or a rollback: trigger "rollback") */
+  | { kind: "release"; releaseId: string; workspaceId: string }
+  | { kind: "app_action"; appId: string; workspaceId: string; action: "stop" | "start" | "remove"; userId: string | null; reason?: string };
 export type IngestJob = { kind: "ingest"; documentId: string; workspaceId: string };
 export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
@@ -1141,7 +1149,7 @@ export const SERVER_STATUSES = ["pending", "ready", "error"] as const;
 export type ServerStatus = (typeof SERVER_STATUSES)[number];
 
 /** The helper version this platform needs on a server; an older one asks the Owner to re-run prepare.sh. */
-export const WFOS_HELPER_VERSION = 1;
+export const WFOS_HELPER_VERSION = 2;
 
 /** What `wfos-app-helper info` reports (JSON on stdout). */
 export const serverInfoSchema = z.object({
@@ -1174,3 +1182,158 @@ export const serverInputSchema = z.object({
 export type ServerInput = z.infer<typeof serverInputSchema>;
 /** confirm the fingerprint the Owner compared on the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) */
 export const serverVerifySchema = z.object({ fingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]{43}=?$/) });
+
+// ---- apps and releases (Phase A2 of the app factory) ----
+/** new = created, never deployed · deploying · running · stopped (by a person or auto-stop) · failed (no version runs) */
+export const APP_STATUSES = ["new", "deploying", "running", "stopped", "failed"] as const;
+export type AppStatus = (typeof APP_STATUSES)[number];
+/**
+ * queued → deploying → deployed | failed (the previous version, if any, kept running) | rolled_back (the new version
+ * was switched on, failed its checks, and the previous version runs again) · superseded = a later release replaced it
+ */
+export const RELEASE_STATUSES = ["queued", "deploying", "deployed", "failed", "rolled_back", "superseded"] as const;
+export type ReleaseStatus = (typeof RELEASE_STATUSES)[number];
+export const RELEASE_TRIGGERS = ["approval", "manual", "rollback"] as const;
+export type ReleaseTrigger = (typeof RELEASE_TRIGGERS)[number];
+/** a deploy's steps, in order (a release reports the one it is on) */
+export const RELEASE_STEPS = ["prepare", "upload", "unpack", "env", "database", "install", "build", "backup", "migrate", "activate", "health", "publish", "public_check", "cleanup"] as const;
+export type ReleaseStep = (typeof RELEASE_STEPS)[number];
+/** things the approval card / release page warns about (computed against the release that runs now) */
+export const RELEASE_WARNINGS = ["first_publish", "manifest_changed", "scripts_changed", "new_database", "destructive_migration", "public_access"] as const;
+export type ReleaseWarning = (typeof RELEASE_WARNINGS)[number];
+export const APP_ACCESS_MODES = ["password", "public"] as const;
+export type AppAccessMode = (typeof APP_ACCESS_MODES)[number];
+
+/** ports the platform hands out per server (unique per server in the DB; the helper refuses others) */
+export const APP_PORT_MIN = 4100;
+export const APP_PORT_MAX = 4499;
+/** a preview with no new release for this many days is stopped (one click starts it again) */
+export const APP_IDLE_STOP_DAYS = 14;
+/** releases kept on the server per app (older release folders are removed) */
+export const APP_RELEASES_KEPT = 3;
+export const APP_DB_BACKUPS_KEPT = 7;
+
+/** subdomains an app may never take (also refused by the helper) */
+export const RESERVED_APP_SLUGS = ["www", "api", "app", "apps", "admin", "mail", "preview", "static", "assets", "cdn", "status"] as const;
+export const APP_SLUG_RE = /^[a-z][a-z0-9-]{0,28}[a-z0-9]$/;
+export const appSlugSchema = z
+  .string()
+  .regex(APP_SLUG_RE, "Use 2–30 lowercase letters, digits and dashes, starting with a letter")
+  .refine((s) => !s.includes("--") && !(RESERVED_APP_SLUGS as readonly string[]).includes(s), "This name is reserved");
+
+/** a single shell command line from the manifest (run as the app's own user inside its sandbox) */
+const manifestCommand = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine((c) => !/[\u0000-\u001f\u007f]/.test(c), "One line, no control characters");
+
+/**
+ * `wfos-app.json` at the root of the app's repository. Strict: unknown keys are refused, so a typo never silently
+ * turns into a default.
+ */
+export const appManifestSchema = z
+  .object({
+    /** the only stack in Phase A */
+    type: z.literal("nextjs"),
+    install: manifestCommand.default("pnpm install --frozen-lockfile"),
+    build: manifestCommand.default("pnpm build"),
+    /** must listen on $HOST:$PORT (127.0.0.1) */
+    start: manifestCommand.default("pnpm start -H 127.0.0.1 -p $PORT"),
+    /** runs before the new version starts, after a database backup; omitted = no migrations */
+    migrate: manifestCommand.optional(),
+    /** GET path that answers 2xx when the app is up */
+    health: z.string().regex(/^\/[A-Za-z0-9._~\/-]{0,200}$/).default("/api/health"),
+    /** true = the platform creates a PostgreSQL database and sets DATABASE_URL */
+    database: z.boolean().default(false),
+    /** MB of memory for the running app (the build gets its own, larger limit) */
+    memoryMb: z.number().int().min(256).max(1024).default(512),
+  })
+  .strict();
+export type AppManifest = z.infer<typeof appManifestSchema>;
+export const APP_MANIFEST_FILE = "wfos-app.json";
+
+/** env names the platform sets itself (a person cannot override them) */
+export const APP_RESERVED_ENV = ["PORT", "HOST", "NODE_ENV", "APP_URL", "APP_SECRET", "APP_VERSION", "DATABASE_URL"] as const;
+export const APP_ENV_NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
+/** extra env for an app; values are stored encrypted and never shown again */
+export const appEnvSchema = z
+  .record(
+    z.string().regex(APP_ENV_NAME_RE, "Use UPPER_CASE names"),
+    z
+      .string()
+      .max(4000)
+      .refine((v) => !/[\u0000\n\r]/.test(v), "One line per value"),
+  )
+  .refine((e) => Object.keys(e).length <= 50, "At most 50 variables")
+  .refine((e) => !Object.keys(e).some((k) => (APP_RESERVED_ENV as readonly string[]).includes(k)), "This name is set by the platform");
+export type AppEnv = z.infer<typeof appEnvSchema>;
+
+const gitRef = z.string().regex(/^[A-Za-z0-9._\/-]{1,200}$/).refine((r) => !r.includes("..") && !r.startsWith("-"), "Invalid branch");
+export const appInputSchema = z.object({
+  name: z.string().min(1).max(80),
+  slug: appSlugSchema,
+  serverId: z.uuid(),
+  repositoryId: z.uuid(),
+  branch: gitRef.optional(),
+  clientId: z.uuid().nullable().optional(),
+  projectId: z.uuid().nullable().optional(),
+  accessMode: z.enum(APP_ACCESS_MODES).default("password"),
+});
+export type AppInput = z.infer<typeof appInputSchema>;
+/** slug, server and repository are fixed once created */
+export const appUpdateSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  branch: gitRef.optional(),
+  clientId: z.uuid().nullable().optional(),
+  projectId: z.uuid().nullable().optional(),
+  accessMode: z.enum(APP_ACCESS_MODES).optional(),
+});
+/** manual deploy: a branch (its head now) or an exact commit; neither = the app's branch */
+export const appDeploySchema = z
+  .object({ branch: gitRef.optional(), commit: z.string().regex(/^[0-9a-f]{40}$/).optional() })
+  .refine((d) => !(d.branch && d.commit), "Give a branch or a commit, not both");
+
+export interface AppDTO {
+  id: string;
+  name: string;
+  slug: string;
+  url: string;
+  serverId: string;
+  serverName: string;
+  repositoryId: string | null;
+  repositoryName: string | null;
+  branch: string;
+  clientId: string | null;
+  projectId: string | null;
+  port: number;
+  status: AppStatus;
+  statusMessage: string | null;
+  accessMode: AppAccessMode;
+  envKeys: string[];
+  hasDatabase: boolean;
+  memoryMb: number;
+  healthy: boolean | null;
+  lastHealthAt: string | null;
+  lastDeployedAt: string | null;
+  currentRelease: ReleaseDTO | null;
+  createdAt: string;
+}
+export interface ReleaseDTO {
+  id: string;
+  appId: string;
+  commit: string;
+  branch: string;
+  commitSubject: string | null;
+  status: ReleaseStatus;
+  trigger: ReleaseTrigger;
+  step: ReleaseStep | null;
+  warnings: ReleaseWarning[];
+  error: string | null;
+  approvalId: string | null;
+  taskId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
