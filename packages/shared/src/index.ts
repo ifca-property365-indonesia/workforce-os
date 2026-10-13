@@ -595,7 +595,8 @@ export type RealtimeEvent =
   | { type: "quota.resumed" }
   | { type: "task.progress"; taskId: string; progress: number; note: string }
   | { type: "outbox.updated"; emailId: string | null; status: OutboxStatus }
-  | { type: "invoice.updated"; invoiceId: string; clientId: string; status: InvoiceStatus };
+  | { type: "invoice.updated"; invoiceId: string; clientId: string; status: InvoiceStatus }
+  | { type: "server.updated"; serverId: string; status: ServerStatus };
 
 export interface StepDTO {
   id: string;
@@ -1131,3 +1132,45 @@ export function formatCredits(n: number): string {
 }
 export * from "./mcp-oauth";
 export * from "./package";
+
+// ---- app servers (Phase A of the app factory) ----
+export const SERVER_ROLES = ["dev", "live"] as const;
+export type ServerRole = (typeof SERVER_ROLES)[number];
+/** pending = registered, not verified · ready = verified and probed · error = last check failed */
+export const SERVER_STATUSES = ["pending", "ready", "error"] as const;
+export type ServerStatus = (typeof SERVER_STATUSES)[number];
+
+/** The helper version this platform needs on a server; an older one asks the Owner to re-run prepare.sh. */
+export const WFOS_HELPER_VERSION = 1;
+
+/** What `wfos-app-helper info` reports (JSON on stdout). */
+export const serverInfoSchema = z.object({
+  helperVersion: z.number().int(),
+  os: z.string().default(""),
+  node: z.string().default(""),
+  pnpm: z.string().default(""),
+  nginx: z.boolean().default(false),
+  certbot: z.boolean().default(false),
+  /** port of the apps-only Postgres cluster, null when not installed */
+  postgresPort: z.number().int().nullable().default(null),
+  diskFreeMb: z.number().default(0),
+  memTotalMb: z.number().default(0),
+  memAvailableMb: z.number().default(0),
+  baseDomain: z.string().default(""),
+});
+export type ServerInfo = z.infer<typeof serverInfoSchema>;
+
+const HOSTNAME_RE = /^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))*$/;
+export const serverInputSchema = z.object({
+  name: z.string().min(1).max(60),
+  /** hostname or IP literal */
+  host: z.string().min(1).max(253).refine((h) => HOSTNAME_RE.test(h) || /^[0-9.]+$/.test(h) || /^[0-9a-fA-F:]+$/.test(h), "Invalid host"),
+  port: z.number().int().min(1).max(65535).default(22),
+  username: z.string().regex(/^[a-z_][a-z0-9_-]{0,31}$/).default("wfos-apps"),
+  role: z.enum(SERVER_ROLES).default("dev"),
+  baseDomain: z.string().min(3).max(200).refine((d) => HOSTNAME_RE.test(d) && d.includes("."), "Invalid domain").transform((d) => d.toLowerCase()),
+  maxRunningApps: z.number().int().min(1).max(50).default(3),
+});
+export type ServerInput = z.infer<typeof serverInputSchema>;
+/** confirm the fingerprint the Owner compared on the server (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`) */
+export const serverVerifySchema = z.object({ fingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]{43}=?$/) });

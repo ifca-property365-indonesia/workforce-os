@@ -48,6 +48,9 @@ import type {
   OutboundEmailKind,
   OutboundEmailStatus,
   OutboundEmailTrigger,
+  ServerRole,
+  ServerStatus,
+  ServerInfo,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -939,4 +942,44 @@ export const invoices = pgTable(
     // one invoice per recurring billing per period, even if two schedulers race
     uniqueIndex("invoices_recurring_period").on(t.recurringId, t.period),
   ],
+);
+
+// ---------------------------------------------------------------------------
+// App servers (0026): servers a workspace registers to run the apps its employees build
+// ---------------------------------------------------------------------------
+
+/**
+ * A server the workspace owns, reached over SSH as an unprivileged user (default `wfos-apps`) with the workspace's own
+ * key (credentials kind "ssh"). Root work goes only through the validated helper installed by prepare.sh.
+ * The host key is pinned when an Owner confirms its fingerprint; a different key is refused from then on.
+ */
+export const servers = pgTable(
+  "servers",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    host: text("host").notNull(),
+    port: integer("port").notNull().default(22),
+    username: text("username").notNull().default("wfos-apps"),
+    /** dev = previews (Phase A); live = production releases (Phase B) */
+    role: text("role").$type<ServerRole>().notNull().default("dev"),
+    /** apps are served at <slug>.<baseDomain>; DNS *.<baseDomain> must point at this server */
+    baseDomain: text("base_domain").notNull(),
+    /** pinned host key: algorithm + base64 key blob, set on verification */
+    hostKeyAlgo: text("host_key_algo"),
+    hostKey: text("host_key"),
+    hostKeyFingerprint: text("host_key_fingerprint"),
+    status: text("status").$type<ServerStatus>().notNull().default("pending"),
+    statusMessage: text("status_message"),
+    /** at most this many apps run at once on this server */
+    maxRunningApps: integer("max_running_apps").notNull().default(3),
+    /** last probe: helper/node/pnpm versions, disk and memory */
+    info: jsonb("info").$type<ServerInfo>(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("servers_ws_name").on(t.workspaceId, t.name), uniqueIndex("servers_ws_domain").on(t.workspaceId, t.baseDomain)],
 );
