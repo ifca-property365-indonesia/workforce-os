@@ -737,6 +737,11 @@ export function controlChannel(namespace = ""): string {
   return `${namespace ? `${namespace}:` : ""}wfos:control`;
 }
 
+/** set by the web while an app's remove job is queued (one at a time); cleared by the worker when the job ends */
+export function appRemoveLockKey(appId: string, namespace = ""): string {
+  return `${namespace ? `${namespace}:` : ""}wfos:app-remove:${appId}`;
+}
+
 // ---------------------------------------------------------------------------
 // Queue job payloads
 // ---------------------------------------------------------------------------
@@ -760,7 +765,8 @@ export type ActionJob =
 export type DeployJob =
   /** run this queued release (a deploy, or a rollback: trigger "rollback") */
   | { kind: "release"; releaseId: string; workspaceId: string }
-  | { kind: "app_action"; appId: string; workspaceId: string; action: "stop" | "start" | "remove"; userId: string | null; reason?: string };
+  /** republish = write the nginx site again (new preview password / access mode) on a running app, no restart */
+  | { kind: "app_action"; appId: string; workspaceId: string; action: "stop" | "start" | "remove" | "republish"; userId: string | null; reason?: string };
 export type IngestJob = { kind: "ingest"; documentId: string; workspaceId: string };
 export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
@@ -1165,6 +1171,10 @@ export const serverInfoSchema = z.object({
   memTotalMb: z.number().default(0),
   memAvailableMb: z.number().default(0),
   baseDomain: z.string().default(""),
+  /** helper 2+: systemd version, whether the apps firewall table is loaded, where apps live */
+  systemd: z.number().int().nullable().default(null),
+  firewall: z.boolean().nullable().default(null),
+  appsRoot: z.string().default(""),
 });
 export type ServerInfo = z.infer<typeof serverInfoSchema>;
 
@@ -1243,7 +1253,7 @@ export const appManifestSchema = z
     /** runs before the new version starts, after a database backup; omitted = no migrations */
     migrate: manifestCommand.optional(),
     /** GET path that answers 2xx when the app is up */
-    health: z.string().regex(/^\/[A-Za-z0-9._~\/-]{0,200}$/).default("/api/health"),
+    health: z.string().regex(/^\/[A-Za-z0-9._\/-]{0,200}$/).default("/api/health"),
     /** true = the platform creates a PostgreSQL database and sets DATABASE_URL */
     database: z.boolean().default(false),
     /** MB of memory for the running app (the build gets its own, larger limit) */
@@ -1254,7 +1264,11 @@ export type AppManifest = z.infer<typeof appManifestSchema>;
 export const APP_MANIFEST_FILE = "wfos-app.json";
 
 /** env names the platform sets itself (a person cannot override them) */
-export const APP_RESERVED_ENV = ["PORT", "HOST", "NODE_ENV", "APP_URL", "APP_SECRET", "APP_VERSION", "DATABASE_URL"] as const;
+export const APP_RESERVED_ENV = ["PORT", "HOST", "NODE_ENV", "APP_URL", "APP_SECRET", "APP_VERSION", "APP_DATA_DIR", "DATABASE_URL"] as const;
+/** names the server's helper refuses (they would steer the sandbox or the build): never accepted from a person */
+export function isForbiddenAppEnv(name: string): boolean {
+  return (APP_RESERVED_ENV as readonly string[]).includes(name) || ["HOME", "PATH", "NPM_CONFIG_STORE_DIR", "XDG_CACHE_HOME"].includes(name) || /^(LD_|COREPACK_)/.test(name);
+}
 export const APP_ENV_NAME_RE = /^[A-Z][A-Z0-9_]{0,63}$/;
 /** extra env for an app; values are stored encrypted and never shown again */
 export const appEnvSchema = z
@@ -1266,7 +1280,7 @@ export const appEnvSchema = z
       .refine((v) => !/[\u0000\n\r]/.test(v), "One line per value"),
   )
   .refine((e) => Object.keys(e).length <= 50, "At most 50 variables")
-  .refine((e) => !Object.keys(e).some((k) => (APP_RESERVED_ENV as readonly string[]).includes(k)), "This name is set by the platform");
+  .refine((e) => !Object.keys(e).some(isForbiddenAppEnv), "This name is set by the platform");
 export type AppEnv = z.infer<typeof appEnvSchema>;
 
 const gitRef = z.string().regex(/^[A-Za-z0-9._\/-]{1,200}$/).refine((r) => !r.includes("..") && !r.startsWith("-"), "Invalid branch");
@@ -1293,6 +1307,18 @@ export const appUpdateSchema = z.object({
 export const appDeploySchema = z
   .object({ branch: gitRef.optional(), commit: z.string().regex(/^[0-9a-f]{40}$/).optional() })
   .refine((d) => !(d.branch && d.commit), "Give a branch or a commit, not both");
+
+/** written by the worker as a release passes its irreversible points */
+export interface ReleaseCheckpoint {
+  /** the app's status when the release started (restored when it fails before activate) */
+  appStatusBefore: AppStatus;
+  /** the sha `current` pointed at before activate ("none" = first version) */
+  previousSha?: string;
+  /** `current` was switched to this release */
+  activated?: boolean;
+  /** the migration ran (dbBackup holds the backup to restore) */
+  migrated?: boolean;
+}
 
 export interface AppDTO {
   id: string;

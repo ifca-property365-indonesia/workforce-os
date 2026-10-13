@@ -165,6 +165,9 @@ importers:
       '@wfos/templates':
         specifier: workspace:*
         version: link:../../packages/templates
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
       bullmq:
         specifier: ^6.3.11
         version: 6.3.11(ioredis@5.11.1)

@@ -42,7 +42,8 @@
       "task": "Task",
       "employee": "Employee",
       "hire": "Hire",
-      "client": "Client"
+      "client": "Client",
+      "app": "App"
     }
   },
   "office": {

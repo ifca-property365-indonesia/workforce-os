@@ -27,6 +27,11 @@ export const env = {
   namespace: wfosNamespace(),
   /** app servers on private / loopback addresses are allowed (this VPS registers itself as 127.0.0.1) */
   appServersAllowPrivate: process.env.APP_SERVERS_ALLOW_PRIVATE === "true",
+  /**
+   * deploy/upgrade.sh holds app deploys while this file exists. Same rule as upgrade.sh (and backup.sh): a relative
+   * STORAGE_DIR is relative to the app directory, not to this process's cwd.
+   */
+  deploysHoldFile: process.env.DEPLOYS_HOLD_FILE || path.join(path.resolve(here, "../../../..", process.env.STORAGE_DIR ?? "storage"), "deploys.hold"),
 };
 
 /**

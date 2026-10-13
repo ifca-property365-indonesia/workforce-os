@@ -28,8 +28,9 @@ module.exports = {
       args: "src/index.ts",
       env: { NODE_ENV: "production", NODE_OPTIONS: "--max-old-space-size=512" },
       max_memory_restart: "700M",
-      // graceful stop: BullMQ workers close; deploy/upgrade.sh waits until no agent run is active first
-      kill_timeout: 15000,
+      // graceful stop: BullMQ workers close (a running app deploy gets up to 60 s); deploy/upgrade.sh waits until no
+      // agent run or app deploy is active first
+      kill_timeout: 70000,
       time: true,
     },
   ],

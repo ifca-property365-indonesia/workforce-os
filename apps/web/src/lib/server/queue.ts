@@ -3,12 +3,14 @@ import { Redis } from "ioredis";
 import { Queue } from "bullmq";
 import {
   QUEUE_ACTIONS,
+  QUEUE_DEPLOYS,
   QUEUE_INGEST,
   QUEUE_MISC,
   QUEUE_RUNS,
   channelFor,
   controlChannel,
   type ActionJob,
+  type DeployJob,
   type IngestJob,
   type MiscJob,
   type RealtimeEvent,
@@ -20,7 +22,7 @@ import { regenJobId } from "./job-ids";
 
 const g = globalThis as unknown as {
   __wfosRedis?: Redis;
-  __wfosQueues?: { runs: Queue<RunJob>; actions: Queue<ActionJob>; ingest: Queue<IngestJob>; misc: Queue<MiscJob> };
+  __wfosQueues?: { runs: Queue<RunJob>; actions: Queue<ActionJob>; ingest: Queue<IngestJob>; misc: Queue<MiscJob>; deploys: Queue<DeployJob> };
 };
 
 export function redis(): Redis {
@@ -38,6 +40,9 @@ function queues() {
       actions: new Queue<ActionJob>(QUEUE_ACTIONS, { connection, prefix, defaultJobOptions }),
       ingest: new Queue<IngestJob>(QUEUE_INGEST, { connection, prefix, defaultJobOptions }),
       misc: new Queue<MiscJob>(QUEUE_MISC, { connection, prefix, defaultJobOptions }),
+      // a deploy is never retried by the queue: a half-run pipeline is resolved by the worker (rollback), then a
+      // person decides whether to deploy again
+      deploys: new Queue<DeployJob>(QUEUE_DEPLOYS, { connection, prefix, defaultJobOptions: { attempts: 1, removeOnComplete: 500, removeOnFail: 1000 } }),
     };
   }
   return g.__wfosQueues;
@@ -53,6 +58,9 @@ export const q = {
   action: (job: ActionJob) => queues().actions.add(job.kind, job, { jobId: `${job.kind}-${job.approvalId}` }),
   ingest: (documentId: string, workspaceId: string) => queues().ingest.add("ingest", { kind: "ingest", documentId, workspaceId }),
   misc: (job: MiscJob) => queues().misc.add(job.kind, job),
+  /** a release runs as job <releaseId>; an app action as app-<id>-<action>-<ts> */
+  deploy: (job: DeployJob) =>
+    queues().deploys.add(job.kind, job, { jobId: job.kind === "release" ? job.releaseId : `app-${job.appId}-${job.action}-${Date.now()}` }),
 };
 
 export async function publish(workspaceId: string, ev: RealtimeEvent) {

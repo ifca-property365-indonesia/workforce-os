@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Exercises deploy/upgrade.sh against throwaway git repos with stub pnpm / pm2 / curl / backup on PATH:
-# success, already up to date, low RAM, local changes, busy worker, build failure, failed health and a stale worker
+# success, already up to date, low RAM, local changes, busy worker (agent runs, app deploys), build failure, failed
+# health and a stale worker
 # all end in the right commit with the right commands run. Nothing touches PM2, the network or a database.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -29,13 +30,20 @@ cat > "$WORK/bin/curl" <<'SH'
 # health of the "running" instance: the worker reports the commit that was last reloaded
 url="${@: -1}"
 echo "curl $url" >> "$WORK/calls"
+# the deploy hold must exist whenever upgrade.sh asks the worker anything
+hold="${HOLD_EXPECTED:-$APP_DIR/storage/deploys.hold}"
+[[ -f "$hold" ]] && echo "$hold" > "$WORK/hold_seen"
 mode="$(cat "$WORK/health_mode" 2>/dev/null || echo ok)"
 runs="$(cat "$WORK/active_runs" 2>/dev/null || echo 0)"
 if [[ -f "$WORK/busy_polls" && "$(cat "$WORK/busy_polls")" -gt 0 ]]; then echo $(( $(cat "$WORK/busy_polls") - 1 )) > "$WORK/busy_polls"; runs=1; fi
+# app deploys: only reported when the file exists (an older worker has no activeDeploys field)
+deploys=""
+[[ -f "$WORK/active_deploys" ]] && deploys=",\"activeDeploys\":$(cat "$WORK/active_deploys")"
+if [[ -f "$WORK/busy_deploy_polls" && "$(cat "$WORK/busy_deploy_polls")" -gt 0 ]]; then echo $(( $(cat "$WORK/busy_deploy_polls") - 1 )) > "$WORK/busy_deploy_polls"; deploys=",\"activeDeploys\":1"; fi
 commit="$(cat "$WORK/reloaded" 2>/dev/null || git -C "$APP_DIR" rev-parse --short=12 HEAD)"
 [[ "$mode" = stale ]] && commit="000000000000"
 status=ok; [[ "$mode" = fail && "$(git -C "$APP_DIR" rev-parse HEAD)" = "$(cat "$WORK/fail_health_at")" ]] && status=degraded
-echo "{\"status\":\"$status\",\"commit\":\"$commit\",\"checks\":{\"worker\":{\"activeRuns\":$runs}}}"
+echo "{\"status\":\"$status\",\"commit\":\"$commit\",\"checks\":{\"worker\":{\"activeRuns\":$runs$deploys}}}"
 SH
 cat > "$WORK/bin/backup" <<'SH'
 #!/usr/bin/env bash
@@ -47,7 +55,7 @@ printf 'MemTotal: 2000000 kB\nMemAvailable: 900000 kB\n' > "$WORK/meminfo-low"
 
 # origin with two commits; the app is a clone sitting on the first
 setup() {
-  rm -rf "$WORK/origin.git" "$WORK/app" "$WORK/calls" "$WORK/reloaded" "$WORK/fail_build" "$WORK/health_mode" "$WORK/fail_health_at" "$WORK/active_runs" "$WORK/busy_polls"
+  rm -rf "$WORK/origin.git" "$WORK/app" "$WORK/calls" "$WORK/reloaded" "$WORK/fail_build" "$WORK/health_mode" "$WORK/fail_health_at" "$WORK/active_runs" "$WORK/busy_polls" "$WORK/active_deploys" "$WORK/busy_deploy_polls" "$WORK/hold_seen"
   git init -q --bare -b main "$WORK/origin.git"
   git clone -q "$WORK/origin.git" "$WORK/seed" 2>/dev/null
   mkdir -p "$WORK/seed/deploy"
@@ -66,20 +74,23 @@ setup() {
   V2="$(git -C "$WORK/origin.git" rev-parse main)"
 }
 run() {
-  env PATH="$WORK/bin:$PATH" WORK="$WORK" APP_DIR="$WORK/app" MEMINFO="${MEMINFO:-$WORK/meminfo-ok}" BACKUP_CMD="$WORK/bin/backup" \
+  env -u STORAGE_DIR -u DEPLOYS_HOLD_FILE PATH="$WORK/bin:$PATH" WORK="$WORK" APP_DIR="$WORK/app" MEMINFO="${MEMINFO:-$WORK/meminfo-ok}" BACKUP_CMD="$WORK/bin/backup" \
     HEALTH_TIMEOUT_SEC=2 POLL_SEC=1 WAIT_IDLE_SEC="${WAIT_IDLE_SEC:-3}" UPGRADE_LOG="$WORK/upgrade.log" \
     bash "$WORK/app/deploy/upgrade.sh" "$@" > "$WORK/out" 2>&1
 }
 head_is() { [[ "$(git -C "$WORK/app" rev-parse HEAD)" = "$1" ]]; }
 called() { grep -qxF "$1" "$WORK/calls" 2>/dev/null; }
 order() { grep -vE '^curl' "$WORK/calls" | tr '\n' '|'; }
+# deploys were held while upgrade.sh polled the worker, and the hold is gone again
+held_and_released() { [[ -f "$WORK/hold_seen" && ! -e "$(cat "$WORK/hold_seen")" ]]; }
 
 setup
 run || fail "successful upgrade exited non-zero"
 head_is "$V2" || fail "not on the new commit"
 [[ "$(order)" = "backup|pnpm install --frozen-lockfile|pnpm db:migrate|pnpm build|pm2 reload ecosystem.config.cjs --update-env|" ]] || fail "unexpected steps: $(order)"
 grep -q "upgrade ok" "$WORK/out" || fail "no success line"
-pass "upgrades: backup → install → migrate → build → reload → healthy on the new commit"
+held_and_released || fail "app deploys were not held during the upgrade, or the hold file was left behind"
+pass "upgrades: backup → install → migrate → build → reload → healthy on the new commit (deploys held meanwhile)"
 
 run || fail "second run failed"
 grep -q "already up to date" "$WORK/out" || fail "did not detect up to date"
@@ -105,7 +116,19 @@ head_is "$V1" && ! called "backup" || fail "changed something while waiting"
 rm "$WORK/active_runs"; echo 2 > "$WORK/busy_polls"
 WAIT_IDLE_SEC=10 run || fail "did not proceed after the runs finished"
 head_is "$V2" || fail "not upgraded after waiting"
+held_and_released || fail "hold file not removed after an abort"
 pass "waits for active agent runs, gives up without changes after WAIT_IDLE_SEC"
+
+setup
+echo 1 > "$WORK/active_deploys"
+if run; then fail "upgraded while an app deploy was active"; fi
+head_is "$V1" && ! called "backup" || fail "changed something while a deploy was active"
+grep -q "0 agent run(s) and 1 app deploy(s) still active" "$WORK/out" || fail "no message about the active deploy"
+echo 0 > "$WORK/active_deploys"; echo 2 > "$WORK/busy_deploy_polls"
+WAIT_IDLE_SEC=10 run || fail "did not proceed after the deploy finished"
+head_is "$V2" || fail "not upgraded after the deploy finished"
+grep -q "waiting for 0 active run(s) and 1 app deploy(s) to finish" "$WORK/out" || fail "did not wait for the deploy"
+pass "waits for an active app deploy (activeDeploys), proceeds when it is 0; a worker without the field counts as 0"
 
 setup
 echo "$V2" > "$WORK/fail_build"
@@ -113,6 +136,7 @@ if run; then fail "a failed build reported success"; fi
 head_is "$V1" || fail "not rolled back after a failed build"
 grep -q "rolled back to $V1 and healthy" "$WORK/out" || fail "no rollback line"
 [[ "$(cat "$WORK/reloaded")" = "${V1:0:12}" ]] || fail "rollback did not reload the old code"
+held_and_released || fail "hold file not removed after a rollback"
 pass "a failed build rolls back to the recorded commit, rebuilds and reloads it"
 
 setup
@@ -128,5 +152,12 @@ if run; then fail "accepted a worker still reporting the old commit"; fi
 grep -q "FAILED at: health" "$WORK/out" || fail "stale worker not detected"
 grep -q "ROLLBACK FAILED" "$WORK/out" || fail "rollback health should also fail with a stale worker"
 pass "the new worker must report the new commit (a stale heartbeat is not healthy)"
+
+setup
+mkdir -p "$WORK/abs-storage"
+echo "STORAGE_DIR='$WORK/abs-storage'" > "$WORK/app/.env"
+HOLD_EXPECTED="$WORK/abs-storage/deploys.hold" run || fail "upgrade with STORAGE_DIR in .env failed"
+held_and_released && [[ "$(cat "$WORK/hold_seen")" = "$WORK/abs-storage/deploys.hold" ]] || fail "hold file not at STORAGE_DIR from .env"
+pass "the hold file follows STORAGE_DIR from .env (the path the worker uses)"
 
 echo "upgrade.sh: all checks passed"

@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
-import { audit, db, servers } from "@wfos/db";
+import { count, eq } from "drizzle-orm";
+import { apps, audit, db, servers } from "@wfos/db";
 import { serverInputSchema } from "@wfos/shared";
+import { HttpError } from "@/lib/server/auth";
 import { publish } from "@/lib/server/queue";
 import { patchBody, route } from "@/lib/server/route";
 import { requireStepUp } from "@/lib/server/twofactor";
@@ -17,6 +18,11 @@ export const PATCH = route<{ id: string }>("OWNER", async ({ session, req, param
   if (input.host !== undefined) assertHostAllowed(input.host);
   await assertUnique(session.workspaceId, { name: input.name, baseDomain: input.baseDomain }, s.id);
   const moved = CONNECTION_FIELDS.some((k) => input[k] !== undefined && input[k] !== s[k]);
+  if (moved) {
+    // the apps' units, files and databases live on that machine at <slug>.<baseDomain>: never repoint them silently
+    const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(apps).where(eq(apps.serverId, s.id));
+    if (n > 0) throw new HttpError(409, "Remove this server's apps before changing its address or domain", { code: "server_has_apps", count: n });
+  }
   let row;
   try {
     [row] = await db
@@ -46,9 +52,11 @@ export const PATCH = route<{ id: string }>("OWNER", async ({ session, req, param
   return { server: serverDTO(next) };
 });
 
-/** Remove a server. Owner, with a fresh password + 2FA confirmation. */
+/** Remove a server. Owner, with a fresh password + 2FA confirmation. Refused while apps still live on it. */
 export const DELETE = route<{ id: string }>("OWNER", async ({ session, params }) => {
   const s = await loadServer(session.workspaceId, params.id);
+  const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(apps).where(eq(apps.serverId, s.id));
+  if (n > 0) throw new HttpError(409, "Remove this server's apps first", { code: "server_has_apps", count: n });
   await requireStepUp(session);
   await db.delete(servers).where(eq(servers.id, s.id));
   await audit({

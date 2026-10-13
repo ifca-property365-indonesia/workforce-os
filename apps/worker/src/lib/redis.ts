@@ -4,10 +4,12 @@ import {
   channelFor,
   controlChannel,
   QUEUE_ACTIONS,
+  QUEUE_DEPLOYS,
   QUEUE_INGEST,
   QUEUE_MISC,
   QUEUE_RUNS,
   type ActionJob,
+  type DeployJob,
   type IngestJob,
   type MiscJob,
   type RealtimeEvent,
@@ -31,6 +33,8 @@ export const runsQueue = new Queue<RunJob>(QUEUE_RUNS, { connection, prefix, def
 export const actionsQueue = new Queue<ActionJob>(QUEUE_ACTIONS, { connection, prefix, defaultJobOptions });
 export const ingestQueue = new Queue<IngestJob>(QUEUE_INGEST, { connection, prefix, defaultJobOptions });
 export const miscQueue = new Queue<MiscJob>(QUEUE_MISC, { connection, prefix, defaultJobOptions });
+/** never retried by the queue: a half-run deploy is settled by the worker itself (failed / rolled back) */
+export const deploysQueue = new Queue<DeployJob>(QUEUE_DEPLOYS, { connection, prefix, defaultJobOptions: { attempts: 1, removeOnComplete: 500, removeOnFail: 1000 } });
 
 export async function publish(workspaceId: string, ev: RealtimeEvent): Promise<void> {
   await redis.publish(channelFor(workspaceId, env.namespace), JSON.stringify(ev));

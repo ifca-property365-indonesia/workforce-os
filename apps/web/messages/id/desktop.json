@@ -42,7 +42,8 @@
       "task": "Tugas",
       "employee": "Karyawan",
       "hire": "Rekrut",
-      "client": "Klien"
+      "client": "Klien",
+      "app": "Aplikasi"
     }
   },
   "office": {

@@ -1,6 +1,7 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcessByStdio } from "node:child_process";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { promisify } from "node:util";
 import { env } from "../../lib/env";
 import { runInSandbox } from "./exec";
@@ -40,7 +41,8 @@ export interface BranchExport {
   conflicts: string[];
 }
 
-const SAFE_REF = /^[A-Za-z0-9._/-]{1,200}$/;
+/** a branch name the platform passes to git (no options, no ranges) */
+export const SAFE_REF = /^[A-Za-z0-9._/-]{1,200}$/;
 const MAX_DIFF = 400 * 1024;
 export const UPSTREAM_IN_SANDBOX = "/mnt/wfos/upstream.git";
 
@@ -64,14 +66,25 @@ function authEnv(repo: RepoRef): Record<string, string> {
   };
 }
 
+const ROOT_GIT_OPTS = ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"];
+const rootGitEnv = (extra?: Record<string, string>) => ({
+  PATH: process.env.PATH ?? "/usr/bin:/bin",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_TERMINAL_PROMPT: "0",
+  HOME: "/nonexistent",
+  ...extra,
+});
+
 /** git as root on a platform-owned repository only: no system/global config, no hooks, no prompts. */
-async function rootGit(args: string[], o: { cwd?: string; env?: Record<string, string>; maxBuffer?: number } = {}): Promise<string> {
-  const r = await exec("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args], {
-    cwd: o.cwd,
-    maxBuffer: o.maxBuffer ?? 64 * 1024 * 1024,
-    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_TERMINAL_PROMPT: "0", HOME: "/nonexistent", ...o.env },
-  });
+export async function rootGit(args: string[], o: { cwd?: string; env?: Record<string, string>; maxBuffer?: number } = {}): Promise<string> {
+  const r = await exec("git", [...ROOT_GIT_OPTS, ...args], { cwd: o.cwd, maxBuffer: o.maxBuffer ?? 64 * 1024 * 1024, env: rootGitEnv(o.env) });
   return r.stdout;
+}
+
+/** rootGit with stdout as a stream (e.g. `git archive` of a release), same safe options. */
+export function rootGitSpawn(args: string[]): ChildProcessByStdio<null, Readable, Readable> {
+  return spawn("git", [...ROOT_GIT_OPTS, ...args], { env: rootGitEnv(), stdio: ["ignore", "pipe", "pipe"] });
 }
 
 /** Create or refresh the platform mirror from the remote. */

@@ -11,6 +11,8 @@ describe("desktop routes", () => {
     expect(routeOf("/chat?c=x")).toMatchObject({ app: { key: "chat" } });
     expect(routeOf("/outbox?focus=approval:a1")).toMatchObject({ app: { key: "outbox" }, page: "outbox", detail: null });
     expect(routeOf("/clients/c1")).toMatchObject({ app: { key: "clients" }, page: "client", detail: "client", params: { id: "c1" } });
+    expect(routeOf("/apps")).toMatchObject({ app: { key: "apps" }, page: "apps", detail: null });
+    expect(routeOf("/apps/a1")).toMatchObject({ app: { key: "apps" }, page: "app", detail: "app", params: { id: "a1" } });
   });
 
   it("leaves everything else to normal navigation", () => {

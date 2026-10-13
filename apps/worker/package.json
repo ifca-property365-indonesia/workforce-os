@@ -20,6 +20,7 @@
     "@wfos/runner": "workspace:*",
     "@wfos/shared": "workspace:*",
     "@wfos/templates": "workspace:*",
+    "bcryptjs": "^3.0.3",
     "bullmq": "^6.3.11",
     "cron-parser": "^5.10.1",
     "diff": "^9.0.0",

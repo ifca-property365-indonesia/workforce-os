@@ -35,6 +35,9 @@ const info = (over: Partial<ServerInfo> = {}): ServerInfo => ({
   memTotalMb: 7_800,
   memAvailableMb: 4_000,
   baseDomain: "preview.example.com",
+  systemd: 257,
+  firewall: true,
+  appsRoot: "/srv/wfos-apps",
   ...over,
 });
 const longAgo = () => new Date(Date.now() - SERVER_RECHECK_EVERY_MS - 60_000);

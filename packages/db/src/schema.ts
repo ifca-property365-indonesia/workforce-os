@@ -58,6 +58,7 @@ import type {
   ReleaseTrigger,
   ReleaseStep,
   ReleaseWarning,
+  ReleaseCheckpoint,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -1061,6 +1062,8 @@ export const appReleases = pgTable(
     error: text("error"),
     /** name of the database backup taken before this release's migration (on the server) */
     dbBackup: text("db_backup"),
+    /** how far the pipeline got (so a release cut off by a restart can be undone like a failure) */
+    checkpoint: jsonb("checkpoint").$type<ReleaseCheckpoint>(),
     /** rollback: the release whose commit is brought back */
     rollbackOfId: uuid("rollback_of_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
     approvalId: uuid("approval_id").references(() => approvals.id, { onDelete: "set null" }),

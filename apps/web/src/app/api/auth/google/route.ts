@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { randomBytes } from "node:crypto";
+import { authCookieName, authCookieOptions } from "@/lib/server/auth-cookies";
 import { serverEnv } from "@/lib/server/env";
 
 export async function GET() {
   if (!serverEnv.googleClientId) return NextResponse.redirect(`${serverEnv.appUrl}/login?error=google_not_configured`);
   const state = randomBytes(16).toString("hex");
-  (await cookies()).set("wfos_oauth_state", state, { httpOnly: true, sameSite: "lax", secure: serverEnv.appUrl.startsWith("https"), path: "/", maxAge: 600 });
+  (await cookies()).set(authCookieName("wfos_oauth_state"), state, authCookieOptions(600));
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", serverEnv.googleClientId);
   url.searchParams.set("redirect_uri", `${serverEnv.appUrl}/api/auth/google/callback`);

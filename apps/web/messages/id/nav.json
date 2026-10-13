@@ -12,7 +12,8 @@
     "knowledge": "Basis pengetahuan",
     "settings": "Pengaturan",
     "account": "Akun",
-    "outbox": "Kotak keluar"
+    "outbox": "Kotak keluar",
+    "apps": "Aplikasi"
   },
   "killSwitch": {
     "button": "Kill switch",
@@ -73,7 +74,8 @@
     "clients": "Klien",
     "knowledge": "Pengetahuan",
     "settings": "Pengaturan",
-    "outbox": "Keluar"
+    "outbox": "Keluar",
+    "apps": "Aplikasi"
   },
   "demoChip": "Demo",
   "desktopView": "Tampilan desktop"

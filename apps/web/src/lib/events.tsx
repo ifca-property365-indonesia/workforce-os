@@ -31,7 +31,7 @@ export function EventsProvider({ children }: { children: ReactNode }) {
         }, 250);
     };
     /** events published while the stream was down are lost: on a reconnect, refetch what they would have updated */
-    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard", "incidents", "outbox", "clients", "client", "invoices", "servers"];
+    const RECONNECT_KEYS = ["conversation", "conversations", "approvals", "tasks", "task", "steps", "notifications", "employees", "dashboard", "incidents", "outbox", "clients", "client", "invoices", "servers", "apps", "app", "release"];
     let wasConnected = false;
     const connect = () => {
       es = new EventSource("/api/events");
@@ -86,6 +86,17 @@ export function EventsProvider({ children }: { children: ReactNode }) {
             break;
           case "employee.updated":
             invalidate("employees");
+            break;
+          case "app.updated":
+            // ["apps"] list, ["app", id] page
+            invalidate("apps");
+            invalidate("app");
+            break;
+          case "release.updated":
+            // ["app", appId] releases table, ["release", id] log viewer; the list shows the current release too
+            invalidate("app");
+            invalidate("release");
+            invalidate("apps");
             break;
           case "server.updated":
             // ["servers"] list, ["servers", "ssh-key", id] prepare command (domain/user may have changed)

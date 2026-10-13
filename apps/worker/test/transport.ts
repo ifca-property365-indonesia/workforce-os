@@ -64,13 +64,14 @@ async function set(k: string, v: string, ...opts: unknown[]) {
 
 export const redisModule = {
   newRedis: () => ({ subscribe: vi.fn(), on: vi.fn(), disconnect: vi.fn() }),
-  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m), set },
+  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m), set, get: async (k: string) => kv.get(k) ?? null, del: async (k: string) => (kv.delete(k) ? 1 : 0) },
   connection: { url: "redis://mock" },
   prefix: "wfos-test",
   runsQueue: fakeQueue("runs"),
   actionsQueue: fakeQueue("actions"),
   ingestQueue: fakeQueue("ingest"),
   miscQueue: fakeQueue("misc"),
+  deploysQueue: fakeQueue("deploys"),
   publish: vi.fn(async (workspaceId: string, ev: unknown) => void transport.published.push({ workspaceId, ev })),
   CONTROL_CHANNEL: "wfos-test:wfos:control",
   enqueueTask: vi.fn(async (taskId: string, workspaceId: string, resumeNote?: string) =>

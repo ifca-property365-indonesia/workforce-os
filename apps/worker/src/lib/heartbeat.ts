@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { HEARTBEAT_STALE_MS, heartbeatKey, type WorkerHeartbeat } from "@wfos/shared/ops";
 import { activeRunCount } from "../guards/killswitch";
+import { activeDeployCount } from "../deploy";
 import { defaultSandboxHost } from "../runner/workspace/layout";
 import { sandboxAvailable } from "../runner/workspace/gc";
 import { env } from "./env";
@@ -22,7 +23,7 @@ function currentCommit(): string | null {
   return commit;
 }
 
-/** What /api/health shows about this worker: alive, which commit, and whether Workspace-mode runs can start. */
+/** What /api/health shows about this worker: alive, which commit, runs and deploys in flight, and whether Workspace-mode runs can start. */
 export async function heartbeat(): Promise<WorkerHeartbeat> {
   const host = defaultSandboxHost();
   return {
@@ -30,6 +31,7 @@ export async function heartbeat(): Promise<WorkerHeartbeat> {
     pid: process.pid,
     commit: currentCommit(),
     activeRuns: activeRunCount(),
+    activeDeploys: activeDeployCount(),
     sandbox: {
       available: await sandboxAvailable(),
       runner: existsSync(path.join(host.runnerDir, "runner.mjs")),

@@ -41,6 +41,9 @@ const INFO: ServerInfo = {
   memTotalMb: 7618,
   memAvailableMb: 4000,
   baseDomain: "preview.example.com",
+  systemd: 259,
+  firewall: true,
+  appsRoot: "/srv/wfos-apps",
 };
 const INPUT = { name: "Preview", host: "45.77.10.20", port: 22, baseDomain: "preview.example.com" };
 

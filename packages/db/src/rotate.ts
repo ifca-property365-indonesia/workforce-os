@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, type SQL } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
 import { getDb } from "./index";
-import { credentials, members, repositories, users, workspaces } from "./schema";
+import { apps, credentials, members, repositories, users, workspaces } from "./schema";
 
 /**
  * Re-encrypt every stored secret with the current ENCRYPTION_KEY. Values still under ENCRYPTION_KEY_PREVIOUS are
@@ -26,6 +26,13 @@ export async function reencryptAll(opts: { workspaceIds?: string[] } = {}): Prom
     for (const r of await tx.select({ id: workspaces.id, v: workspaces.webhookUrlEnc }).from(workspaces).where(scope(workspaces.id, isNotNull(workspaces.webhookUrlEnc)))) {
       await tx.update(workspaces).set({ webhookUrlEnc: encryptSecret(decryptSecret(r.v!)) }).where(eq(workspaces.id, r.id));
       n["workspaces.webhook_url_enc"]!++;
+    }
+    // apps: preview password, extra env, APP_SECRET and the database password
+    for (const col of ["accessPasswordEnc", "envEnc", "appSecretEnc", "dbPasswordEnc"] as const) {
+      for (const r of await tx.select({ id: apps.id, v: apps[col] }).from(apps).where(scope(apps.workspaceId, isNotNull(apps[col])))) {
+        await tx.update(apps).set({ [col]: encryptSecret(decryptSecret(r.v!)) }).where(eq(apps.id, r.id));
+        n[`apps.${col}`] = (n[`apps.${col}`] ?? 0) + 1;
+      }
     }
     const userRows = ws
       ? await tx

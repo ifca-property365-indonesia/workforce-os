@@ -437,7 +437,7 @@ describe("sftpPut", () => {
 });
 
 describe("probeServer", () => {
-  const info = { helperVersion: WFOS_HELPER_VERSION, os: "Ubuntu 24.04", node: "v24.1.0", pnpm: "10.33.0", nginx: true, certbot: true, postgresPort: 5433, diskFreeMb: 20000, memTotalMb: 7800, memAvailableMb: 4000, baseDomain: "preview.example.com" };
+  const info = { helperVersion: WFOS_HELPER_VERSION, os: "Ubuntu 24.04", node: "v24.1.0", pnpm: "10.33.0", nginx: true, certbot: true, postgresPort: 5433, diskFreeMb: 20000, memTotalMb: 7800, memAvailableMb: 4000, baseDomain: "preview.example.com", systemd: 259, firewall: true, appsRoot: "/srv/wfos-apps" };
 
   it("parses the helper's info line", async () => {
     helperReply = { code: 0, stdout: JSON.stringify(info) + "\n" };

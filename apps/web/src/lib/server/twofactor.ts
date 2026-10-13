@@ -7,6 +7,7 @@ import { db, users } from "@wfos/db";
 import { decryptSecret } from "@wfos/shared/server";
 import { consumeRecoveryCode, verifyTotp } from "@wfos/shared/totp";
 import { HttpError, type Session } from "./auth";
+import { authCookieName, authCookieOptions, clearAuthCookie } from "./auth-cookies";
 import { serverEnv } from "./env";
 
 export const LOCKOUT_THRESHOLD = 5;
@@ -21,9 +22,7 @@ function secret() {
   return new TextEncoder().encode(serverEnv.authSecret);
 }
 
-function cookieOpts(maxAge: number) {
-  return { httpOnly: true, sameSite: "lax" as const, secure: serverEnv.appUrl.startsWith("https://"), path: "/", maxAge };
-}
+const cookieOpts = authCookieOptions;
 
 // ---------------------------------------------------------------------------
 // Lockout: 5 failed password or second-factor attempts lock the account for 15 minutes.
@@ -111,11 +110,11 @@ export async function reauthenticate(userId: string, input: { password?: string;
 
 export async function setTwoFactorChallenge(userId: string): Promise<void> {
   const token = await new SignJWT({ sub: userId, purpose: "2fa-login" }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("5m").sign(secret());
-  (await cookies()).set(CHALLENGE_COOKIE, token, cookieOpts(300));
+  (await cookies()).set(authCookieName(CHALLENGE_COOKIE), token, cookieOpts(300));
 }
 
 export async function readTwoFactorChallenge(): Promise<string | null> {
-  const token = (await cookies()).get(CHALLENGE_COOKIE)?.value;
+  const token = (await cookies()).get(authCookieName(CHALLENGE_COOKIE))?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
@@ -126,7 +125,7 @@ export async function readTwoFactorChallenge(): Promise<string | null> {
 }
 
 export async function clearTwoFactorChallenge(): Promise<void> {
-  (await cookies()).delete(CHALLENGE_COOKIE);
+  await clearAuthCookie(CHALLENGE_COOKIE);
 }
 
 // ---------------------------------------------------------------------------
@@ -136,13 +135,13 @@ export async function clearTwoFactorChallenge(): Promise<void> {
 
 export async function setStepUp(userId: string): Promise<Date> {
   const token = await new SignJWT({ sub: userId, purpose: "step-up" }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${STEPUP_MINUTES}m`).sign(secret());
-  (await cookies()).set(STEPUP_COOKIE, token, cookieOpts(STEPUP_MINUTES * 60));
+  (await cookies()).set(authCookieName(STEPUP_COOKIE), token, cookieOpts(STEPUP_MINUTES * 60));
   return new Date(Date.now() + STEPUP_MINUTES * 60_000);
 }
 
 export async function requireStepUp(session: Session): Promise<void> {
   if (!session.twoFactorEnabled) throw new HttpError(403, "Set up two-factor authentication first", { code: "two_factor_required" });
-  const token = (await cookies()).get(STEPUP_COOKIE)?.value;
+  const token = (await cookies()).get(authCookieName(STEPUP_COOKIE))?.value;
   if (token) {
     try {
       const { payload } = await jwtVerify(token, secret());

@@ -52,7 +52,7 @@ export const queueModule = {
     },
     publish: async () => 0,
   }),
-  q: { task: vi.fn(), chat: vi.fn(), action: vi.fn(), ingest: vi.fn(), misc: vi.fn() },
+  q: { task: vi.fn(), chat: vi.fn(), action: vi.fn(), ingest: vi.fn(), misc: vi.fn(), deploy: vi.fn() },
   publish: vi.fn(async () => {}),
   control: vi.fn(async () => {}),
 };

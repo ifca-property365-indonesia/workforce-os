@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Moon,
   OctagonX,
+  Rocket,
   Settings,
   ShieldCheck,
   UserRound,
@@ -67,6 +68,7 @@ const NAV = [
   { href: "/approvals", key: "approvals", icon: ShieldCheck, badge: "approvals" as const },
   { href: "/outbox", key: "outbox", icon: Send },
   { href: "/clients", key: "clients", icon: Building2 },
+  { href: "/apps", key: "apps", icon: Rocket },
   { href: "/knowledge", key: "knowledge", icon: BookOpen },
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;

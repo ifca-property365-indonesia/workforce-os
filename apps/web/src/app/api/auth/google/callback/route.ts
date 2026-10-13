@@ -5,6 +5,7 @@ import { decodeJwt } from "jose";
 import { audit, db, members, seedPrices, users, workspaces } from "@wfos/db";
 import { withRetry } from "@wfos/shared/server";
 import { setSession } from "@/lib/server/auth";
+import { authCookieName, clearAuthCookie } from "@/lib/server/auth-cookies";
 import { serverEnv } from "@/lib/server/env";
 import { logger } from "@/lib/server/logger";
 import { signupAllowed } from "@/lib/server/signup";
@@ -15,8 +16,8 @@ export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
   const jar = await cookies();
-  if (!code || !state || state !== jar.get("wfos_oauth_state")?.value) return fail("invalid_state");
-  jar.delete("wfos_oauth_state");
+  if (!code || !state || state !== jar.get(authCookieName("wfos_oauth_state"))?.value) return fail("invalid_state");
+  await clearAuthCookie("wfos_oauth_state");
   try {
     const tokens = await withRetry(
       async (signal) => {

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS "app_releases" (
   "log" text DEFAULT '' NOT NULL,
   "error" text,
   "db_backup" text,
+  "checkpoint" jsonb,
   "rollback_of_id" uuid REFERENCES "app_releases"("id") ON DELETE SET NULL,
   "approval_id" uuid REFERENCES "approvals"("id") ON DELETE SET NULL,
   "task_id" uuid REFERENCES "tasks"("id") ON DELETE SET NULL,

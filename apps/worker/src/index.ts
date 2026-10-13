@@ -2,7 +2,7 @@ import "./lib/env";
 import { DelayedError, Worker, type Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import { conversations, db, getSql, tasks, teams } from "@wfos/db";
-import { QUEUE_ACTIONS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
+import { QUEUE_ACTIONS, QUEUE_DEPLOYS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type DeployJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
 import { env, instanceCredentialSummary } from "./lib/env";
 import { log } from "./lib/logger";
 import { errorMessage } from "./lib/errors";
@@ -23,6 +23,8 @@ import { handleRunJobFailed } from "./runner/task-status";
 import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
 import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
 import { recheckServers, SERVER_RECHECK_TICK_MS } from "./scheduler/servers";
+import { APPS_TICK_MS, tickApps } from "./scheduler/apps";
+import { activeDeployCount, drainDeploys, onDeployActivity, processDeployJob, recoverInterruptedReleases } from "./deploy";
 import { collectWorkspaces } from "./runner/workspace/gc";
 import { telegramDailySummary } from "./lib/telegram";
 import { writeHeartbeat } from "./lib/heartbeat";
@@ -99,7 +101,21 @@ const workers = [
   ),
 ];
 
-for (const w of workers) {
+// App deploys and start/stop/remove: one job at a time (one build per server). Not started until releases a dead
+// process left behind are settled (recoverInterruptedReleases), so a job taken now is never mistaken for one.
+const deployWorker = new Worker<DeployJob>(QUEUE_DEPLOYS, processDeployJob, {
+  connection,
+  prefix,
+  concurrency: 1,
+  lockDuration: 10 * 60 * 1000,
+  maxStalledCount: 0,
+  autorun: false,
+});
+void recoverInterruptedReleases()
+  .catch((e) => log.error({ err: e }, "recovering interrupted releases failed"))
+  .finally(() => void deployWorker.run().catch((e: unknown) => log.error({ err: e }, "deploy worker stopped")));
+
+for (const w of [...workers, deployWorker]) {
   w.on("failed", (job, err) => log.error({ queue: w.name, jobId: job?.id, err: errorMessage(err) }, "job failed"));
   w.on("error", (err) => log.error({ queue: w.name, err: errorMessage(err) }, "worker error"));
 }
@@ -167,6 +183,8 @@ const gcTimer = setInterval(() => void collectWorkspaces().then((n) => n && log.
 const beat = () => void writeHeartbeat().catch((e) => log.warn({ err: e }, "heartbeat failed"));
 const heartbeatTimer = setInterval(beat, HEARTBEAT_EVERY_MS);
 beat();
+// a deploy job starting or ending is reported at once (deploy/upgrade.sh waits on activeDeploys)
+onDeployActivity(() => writeHeartbeat());
 const summaryTimer = setInterval(() => void telegramDailySummary().catch((e) => log.warn({ err: e }, "telegram summary failed")), 10 * 60_000);
 const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e) => log.warn({ err: e }, "backfill failed")), 120_000);
 // nightly memory tidy at 02:00 APP_TIME_ZONE (checked every 10 min, claimed once per day in Redis)
@@ -185,6 +203,20 @@ const recheck = async () => {
   }
 };
 const serversTimer = setInterval(() => void recheck(), SERVER_RECHECK_TICK_MS);
+// apps: hourly health of running previews (notify on healthy → unhealthy) and the idle auto-stop
+let appsTicking = false;
+const appsTick = async () => {
+  if (appsTicking) return;
+  appsTicking = true;
+  try {
+    await tickApps();
+  } catch (e) {
+    log.warn({ err: e }, "apps tick failed");
+  } finally {
+    appsTicking = false;
+  }
+};
+const appsTimer = setInterval(() => void appsTick(), APPS_TICK_MS);
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
 log.info(
@@ -193,16 +225,18 @@ log.info(
 );
 
 async function shutdown(sig: string) {
-  log.info({ sig, active: activeRunCount() }, "shutting down");
+  log.info({ sig, active: activeRunCount(), deploys: activeDeployCount() }, "shutting down");
   clearInterval(schedTimer);
   clearInterval(reapTimer);
   clearInterval(backfillTimer);
   clearInterval(tidyTimer);
   clearInterval(serversTimer);
+  clearInterval(appsTimer);
   clearInterval(gcTimer);
   clearInterval(summaryTimer);
   clearInterval(heartbeatTimer);
-  await Promise.allSettled(workers.map((w) => w.close()));
+  // a running deploy gets up to 60 s to finish its step (one that has not switched anything on stops cleanly)
+  await Promise.allSettled([...workers.map((w) => w.close()), drainDeploys(() => deployWorker.close())]);
   sub.disconnect();
   redis.disconnect();
   await getSql().end({ timeout: 5 });

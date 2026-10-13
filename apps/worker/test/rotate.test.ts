@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { credentials, db, repositories, workspaces } from "@wfos/db";
+import { apps, credentials, db, repositories, servers, workspaces } from "@wfos/db";
 import { reencryptAll } from "@wfos/db/rotate";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
 import { makeWorkspace } from "./fixtures";
@@ -18,6 +18,23 @@ describe("ENCRYPTION_KEY rotation", () => {
     await db.update(workspaces).set({ webhookUrlEnc: encryptSecret("https://hooks.example/abc") }).where(eq(workspaces.id, ws.id));
     const [repo] = await db.insert(repositories).values({ workspaceId: ws.id, name: "r", provider: "github", url: "https://github.com/o/r.git", defaultBranch: "main", tokenEnc: encryptSecret("ghp_token") }).returning();
 
+    const [srv] = await db.insert(servers).values({ workspaceId: ws.id, name: "dev", host: "s.example.com", baseDomain: "preview.example.com" }).returning();
+    const [app] = await db
+      .insert(apps)
+      .values({
+        workspaceId: ws.id,
+        serverId: srv!.id,
+        name: "Kopi",
+        slug: `kopi-${ws.slug}`.slice(0, 30),
+        domain: `${ws.slug}.preview.example.com`,
+        port: 4100,
+        accessPasswordEnc: encryptSecret("preview-pw"),
+        envEnc: encryptSecret('{"SMTP_PASSWORD":"x"}'),
+        appSecretEnc: encryptSecret("app-secret"),
+        dbPasswordEnc: encryptSecret("db-pw"),
+      })
+      .returning();
+
     const newKey = randomBytes(32).toString("hex");
     process.env.ENCRYPTION_KEY_PREVIOUS = original;
     process.env.ENCRYPTION_KEY = newKey;
@@ -27,6 +44,7 @@ describe("ENCRYPTION_KEY rotation", () => {
     const n = await reencryptAll({ workspaceIds: [ws.id] });
     expect(n["credentials.secret_enc"]).toBeGreaterThanOrEqual(1);
     expect(n["repositories.token_enc"]).toBeGreaterThanOrEqual(1);
+    for (const col of ["accessPasswordEnc", "envEnc", "appSecretEnc", "dbPasswordEnc"]) expect(n[`apps.${col}`]).toBe(1);
 
     delete process.env.ENCRYPTION_KEY_PREVIOUS; // old key gone: everything must open with the new key alone
     const [c2] = await db.select().from(credentials).where(eq(credentials.workspaceId, ws.id));
@@ -35,6 +53,8 @@ describe("ENCRYPTION_KEY rotation", () => {
     expect(decryptSecret(c2!.secretEnc!)).toBe("smtp-pass");
     expect(decryptSecret(r2!.tokenEnc!)).toBe("ghp_token");
     expect(decryptSecret(w2!.webhookUrlEnc!)).toBe("https://hooks.example/abc");
+    const [a2] = await db.select().from(apps).where(eq(apps.id, app!.id));
+    expect([a2!.accessPasswordEnc, a2!.envEnc, a2!.appSecretEnc, a2!.dbPasswordEnc].map((v) => decryptSecret(v!))).toEqual(["preview-pw", '{"SMTP_PASSWORD":"x"}', "app-secret", "db-pw"]);
   });
 
   it("a wrong key fails loudly and rotation changes nothing", async () => {

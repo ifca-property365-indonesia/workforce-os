@@ -4,6 +4,7 @@ import { jwtVerify } from "jose";
 import { and, eq } from "drizzle-orm";
 import { db, members, users, workspaces } from "@wfos/db";
 import { isLocale, resolveLocale, type Locale } from "@wfos/shared";
+import { authCookieName } from "@/lib/server/auth-cookies";
 import { serverEnv } from "@/lib/server/env";
 
 export const LOCALE_COOKIE = "wfos_locale";
@@ -12,7 +13,7 @@ export const LOCALE_COOKIE = "wfos_locale";
 export const APP_TIME_ZONE = process.env.APP_TIME_ZONE || "Asia/Jakarta";
 
 async function signedInUserId(): Promise<string | null> {
-  const token = (await cookies()).get("wfos_session")?.value;
+  const token = (await cookies()).get(authCookieName("wfos_session"))?.value;
   if (!token || serverEnv.authSecret.length < 32) return null;
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(serverEnv.authSecret));
@@ -29,7 +30,7 @@ export async function currentLocale(): Promise<Locale> {
   const cookieLocale = jar.get(LOCALE_COOKIE)?.value;
   const userId = await signedInUserId();
   if (userId) {
-    const preferredWs = jar.get("wfos_ws")?.value;
+    const preferredWs = jar.get(authCookieName("wfos_ws"))?.value;
     const rows = await db
       .select({ userLocale: users.locale, wsLocale: workspaces.defaultLocale, wsId: members.workspaceId })
       .from(users)

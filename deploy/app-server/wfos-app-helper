@@ -2,41 +2,176 @@
 # wfos-app-helper — the only way Workforce OS gets root on an app server.
 #
 # Installed by prepare.sh as /usr/local/sbin/wfos-app-helper (root:root 0755). The apps user (default wfos-apps) may
-# run exactly this file with `sudo -n`, nothing else. Every argument is validated here; anything unexpected exits 2
-# with a one-line error and changes nothing. Settings come from /etc/wfos-app-helper.conf (written by prepare.sh,
-# never sourced: only known KEY=value lines are read and validated).
+# run exactly this file with `sudo -n`, nothing else. Every argument (and every stdin payload) is validated before
+# anything runs. Exit codes: 0 ok · 1 failed · 2 bad arguments (nothing was done) · 3 refused by a guard (the reason
+# is the first word after "wfos-app-helper: " on stderr: disk_low, release_missing, release_active, bad_archive,
+# server_name_taken, cert_limit, firewall_off, server_full). Settings come from /etc/wfos-app-helper.conf (written by prepare.sh, never sourced:
+# only known KEY=value lines are read and validated).
 #
-# Phase A1 (register servers) needs only two read-only commands:
-#   version     helper version (one number)
-#   info        one JSON line: versions, disk, memory, base domain (never touches the network)
-# Running, building and publishing apps comes in Phase A2.
+#   version                                         helper version (one number)
+#   info                                            one JSON line: versions, disk, memory, base domain, firewall
+#   app-init <slug>                                 user/group wa-<slug> and the app's folders (idempotent)
+#   release-unpack <slug> <sha>                     ~<user>/incoming/<slug>-<sha>.tar.gz → <root>/<slug>/releases/<sha>
+#   env-install <slug>                              stdin: KEY=VALUE lines → /etc/wfos-apps/env/<slug>.env (0600)
+#   build-run <slug> <sha> <step> <timeoutSec> <memMB>
+#                                                   stdin: one command line; runs it sandboxed in releases/<sha>
+#   db-create <slug> [--reset-password]             stdin: password; role + database app_<slug> (apps cluster)
+#   db-dump <slug> <name> / db-restore <slug> <name>
+#                                                   <root>/<slug>/backups/<name>.dump (pg_dump -Fc / pg_restore)
+#   release-activate <slug> <sha>                   current → releases/<sha>; last stdout line = previous sha or none
+#   unit-install <slug> <port> <memMB> [--database] stdin: the start command; writes the sandboxed systemd unit
+#   unit-start|unit-stop|unit-restart <slug>        start (+enable) / stop (+disable) / restart
+#   unit-status <slug>                              one word: active, inactive or failed
+#   health <slug> <port> <path>                     {"status":<http code>}; exit 0 on 2xx, else 1
+#   publish <slug> <port> [--auth]                  nginx site + certificate; --auth reads `preview:<bcrypt>` on stdin
+#   unpublish <slug>                                removes the nginx site (the certificate stays)
+#   release-prune <slug>                            keeps the newest 3 releases (always the current one)
+#   app-remove <slug> [--drop-db]                   removes everything of the app (and its database with --drop-db)
+#   stop-all                                        stops (and disables) every wfos-app-* unit
 #
-# WFOS_HELPER_DRY_RUN=1 changes nothing (this version changes nothing anyway); only then may WFOS_HELPER_CONF point
-# at another config file (sudo drops both variables, so they cannot reach a real run).
+# Security model (A2 review C1/H2/H3/M1/M4):
+#   - root never opens a path a user controls: uploads are read by the SSH user (`runuser … cat`) and unpacked by the
+#     app's own user; env, start command and htpasswd arrive on stdin and are written by root to root-owned paths;
+#     every folder root touches is checked for symlinks first and lives under root-owned parents.
+#   - every app has its own system user wa-<slug>; its processes run with primary group wfos-app-run, which is what
+#     the nftables table of prepare.sh matches (`meta skgid` sees the effective gid only, not supplementary groups).
+#   - units and builds share one sandbox (sandbox_props): own folder only, no /home, /root, sockets of host services,
+#     certificates or Workforce OS config, no capabilities, @system-service syscalls, memory/CPU/task limits.
+#
+# WFOS_HELPER_DRY_RUN=1 prints `[dry-run] …` for every command it would run and every file it would write, and
+# changes nothing (read-only checks still run). Only then do the test overrides below apply (sudo drops all of them,
+# so they cannot reach a real run): WFOS_HELPER_CONF (config file), WFOS_HELPER_TEST_PREFIX (prefix for the /etc,
+# /var and /home paths), WFOS_HELPER_TEST_DISK_FREE_MB, WFOS_HELPER_TEST_MEM_TOTAL_MB, WFOS_HELPER_TEST_SYSTEMD,
+# WFOS_HELPER_TEST_FIREWALL (0 = the app firewall is not loaded), WFOS_HELPER_TEST_ACTIVE_UNITS (running app units),
+# WFOS_HELPER_TEST_ACCOUNTS (a file prefix: <prefix>.passwd / <prefix>.group instead of the system's accounts).
 set -euo pipefail
 umask 022
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 export LC_ALL=C
+cd /
 
 # keep in step with WFOS_HELPER_VERSION in packages/shared
-HELPER_VERSION=1
+HELPER_VERSION=2
+# same list as RESERVED_APP_SLUGS in packages/shared
+RESERVED_SLUGS=" www api app apps admin mail preview static assets cdn status "
+RUN_GROUP=wfos-app-run
+PG_SOCK=/run/wfos-apps-pg
+COREPACK_DIR=/opt/wfos-apps/corepack
+LOCK_FILE=/run/wfos-app-helper.lock
+BUILD_LOCK_FILE=/run/wfos-app-helper.build.lock
+SLICE=wfos-apps.slice
+# app users and groups get ids from their own range, so the helper never adopts or deletes an account it did not make
+APP_ID_MIN=460000
+APP_ID_MAX=460999
+APP_GECOS_PREFIX="Workforce OS app "
+DISK_MIN_MB=2048
+RELEASES_KEPT=3     # APP_RELEASES_KEPT
+BACKUPS_KEPT=7      # APP_DB_BACKUPS_KEPT
+CERTS_PER_DAY=10
+ARCHIVE_MAX_MB=1024    # unpacked size of one release upload
+UPLOAD_MAX_MB=400      # the upload itself (Workforce OS caps it at 200 MB)
+ARCHIVE_MAX_ENTRIES=200000
 
 usage() { echo "wfos-app-helper: $*" >&2; exit 2; }
 fail() { echo "wfos-app-helper: $*" >&2; exit 1; }
+# refuse CODE DETAIL: a guard said no (exit 3); CODE is what the worker matches on
+refuse() { echo "wfos-app-helper: $1: $2" >&2; exit 3; }
 
 DRY=0
 CONF=/etc/wfos-app-helper.conf
+P=""
 if [[ "${WFOS_HELPER_DRY_RUN:-}" == 1 ]]; then
   DRY=1
   CONF="${WFOS_HELPER_CONF:-$CONF}"
+  P="${WFOS_HELPER_TEST_PREFIX:-}"
+  [[ -z "$P" || "$P" =~ ^/[A-Za-z0-9._/-]+$ ]] || usage "bad WFOS_HELPER_TEST_PREFIX"
 fi
 [[ "$DRY" == 1 || "$(id -u)" == 0 ]] || fail "must run as root (sudo -n $0 ...)"
+
+# system paths ($P is empty except in dry-run tests)
+ETC_APPS="$P/etc/wfos-apps"
+ENV_DIR="$ETC_APPS/env"
+START_DIR="$ETC_APPS/start"
+HTPASSWD_DIR="$ETC_APPS/htpasswd"
+UNIT_DIR="$P/etc/systemd/system"
+NGINX_DIR="$P/etc/nginx"
+NGINX_SITES="$NGINX_DIR/sites-available"
+NGINX_ENABLED="$NGINX_DIR/sites-enabled"
+LE_LIVE="$P/etc/letsencrypt/live"
+STATE_DIR="$P/var/lib/wfos-apps"
+PG_ETC="$P/etc/postgresql"
+
+# ---------------------------------------------------------------------------
+# dry-run aware actions
+# ---------------------------------------------------------------------------
+
+# run CMD ARGS...: execute, or print it in dry-run
+run() {
+  if [[ "$DRY" == 1 ]]; then
+    printf '[dry-run]'
+    printf ' %q' "$@"
+    printf '\n'
+  else
+    "$@"
+  fi
+}
+
+# write_file PATH MODE OWNER:GROUP [SUMMARY] < content — atomic (temp file in the same root-owned directory, then
+# rename). With SUMMARY, dry-run prints that instead of the content (env values, password hashes are never printed).
+write_file() {
+  local path="$1" mode="$2" owner="$3" summary="${4:-}" tmp
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] write $path (mode $mode, owner $owner)"
+    if [[ -n "$summary" ]]; then
+      cat > /dev/null
+      echo "  | ($summary)"
+    else
+      sed 's/^/  | /'
+    fi
+    echo "[dry-run] end $path"
+    return 0
+  fi
+  [[ ! -L "$path" ]] || fail "$path is a symlink: refusing to write through it"
+  tmp="$(mktemp "$(dirname -- "$path")/.wfos-tmp.XXXXXX")"
+  cat > "$tmp"
+  chown "$owner" "$tmp"
+  chmod "$mode" "$tmp"
+  mv -fT -- "$tmp" "$path"
+}
+
+# serialise calls that change shared config (two publishes at once would race on nginx). Only short operations hold
+# it: builds and unpacks take the build lock instead, and unit-stop / stop-all take no lock, so stopping an app
+# never waits for a build.
+lock() {
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] flock $LOCK_FILE"
+    return 0
+  fi
+  exec 9>> "$LOCK_FILE"
+  flock -w 120 9 || fail "busy: another wfos-app-helper call is still running"
+}
+unlock() {
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] unlock $LOCK_FILE"
+    return 0
+  fi
+  exec 9>&-
+}
+# one build or unpack at a time on this server (held for the whole build)
+build_lock() {
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] flock $BUILD_LOCK_FILE"
+    return 0
+  fi
+  exec 8>> "$BUILD_LOCK_FILE"
+  flock -w 120 8 || fail "busy: another build is still running"
+}
 
 # ---------------------------------------------------------------------------
 # config
 # ---------------------------------------------------------------------------
 
-C_USER="" C_BASE_DOMAIN="" C_PG_PORT="" C_APPS_ROOT="" C_PORT_MIN="" C_PORT_MAX=""
+C_USER="" C_BASE_DOMAIN="" C_PG_PORT="" C_PG_VERSION="" C_APPS_ROOT="" C_PORT_MIN="" C_PORT_MAX="" C_MAX_RUNNING=3 C_MAX_APPS=20
 DOMAIN_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$'
 
 is_uint() { [[ "$1" =~ ^[1-9][0-9]{0,5}$ ]]; }
@@ -45,9 +180,9 @@ is_uint() { [[ "$1" =~ ^[1-9][0-9]{0,5}$ ]]; }
 check_conf_owner() {
   local dir
   [[ ! -L "$CONF" ]] || fail "$CONF must not be a symlink"
-  [[ "$(stat -c '%u' -- "$CONF")" == 0 && $(( 8#$(stat -c '%a' -- "$CONF") & 8#022 )) == 0 ]] || fail "$CONF must be owned by root and not group/world writable"
+  [[ "$(stat -c '%u' -- "$CONF")" == 0 && $((8#$(stat -c '%a' -- "$CONF") & 8#022)) == 0 ]] || fail "$CONF must be owned by root and not group/world writable"
   dir="$(dirname -- "$CONF")"
-  [[ "$(stat -c '%u' -- "$dir")" == 0 && $(( 8#$(stat -c '%a' -- "$dir") & 8#022 )) == 0 ]] || fail "$dir must be owned by root and not group/world writable"
+  [[ "$(stat -c '%u' -- "$dir")" == 0 && $((8#$(stat -c '%a' -- "$dir") & 8#022)) == 0 ]] || fail "$dir must be owned by root and not group/world writable"
 }
 
 read_conf() {
@@ -63,17 +198,229 @@ read_conf() {
       USER) C_USER="$val" ;;
       BASE_DOMAIN) C_BASE_DOMAIN="$val" ;;
       PG_PORT) C_PG_PORT="$val" ;;
+      PG_VERSION) C_PG_VERSION="$val" ;;
       APPS_ROOT) C_APPS_ROOT="$val" ;;
       PORT_MIN) C_PORT_MIN="$val" ;;
       PORT_MAX) C_PORT_MAX="$val" ;;
+      MAX_RUNNING) C_MAX_RUNNING="$val" ;;
+      MAX_APPS) C_MAX_APPS="$val" ;;
       *) ;; # unknown keys are ignored (newer prepare.sh)
     esac
   done < "$CONF"
   [[ "$C_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$C_USER" != root ]] || fail "$CONF: bad USER"
   [[ ${#C_BASE_DOMAIN} -le 200 && "$C_BASE_DOMAIN" =~ $DOMAIN_RE ]] || fail "$CONF: bad BASE_DOMAIN"
   [[ "$C_APPS_ROOT" =~ ^/[A-Za-z0-9._/-]+$ && ! "$C_APPS_ROOT" =~ (^|/)\.\.?(/|$) && "$C_APPS_ROOT" != */ ]] || fail "$CONF: bad APPS_ROOT"
-  is_uint "$C_PG_PORT" && (( C_PG_PORT >= 1024 && C_PG_PORT <= 65535 )) || fail "$CONF: bad PG_PORT"
-  is_uint "$C_PORT_MIN" && is_uint "$C_PORT_MAX" && (( C_PORT_MIN >= 1024 && C_PORT_MIN <= C_PORT_MAX && C_PORT_MAX <= 65535 )) || fail "$CONF: bad PORT_MIN/PORT_MAX"
+  is_uint "$C_PG_PORT" && ((C_PG_PORT >= 1024 && C_PG_PORT <= 65535)) || fail "$CONF: bad PG_PORT"
+  [[ -z "$C_PG_VERSION" || "$C_PG_VERSION" =~ ^[1-9][0-9]?$ ]] || fail "$CONF: bad PG_VERSION"
+  is_uint "$C_PORT_MIN" && is_uint "$C_PORT_MAX" && ((C_PORT_MIN >= 1024 && C_PORT_MIN <= C_PORT_MAX && C_PORT_MAX <= 65535)) || fail "$CONF: bad PORT_MIN/PORT_MAX"
+  is_uint "$C_MAX_RUNNING" && ((C_MAX_RUNNING <= 50)) || fail "$CONF: bad MAX_RUNNING"
+  is_uint "$C_MAX_APPS" && ((C_MAX_APPS <= 400)) || fail "$CONF: bad MAX_APPS"
+}
+
+# ---------------------------------------------------------------------------
+# host facts (overridable in dry-run tests only)
+# ---------------------------------------------------------------------------
+
+mem_total_mb() {
+  local v="${WFOS_HELPER_TEST_MEM_TOTAL_MB:-}"
+  if [[ "$DRY" == 1 && "$v" =~ ^[0-9]{1,7}$ ]]; then
+    echo "$((10#$v))"
+  else
+    awk '/^MemTotal:/ { printf "%d\n", $2 / 1024 }' /proc/meminfo
+  fi
+}
+
+# free MB on the filesystem of DIR (or of its nearest existing parent)
+disk_free_mb() {
+  local dir="$1" v="${WFOS_HELPER_TEST_DISK_FREE_MB:-}"
+  if [[ "$DRY" == 1 && "$v" =~ ^[0-9]{1,9}$ ]]; then
+    echo "$((10#$v))"
+    return 0
+  fi
+  while [[ ! -d "$dir" && "$dir" != / ]]; do dir="$(dirname -- "$dir")"; done
+  df -Pm -- "$dir" 2> /dev/null | awk 'NR == 2 { print $4 + 0 }'
+}
+
+# the app firewall (table inet wfos_apps) is loaded; nothing that runs app code starts without it
+firewall_on() {
+  if [[ "$DRY" == 1 ]]; then
+    [[ "${WFOS_HELPER_TEST_FIREWALL:-1}" == 1 ]]
+  else
+    nft list table inet wfos_apps > /dev/null 2>&1
+  fi
+}
+firewall_guard() {
+  firewall_on || refuse firewall_off "the app firewall (nftables table inet wfos_apps) is not loaded: systemctl start wfos-apps-firewall.service, or re-run prepare.sh"
+}
+
+# names of the app units that run now (active or starting)
+active_app_units() {
+  if [[ "$DRY" == 1 ]]; then
+    printf '%s\n' ${WFOS_HELPER_TEST_ACTIVE_UNITS:-}
+  else
+    systemctl list-units --type=service --state=active,activating,reloading --plain --no-legend 'wfos-app-*.service' 2> /dev/null | awk '{ print $1 }'
+  fi
+}
+
+# at most MAX_RUNNING apps at once (the slice caps their sum too); SLUG itself does not count
+running_guard() {
+  local own n=0 u
+  own="$(unit_name "$1")"
+  while IFS= read -r u; do
+    [[ -n "$u" && "$u" != "$own" && "$u" =~ ^wfos-app-[a-z0-9-]+\.service$ ]] && n=$((n + 1))
+  done < <(active_app_units)
+  ((n < C_MAX_RUNNING)) || refuse server_full "$n apps already run on this server (at most $C_MAX_RUNNING)"
+}
+
+SD_VERSION=""
+systemd_version() {
+  local v
+  if [[ -z "$SD_VERSION" ]]; then
+    if [[ "$DRY" == 1 && -n "${WFOS_HELPER_TEST_SYSTEMD:-}" ]]; then
+      v="$WFOS_HELPER_TEST_SYSTEMD"
+    else
+      v="$(systemctl --version 2> /dev/null | awk 'NR == 1 { print $2 }')"
+    fi
+    [[ "$v" =~ ^[0-9]{3}$ ]] || v=0
+    SD_VERSION="$v"
+  fi
+  echo "$SD_VERSION"
+}
+
+# ---------------------------------------------------------------------------
+# argument validation (exit 2 on anything unexpected; nothing has run yet)
+# ---------------------------------------------------------------------------
+
+check_slug() {
+  local s="${1:-}"
+  [[ "$s" =~ ^[a-z][a-z0-9-]{0,28}[a-z0-9]$ && "$s" != *--* ]] || usage "invalid slug ${s@Q} (2 to 30 of a-z, 0-9, -; starts with a letter, no --)"
+  [[ "$RESERVED_SLUGS" != *" $s "* ]] || usage "slug ${s@Q} is reserved"
+}
+check_sha() { [[ "${1:-}" =~ ^[0-9a-f]{40}$ ]] || usage "invalid commit ${1@Q} (40 lowercase hex characters)"; }
+check_port() {
+  local p="${1:-}"
+  is_uint "$p" && ((p >= C_PORT_MIN && p <= C_PORT_MAX)) || usage "invalid port ${p@Q} (allowed $C_PORT_MIN..$C_PORT_MAX)"
+}
+# 256..4096 MB and never more than half of this server's memory (production may share it)
+check_mem() {
+  local m="${1:-}" half
+  half=$(($(mem_total_mb) / 2))
+  is_uint "$m" && ((m >= 256 && m <= 4096)) || usage "invalid memory ${m@Q} MB (allowed 256..4096)"
+  ((m <= half)) || usage "memory $m MB is more than half of this server's memory ($half MB allowed)"
+}
+check_timeout() {
+  local t="${1:-}"
+  is_uint "$t" && ((t >= 10 && t <= 3600)) || usage "invalid timeout ${t@Q} s (allowed 10..3600)"
+}
+check_step() { [[ "${1:-}" == install || "${1:-}" == build || "${1:-}" == migrate ]] || usage "invalid step ${1@Q} (install, build or migrate)"; }
+check_backup_name() { [[ "${1:-}" =~ ^[0-9A-Za-z-]{1,64}$ ]] || usage "invalid backup name ${1@Q} (1 to 64 of 0-9, A-Z, a-z, -)"; }
+check_health_path() { [[ "${1:-}" =~ ^/[A-Za-z0-9._~/-]{0,200}$ ]] || usage "invalid health path ${1@Q}"; }
+
+# stdin_text MAX: all of stdin (at most MAX bytes, else exit 2) into STDIN_TEXT. A NUL byte becomes CR, which every
+# reader below refuses (bash variables cannot hold NUL, and silently dropping it would change the payload).
+STDIN_TEXT=""
+stdin_text() {
+  local max="$1"
+  STDIN_TEXT="$(
+    head -c "$((max + 1))" | tr '\000' '\r'
+    printf x
+  )"
+  STDIN_TEXT="${STDIN_TEXT%x}"
+  ((${#STDIN_TEXT} <= max)) || usage "stdin is larger than $max bytes"
+}
+
+# one line (an optional final newline), 1..MAX bytes, no control characters → LINE
+LINE=""
+stdin_line() {
+  local max="$1" what="$2"
+  stdin_text "$((max + 1))"
+  LINE="${STDIN_TEXT%$'\n'}"
+  [[ -n "$LINE" && ${#LINE} -le $max ]] || usage "$what: expected one line of 1 to $max bytes on stdin"
+  [[ "$LINE" != *[[:cntrl:]]* ]] || usage "$what: expected one line without control characters on stdin"
+}
+
+# ---------------------------------------------------------------------------
+# names and paths
+# ---------------------------------------------------------------------------
+
+# wa-<slug>; systemd and utmp allow 31 characters, so slugs over 28 get a stable hash suffix instead
+app_user() {
+  local slug="$1"
+  if ((${#slug} <= 28)); then
+    echo "wa-$slug"
+  else
+    echo "wa-${slug:0:19}-$(printf '%s' "$slug" | sha256sum | cut -c1-8)"
+  fi
+}
+app_dir() { echo "$C_APPS_ROOT/$1"; }
+unit_name() { echo "wfos-app-$1.service"; }
+unit_path() { echo "$UNIT_DIR/wfos-app-$1.service"; }
+build_unit() { echo "wfos-build-$1.service"; }
+db_name() { echo "app_${1//-/_}"; }
+env_file() { echo "$ENV_DIR/$1.env"; }
+start_file() { echo "$START_DIR/$1.sh"; }
+pg_hba() { echo "$PG_ETC/$C_PG_VERSION/apps/pg_hba.conf"; }
+pg_ident() { echo "$PG_ETC/$C_PG_VERSION/apps/pg_ident.conf"; }
+pg_bin() { echo "/usr/lib/postgresql/$C_PG_VERSION/bin/$1"; }
+
+# the SSH user's upload folder: never opened by root (only through runuser as that user)
+incoming_dir() {
+  local home
+  if [[ -n "$P" ]]; then
+    home="$P/home/$C_USER"
+  else
+    home="$(getent passwd "$C_USER" | cut -d: -f6 || true)"
+    [[ "$home" =~ ^/[A-Za-z0-9._/-]+$ && "$home" != / ]] || fail "unexpected home directory for $C_USER"
+  fi
+  echo "$home/incoming"
+}
+
+# PATH must be a real directory (or absent with MISSING_OK=1), never a symlink, and resolve to itself
+safe_dir() {
+  local path="$1" missing_ok="${2:-0}"
+  if [[ -L "$path" ]]; then fail "$path is a symlink: refusing to touch it"; fi
+  if [[ ! -e "$path" ]]; then
+    [[ "$missing_ok" == 1 ]] && return 0
+    fail "$path is missing (run app-init first)"
+  fi
+  [[ -d "$path" ]] || fail "$path is not a directory"
+  [[ "$(realpath -e -- "$path")" == "$path" ]] || fail "$path resolves elsewhere: refusing to touch it"
+}
+
+# APPS_ROOT: a real, root-owned directory that nobody else may write (it holds every app's structure)
+check_apps_root() {
+  [[ -d "$C_APPS_ROOT" && ! -L "$C_APPS_ROOT" ]] || fail "$C_APPS_ROOT is missing (re-run prepare.sh)"
+  [[ "$(realpath -e -- "$C_APPS_ROOT")" == "$C_APPS_ROOT" ]] || fail "$C_APPS_ROOT must not go through a symlink"
+  if [[ "$DRY" == 0 ]]; then
+    [[ "$(stat -c '%u' -- "$C_APPS_ROOT")" == 0 && $((8#$(stat -c '%a' -- "$C_APPS_ROOT") & 8#022)) == 0 ]] || fail "$C_APPS_ROOT must be owned by root and not group/world writable (re-run prepare.sh)"
+  fi
+}
+
+# the app's root-owned skeleton must be intact before root works inside it
+check_app_dirs() {
+  local dir
+  dir="$(app_dir "$1")"
+  check_apps_root
+  safe_dir "$dir"
+  safe_dir "$dir/releases"
+}
+
+require_user() {
+  [[ "$DRY" == 1 ]] || id -u "$1" > /dev/null 2>&1 || fail "user $1 does not exist (run app-init first)"
+}
+
+# the sha `current` points at (empty when there is none or it is not one of ours)
+current_sha() {
+  local l
+  l="$(readlink -- "$(app_dir "$1")/current" 2> /dev/null || true)"
+  if [[ "$l" =~ ^releases/([0-9a-f]{40})$ ]]; then echo "${BASH_REMATCH[1]}"; fi
+}
+
+disk_guard() {
+  local free
+  free="$(disk_free_mb "$C_APPS_ROOT")"
+  free="${free:-0}"
+  ((free >= DISK_MIN_MB)) || refuse disk_low "$free MB free under $C_APPS_ROOT, $DISK_MIN_MB MB needed"
 }
 
 # ---------------------------------------------------------------------------
@@ -89,15 +436,15 @@ json_str() {
 }
 
 # a version command as the apps user (HOME = its home; as the caller in dry-run), first line only, empty when it
-# fails or takes longer than 5 s. Corepack may not download anything: without a cached pnpm the answer is empty.
+# fails or takes longer than 5 s. Corepack may not download anything: pnpm comes from the shared COREPACK_HOME.
 version_line() {
   local home out=""
-  local -a envs=(PATH="$PATH" COREPACK_ENABLE_NETWORK=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 COREPACK_ENABLE_AUTO_PIN=0 CI=1)
+  local -a envs=(PATH="$PATH" COREPACK_HOME="$COREPACK_DIR" COREPACK_ENABLE_NETWORK=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 COREPACK_ENABLE_AUTO_PIN=0 CI=1)
   if [[ "$DRY" == 0 ]] && id -u "$C_USER" > /dev/null 2>&1; then
     home="$(getent passwd "$C_USER" | cut -d: -f6)"
-    out="$(cd / && timeout -k 2 5 runuser -u "$C_USER" -- env -i HOME="$home" "${envs[@]}" "$@" < /dev/null 2> /dev/null | head -1)" || out=""
+    out="$(timeout -k 2 5 runuser -u "$C_USER" -- env -i HOME="$home" "${envs[@]}" "$@" < /dev/null 2> /dev/null | head -1)" || out=""
   elif [[ "$DRY" == 1 ]]; then
-    out="$(cd / && timeout -k 2 5 env "${envs[@]}" "$@" < /dev/null 2> /dev/null | head -1)" || out=""
+    out="$(timeout -k 2 5 env "${envs[@]}" "$@" < /dev/null 2> /dev/null | head -1)" || out=""
   fi
   # a version looks like v24.3.0 / 10.12.1: anything else (a prompt, an error) is not one
   [[ "$out" =~ ^v?[0-9]+(\.[0-9A-Za-z.+-]+)?$ ]] || out=""
@@ -105,7 +452,7 @@ version_line() {
 }
 
 cmd_info() {
-  local os node="" pnpm="" nginx=false certbot=false pg=null disk=0 mem_total=0 mem_avail=0 dir
+  local os node="" pnpm="" nginx=false certbot=false pg=null disk mem_total mem_avail sd firewall=false
   os="$(sed -nE 's/^PRETTY_NAME="?([^"]*)"?$/\1/p' /etc/os-release 2> /dev/null | head -1)"
   command -v node > /dev/null && node="$(version_line node -v)"
   command -v pnpm > /dev/null && pnpm="$(version_line pnpm -v)"
@@ -114,23 +461,1205 @@ cmd_info() {
   if command -v pg_lsclusters > /dev/null && pg_lsclusters --no-header 2> /dev/null | awk -v p="$C_PG_PORT" '$2 == "apps" && $3 == p && $4 ~ /^online/ { found = 1 } END { exit !found }'; then
     pg="$C_PG_PORT"
   fi
-  dir="$C_APPS_ROOT"
-  while [[ ! -d "$dir" && "$dir" != / ]]; do dir="$(dirname -- "$dir")"; done
-  disk="$(df -Pm -- "$dir" 2> /dev/null | awk 'NR == 2 { print $4 + 0 }')"
-  mem_total="$(awk '/^MemTotal:/ { printf "%d", $2 / 1024 }' /proc/meminfo)"
+  disk="$(disk_free_mb "$C_APPS_ROOT")"
+  mem_total="$(mem_total_mb)"
   mem_avail="$(awk '/^MemAvailable:/ { printf "%d", $2 / 1024 }' /proc/meminfo)"
-  printf '{"helperVersion":%d,"os":%s,"node":%s,"pnpm":%s,"nginx":%s,"certbot":%s,"postgresPort":%s,"diskFreeMb":%d,"memTotalMb":%d,"memAvailableMb":%d,"baseDomain":%s}\n' \
+  sd="$(systemd_version)"
+  # the app firewall is loaded (a read-only check; never in dry-run)
+  if [[ "$DRY" == 0 ]] && command -v nft > /dev/null && nft list table inet wfos_apps > /dev/null 2>&1; then
+    firewall=true
+  fi
+  printf '{"helperVersion":%d,"os":%s,"node":%s,"pnpm":%s,"nginx":%s,"certbot":%s,"postgresPort":%s,"diskFreeMb":%d,"memTotalMb":%d,"memAvailableMb":%d,"baseDomain":%s,"systemd":%d,"firewall":%s,"appsRoot":%s}\n' \
     "$HELPER_VERSION" "$(json_str "$os")" "$(json_str "$node")" "$(json_str "$pnpm")" "$nginx" "$certbot" "$pg" \
-    "${disk:-0}" "${mem_total:-0}" "${mem_avail:-0}" "$(json_str "$C_BASE_DOMAIN")"
+    "${disk:-0}" "${mem_total:-0}" "${mem_avail:-0}" "$(json_str "$C_BASE_DOMAIN")" "$sd" "$firewall" "$(json_str "$C_APPS_ROOT")"
 }
 
 # ---------------------------------------------------------------------------
-# dispatch
+# app-init
+# ---------------------------------------------------------------------------
+
+# acct passwd|group NAME-OR-ID: the account line (getent; a dry-run test may give its own files)
+acct() {
+  local f
+  if [[ "$DRY" == 1 && -n "${WFOS_HELPER_TEST_ACCOUNTS:-}" ]]; then
+    f="$WFOS_HELPER_TEST_ACCOUNTS.$1"
+    [[ -f "$f" ]] || return 2
+    awk -F: -v k="$2" '$1 == k || $3 == k { print; found = 1; exit } END { exit !found }' "$f"
+  else
+    getent "$1" "$2"
+  fi
+}
+
+# an account this helper made: id in the app range and (users) the GECOS marker "Workforce OS app <slug>". Anything
+# else with that name is never adopted, changed or deleted.
+our_user() {
+  local ent uid gecos
+  ent="$(acct passwd "$1")" || return 1
+  uid="$(cut -d: -f3 <<< "$ent")"
+  gecos="$(cut -d: -f5 <<< "$ent")"
+  [[ "$uid" =~ ^[0-9]+$ ]] && ((uid >= APP_ID_MIN && uid <= APP_ID_MAX)) && [[ "$gecos" == "$APP_GECOS_PREFIX$2" ]]
+}
+our_group() {
+  local gid
+  gid="$(acct group "$1" | cut -d: -f3)" || return 1
+  [[ "$gid" =~ ^[0-9]+$ ]] && ((gid >= APP_ID_MIN && gid <= APP_ID_MAX))
+}
+# the lowest id of the app range that is neither a uid nor a gid yet
+free_app_id() {
+  local id
+  for ((id = APP_ID_MIN; id <= APP_ID_MAX; id++)); do
+    if ! acct passwd "$id" > /dev/null && ! acct group "$id" > /dev/null; then
+      echo "$id"
+      return 0
+    fi
+  done
+  fail "no free id left in $APP_ID_MIN..$APP_ID_MAX for app users"
+}
+
+cmd_app_init() {
+  local slug="$1" user dir p n id
+  user="$(app_user "$slug")"
+  dir="$(app_dir "$slug")"
+  check_apps_root
+  for p in "$dir" "$dir/releases" "$dir/data" "$dir/cache" "$dir/next-cache" "$dir/backups"; do safe_dir "$p" 1; done
+  lock
+  # at most MAX_APPS apps on this server (each one has its own user, folder and releases)
+  if [[ ! -e "$dir" ]]; then
+    n="$(find "$C_APPS_ROOT" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+    ((n < C_MAX_APPS)) || refuse server_full "$n apps exist on this server (at most $C_MAX_APPS)"
+  fi
+  if ! getent group "$RUN_GROUP" > /dev/null; then
+    [[ "$DRY" == 1 ]] || fail "group $RUN_GROUP is missing (re-run prepare.sh)"
+    echo "[dry-run] (group $RUN_GROUP comes from prepare.sh)"
+  fi
+  if acct group "$user" > /dev/null; then
+    our_group "$user" || fail "group $user exists but was not made by wfos-app-helper (gid outside $APP_ID_MIN..$APP_ID_MAX): refusing to use it"
+    echo "group $user exists"
+    id="$(acct group "$user" | cut -d: -f3)"
+  else
+    id="$(free_app_id)"
+    run groupadd --system --gid "$id" "$user"
+  fi
+  if acct passwd "$user" > /dev/null; then
+    our_user "$user" "$slug" || fail "user $user exists but was not made by wfos-app-helper (uid range / GECOS marker): refusing to use it"
+    # exactly its own group + wfos-app-run: never sudo, never another app's group
+    if [[ "$DRY" == 0 ]] && [[ "$(id -gn "$user")" != "$user" || "$(id -nG "$user")" != "$user $RUN_GROUP" ]]; then
+      run usermod --gid "$user" --groups "$RUN_GROUP" "$user"
+    else
+      echo "user $user exists"
+    fi
+  else
+    # the group's id when it is free as a uid too, else the next free one
+    if acct passwd "$id" > /dev/null; then id="$(free_app_id)"; fi
+    run useradd --system --uid "$id" --gid "$user" --groups "$RUN_GROUP" --no-create-home --home-dir /nonexistent \
+      --shell /usr/sbin/nologin --comment "$APP_GECOS_PREFIX$slug" "$user"
+  fi
+  # root owns the structure (the app cannot rename or replace releases/, current or next-cache); the app owns the
+  # contents of data/, cache/ and next-cache/
+  run install -d -m 0755 -o root -g root "$dir" "$dir/releases"
+  run install -d -m 0700 -o "$user" -g "$user" "$dir/data" "$dir/cache" "$dir/next-cache"
+  run install -d -m 0700 -o root -g root "$dir/backups"
+  echo "app $slug ready (user $user)"
+}
+
+# ---------------------------------------------------------------------------
+# release-unpack
+# ---------------------------------------------------------------------------
+
+# the upload's bytes, read as the SSH user. Only a dry-run test with its own prefix reads its file directly.
+read_archive() {
+  if [[ "$DRY" == 1 && -n "$P" ]]; then
+    cat -- "$1"
+  else
+    runuser -u "$C_USER" -- cat -- "$1"
+  fi
+}
+
+# as_app USER CMD...: CMD as the app's user with primary group wfos-app-run (so the firewall applies), umask 077.
+# In dry-run (no app user exists) the caller runs it.
+as_app() {
+  local user="$1"
+  shift
+  if [[ "$DRY" == 1 ]]; then
+    (umask 077 && "$@")
+  else
+    # shellcheck disable=SC2016 # expanded by the app user's sh
+    runuser -u "$user" -g "$RUN_GROUP" -- /bin/sh -c 'umask 077 && exec "$@"' sh "$@"
+  fi
+}
+
+# as_app_limited USER CMD...: like as_app, in its own scope in the apps slice with a memory and task cap and a time
+# limit (gzip/tar on hostile input cannot eat the server)
+as_app_limited() {
+  local user="$1"
+  shift
+  if [[ "$DRY" == 1 ]]; then
+    (umask 077 && "$@")
+  else
+    # shellcheck disable=SC2016 # expanded by the app user's sh
+    systemd-run --scope --quiet --collect "--slice=$SLICE" -p MemoryMax=1G -p TasksMax=64 -- \
+      timeout -k 10 900 runuser -u "$user" -g "$RUN_GROUP" -- /bin/sh -c 'umask 077 && exec "$@"' sh "$@"
+  fi
+}
+
+# a member name: relative, no ".." component (names are in tar's C quoting: escapes never contain / or .)
+bad_member_name() {
+  local n="$1"
+  [[ -z "$n" || "$n" == /* || "$n" =~ (^|/)\.\.(/|$) ]]
+}
+
+# check_archive FILE USER: size cap, entry cap, and every member is a file, folder, hard link inside the tree or a
+# symlink that cannot leave it (relative, no ".."). FILE is the app user's own copy of the upload (the very file that
+# is unpacked afterwards); every reader runs as that user.
+check_archive() {
+  local file="$1" user="$2" size listing line type name target link slink hlink n=0
+  # shellcheck disable=SC2016 # expanded by the app user's sh
+  size="$(as_app_limited "$user" /bin/sh -c 'gzip -dc < "$1" 2> /dev/null | head -c "$2" | wc -c' sh "$file" "$((ARCHIVE_MAX_MB * 1024 * 1024 + 1))")" || true
+  size="${size//[^0-9]/}"
+  ((${size:-0} > 0)) || refuse bad_archive "the upload is not a gzip file"
+  ((size <= ARCHIVE_MAX_MB * 1024 * 1024)) || refuse bad_archive "the upload unpacks to more than $ARCHIVE_MAX_MB MB"
+  # -P shows names exactly as stored (a leading / or ../ stays visible); C quoting makes every name unambiguous
+  listing="$(as_app_limited "$user" tar -tvz -P --quoting-style=c -f "$file" 2> /dev/null)" || refuse bad_archive "the upload is not a readable tar.gz"
+  local re='^([-dlh])[^ ]* +[^ ]+ +[0-9,]+ +[0-9]{4}-[0-9]{2}-[0-9]{2} +[0-9]{2}:[0-9]{2}(:[0-9]{2})? +"((\\.|[^"\\])*)"( -> "((\\.|[^"\\])*)"| link to "((\\.|[^"\\])*)")?$'
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    n=$((n + 1))
+    ((n <= ARCHIVE_MAX_ENTRIES)) || refuse bad_archive "the upload has more than $ARCHIVE_MAX_ENTRIES entries"
+    [[ "$line" =~ $re ]] || refuse bad_archive "unexpected archive entry (only files, folders and links): $(printf %q "${line:0:200}")"
+    # copy the groups first: the checks below run their own =~ (which resets BASH_REMATCH)
+    type="${BASH_REMATCH[1]}"
+    name="${BASH_REMATCH[3]}"
+    link="${BASH_REMATCH[5]:-}"
+    slink="${BASH_REMATCH[6]:-}"
+    hlink="${BASH_REMATCH[8]:-}"
+    if bad_member_name "$name"; then refuse bad_archive "member $(printf %q "${name:0:200}") is absolute or contains .."; fi
+    case "$type" in
+      l)
+        target="$slink"
+        [[ -n "$target" && "$target" != /* && ! "$target" =~ (^|/)\.\.(/|$) ]] || refuse bad_archive "symlink $(printf %q "${name:0:200}") may point outside the release ($(printf %q "${target:0:200}")); only relative links without .. are allowed"
+        ;;
+      h)
+        target="$hlink"
+        if bad_member_name "$target"; then refuse bad_archive "hard link $(printf %q "${name:0:200}") points outside the release"; fi
+        ;;
+      *) [[ -z "$link" ]] || refuse bad_archive "unexpected link on $(printf %q "${name:0:200}")" ;;
+    esac
+  done <<< "$listing"
+  ((n > 0)) || refuse bad_archive "the upload is empty"
+}
+
+# after unpacking (real runs): every symlink, resolved by the filesystem, must stay inside the release. Runs as the
+# app user, so a hostile tree is only ever looked at with that user's rights.
+# shellcheck disable=SC2016 # expanded by the app user's bash, not here
+POSTCHECK='set -eu
+root=$(realpath -e -- "$1")
+cd -- "$root"
+bad=0
+while IFS= read -r -d "" p; do
+  if [ -L "$p" ]; then
+    t=$(realpath -m -- "$p")
+    case "$t" in "$root" | "$root"/*) ;; *) printf "symlink %q leaves the release\n" "${p#./}" >&2; bad=1 ;; esac
+  else
+    printf "%q is not a file, folder or symlink\n" "${p#./}" >&2
+    bad=1
+  fi
+done < <(find . \( -type l -o \( ! -type f ! -type d \) \) -print0)
+exit "$bad"'
+
+# the app user's temp folder for one upload (removed again on every exit path)
+UPLOAD_TMP="" UPLOAD_USER=""
+upload_cleanup() {
+  if [[ -n "$UPLOAD_TMP" ]]; then as_app "$UPLOAD_USER" rm -rf -- "$UPLOAD_TMP" || true; fi
+}
+
+cmd_release_unpack() {
+  local slug="$1" sha="$2" user dir rel tarball file size
+  user="$(app_user "$slug")"
+  dir="$(app_dir "$slug")"
+  rel="$dir/releases/$sha"
+  tarball="$(incoming_dir)/$slug-$sha.tar.gz"
+  check_app_dirs "$slug"
+  safe_dir "$dir/cache"
+  require_user "$user"
+  build_lock
+  lock
+  disk_guard
+  [[ "$(current_sha "$slug")" != "$sha" ]] || refuse release_active "releases/$sha is the running release; it is never unpacked over"
+  if [[ "$DRY" == 1 && -n "$P" ]]; then
+    [[ -f "$tarball" ]] || fail "no upload at $tarball"
+  else
+    runuser -u "$C_USER" -- test -f "$tarball" || fail "no upload at $tarball"
+  fi
+  # the upload is copied once, as the app user, into the app's cache; that copy is checked and then unpacked, so
+  # the SSH user cannot swap the file between the check and the unpack
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] runuser -u $C_USER -- cat -- $tarball | runuser -u $user -g $RUN_GROUP -- sh -c 'cat > $dir/cache/.upload.XXXXXX/upload.tar.gz' (at most $UPLOAD_MAX_MB MB)"
+    file="$tarball"
+  else
+    UPLOAD_USER="$user"
+    UPLOAD_TMP="$(as_app "$user" mktemp -d "$dir/cache/.upload.XXXXXX")"
+    [[ "$UPLOAD_TMP" =~ ^"$dir"/cache/\.upload\.[A-Za-z0-9]{6}$ ]] || fail "unexpected temp folder"
+    trap upload_cleanup EXIT
+    file="$UPLOAD_TMP/upload.tar.gz"
+    # shellcheck disable=SC2016 # expanded by the app user's sh
+    read_archive "$tarball" | head -c "$((UPLOAD_MAX_MB * 1024 * 1024 + 1))" | as_app "$user" /bin/sh -c 'cat > "$1"' sh "$file" || fail "copying the upload failed"
+    size="$(as_app "$user" stat -c %s -- "$file")"
+    ((size <= UPLOAD_MAX_MB * 1024 * 1024)) || refuse bad_archive "the upload is larger than $UPLOAD_MAX_MB MB"
+  fi
+  check_archive "$file" "$user"
+  # a stale, non-current copy of this sha (an earlier failed deploy) is replaced; rm -rf never follows symlinks
+  if [[ -e "$rel" || -L "$rel" ]]; then
+    run rm -rf --one-file-system -- "$rel"
+  fi
+  run install -d -m 0750 -o "$user" -g "$user" "$rel"
+  # the unpack itself only needs the build lock
+  unlock
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] systemd-run --scope --slice=$SLICE -p MemoryMax=1G -p TasksMax=64 -- timeout 900 runuser -u $user -g $RUN_GROUP -- tar -xzf <that copy> -C $rel --no-same-owner --no-same-permissions (umask 077)"
+    echo "[dry-run] runuser -u $user -g $RUN_GROUP -- bash -c <every symlink stays inside $rel>"
+    run runuser -u "$C_USER" -- rm -f -- "$tarball"
+  else
+    if ! as_app_limited "$user" tar -xzf "$file" -C "$rel" --no-same-owner --no-same-permissions; then
+      rm -rf --one-file-system -- "$rel"
+      fail "unpacking $slug-$sha.tar.gz failed"
+    fi
+    if ! as_app_limited "$user" /bin/bash -c "$POSTCHECK" bash "$rel"; then
+      rm -rf --one-file-system -- "$rel"
+      refuse bad_archive "the unpacked release contains links that leave it"
+    fi
+    runuser -u "$C_USER" -- rm -f -- "$tarball" || echo "warning: could not delete $tarball" >&2
+  fi
+  echo "release $sha unpacked into $rel"
+}
+
+# ---------------------------------------------------------------------------
+# env-install
+# ---------------------------------------------------------------------------
+
+ENV_MAX_LINES=80
+ENV_MAX_VALUE=4000
+
+cmd_env_install() {
+  local slug="$1" rest line key val n=0 out="" keys=" " file
+  stdin_text $((ENV_MAX_LINES * (65 + ENV_MAX_VALUE + 1)))
+  [[ "$STDIN_TEXT" != *$'\r'* ]] || usage "env-install: CR or NUL bytes are not allowed"
+  rest="$STDIN_TEXT"
+  # split in bash (a here-string could put the values in a temp file)
+  while [[ -n "$rest" ]]; do
+    line="${rest%%$'\n'*}"
+    if [[ "$rest" == *$'\n'* ]]; then rest="${rest#*$'\n'}"; else rest=""; fi
+    [[ -n "$line" ]] || continue
+    n=$((n + 1))
+    ((n <= ENV_MAX_LINES)) || usage "env-install: more than $ENV_MAX_LINES variables"
+    # never echo a value: errors name the line number or the key only
+    [[ "$line" =~ ^([A-Z][A-Z0-9_]{0,63})=(.*)$ ]] || usage "env-install: line $n is not NAME=value with an UPPER_CASE name"
+    key="${BASH_REMATCH[1]}"
+    val="${BASH_REMATCH[2]}"
+    ((${#val} <= ENV_MAX_VALUE)) || usage "env-install: the value of $key is longer than $ENV_MAX_VALUE bytes"
+    [[ "$keys" != *" $key "* ]] || usage "env-install: $key is set twice"
+    # names the sandbox sets itself (an env file would override them) and loader variables are never accepted;
+    # HOST only as loopback (the app must not listen on a public address)
+    case "$key" in
+      HOME | PATH | XDG_CACHE_HOME | NPM_CONFIG_STORE_DIR | COREPACK_* | LD_*) usage "env-install: $key is set by the platform" ;;
+      HOST) [[ "$val" == 127.0.0.1 ]] || usage "env-install: HOST must be 127.0.0.1" ;;
+    esac
+    keys+="$key "
+    # systemd EnvironmentFile syntax: inside double quotes \ " ` $ are escaped, everything else is literal
+    val="${val//\\/\\\\}"
+    val="${val//\"/\\\"}"
+    val="${val//\`/\\\`}"
+    val="${val//\$/\\\$}"
+    out+="$key=\"$val\""$'\n'
+  done
+  file="$(env_file "$slug")"
+  lock
+  if [[ "$DRY" == 0 ]]; then
+    [[ -d "$ENV_DIR" && ! -L "$ENV_DIR" ]] || fail "$ENV_DIR is missing (re-run prepare.sh)"
+  fi
+  {
+    echo "# Managed by wfos-app-helper env-install (Workforce OS): rewritten on every deploy. Do not edit."
+    printf '%s' "$out"
+  } | write_file "$file" 0600 root:root "$n variables:${keys% }"
+  echo "env for $slug: $n variables"
+}
+
+# ---------------------------------------------------------------------------
+# the sandbox (one list for units and builds)
+# ---------------------------------------------------------------------------
+
+# sandbox_props SLUG KIND(unit|build) DB(0|1) [SHA]: one Key=Value per line. The unit file gets these lines as they
+# are and systemd-run gets each one as -p, so both always carry the same sandbox. The app sees an empty APPS_ROOT
+# (tmpfs) with only its own folder in it (read-only), its data/ and cache/ writable (a build also its release), and
+# an empty /etc/wfos-apps with only its own start script in it (unit). Bind sources come from the host's tree, so
+# binding below a TemporaryFileSystem works (the documented systemd pattern). No DynamicUser: files keep their owner.
+sandbox_props() {
+  local slug="$1" kind="$2" db="$3" sha="${4:-}" dir
+  dir="$(app_dir "$slug")"
+  cat << EOF
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~io_uring_setup io_uring_enter io_uring_register userfaultfd
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+OOMScoreAdjust=500
+LimitNOFILE=4096
+LimitFSIZE=2G
+EOF
+  # PrivatePIDs= exists from systemd 257 on; an older systemd would refuse the whole unit
+  if (($(systemd_version) >= 257)); then echo "PrivatePIDs=yes"; fi
+  echo "TemporaryFileSystem=$C_APPS_ROOT:ro"
+  echo "BindReadOnlyPaths=$dir"
+  echo "BindPaths=$dir/data $dir/cache"
+  if [[ "$kind" == build ]]; then echo "BindPaths=$dir/releases/$sha"; fi
+  echo "TemporaryFileSystem=$ETC_APPS:ro"
+  if [[ "$kind" == unit ]]; then echo "BindReadOnlyPaths=$(start_file "$slug")"; fi
+  # /run is an empty tmpfs (no sockets of PostgreSQL, Redis, Docker, D-Bus, …) with only the DNS stub resolver
+  # (/etc/resolv.conf points there; "-": hosts without systemd-resolved) and, for an app or a migrate step that has
+  # a database, the apps cluster's socket
+  echo "TemporaryFileSystem=/run:ro"
+  echo "BindReadOnlyPaths=-/run/systemd/resolve"
+  if [[ "$db" == 1 ]]; then echo "BindReadOnlyPaths=$PG_SOCK"; fi
+  # /opt is empty except the shared, read-only pnpm
+  echo "TemporaryFileSystem=/opt:ro"
+  echo "BindReadOnlyPaths=$COREPACK_DIR"
+  echo "InaccessiblePaths=-/root -/home -/etc/letsencrypt -/etc/wfos-app-helper.conf -/etc/nginx -$STATE_DIR -/var/log -/var/lib/cloud -/var/www -/mnt -/media -/usr/local/sbin"
+  echo "EnvironmentFile=$(env_file "$slug")"
+  echo "Environment=HOME=$dir/cache XDG_CACHE_HOME=$dir/cache/xdg COREPACK_HOME=$COREPACK_DIR COREPACK_ENABLE_NETWORK=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 COREPACK_ENABLE_AUTO_PIN=0 NEXT_TELEMETRY_DISABLED=1"
+}
+
+# ---------------------------------------------------------------------------
+# build-run
+# ---------------------------------------------------------------------------
+
+# the resolvers a build may reach (the stub 127.0.0.53 and what /etc/resolv.conf names), for IPAddressAllow=
+dns_servers() {
+  local a out="127.0.0.53"
+  while read -r a; do
+    if [[ "$a" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ || "$a" =~ ^[0-9a-fA-F:]*:[0-9a-fA-F:]*$ ]] && [[ " $out " != *" $a "* ]]; then out+=" $a"; fi
+  done < <(awk '$1 == "nameserver" { print $2 }' /etc/resolv.conf 2> /dev/null)
+  echo "$out"
+}
+
+cmd_build_run() {
+  local slug="$1" sha="$2" step="$3" timeout="$4" mem="$5" cmd user dir rel unit db=0 rc line
+  local -a props=() wrap=() opts=()
+  stdin_line 500 "build-run"
+  cmd="$LINE"
+  user="$(app_user "$slug")"
+  dir="$(app_dir "$slug")"
+  rel="$dir/releases/$sha"
+  unit="$(build_unit "$slug")"
+  [[ "$step" != migrate ]] || db=1
+  check_app_dirs "$slug"
+  safe_dir "$dir/data"
+  safe_dir "$dir/cache"
+  require_user "$user"
+  # one build at a time (held for the whole build); the global lock only for the checks below, so stopping or
+  # removing apps never waits for a build
+  build_lock
+  lock
+  firewall_guard
+  disk_guard
+  # the running release is never built in again (it is mounted read-only into the running app)
+  [[ "$(current_sha "$slug")" != "$sha" ]] || refuse release_active "releases/$sha is the running release"
+  [[ ! -L "$rel" ]] || fail "$rel is a symlink: refusing to build in it"
+  [[ -d "$rel" ]] || refuse release_missing "releases/$sha is not on this server (release-unpack first)"
+  [[ "$(realpath -e -- "$rel")" == "$rel" ]] || fail "$rel resolves elsewhere: refusing to build in it"
+  if [[ "$DRY" == 0 ]]; then
+    [[ "$(stat -c '%U' -- "$rel")" == "$user" ]] || fail "$rel is not owned by $user"
+    [[ -f "$(env_file "$slug")" ]] || fail "no env for $slug (env-install first)"
+    # a build left behind by a dropped connection still holds the unit name; we hold the build lock, so it is stale
+    if systemctl is-active --quiet "$unit" || systemctl is-failed --quiet "$unit"; then
+      systemctl stop "$unit" 2> /dev/null || true
+      systemctl reset-failed "$unit" 2> /dev/null || true
+    fi
+  fi
+  while IFS= read -r line; do props+=(-p "$line"); done < <(sandbox_props "$slug" build "$db" "$sha")
+  props+=(-p "Environment=CI=1 npm_config_store_dir=$dir/cache/pnpm-store")
+  props+=(-p "WorkingDirectory=$rel" -p "RuntimeMaxSec=$timeout" -p "MemoryMax=${mem}M" -p MemorySwapMax=0)
+  props+=(-p CPUQuota=100% -p TasksMax=512 -p Nice=10)
+  # the firewall unit must be up for the whole build; and a build needs no inbound traffic at all, so its cgroup is
+  # also kept away from loopback and private ranges by systemd's own IP filter (only the DNS resolvers stay)
+  props+=(-p Requires=wfos-apps-firewall.service -p After=wfos-apps-firewall.service)
+  props+=(-p "IPAddressDeny=localhost link-local multicast 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16 fc00::/7")
+  props+=(-p "IPAddressAllow=$(dns_servers)")
+  opts=(--wait --pipe --collect --quiet "--unit=$unit" "--slice=$SLICE" "--description=Workforce OS build $slug $step ${sha:0:12}" "--uid=$user" "--gid=$RUN_GROUP")
+  # the command is the manifest's: $VARS in it are for sh, systemd must not expand them (option from systemd 254)
+  if (($(systemd_version) >= 254)); then opts+=(--expand-environment=no); fi
+  # install needs devDependencies: the env file says NODE_ENV=production (for the running app), and pnpm would skip
+  # them; EnvironmentFile= wins over Environment=, so it is unset for this one command instead
+  if [[ "$step" == install ]]; then wrap=(/usr/bin/env -u NODE_ENV); fi
+  unlock
+  echo "== $step: $cmd"
+  if [[ "$DRY" == 1 ]]; then
+    run systemd-run "${opts[@]}" "${props[@]}" "${wrap[@]}" /bin/sh -c "$cmd"
+    return 0
+  fi
+  rc=0
+  systemd-run "${opts[@]}" "${props[@]}" "${wrap[@]}" /bin/sh -c "$cmd" < /dev/null || rc=$?
+  ((rc == 0)) || fail "$step failed (exit $rc)"
+  echo "== $step done"
+}
+
+# ---------------------------------------------------------------------------
+# Postgres (the apps-only cluster, socket only)
+# ---------------------------------------------------------------------------
+
+require_pg() {
+  [[ -n "$C_PG_VERSION" ]] || fail "$CONF has no PG_VERSION (re-run prepare.sh)"
+}
+
+# psql as postgres over the apps socket; the SQL comes on stdin (passwords never go on a command line)
+psql_apps() {
+  if [[ "$DRY" == 1 ]]; then
+    cat > /dev/null
+    run runuser -u postgres -- "$(pg_bin psql)" -X -q -v ON_ERROR_STOP=1 -h "$PG_SOCK" -p "$C_PG_PORT" -d postgres "$@"
+  else
+    runuser -u postgres -- "$(pg_bin psql)" -X -q -v ON_ERROR_STOP=1 -h "$PG_SOCK" -p "$C_PG_PORT" -d postgres "$@"
+  fi
+}
+
+db_exists() {
+  local name="$1"
+  [[ "$DRY" == 0 ]] || return 0
+  [[ "$(runuser -u postgres -- "$(pg_bin psql)" -X -tA -h "$PG_SOCK" -p "$C_PG_PORT" -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$name'")" == 1 ]]
+}
+
+# set_lines FILE RE ADD(0|1) LINE...: FILE (postgres', whom root trusts anyway) without the lines matching RE, plus
+# (ADD=1) LINE... at the end. Written only when that changes it; returns 0 when it changed.
+set_lines() {
+  local file="$1" re="$2" add="$3" content="" kept="" have="" want="" line
+  shift 3
+  if [[ -f "$file" ]]; then
+    [[ ! -L "$file" ]] || fail "$file is a symlink"
+    content="$(cat -- "$file")"
+  else
+    [[ "$DRY" == 1 ]] || fail "$file is missing (re-run prepare.sh)"
+  fi
+  while IFS= read -r line; do
+    if [[ "$line" =~ $re ]]; then have+="$line"$'\n'; else kept+="$line"$'\n'; fi
+  done <<< "$content"
+  if [[ "$add" == 1 ]]; then for line in "$@"; do want+="$line"$'\n'; done; fi
+  if [[ "$have" == "$want" ]]; then
+    echo "$(basename -- "$file"): unchanged"
+    return 1
+  fi
+  printf '%s%s' "$kept" "$want" | write_file "$file" 0640 postgres:postgres
+}
+
+# auth_set NAME USER add|remove: how the app role NAME may log in. pg_hba (first match wins, no fall-through):
+#   local NAME NAME peer map=wfos_NAME   ← OS users of the map: the app's own user (its unit and builds) and
+#                                          postgres (the helper's pg_dump / pg_restore run as the app role, never as a
+#                                          superuser on the app's data); any other OS user is refused outright
+#   local NAME NAME scram-sha-256        ← unreachable while the peer line exists; kept as the documented fallback
+# pg_ident: wfos_NAME postgres NAME / wfos_NAME USER NAME. A reload when anything changed.
+auth_set() {
+  local name="$1" user="$2" action="$3" changed=0 add=1
+  [[ "$action" == add ]] || add=0
+  if set_lines "$(pg_hba)" "^[[:space:]]*local[[:space:]]+$name[[:space:]]+$name[[:space:]]" "$add" \
+    "local $name $name peer map=wfos_$name" "local $name $name scram-sha-256"; then changed=1; fi
+  if set_lines "$(pg_ident)" "^[[:space:]]*wfos_$name[[:space:]]" "$add" \
+    "wfos_$name postgres $name" "wfos_$name $user $name"; then changed=1; fi
+  if [[ "$changed" == 1 ]]; then echo "SELECT pg_reload_conf();" | psql_apps; fi
+}
+
+cmd_db_create() {
+  local slug="$1" reset="$2" name pw reset_sql="" note=""
+  stdin_line 64 "db-create"
+  pw="$LINE"
+  [[ "$pw" =~ ^[0-9a-f]{32,64}$ ]] || usage "db-create needs the password on stdin (32 to 64 lowercase hex characters)"
+  require_pg
+  name="$(db_name "$slug")"
+  lock
+  # an existing role keeps its password unless asked (a repeated call must not lock the running app out)
+  if [[ "$reset" == 1 ]]; then
+    reset_sql="ALTER ROLE :\"name\" WITH PASSWORD :'pw';"
+    note="; --reset-password: the password is set again"
+  fi
+  [[ "$DRY" == 0 ]] || echo "[dry-run] stdin: create role $name (password only when it is new$note), CONNECTION LIMIT 10, statement_timeout and idle_in_transaction_session_timeout 60s, database $name owned by it, REVOKE CONNECT ON DATABASE $name, postgres, template1 FROM PUBLIC, GRANT CONNECT ON DATABASE $name TO $name"
+  # the superuser session stays in the postgres database and only creates/grants: it never touches an object the app
+  # owns. Every value is validated above ([a-z0-9_] name, hex password); the password travels as a psql variable on
+  # stdin (never on a command line) and the apps cluster logs no statements (log_statement = none,
+  # log_min_error_statement = panic, set by prepare.sh)
+  psql_apps << EOF
+\\set name '$name'
+\\set pw '$pw'
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'name', :'pw') WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'name') \\gexec
+$reset_sql
+ALTER ROLE :"name" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 10;
+ALTER ROLE :"name" SET statement_timeout = '60s';
+ALTER ROLE :"name" SET idle_in_transaction_session_timeout = '60s';
+SELECT format('CREATE DATABASE %I OWNER %I', :'name', :'name') WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'name') \\gexec
+REVOKE CONNECT, TEMPORARY ON DATABASE :"name" FROM PUBLIC;
+GRANT CONNECT, TEMPORARY ON DATABASE :"name" TO :"name";
+REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
+REVOKE CONNECT ON DATABASE template1 FROM PUBLIC;
+EOF
+  auth_set "$name" "$(app_user "$slug")" add
+  echo "database $name ready"
+}
+
+# keep the newest BACKUPS_KEPT dumps (by modification time)
+prune_backups() {
+  local dir="$1" n=0 line
+  while IFS= read -r line; do
+    n=$((n + 1))
+    if ((n > BACKUPS_KEPT)); then run rm -f -- "$dir/${line#* }"; fi
+  done < <(find "$dir" -maxdepth 1 -type f -name '*.dump' -printf '%T@ %f\n' 2> /dev/null | sort -rn)
+}
+
+cmd_db_dump() {
+  local slug="$1" bname="$2" name dir file tmp
+  require_pg
+  name="$(db_name "$slug")"
+  dir="$(app_dir "$slug")/backups"
+  file="$dir/$bname.dump"
+  check_app_dirs "$slug"
+  safe_dir "$dir"
+  lock
+  db_exists "$name" || fail "database $name does not exist"
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] runuser -u postgres -- $(pg_bin pg_dump) -h $PG_SOCK -p $C_PG_PORT -U $name -Fc -d $name > $file (root-owned, mode 0600, via a temp file)"
+  else
+    tmp="$(mktemp "$dir/.wfos-tmp.XXXXXX")"
+    # as the app role (peer map), so nothing in the app's database ever runs with superuser rights
+    if ! runuser -u postgres -- "$(pg_bin pg_dump)" -h "$PG_SOCK" -p "$C_PG_PORT" -U "$name" -Fc -d "$name" > "$tmp"; then
+      rm -f -- "$tmp"
+      fail "pg_dump of $name failed"
+    fi
+    chmod 0600 "$tmp"
+    mv -fT -- "$tmp" "$file"
+  fi
+  prune_backups "$dir"
+  echo "backup $bname of $name written"
+}
+
+cmd_db_restore() {
+  local slug="$1" bname="$2" name file
+  require_pg
+  name="$(db_name "$slug")"
+  file="$(app_dir "$slug")/backups/$bname.dump"
+  check_app_dirs "$slug"
+  safe_dir "$(app_dir "$slug")/backups"
+  lock
+  [[ -f "$file" && ! -L "$file" ]] || fail "backup_missing: no backup $bname for $slug"
+  db_exists "$name" || fail "database $name does not exist"
+  # root opens the root-owned dump; pg_restore reads it on stdin, all or nothing, logged in as the app role itself
+  # (peer map; no superuser session, no SET ROLE that the app's own code could RESET)
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] runuser -u postgres -- $(pg_bin pg_restore) -h $PG_SOCK -p $C_PG_PORT -U $name -d $name --clean --if-exists --no-owner --no-privileges --single-transaction < $file"
+  else
+    runuser -u postgres -- "$(pg_bin pg_restore)" -h "$PG_SOCK" -p "$C_PG_PORT" -U "$name" -d "$name" --clean --if-exists --no-owner --no-privileges --single-transaction < "$file" || fail "pg_restore of $bname into $name failed"
+  fi
+  echo "database $name restored from $bname"
+}
+
+# ---------------------------------------------------------------------------
+# releases: activate, prune
+# ---------------------------------------------------------------------------
+
+cmd_release_activate() {
+  local slug="$1" sha="$2" user dir rel prev tmp
+  user="$(app_user "$slug")"
+  dir="$(app_dir "$slug")"
+  rel="$dir/releases/$sha"
+  tmp="$dir/.current.wfos-tmp"
+  check_app_dirs "$slug"
+  lock
+  [[ ! -L "$rel" ]] || fail "$rel is a symlink: refusing to activate it"
+  [[ -d "$rel" ]] || refuse release_missing "releases/$sha is not on this server"
+  [[ "$(realpath -e -- "$rel")" == "$rel" ]] || fail "$rel resolves elsewhere: refusing to activate it"
+  if [[ "$DRY" == 0 ]]; then
+    [[ "$(stat -c '%U' -- "$rel")" == "$user" ]] || fail "$rel is not owned by $user"
+  fi
+  if [[ -e "$dir/current" && ! -L "$dir/current" ]]; then fail "$dir/current is not a symlink"; fi
+  prev="$(current_sha "$slug")"
+  # a relative link (the same inside the sandbox), swapped atomically: ln on a root-owned temp name, then rename
+  if [[ -e "$tmp" || -L "$tmp" ]]; then run rm -rf --one-file-system -- "$tmp"; fi
+  run ln -sfn "releases/$sha" "$tmp"
+  run mv -fT -- "$tmp" "$dir/current"
+  # a new version starts with an empty Next.js runtime cache (entries of another build are stale); the folder sits
+  # in the root-owned app folder, rm -rf never follows links, and the running old version keeps its own mount
+  if [[ "$prev" != "$sha" ]]; then
+    run rm -rf --one-file-system -- "$dir/next-cache"
+    run install -d -m 0700 -o "$user" -g "$user" "$dir/next-cache"
+  fi
+  echo "current -> releases/$sha"
+  echo "${prev:-none}"
+}
+
+cmd_release_prune() {
+  local slug="$1" dir cur kept=0 line name
+  dir="$(app_dir "$slug")"
+  check_app_dirs "$slug"
+  lock
+  cur="$(current_sha "$slug")"
+  if [[ -n "$cur" && -d "$dir/releases/$cur" && ! -L "$dir/releases/$cur" ]]; then kept=1; fi
+  while IFS= read -r line; do
+    name="${line#* }"
+    [[ "$name" =~ ^[0-9a-f]{40}$ && "$name" != "$cur" ]] || continue
+    if [[ ! -L "$dir/releases/$name" ]] && ((kept < RELEASES_KEPT)); then
+      kept=$((kept + 1))
+      continue
+    fi
+    # rm -rf removes a planted symlink itself, never what it points at
+    run rm -rf --one-file-system -- "$dir/releases/$name"
+  done < <(find "$dir/releases" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%T@ %f\n' | sort -rn)
+  echo "releases of $slug pruned (kept $kept)"
+}
+
+# ---------------------------------------------------------------------------
+# systemd unit
+# ---------------------------------------------------------------------------
+
+# next_cache_bind SLUG USER: prints "BindPaths=<app>/next-cache:<app>/releases/<sha>/.next/cache" for the release
+# `current` points at (resolved now, as root), or nothing when there is no current release or it has no .next. The
+# release stays read-only for the app; only this folder is writable. Every path is checked without following links
+# (the release's contents were written by the app's own build), and a missing .next/cache mount point is created
+# by the app user, never by root. Diagnostics go to stderr (stdout is the bind line).
+next_cache_bind() {
+  local slug="$1" user="$2" dir cur rel nc
+  dir="$(app_dir "$slug")"
+  nc="$dir/next-cache"
+  cur="$(current_sha "$slug")"
+  [[ -n "$cur" ]] || return 0
+  rel="$dir/releases/$cur"
+  [[ -d "$rel" && ! -L "$rel" && "$(realpath -e -- "$rel")" == "$rel" ]] || fail "current points at releases/$cur, which is not a release folder"
+  [[ -e "$rel/.next" || -L "$rel/.next" ]] || return 0
+  [[ -d "$rel/.next" && ! -L "$rel/.next" ]] || fail "releases/$cur/.next is not a folder: refusing to bind into it"
+  if [[ -L "$rel/.next/cache" || (-e "$rel/.next/cache" && ! -d "$rel/.next/cache") ]]; then
+    fail "releases/$cur/.next/cache is not a folder: refusing to bind onto it"
+  fi
+  if [[ "$(realpath -m -- "$rel/.next/cache")" != "$rel/.next/cache" ]]; then fail "releases/$cur/.next/cache resolves elsewhere"; fi
+  if [[ ! -e "$nc" ]]; then
+    run install -d -m 0700 -o "$user" -g "$user" "$nc" >&2
+  else
+    safe_dir "$nc"
+  fi
+  if [[ ! -e "$rel/.next/cache" ]]; then
+    if [[ "$DRY" == 1 ]]; then
+      echo "[dry-run] runuser -u $user -g $RUN_GROUP -- mkdir -m 0700 -- $rel/.next/cache" >&2
+    else
+      as_app "$user" mkdir -m 0700 -- "$rel/.next/cache" || fail "could not create releases/$cur/.next/cache"
+    fi
+  fi
+  echo "BindPaths=$nc:$rel/.next/cache"
+}
+
+cmd_unit_install() {
+  local slug="$1" port="$2" mem="$3" db="$4" cmd user dir after="" next_bind
+  stdin_line 500 "unit-install"
+  cmd="$LINE"
+  [[ "$db" == 0 ]] || require_pg
+  user="$(app_user "$slug")"
+  dir="$(app_dir "$slug")"
+  check_app_dirs "$slug"
+  require_user "$user"
+  lock
+  [[ "$DRY" == 1 || -d "$START_DIR" ]] || fail "$START_DIR is missing (re-run prepare.sh)"
+  next_bind="$(next_cache_bind "$slug" "$user")"
+  # the start command runs as the app user inside the sandbox; root only writes it (never runs or sources it)
+  printf '# Managed by wfos-app-helper unit-install (Workforce OS): the start command of wfos-app.json.\n%s\n' "$cmd" |
+    write_file "$(start_file "$slug")" 0644 root:root
+  [[ "$db" == 0 ]] || after=" postgresql@$C_PG_VERSION-apps.service"
+  {
+    cat << EOF
+# Managed by wfos-app-helper (Workforce OS): rewritten by unit-install, removed by app-remove. Do not edit.
+[Unit]
+Description=Workforce OS app $slug (port $port)
+Wants=network-online.target
+# the app firewall (nftables table inet wfos_apps) must be loaded; when it stops, the app stops too
+Requires=wfos-apps-firewall.service
+After=network-online.target wfos-apps-firewall.service$after
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Slice=$SLICE
+User=$user
+# primary group wfos-app-run: the firewall matches it (meta skgid)
+Group=$RUN_GROUP
+# refuses to start when the app firewall is not loaded ("+": runs outside the sandbox)
+ExecStartPre=+/usr/sbin/nft list table inet wfos_apps
+WorkingDirectory=$dir/current
+ExecStart=/bin/sh $(start_file "$slug")
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+MemoryMax=${mem}M
+MemorySwapMax=0
+CPUQuota=100%
+TasksMax=256
+# only its own port may be bound (another app cannot take over a stopped app's port)
+SocketBindAllow=tcp:$port
+SocketBindDeny=any
+EOF
+    sandbox_props "$slug" unit "$db"
+    if [[ -n "$next_bind" ]]; then
+      echo "# Next.js writes its runtime cache (images, ISR, fetch) into .next/cache: the only writable spot in the release"
+      echo "$next_bind"
+    fi
+    echo "Environment=HOST=127.0.0.1 PORT=$port NODE_ENV=production"
+    cat << EOF
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  } | write_file "$(unit_path "$slug")" 0644 root:root
+  run systemctl daemon-reload
+  run systemctl enable "$(unit_name "$slug")"
+  echo "unit $(unit_name "$slug") installed"
+}
+
+require_unit() {
+  [[ "$DRY" == 1 || -f "$(unit_path "$1")" ]] || fail "app $1 has no unit (unit-install first)"
+}
+
+# the unit's Next.js cache bind must still be the one next_cache_bind computes now (current may have moved without a
+# unit-install, or the release may have changed); the same link checks run again
+check_unit_bind() {
+  local slug="$1" want have
+  want="$(next_cache_bind "$slug" "$(app_user "$slug")")"
+  have="$(grep -E "^BindPaths=$(app_dir "$slug")/next-cache:" "$(unit_path "$slug")" 2> /dev/null || true)"
+  [[ "$want" == "$have" ]] || fail "the unit of $slug does not match its current release (run unit-install first)"
+}
+
+cmd_unit_action() {
+  local action="$1" slug="$2" unit
+  unit="$(unit_name "$slug")"
+  require_unit "$slug"
+  case "$action" in
+    # a stopped preview stays stopped after a reboot; a started one comes back
+    unit-start | unit-restart)
+      lock
+      firewall_guard
+      running_guard "$slug"
+      [[ "$action" == unit-restart ]] || disk_guard
+      check_app_dirs "$slug"
+      check_unit_bind "$slug"
+      if [[ "$action" == unit-start ]]; then
+        run systemctl enable --now "$unit"
+      else
+        run systemctl restart "$unit"
+      fi
+      ;;
+    # no lock: stopping never waits for anything
+    unit-stop) run systemctl disable --now "$unit" ;;
+  esac
+}
+
+cmd_unit_status() {
+  local slug="$1" unit state sub
+  unit="$(unit_name "$slug")"
+  if [[ "$DRY" == 1 ]]; then
+    run systemctl show "$unit" -p ActiveState -p SubState
+    echo inactive
+    return 0
+  fi
+  state="$(systemctl show "$unit" -p ActiveState --value 2> /dev/null || true)"
+  sub="$(systemctl show "$unit" -p SubState --value 2> /dev/null || true)"
+  case "$state" in
+    active | reloading | refreshing) echo active ;;
+    failed) echo failed ;;
+    # a crash loop: systemd waits RestartSec between tries
+    activating) if [[ "$sub" == auto-restart ]]; then echo failed; else echo inactive; fi ;;
+    *) echo inactive ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# health
+# ---------------------------------------------------------------------------
+
+cmd_health() {
+  local port="$2" path="$3" code
+  # as root: the app firewall keeps apps away from loopback, not root
+  if [[ "$DRY" == 1 ]]; then
+    run curl -q -s -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 --max-filesize 10485760 --noproxy '*' --proto =http "http://127.0.0.1:$port$path"
+    code=000
+  else
+    # -q first: no ~/.curlrc of root; the code is printed even when curl stops early (e.g. a body over 10 MB)
+    code="$(curl -q -s -o /dev/null -w '%{http_code}' --max-time 5 --max-redirs 0 --max-filesize 10485760 --noproxy '*' --proto =http "http://127.0.0.1:$port$path" 2> /dev/null || true)"
+  fi
+  [[ "$code" =~ ^[0-9]{3}$ ]] || code=000
+  printf '{"status":%d}\n' "$((10#$code))"
+  [[ "$code" == 2?? ]]
+}
+
+# ---------------------------------------------------------------------------
+# nginx + certificates
+# ---------------------------------------------------------------------------
+
+# one user "preview" and a bcrypt hash (computed by Workforce OS): never a plain password
+HTPASSWD_RE='^preview:\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$'
+
+# "http2 on;" from nginx 1.25.1, "listen ... http2" before
+nginx_http2_directive() {
+  local v ma mi pa
+  v="$(nginx -v 2>&1 | sed -nE 's|.*nginx/([0-9]+)\.([0-9]+)\.([0-9]+).*|\1 \2 \3|p' || true)"
+  if [[ -z "$v" ]]; then
+    echo modern
+    return 0
+  fi
+  read -r ma mi pa <<< "$v"
+  if ((ma > 1 || (ma == 1 && (mi > 25 || (mi == 25 && pa >= 1))))); then echo modern; else echo legacy; fi
+}
+
+# site_content SLUG PORT AUTH(0|1) MODE(http|full)
+site_content() {
+  local slug="$1" port="$2" auth="$3" mode="$4" domain h2 listen443 listen443v6 http2_line=""
+  domain="$slug.$C_BASE_DOMAIN"
+  h2="$(nginx_http2_directive)"
+  if [[ "$h2" == modern ]]; then
+    listen443="listen 443 ssl;"
+    listen443v6="listen [::]:443 ssl;"
+    http2_line="    http2 on;"
+  else
+    listen443="listen 443 ssl http2;"
+    listen443v6="listen [::]:443 ssl http2;"
+  fi
+  cat << EOF
+# Managed by wfos-app-helper (Workforce OS): rewritten by publish, removed by unpublish. Do not edit.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $domain;
+EOF
+  if [[ "$mode" == http ]]; then
+    # before the certificate exists: only what certbot needs
+    cat << 'EOF'
+    location / {
+        return 404;
+    }
+}
+EOF
+    return 0
+  fi
+  cat << EOF
+    location / {
+        return 301 https://$domain\$request_uri;
+    }
+}
+
+server {
+    $listen443
+    $listen443v6
+$http2_line
+    server_name $domain;
+
+    ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:wfos_apps_ssl:10m;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Robots-Tag "noindex, nofollow" always;
+    client_max_body_size 25m;
+EOF
+  if [[ "$auth" == 1 ]]; then
+    cat << EOF
+
+    auth_basic "Preview";
+    auth_basic_user_file /etc/wfos-apps/htpasswd/$slug;
+EOF
+  fi
+  # the preview password is nginx's business: the app never sees it
+  local strip_auth=""
+  [[ "$auth" == 0 ]] || strip_auth=$'\n        proxy_set_header Authorization "";'
+  cat << EOF
+
+    location / {
+        proxy_pass http://127.0.0.1:$port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$wfos_connection_upgrade;$strip_auth
+        proxy_read_timeout 300s;
+    }
+}
+EOF
+}
+
+# the whole configuration nginx loads (`nginx -T`: every included file, each after a "# configuration file X:"
+# line). A dry-run test with its own prefix gets the same shape from its files.
+nginx_dump() {
+  local f
+  if [[ -n "$P" ]]; then
+    for f in "$NGINX_DIR"/nginx.conf "$NGINX_ENABLED"/* "$NGINX_DIR"/conf.d/*.conf; do
+      if [[ -f "$f" ]]; then
+        echo "# configuration file $f:"
+        cat -- "$f"
+      fi
+    done
+    return 0
+  fi
+  if ! nginx -T 2> /dev/null; then
+    [[ "$DRY" == 1 ]] || fail "nginx -T fails: fix the nginx configuration first"
+  fi
+}
+
+# true when a site other than the app's own (file name OWN) already has DOMAIN as a server_name, anywhere in what
+# nginx loads
+server_name_taken() {
+  local domain="$1" own="$2"
+  nginx_dump | awk -v d="$domain" -v own="$own" '
+    /^# configuration file .*:$/ {
+      f = $0; sub(/^# configuration file /, "", f); sub(/:$/, "", f)
+      n = split(f, parts, "/"); skip = (parts[n] == own)
+      next
+    }
+    skip { next }
+    { sub(/#.*/, ""); buf = buf " " $0 }
+    END {
+      n = split(buf, stmts, ";")
+      for (i = 1; i <= n; i++) {
+        s = stmts[i]
+        gsub(/[{}]/, " ", s)
+        if (match(s, /(^|[[:space:]])server_name[[:space:]]/)) {
+          s = substr(s, RSTART + RLENGTH)
+          m = split(s, toks, /[[:space:]]+/)
+          for (j = 1; j <= m; j++) {
+            t = tolower(toks[j])
+            gsub(/^["\047]|["\047]$/, "", t)
+            if (t == d) found = 1
+          }
+        }
+      }
+      exit !found
+    }'
+}
+
+# nginx -t, then reload; on failure put the previous site back (or remove the new one) and fail
+nginx_apply() {
+  local site="$1" enabled="$2" backup="$3"
+  if [[ "$DRY" == 1 ]]; then
+    run nginx -t
+    run systemctl reload nginx
+    return 0
+  fi
+  if nginx -t > /dev/null 2>&1; then
+    systemctl reload nginx
+    return 0
+  fi
+  if [[ -n "$backup" && -f "$backup" ]]; then
+    mv -f -- "$backup" "$site"
+  else
+    rm -f -- "$site" "$enabled"
+  fi
+  { nginx -t > /dev/null 2>&1 && systemctl reload nginx; } || true
+  fail "nginx rejected the configuration for $(basename -- "$site"); the previous configuration was restored"
+}
+
+# at most CERTS_PER_DAY new certificates a day on this server (Let's Encrypt limits are shared with other sites)
+CERT_COUNT_FILE="" CERT_COUNT=0
+cert_budget_check() {
+  local c
+  CERT_COUNT_FILE="$STATE_DIR/cert-count-$(date -u +%Y%m%d)"
+  CERT_COUNT=0
+  if [[ -f "$CERT_COUNT_FILE" && ! -L "$CERT_COUNT_FILE" ]]; then
+    c="$(head -c 16 -- "$CERT_COUNT_FILE" | tr -cd '0-9')"
+    CERT_COUNT=$((10#${c:-0}))
+  fi
+  ((CERT_COUNT < CERTS_PER_DAY)) || refuse cert_limit "$CERT_COUNT new certificates were requested today (at most $CERTS_PER_DAY a day)"
+}
+cert_budget_take() {
+  local f
+  for f in "$STATE_DIR"/cert-count-*; do
+    if [[ -f "$f" && "$f" != "$CERT_COUNT_FILE" ]]; then run rm -f -- "$f"; fi
+  done
+  echo "$((CERT_COUNT + 1))" | write_file "$CERT_COUNT_FILE" 0600 root:root
+}
+
+cmd_publish() {
+  local slug="$1" port="$2" auth="$3" domain site enabled htpasswd line="" backup="" cert need_cert=0
+  if [[ "$auth" == 1 ]]; then
+    stdin_line 200 "publish --auth"
+    line="$LINE"
+    [[ "$line" =~ $HTPASSWD_RE ]] || usage "publish --auth needs one htpasswd line on stdin: preview:\$2y\$… (bcrypt)"
+  fi
+  domain="$slug.$C_BASE_DOMAIN"
+  site="$NGINX_SITES/wfos-app-$slug"
+  enabled="$NGINX_ENABLED/wfos-app-$slug"
+  htpasswd="$HTPASSWD_DIR/$slug"
+  cert="$LE_LIVE/$domain/fullchain.pem"
+  lock
+  # guards first: nothing is written when one says no
+  if server_name_taken "$domain" "wfos-app-$slug"; then refuse server_name_taken "another nginx site already serves $domain"; fi
+  if [[ ! -f "$cert" ]]; then
+    need_cert=1
+    cert_budget_check
+  fi
+  if [[ "$DRY" == 0 ]]; then
+    [[ -d "$HTPASSWD_DIR" ]] || fail "$HTPASSWD_DIR is missing (re-run prepare.sh)"
+    if [[ -f "$site" ]]; then
+      backup="$(mktemp "$NGINX_SITES/.wfos-backup.XXXXXX")"
+      cp -p -- "$site" "$backup"
+    fi
+  fi
+  if [[ "$auth" == 1 ]]; then
+    printf '%s\n' "$line" | write_file "$htpasswd" 0640 root:www-data "1 line: user preview, bcrypt hash"
+  else
+    run rm -f -- "$htpasswd"
+  fi
+  # 1) no certificate yet: an HTTP-only site so certbot's nginx authenticator can answer the challenge
+  if [[ "$need_cert" == 1 ]]; then
+    cert_budget_take
+    site_content "$slug" "$port" "$auth" http | write_file "$site" 0644 root:root
+    run ln -sfn "$site" "$enabled"
+    nginx_apply "$site" "$enabled" "$backup"
+    run certbot certonly --nginx -d "$domain" --keep-until-expiring --non-interactive --agree-tos \
+      --register-unsafely-without-email --deploy-hook "systemctl reload nginx"
+    if [[ "$DRY" == 0 && ! -f "$cert" ]]; then
+      if [[ -n "$backup" ]]; then mv -f -- "$backup" "$site"; else rm -f -- "$site" "$enabled"; fi
+      { nginx -t > /dev/null 2>&1 && systemctl reload nginx; } || true
+      fail "no certificate for $domain (does DNS for $domain point at this server?)"
+    fi
+  else
+    echo "certificate for $domain present"
+  fi
+  # 2) the real site
+  site_content "$slug" "$port" "$auth" full | write_file "$site" 0644 root:root
+  run ln -sfn "$site" "$enabled"
+  nginx_apply "$site" "$enabled" "$backup"
+  [[ -z "$backup" ]] || rm -f -- "$backup"
+  echo "published https://$domain"
+}
+
+# remove_site SLUG: the app's nginx site, then nginx -t + reload (the certificate stays for a later publish)
+remove_site() {
+  local slug="$1" site enabled
+  site="$NGINX_SITES/wfos-app-$slug"
+  enabled="$NGINX_ENABLED/wfos-app-$slug"
+  if [[ "$DRY" == 0 && ! -e "$site" && ! -L "$enabled" ]]; then
+    echo "no site for $slug"
+    return 0
+  fi
+  run rm -f -- "$enabled" "$site"
+  if [[ "$DRY" == 1 ]] || nginx -t > /dev/null 2>&1; then
+    run systemctl reload nginx
+  else
+    fail "nginx -t fails after removing the site; check the nginx configuration"
+  fi
+}
+
+cmd_unpublish() {
+  lock
+  remove_site "$1"
+  echo "unpublished $1"
+}
+
+# ---------------------------------------------------------------------------
+# app-remove, stop-all
+# ---------------------------------------------------------------------------
+
+cmd_app_remove() {
+  local slug="$1" drop="$2" user dir unit name
+  user="$(app_user "$slug")"
+  dir="$(app_dir "$slug")"
+  unit="$(unit_name "$slug")"
+  name="$(db_name "$slug")"
+  [[ "$drop" == 0 ]] || require_pg
+  check_apps_root
+  if acct passwd "$user" > /dev/null && ! our_user "$user" "$slug"; then
+    fail "user $user was not made by wfos-app-helper: refusing to remove anything"
+  fi
+  if acct group "$user" > /dev/null && ! our_group "$user"; then
+    fail "group $user was not made by wfos-app-helper: refusing to remove anything"
+  fi
+  # the build (if any) is stopped first, so this never waits for it
+  if [[ "$DRY" == 1 ]]; then
+    run systemctl stop "$(build_unit "$slug")"
+  else
+    systemctl stop "$(build_unit "$slug")" 2> /dev/null || true
+  fi
+  lock
+  if [[ "$DRY" == 1 || -f "$(unit_path "$slug")" ]]; then
+    run systemctl disable --now "$unit"
+    run rm -f -- "$(unit_path "$slug")"
+    run systemctl daemon-reload
+  fi
+  if [[ "$DRY" == 0 ]]; then systemctl reset-failed "$unit" "$(build_unit "$slug")" 2> /dev/null || true; fi
+  remove_site "$slug"
+  run rm -f -- "$(env_file "$slug")" "$(start_file "$slug")" "$HTPASSWD_DIR/$slug"
+  if [[ "$drop" == 1 ]]; then
+    [[ "$DRY" == 0 ]] || echo "[dry-run] stdin: DROP DATABASE IF EXISTS $name WITH (FORCE); DROP ROLE IF EXISTS $name"
+    psql_apps << EOF
+\\set name '$name'
+SELECT format('DROP DATABASE IF EXISTS %I WITH (FORCE)', :'name') \\gexec
+SELECT format('DROP ROLE IF EXISTS %I', :'name') \\gexec
+EOF
+    auth_set "$name" "$user" remove
+  fi
+  # the whole app folder (releases, data, cache, backups); a planted symlink is removed itself, never followed
+  if [[ -L "$dir" ]]; then
+    run rm -f -- "$dir"
+  elif [[ -e "$dir" ]]; then
+    run rm -rf --one-file-system -- "$dir"
+  fi
+  if acct passwd "$user" > /dev/null; then
+    if [[ "$DRY" == 1 ]]; then
+      run pkill -KILL -u "$user"
+    else
+      pkill -KILL -u "$user" 2> /dev/null || true
+    fi
+    run userdel "$user"
+  fi
+  if acct group "$user" > /dev/null; then run groupdel "$user"; fi
+  echo "app $slug removed"
+}
+
+cmd_stop_all() {
+  local f n
+  local -a units=()
+  # no lock: an emergency stop never waits for a build or a publish. Running builds stop too.
+  if [[ "$DRY" == 1 ]]; then
+    run systemctl stop 'wfos-build-*.service'
+  else
+    systemctl stop 'wfos-build-*.service' 2> /dev/null || true
+  fi
+  for f in "$UNIT_DIR"/wfos-app-*.service; do
+    n="$(basename -- "$f")"
+    if [[ -f "$f" && "$n" =~ ^wfos-app-[a-z0-9-]{2,30}\.service$ ]]; then units+=("$n"); fi
+  done
+  if ((${#units[@]} == 0)); then
+    echo "no app units"
+    return 0
+  fi
+  run systemctl disable --now "${units[@]}"
+  echo "stopped ${#units[@]} apps"
+}
+
+# ---------------------------------------------------------------------------
+# dispatch (all arguments and stdin are validated before anything runs)
 # ---------------------------------------------------------------------------
 
 cmd="${1:-}"
 [[ $# -gt 0 ]] && shift
 nargs() { [[ "$1" == "$2" ]] || usage "$cmd: wrong number of arguments"; }
+flag() { if [[ "$1" == "$2" ]]; then echo 1; else echo 0; fi; }
 
 case "$cmd" in
   version)
@@ -142,8 +1671,115 @@ case "$cmd" in
     read_conf
     cmd_info
     ;;
+  app-init)
+    nargs $# 1
+    read_conf
+    check_slug "$1"
+    cmd_app_init "$1"
+    ;;
+  release-unpack)
+    nargs $# 2
+    read_conf
+    check_slug "$1"
+    check_sha "$2"
+    cmd_release_unpack "$1" "$2"
+    ;;
+  env-install)
+    nargs $# 1
+    read_conf
+    check_slug "$1"
+    cmd_env_install "$1"
+    ;;
+  build-run)
+    nargs $# 5
+    read_conf
+    check_slug "$1"
+    check_sha "$2"
+    check_step "$3"
+    check_timeout "$4"
+    check_mem "$5"
+    cmd_build_run "$1" "$2" "$3" "$4" "$5"
+    ;;
+  db-create)
+    [[ $# -eq 1 || ($# -eq 2 && "${2:-}" == --reset-password) ]] || usage "db-create <slug> [--reset-password]"
+    read_conf
+    check_slug "$1"
+    cmd_db_create "$1" "$(flag $# 2)"
+    ;;
+  db-dump | db-restore)
+    nargs $# 2
+    read_conf
+    check_slug "$1"
+    check_backup_name "$2"
+    if [[ "$cmd" == db-dump ]]; then cmd_db_dump "$1" "$2"; else cmd_db_restore "$1" "$2"; fi
+    ;;
+  release-activate)
+    nargs $# 2
+    read_conf
+    check_slug "$1"
+    check_sha "$2"
+    cmd_release_activate "$1" "$2"
+    ;;
+  release-prune)
+    nargs $# 1
+    read_conf
+    check_slug "$1"
+    cmd_release_prune "$1"
+    ;;
+  unit-install)
+    [[ $# -eq 3 || ($# -eq 4 && "${4:-}" == --database) ]] || usage "unit-install <slug> <port> <memMB> [--database]"
+    read_conf
+    check_slug "$1"
+    check_port "$2"
+    check_mem "$3"
+    cmd_unit_install "$1" "$2" "$3" "$(flag $# 4)"
+    ;;
+  unit-start | unit-stop | unit-restart)
+    nargs $# 1
+    read_conf
+    check_slug "$1"
+    cmd_unit_action "$cmd" "$1"
+    ;;
+  unit-status)
+    nargs $# 1
+    read_conf
+    check_slug "$1"
+    cmd_unit_status "$1"
+    ;;
+  health)
+    nargs $# 3
+    read_conf
+    check_slug "$1"
+    check_port "$2"
+    check_health_path "$3"
+    cmd_health "$1" "$2" "$3"
+    ;;
+  publish)
+    [[ $# -eq 2 || ($# -eq 3 && "${3:-}" == --auth) ]] || usage "publish <slug> <port> [--auth]"
+    read_conf
+    check_slug "$1"
+    check_port "$2"
+    cmd_publish "$1" "$2" "$(flag $# 3)"
+    ;;
+  unpublish)
+    nargs $# 1
+    read_conf
+    check_slug "$1"
+    cmd_unpublish "$1"
+    ;;
+  app-remove)
+    [[ $# -eq 1 || ($# -eq 2 && "${2:-}" == --drop-db) ]] || usage "app-remove <slug> [--drop-db]"
+    read_conf
+    check_slug "$1"
+    cmd_app_remove "$1" "$(flag $# 2)"
+    ;;
+  stop-all)
+    nargs $# 0
+    read_conf
+    cmd_stop_all
+    ;;
   "")
-    usage "missing command (version, info)"
+    usage "missing command (version, info, app-init, release-unpack, env-install, build-run, db-create, db-dump, db-restore, release-activate, release-prune, unit-install, unit-start, unit-stop, unit-restart, unit-status, health, publish, unpublish, app-remove, stop-all)"
     ;;
   *)
     usage "unknown command ${cmd@Q}"

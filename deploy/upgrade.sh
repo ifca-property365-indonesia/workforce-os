@@ -4,14 +4,21 @@
 #   deploy/upgrade.sh                    # upgrade to the upstream of the current branch
 #   deploy/upgrade.sh --ref origin/main  # or to a given ref (fast-forward only)
 #
-# Order: record the current commit → fetch → check free RAM → wait until no agent run is active → backup →
+# Order: record the current commit → fetch → check free RAM → wait until no agent run and no app deploy is active → backup →
 # fast-forward → pnpm install --frozen-lockfile → migrations → build → pm2 reload → health check (the new worker
 # must report the new commit). Any failure after the fast-forward rolls the code back to the recorded commit,
 # reinstalls, rebuilds, reloads and checks health again. Migrations are additive and are not rolled back; the backup
 # taken before them is the way back for the data (deploy/restore.sh).
 #
 # Options: --ref REF  --skip-backup  --stop-web-for-build (frees RAM for the build; the site is down meanwhile)
-# Env: MIN_FREE_MB (1500)  WAIT_IDLE_SEC (900)  HEALTH_TIMEOUT_SEC (180)  HEALTH_URL  UPGRADE_LOG
+# Env: MIN_FREE_MB (1500)  WAIT_IDLE_SEC (900)  HEALTH_TIMEOUT_SEC (180)  HEALTH_URL  UPGRADE_LOG  DEPLOYS_HOLD_FILE
+#
+# App deploys are held for the whole upgrade: before waiting for idle, the hold file is created
+# (DEPLOYS_HOLD_FILE, default "<STORAGE_DIR>/deploys.hold"; STORAGE_DIR from the env or .env, a relative one is
+# relative to the app dir, default ./storage). The worker delays deploy jobs while it exists (one older than 2 h is
+# ignored as stale). It is removed on every exit (trap), also after a rollback or an abort. The worker counts a deploy
+# job and writes its heartbeat before it looks at the file, so any deploy that got past the hold already shows in
+# checks.worker.activeDeploys when the wait below reads it.
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -23,6 +30,16 @@ MEMINFO="${MEMINFO:-/proc/meminfo}"
 BACKUP_CMD="${BACKUP_CMD:-$APP_DIR/deploy/backup.sh}"
 UPGRADE_LOG="${UPGRADE_LOG:-$APP_DIR/storage/upgrade.log}"
 POLL_SEC="${POLL_SEC:-5}"
+if [[ -z "${DEPLOYS_HOLD_FILE:-}" && -f "$APP_DIR/.env" ]]; then
+  DEPLOYS_HOLD_FILE="$(sed -n 's/^DEPLOYS_HOLD_FILE=//p' "$APP_DIR/.env" | tail -n 1 | tr -d "\"'")"
+fi
+if [[ -z "${DEPLOYS_HOLD_FILE:-}" ]]; then
+  storage="${STORAGE_DIR:-}"
+  if [[ -z "$storage" && -f "$APP_DIR/.env" ]]; then storage="$(sed -n 's/^STORAGE_DIR=//p' "$APP_DIR/.env" | tail -n 1 | tr -d "\"'")"; fi
+  storage="${storage:-./storage}"
+  [[ "$storage" = /* ]] || storage="$APP_DIR/${storage#./}"
+  DEPLOYS_HOLD_FILE="$storage/deploys.hold"
+fi
 
 REF="" SKIP_BACKUP=0 STOP_WEB=0
 while [[ $# -gt 0 ]]; do
@@ -58,12 +75,25 @@ fi
 health_json() { curl -fsS --max-time 10 "$1" 2>/dev/null || true; }
 field() { node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{const v=process.argv[1].split(".").reduce((o,k)=>o?.[k],JSON.parse(d));console.log(v??"")}catch{console.log("")}})' "$1"; }
 
+# hold app deploys from here to the end (the worker delays new deploy jobs while the file exists)
+HOLDING=0
+release_hold() { if [[ "$HOLDING" = 1 ]]; then rm -f "$DEPLOYS_HOLD_FILE"; HOLDING=0; fi; }
+trap release_hold EXIT
+mkdir -p "$(dirname "$DEPLOYS_HOLD_FILE")"
+echo "upgrade $$ $(date -Is)" > "$DEPLOYS_HOLD_FILE"
+HOLDING=1
+log "app deploys held ($DEPLOYS_HOLD_FILE)"
+
+# agent runs and app deploys (a build on this host, or a release half switched on) must not be cut by the reload;
+# a field missing from an older worker counts as 0
 waited=0
 while :; do
-  runs="$(health_json "$HEALTH_URL" | field checks.worker.activeRuns)"
-  [[ -z "$runs" || "$runs" = 0 ]] && break
-  [[ "$waited" -ge "$WAIT_IDLE_SEC" ]] && die "$runs agent run(s) still active after ${WAIT_IDLE_SEC}s; try again later"
-  log "waiting for $runs active run(s) to finish"
+  hj="$(health_json "$HEALTH_URL")"
+  runs="$(field checks.worker.activeRuns <<< "$hj")"; runs="${runs:-0}"
+  deploys="$(field checks.worker.activeDeploys <<< "$hj")"; deploys="${deploys:-0}"
+  [[ "$runs" = 0 && "$deploys" = 0 ]] && break
+  [[ "$waited" -ge "$WAIT_IDLE_SEC" ]] && die "$runs agent run(s) and $deploys app deploy(s) still active after ${WAIT_IDLE_SEC}s; try again later"
+  log "waiting for $runs active run(s) and $deploys app deploy(s) to finish"
   sleep "$POLL_SEC"; waited=$((waited + POLL_SEC))
 done
 

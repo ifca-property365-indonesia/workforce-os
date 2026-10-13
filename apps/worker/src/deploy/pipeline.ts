@@ -1,0 +1,727 @@
+import { Transform } from "node:stream";
+import { and, eq, ne } from "drizzle-orm";
+import { apps, appReleases, audit, db, repositories, servers, tasks, users, workspaces } from "@wfos/db";
+import { RELEASE_STEPS, WFOS_HELPER_VERSION, type AppManifest, type AppStatus, type ReleaseCheckpoint, type ReleaseStatus, type ReleaseStep } from "@wfos/shared";
+import { decryptSecret } from "@wfos/shared/server";
+import { sftpPut, type SshTarget } from "@wfos/shared/ssh";
+import { errorMessage } from "../lib/errors";
+import { log } from "../lib/logger";
+import { publish } from "../lib/redis";
+import { mirrorPath, rootGitSpawn, SAFE_REF, syncMirror, type RepoRef } from "../runner/workspace/git";
+import {
+  appEnvFile,
+  appUrl,
+  deployTiming,
+  extraEnv,
+  forbiddenEnvKeys,
+  forbiddenEnvMessage,
+  notifyApp,
+  publicCheck,
+  publishRelease,
+  publishSite,
+  runningAppsOn,
+  seedRedactor,
+  sha8,
+  sshTarget,
+  statusWithoutChange,
+  unitStatus,
+  updateApp,
+  updateRelease,
+  waitHealthy,
+  type App,
+  type Release,
+  type Server,
+} from "./common";
+import { helper, helperCall, HELPER_EXIT_GUARD, HelperError, statusCodeOf, type HelperOptions } from "./helper";
+import { Redactor, ReleaseLog } from "./log";
+import { assertCommit, commitSubject, DeployInputError, parseManifest, readManifest, releaseWarnings, resolveBranch } from "./manifest";
+import { appMsg } from "./messages";
+
+/** git archive of a release, at most */
+const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
+const INSTALL_TIMEOUT_SEC = 900;
+const BUILD_TIMEOUT_SEC = 1200;
+const MIGRATE_TIMEOUT_SEC = 300;
+const MIGRATE_MEMORY_MB = 1024;
+const BUILD_MEMORY_MB = 1536;
+
+/** Set on shutdown: a deploy that has not switched anything on yet stops at its next step (and fails cleanly). */
+export const deployControl = { stopping: false };
+
+interface RunState {
+  step: ReleaseStep;
+  /** the app was set to deploying (refusals in prepare leave it untouched) */
+  appTouched: boolean;
+  appStatusBefore: AppStatus;
+  envInstalled: boolean;
+  /** the migration started (a failed one may have changed the schema halfway) */
+  migrated: boolean;
+  backup: string | null;
+  /** `release-activate` of the new version was attempted: from here a failure rolls back */
+  activated: boolean;
+  /** the running version was stopped for the migration (maintenance): a failure before activate starts it again */
+  oldStopped: boolean;
+}
+
+interface Ctx {
+  rel: Release;
+  app: App;
+  server: Server;
+  target: SshTarget;
+  mirror: string;
+  locale: string | null;
+  sha: string;
+  manifest: AppManifest;
+  /** the release that runs now (null: first deploy) and its manifest */
+  current: Release | null;
+  currentManifest: AppManifest | null;
+  log: ReleaseLog;
+  redactor: Redactor;
+  state: RunState;
+  /** what is stored in release.checkpoint (for a restart mid-deploy) */
+  checkpoint: ReleaseCheckpoint;
+}
+
+/** A deploy refused before anything happened (kill switch, dry run, server not ready, capacity…). */
+class Refusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "Refusal";
+  }
+}
+
+const stepIndex = (s: ReleaseStep) => RELEASE_STEPS.indexOf(s);
+const secs = (ms: number) => `${(ms / 1000).toFixed(1)} s`;
+
+/** One step: release.step + release.updated, a header line, the duration; on shutdown, no new pre-activate step. */
+async function step<T>(c: Ctx, name: ReleaseStep, fn: () => Promise<T>): Promise<T> {
+  if (deployControl.stopping && !c.state.activated && stepIndex(name) < stepIndex("health")) {
+    throw new Error("The worker is shutting down; the deploy stopped before switching anything on");
+  }
+  c.state.step = name;
+  c.log.line(`==> ${name}`);
+  await c.log.flush();
+  await updateRelease(c.rel, { step: name });
+  const t0 = Date.now();
+  try {
+    const r = await fn();
+    c.log.line(`<== ${name} ok (${secs(Date.now() - t0)})`);
+    await c.log.flush();
+    return r;
+  } catch (e) {
+    c.log.line(`<== ${name} FAILED after ${secs(Date.now() - t0)}: ${errorMessage(e)}`);
+    throw e;
+  }
+}
+
+/** A helper command whose output goes to the release log. */
+async function run(c: Ctx, cmd: string, args: (string | number)[], o: HelperOptions = {}): Promise<string> {
+  const r = await helper(c.target, cmd, args, { onData: (s) => c.log.write(s), ...o });
+  return r.stdout;
+}
+
+const say = (c: Ctx) => (line: string) => c.log.line(line);
+
+/** Store how far the release got (release.checkpoint): what recovery after a restart needs to undo it. */
+async function checkpoint(c: Ctx, patch: Partial<ReleaseCheckpoint>): Promise<void> {
+  c.checkpoint = { ...c.checkpoint, ...patch };
+  await db.update(appReleases).set({ checkpoint: c.checkpoint }).where(eq(appReleases.id, c.rel.id));
+}
+
+/** Memory for a build-run: `want`, capped at half the server's memory (the helper refuses more). */
+function buildMemory(s: Server, want: number): number {
+  const half = Math.floor((s.info?.memTotalMb ?? 0) / 2);
+  return Math.max(256, half > 0 ? Math.min(want, half) : want);
+}
+
+async function unitInstall(c: Ctx, m: AppManifest): Promise<void> {
+  await run(c, "unit-install", [c.app.slug, c.app.port, m.memoryMb, ...(m.database ? ["--database"] : [])], { stdin: `${m.start}\n` });
+}
+
+async function installEnv(c: Ctx, sha: string, m: AppManifest): Promise<void> {
+  const file = await appEnvFile(c.app, sha, m, c.redactor, c.server.info?.postgresPort ?? null);
+  await run(c, "env-install", [c.app.slug], { stdin: file });
+  c.log.line(`env: ${file.split("\n").filter(Boolean).length} variables installed (values not shown)`);
+}
+
+// ---------------------------------------------------------------------------
+// steps
+// ---------------------------------------------------------------------------
+
+/** Refusals, then the commit, its manifest and the warnings. */
+async function prepare(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): Promise<void> {
+  const { rel, app, server } = c;
+  if (ws.killSwitch) throw new Refusal("The kill switch is engaged: nothing is deployed");
+  const [task] = rel.taskId ? await db.select({ dryRun: tasks.dryRun }).from(tasks).where(eq(tasks.id, rel.taskId)) : [];
+  if (ws.demoMode || task?.dryRun) throw new Refusal("Dry run: nothing is deployed");
+  if (server.status !== "ready") throw new Refusal(`Server ${server.name} is not ready (${server.status}); check it in Settings → Servers`);
+  const hv = server.info?.helperVersion ?? 0;
+  if (hv < WFOS_HELPER_VERSION) throw new Refusal(`wfos-app-helper on ${server.name} is version ${hv}, version ${WFOS_HELPER_VERSION} is needed: run the new prepare.sh on the server`);
+  if (app.status !== "running") {
+    const others = await runningAppsOn(server.id, app.id);
+    if (others >= server.maxRunningApps) throw new Refusal(`Server ${server.name} already runs ${others} apps (at most ${server.maxRunningApps}); stop one first`);
+  }
+  // a failure after activate goes back to the running release with its own manifest: it must be known up front
+  if (c.current) {
+    try {
+      c.currentManifest = parseManifest(c.current.manifest);
+    } catch {
+      throw new Refusal(`The running release ${sha8(c.current.commit)} has no valid stored manifest, so a failed deploy could not be rolled back`);
+    }
+  }
+
+  await updateApp(app, { status: "deploying", statusMessage: null });
+  c.state.appTouched = true;
+
+  const [r] = app.repositoryId ? await db.select().from(repositories).where(and(eq(repositories.id, app.repositoryId), eq(repositories.workspaceId, app.workspaceId))) : [];
+  if (!r) throw new DeployInputError("The app has no repository");
+  const repo: RepoRef = { id: r.id, provider: r.provider, url: r.url, defaultBranch: r.defaultBranch, token: r.tokenEnc ? decryptSecret(r.tokenEnc) : null };
+  c.redactor.add(repo.token);
+  try {
+    await syncMirror(repo);
+  } catch (e) {
+    throw new Error(`Could not fetch the repository: ${errorMessage(e).replace(/Authorization: [^\s]+ [^\s]+/g, "Authorization: ***").slice(-500)}`);
+  }
+  let sha = rel.commit;
+  if (!sha) {
+    if (!SAFE_REF.test(rel.branch) || rel.branch.startsWith("-") || rel.branch.includes("..")) throw new DeployInputError(`Invalid branch ${rel.branch}`);
+    sha = await resolveBranch(c.mirror, rel.branch);
+    c.log.line(`branch ${rel.branch} is at ${sha}`);
+  }
+  await assertCommit(c.mirror, sha);
+  c.sha = sha;
+  const subject = await commitSubject(c.mirror, sha);
+  // a rollback carries the manifest of the release it brings back
+  c.manifest = rel.trigger === "rollback" && rel.manifest ? parseManifest(rel.manifest) : await readManifest(c.mirror, sha);
+  c.log.line(`commit ${sha} "${subject}"`);
+  c.log.line(`manifest: ${JSON.stringify(c.manifest)}`);
+  // checks against this server, before anything is sent to it
+  if (c.current && sha === c.current.commit && rel.trigger !== "rollback") {
+    throw new DeployInputError(`Commit ${sha8(sha)} is the version running now; push a new commit, or stop and start the app to apply changed settings`);
+  }
+  if (c.manifest.database && !server.info?.postgresPort) {
+    throw new DeployInputError(`The app needs a database, but server ${server.name} reports no apps PostgreSQL cluster: run the new prepare.sh on it`);
+  }
+  const forbidden = forbiddenEnvKeys(extraEnv(app));
+  if (forbidden.length) throw new DeployInputError(forbiddenEnvMessage(forbidden));
+  const half = Math.floor((server.info?.memTotalMb ?? 0) / 2);
+  if (half > 0 && c.manifest.memoryMb > half) {
+    throw new DeployInputError(`wfos-app.json asks for memoryMb ${c.manifest.memoryMb}, more than half of server ${server.name}'s memory (${half} MB allowed)`);
+  }
+  const warnings = await releaseWarnings({
+    mirror: c.mirror,
+    sha,
+    manifest: c.manifest,
+    current: c.current ? { commit: c.current.commit, manifest: c.currentManifest } : null,
+    hasDatabase: !!app.dbPasswordEnc,
+    accessMode: app.accessMode,
+  });
+  if (warnings.length) c.log.line(`warnings: ${warnings.join(", ")}`);
+  const row = await updateRelease(c.rel, { commit: sha, commitSubject: subject, manifest: c.manifest, warnings });
+  if (row) c.rel = row;
+}
+
+/** git archive of the commit from the mirror, streamed over SFTP into the server's incoming folder. */
+async function upload(c: Ctx): Promise<void> {
+  await run(c, "app-init", [c.app.slug]);
+  const remote = `/home/${c.server.username}/incoming/${c.app.slug}-${c.sha}.tar.gz`;
+  const git = rootGitSpawn(["-C", c.mirror, "archive", "--format=tar.gz", c.sha]);
+  let stderr = "";
+  git.stderr.on("data", (d: Buffer) => {
+    if (stderr.length < 4000) stderr += d.toString("utf8");
+  });
+  const exited = new Promise<number | null>((resolve) => git.on("close", (code) => resolve(code)));
+  let bytes = 0;
+  const capped = new Transform({
+    transform(chunk: Buffer, _enc, cb) {
+      bytes += chunk.length;
+      if (bytes > MAX_ARCHIVE_BYTES) cb(new Error(`the release archive is larger than ${MAX_ARCHIVE_BYTES / 1024 / 1024} MB`));
+      else cb(null, chunk);
+    },
+  });
+  git.stdout.pipe(capped);
+  try {
+    await sftpPut(c.target, remote, capped, { mode: 0o640, timeoutMs: 15 * 60_000 });
+  } catch (e) {
+    git.kill();
+    await exited;
+    throw e;
+  }
+  const code = await exited;
+  if (code !== 0) throw new Error(`git archive failed: ${stderr.trim().slice(-300)}`);
+  c.log.line(`uploaded ${(bytes / 1024 / 1024).toFixed(1)} MB to ${remote}`);
+}
+
+async function buildRun(c: Ctx, which: "install" | "build" | "migrate", timeoutSec: number, memMb: number, cmd: string): Promise<void> {
+  c.log.line(`$ ${cmd}`);
+  await run(c, "build-run", [c.app.slug, c.sha, which, timeoutSec, memMb], {
+    stdin: `${cmd}\n`,
+    timeoutMs: (timeoutSec + 120) * 1000,
+    maxOutputBytes: 64_000,
+    onData: (s) => c.log.write(s),
+  });
+}
+
+/** Switch `current` to the new release, install its unit, restart. */
+async function activate(c: Ctx): Promise<void> {
+  const out = await releaseActivate(c, c.sha);
+  c.log.line(`previous release on the server: ${out}`);
+  await unitInstall(c, c.manifest);
+  await run(c, "unit-restart", [c.app.slug]);
+}
+
+/** `release-activate`; exit 3 means nothing was switched. Returns the previous sha the helper printed. */
+async function releaseActivate(c: Ctx, sha: string): Promise<string> {
+  // recorded before the call: if the worker dies during it, recovery must assume `current` may have moved
+  c.state.activated = true;
+  await checkpoint(c, { activated: true });
+  try {
+    const out = await run(c, "release-activate", [c.app.slug, sha]);
+    const previous = out.trim().split("\n").pop() ?? "none";
+    await checkpoint(c, { previousSha: previous });
+    return previous;
+  } catch (e) {
+    if (e instanceof HelperError && e.exitCode === HELPER_EXIT_GUARD) {
+      // a guard refused before anything was switched
+      c.state.activated = false;
+      await checkpoint(c, { activated: false });
+    }
+    throw e;
+  }
+}
+
+/**
+ * Rollback trigger: switch back to the release folder if it is still on the server (env, unit, restart). Returns
+ * false when the folder is gone (`release_missing`): the caller then builds that commit again.
+ */
+async function activateExisting(c: Ctx): Promise<boolean> {
+  try {
+    const out = await releaseActivate(c, c.sha);
+    c.log.line(`previous release on the server: ${out}`);
+  } catch (e) {
+    if (e instanceof HelperError && e.guard === "release_missing") {
+      c.log.line(`release ${sha8(c.sha)} is no longer on the server: building it again`);
+      return false;
+    }
+    throw e;
+  }
+  await installEnv(c, c.sha, c.manifest);
+  c.state.envInstalled = true;
+  await unitInstall(c, c.manifest);
+  await run(c, "unit-restart", [c.app.slug]);
+  c.log.line("note: a rollback does not restore the database; if this version needs the older schema, restore a backup by hand");
+  return true;
+}
+
+async function buildAndActivate(c: Ctx): Promise<void> {
+  const m = c.manifest;
+  await step(c, "upload", () => upload(c));
+  await step(c, "unpack", () => run(c, "release-unpack", [c.app.slug, c.sha], { timeoutMs: 600_000 }));
+  await step(c, "env", async () => {
+    await installEnv(c, c.sha, m);
+    c.state.envInstalled = true;
+  });
+  if (m.database) {
+    await step(c, "database", async () => {
+      const pw = decryptSecret(c.app.dbPasswordEnc!);
+      await run(c, "db-create", [c.app.slug], { stdin: `${pw}\n` });
+    });
+  }
+  const mem = buildMemory(c.server, BUILD_MEMORY_MB);
+  await step(c, "install", () => buildRun(c, "install", INSTALL_TIMEOUT_SEC, mem, m.install));
+  await step(c, "build", () => buildRun(c, "build", BUILD_TIMEOUT_SEC, mem, m.build));
+  // a migration never runs under the old version: it is stopped first (and started again if this release fails
+  // before activate), and the database is dumped while nothing writes to it
+  const oldRuns = !!c.current && c.state.appStatusBefore === "running";
+  if (m.migrate && c.current && (oldRuns || m.database)) {
+    await step(c, "backup", async () => {
+      if (oldRuns) {
+        c.state.oldStopped = true;
+        await run(c, "unit-stop", [c.app.slug]);
+        c.log.line("maintenance: old version stopped for the migration");
+      }
+      if (m.database) {
+        await run(c, "db-dump", [c.app.slug, c.rel.id], { timeoutMs: 600_000 });
+        c.state.backup = c.rel.id;
+        await updateRelease(c.rel, { dbBackup: c.rel.id });
+      }
+    });
+  }
+  if (m.migrate) {
+    const cmd = m.migrate;
+    await step(c, "migrate", async () => {
+      c.state.migrated = true;
+      await checkpoint(c, { migrated: true });
+      await buildRun(c, "migrate", MIGRATE_TIMEOUT_SEC, buildMemory(c.server, MIGRATE_MEMORY_MB), cmd);
+    });
+  }
+  await step(c, "activate", () => activate(c));
+}
+
+async function healthStep(c: Ctx, m: AppManifest): Promise<void> {
+  const h = await waitHealthy(c.target, c.app, m.health, say(c));
+  if (!h.ok) {
+    const unit = await unitStatus(c.target, c.app.slug);
+    throw new Error(`The app did not answer 2xx on ${m.health} within ${Math.round(deployTiming.healthTimeoutMs / 1000)} s (last: ${h.last}; unit ${unit})`);
+  }
+}
+
+async function pipeline(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): Promise<void> {
+  await step(c, "prepare", () => prepare(c, ws));
+  const reused = c.rel.trigger === "rollback" && (await step(c, "activate", () => activateExisting(c)));
+  if (!reused) await buildAndActivate(c);
+  await step(c, "health", () => healthStep(c, c.manifest));
+  await step(c, "publish", async () => {
+    c.log.write(await publishSite(c.target, c.app, c.redactor));
+  });
+  await step(c, "public_check", () => publicCheck(c.app, c.manifest.health, say(c)));
+  await step(c, "cleanup", async () => {
+    try {
+      await run(c, "release-prune", [c.app.slug]);
+    } catch (e) {
+      // the new version runs and answers: old folders left behind are not a reason to roll back
+      c.log.line(`warning: release-prune failed: ${errorMessage(e)}`);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// outcomes
+// ---------------------------------------------------------------------------
+
+async function actor(userId: string | null): Promise<{ actorUserId: string | null; actorLabel: string }> {
+  if (!userId) return { actorUserId: null, actorLabel: "system" };
+  const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
+  return { actorUserId: userId, actorLabel: u?.email ?? "system" };
+}
+
+async function auditRelease(c: Pick<Ctx, "rel" | "app" | "sha">, action: string, details: Record<string, unknown>): Promise<void> {
+  await audit({
+    workspaceId: c.app.workspaceId,
+    ...(await actor(c.rel.createdBy)),
+    action,
+    targetType: "app",
+    targetId: c.app.id,
+    details: { releaseId: c.rel.id, commit: c.sha || null, branch: c.rel.branch, trigger: c.rel.trigger, ...details },
+  });
+}
+
+async function succeed(c: Ctx): Promise<ReleaseStatus> {
+  const now = new Date();
+  const superseded = await db.transaction(async (tx) => {
+    const old = await tx
+      .update(appReleases)
+      .set({ status: "superseded" })
+      .where(and(eq(appReleases.appId, c.app.id), eq(appReleases.status, "deployed"), ne(appReleases.id, c.rel.id)))
+      .returning();
+    await tx.update(appReleases).set({ status: "deployed", step: "cleanup", error: null, finishedAt: now }).where(eq(appReleases.id, c.rel.id));
+    await tx
+      .update(apps)
+      .set({ currentReleaseId: c.rel.id, status: "running", healthy: true, lastDeployedAt: now, lastHealthAt: now, memoryMb: c.manifest.memoryMb, statusMessage: null, updatedAt: now })
+      .where(eq(apps.id, c.app.id));
+    return old;
+  });
+  for (const r of superseded) await publishRelease(r);
+  await publishRelease({ ...c.rel, status: "deployed", step: "cleanup" });
+  await publish(c.app.workspaceId, { type: "app.updated", appId: c.app.id, status: "running" });
+  c.log.line(`deployed ${c.sha} at ${appUrl(c.app)}`);
+  await auditRelease(c, "app.deployed", { warnings: c.rel.warnings });
+  await notifyApp({
+    workspaceId: c.app.workspaceId,
+    appId: c.app.id,
+    userId: c.rel.createdBy,
+    kind: "task_done",
+    subject: appMsg(c.locale, "app.deployed", { name: c.app.name }),
+    text: appMsg(c.locale, "app.deployedText", { name: c.app.name, commit: sha8(c.sha), subject: c.redactor.apply(c.rel.commitSubject ?? ""), url: appUrl(c.app) }),
+  });
+  return "deployed";
+}
+
+/** Bring the release that ran before back: folder, env, unit, database (when migrated), health, site. */
+async function rollbackToCurrent(c: Ctx, cur: Release, m: AppManifest): Promise<void> {
+  c.log.line(`==> rollback to ${cur.commit}`);
+  await run(c, "release-activate", [c.app.slug, cur.commit]);
+  await installEnv(c, cur.commit, m);
+  await unitInstall(c, m);
+  if (c.state.migrated && c.state.backup) {
+    await run(c, "unit-stop", [c.app.slug]);
+    await run(c, "db-restore", [c.app.slug, c.state.backup], { timeoutMs: 600_000 });
+    c.log.line(`database restored from backup ${c.state.backup}`);
+  }
+  await run(c, "unit-restart", [c.app.slug]);
+  const h = await waitHealthy(c.target, c.app, m.health, say(c));
+  if (!h.ok) throw new Error(`the previous version did not answer 2xx on ${m.health} either (last: ${h.last}; unit ${await unitStatus(c.target, c.app.slug)})`);
+  c.log.write(await publishSite(c.target, c.app, c.redactor));
+  c.log.line(`<== rollback done: ${cur.commit} runs again`);
+}
+
+/** Best effort: a helper command whose failure is only logged. */
+async function tryRun(c: Ctx, what: string, cmd: string, args: (string | number)[], o: HelperOptions = {}): Promise<boolean> {
+  try {
+    await run(c, cmd, args, o);
+    return true;
+  } catch (e) {
+    c.log.line(`warning: ${what} failed: ${errorMessage(e)}`);
+    return false;
+  }
+}
+
+async function fail(c: Ctx, e: unknown): Promise<ReleaseStatus> {
+  const error = c.redactor.apply(errorMessage(e)).slice(0, 1000);
+  const step = c.state.step;
+  const now = new Date();
+  const notifyFailed = async (nothingRuns: boolean, details: Record<string, unknown>) => {
+    await auditRelease(c, "app.deploy_failed", { step, error: error.slice(0, 500), ...details });
+    await notifyApp({
+      workspaceId: c.app.workspaceId,
+      appId: c.app.id,
+      userId: c.rel.createdBy,
+      kind: "task_failed",
+      subject: appMsg(c.locale, "app.deployFailed", { name: c.app.name }),
+      text: appMsg(c.locale, "app.deployFailedText", {
+        commit: c.sha ? sha8(c.sha) : c.rel.branch,
+        step,
+        error: error.slice(0, 300),
+        state: appMsg(c.locale, nothingRuns ? "app.stateNothingRuns" : "app.stateOldRuns"),
+      }),
+    });
+  };
+  log.warn({ releaseId: c.rel.id, appId: c.app.id, step, err: error }, "release failed");
+
+  if (!c.state.appTouched) {
+    // refused before anything happened: the app is left as it was
+    await updateRelease(c.rel, { status: "failed", step, error, finishedAt: now });
+    await publish(c.app.workspaceId, { type: "app.updated", appId: c.app.id, status: c.app.status });
+    await notifyFailed(c.app.status !== "running", { refused: true });
+    return "failed";
+  }
+
+  if (!c.state.activated) {
+    // the old version's folder was never switched; undo what the failed release changed beside it. The database is
+    // only restored while no version runs (the old one was stopped for the migration), then the old one starts again.
+    if (c.state.migrated && c.state.backup) {
+      if (await tryRun(c, "restoring the database", "db-restore", [c.app.slug, c.state.backup], { timeoutMs: 600_000 })) c.log.line(`database restored from backup ${c.state.backup}`);
+    }
+    if (c.state.envInstalled && c.current && c.currentManifest) {
+      const cur = c.current;
+      const m = c.currentManifest;
+      try {
+        await installEnv(c, cur.commit, m);
+      } catch (e2) {
+        c.log.line(`warning: putting the running version's env back failed: ${errorMessage(e2)}`);
+      }
+    }
+    let status = statusWithoutChange(c.app, c.state.appStatusBefore);
+    // firewall_off / server_full: the reason the app shows (an Owner has to act on the server)
+    let statusMessage: string | null = statusCodeOf(e);
+    if (c.state.oldStopped) {
+      if (await tryRun(c, "starting the old version again", "unit-start", [c.app.slug])) c.log.line("maintenance over: the old version runs again");
+      else {
+        status = "failed";
+        statusMessage = statusMessage ?? "restart_failed";
+      }
+    }
+    await updateRelease(c.rel, { status: "failed", step, error, finishedAt: now });
+    await updateApp(c.app, { status, statusMessage });
+    await notifyFailed(status !== "running", {});
+    return "failed";
+  }
+
+  const cur = c.current;
+  if (cur) {
+    try {
+      await rollbackToCurrent(c, cur, c.currentManifest!);
+      await updateRelease(c.rel, { status: "rolled_back", step, error, finishedAt: now });
+      await updateApp(c.app, { status: "running", healthy: true, lastHealthAt: new Date(), statusMessage: null });
+      await auditRelease(c, "app.rolled_back", { step, error: error.slice(0, 500), restoredCommit: cur.commit, databaseRestored: !!(c.state.migrated && c.state.backup) });
+      await notifyApp({
+        workspaceId: c.app.workspaceId,
+        appId: c.app.id,
+        userId: c.rel.createdBy,
+        kind: "task_failed",
+        subject: appMsg(c.locale, "app.rolledBack", { name: c.app.name }),
+        text: appMsg(c.locale, "app.rolledBackText", { commit: sha8(c.sha), step, error: error.slice(0, 300), previous: sha8(cur.commit), url: appUrl(c.app) }),
+      });
+      return "rolled_back";
+    } catch (e2) {
+      const error2 = c.redactor.apply(errorMessage(e2)).slice(0, 500);
+      c.log.line(`<== rollback FAILED: ${errorMessage(e2)}`);
+      await updateRelease(c.rel, { status: "failed", step, error: `${error} — rolling back to ${sha8(cur.commit)} failed too: ${error2}`.slice(0, 1500), finishedAt: now });
+      await updateApp(c.app, { status: "failed", healthy: false, statusMessage: statusCodeOf(e2) ?? statusCodeOf(e) ?? "rollback_failed" });
+      await notifyFailed(true, { rollbackFailed: true, rollbackError: error2 });
+      return "failed";
+    }
+  }
+
+  // first version (nothing to go back to): take it off the air
+  await tryRun(c, "stopping the app", "unit-stop", [c.app.slug]);
+  await tryRun(c, "unpublishing the site", "unpublish", [c.app.slug]);
+  await updateRelease(c.rel, { status: "failed", step, error, finishedAt: now });
+  await updateApp(c.app, { status: "failed", healthy: false, statusMessage: statusCodeOf(e) });
+  await notifyFailed(true, { stopped: true });
+  return "failed";
+}
+
+// ---------------------------------------------------------------------------
+// entry
+// ---------------------------------------------------------------------------
+
+type Loaded = { c: Ctx; ws: { killSwitch: boolean; demoMode: boolean } } | { error: string };
+
+/** Everything a release needs (rows, SSH target, log); an error message when something is missing. */
+async function loadContext(rel: Release, workspaceId: string): Promise<Loaded> {
+  const [app] = await db.select().from(apps).where(and(eq(apps.id, rel.appId), eq(apps.workspaceId, workspaceId)));
+  if (!app) return { error: "The app no longer exists" };
+  const [server] = await db.select().from(servers).where(and(eq(servers.id, app.serverId), eq(servers.workspaceId, workspaceId)));
+  if (!server) return { error: "The app's server no longer exists" };
+  if (!app.repositoryId) return { error: "The app has no repository" };
+  const [ws] = await db.select({ killSwitch: workspaces.killSwitch, demoMode: workspaces.demoMode, locale: workspaces.defaultLocale }).from(workspaces).where(eq(workspaces.id, workspaceId));
+  if (!ws) return { error: "The workspace no longer exists" };
+  const target = await sshTarget(server);
+  if (!target) return { error: "The workspace has no SSH key, or the server has no pinned host key" };
+  const [current] = app.currentReleaseId ? await db.select().from(appReleases).where(eq(appReleases.id, app.currentReleaseId)) : [];
+  const redactor = new Redactor();
+  seedRedactor(app, redactor);
+  const c: Ctx = {
+    rel,
+    app,
+    server,
+    target,
+    mirror: mirrorPath(app.repositoryId),
+    locale: ws.locale,
+    sha: "",
+    manifest: null as unknown as AppManifest,
+    current: current ?? null,
+    currentManifest: null,
+    log: new ReleaseLog(rel.id, redactor, deployTiming.logFlushMs, rel.log),
+    redactor,
+    state: { step: "prepare", appTouched: false, appStatusBefore: app.status, envInstalled: false, migrated: false, backup: null, activated: false, oldStopped: false },
+    checkpoint: rel.checkpoint ?? { appStatusBefore: app.status },
+  };
+  return { c, ws };
+}
+
+/** Store the outcome; never leave the release "deploying" (also when storing it fails). */
+async function settle(c: Ctx, error: unknown): Promise<ReleaseStatus> {
+  try {
+    return error === null ? await succeed(c) : await fail(c, error);
+  } catch (e) {
+    log.error({ err: e, releaseId: c.rel.id }, "release outcome could not be stored");
+    await updateRelease(c.rel, { status: "failed", error: c.redactor.apply(`Internal error: ${errorMessage(e)}`).slice(0, 1000), finishedAt: new Date() }).catch(() => null);
+    return "failed";
+  } finally {
+    await c.log.close().catch((e) => log.warn({ err: e, releaseId: c.rel.id }, "release log could not be stored"));
+  }
+}
+
+/**
+ * Run one queued release (deploy or rollback) start to end. Only a `queued` release is taken (claimed atomically),
+ * so a duplicate job or a second worker does nothing. Returns the final status, or null when there was nothing to do.
+ */
+export async function runRelease(releaseId: string, workspaceId: string): Promise<ReleaseStatus | null> {
+  const startedAt = new Date();
+  const [rel] = await db
+    .update(appReleases)
+    .set({ status: "deploying", step: "prepare", startedAt, error: null })
+    .where(and(eq(appReleases.id, releaseId), eq(appReleases.workspaceId, workspaceId), eq(appReleases.status, "queued")))
+    .returning();
+  if (!rel) {
+    log.info({ releaseId }, "release skipped: not queued");
+    return null;
+  }
+  let loaded: Loaded;
+  try {
+    await publishRelease(rel);
+    loaded = await loadContext(rel, workspaceId);
+  } catch (e) {
+    loaded = { error: `Internal error: ${errorMessage(e)}` };
+  }
+  if ("error" in loaded) {
+    await updateRelease(rel, { status: "failed", error: loaded.error.slice(0, 1000), finishedAt: new Date() }).catch((e) => log.error({ err: e, releaseId }, "release could not be failed"));
+    return "failed";
+  }
+  const { c, ws } = loaded;
+  c.log.line(`release ${rel.id} (${rel.trigger}) of ${c.app.slug} on ${c.server.name}, branch ${rel.branch}${rel.commit ? `, commit ${rel.commit}` : ""}, ${startedAt.toISOString()}`);
+  let error: unknown = null;
+  try {
+    await checkpoint(c, { appStatusBefore: c.app.status });
+    await pipeline(c, ws);
+  } catch (e) {
+    error = e;
+  }
+  return settle(c, error);
+}
+
+const stepAtLeast = (s: ReleaseStep | null, than: ReleaseStep) => !!s && stepIndex(s) >= stepIndex(than);
+
+/**
+ * A release left `deploying` by a worker that stopped (worker start, before any job runs). When it had switched
+ * `current`, migrated, or stopped the old version for its migration, it is undone like a live failure (rollback,
+ * database restore, old version started again), which needs the server; an unreachable server leaves the app
+ * `failed` with statusMessage "interrupted". Otherwise only the rows are settled: the release failed
+ * ("interrupted"), the app back to the status it had before.
+ */
+export async function settleInterrupted(rel: Release): Promise<ReleaseStatus> {
+  const cp = rel.checkpoint;
+  let manifest: AppManifest | null = null;
+  try {
+    manifest = rel.manifest ? parseManifest(rel.manifest) : null;
+  } catch {
+    manifest = null;
+  }
+  const loaded = await loadContext(rel, rel.workspaceId).catch((e: unknown) => ({ error: errorMessage(e) }) as Loaded);
+  const app = "error" in loaded ? null : loaded.c.app;
+  const before: AppStatus = cp?.appStatusBefore ?? (app ? statusWithoutChange(app, "deploying") : "failed");
+  const oldStopped = !!manifest?.migrate && before === "running" && !!app?.currentReleaseId && stepAtLeast(rel.step, "backup") && !cp?.activated;
+  const touchedServer = !!cp?.activated || !!cp?.migrated || oldStopped;
+
+  const settleRows = async (appPatch: { status: AppStatus; statusMessage?: string | null } | null) => {
+    const [row] = await db.update(appReleases).set({ status: "failed", error: "interrupted", finishedAt: new Date() }).where(eq(appReleases.id, rel.id)).returning();
+    if (row) await publishRelease(row);
+    if (app && appPatch && app.status === "deploying") await updateApp(app, appPatch);
+    await audit({
+      workspaceId: rel.workspaceId,
+      actorLabel: "system",
+      action: "app.deploy_failed",
+      targetType: "app",
+      targetId: rel.appId,
+      details: { releaseId: rel.id, commit: rel.commit || null, branch: rel.branch, trigger: rel.trigger, step: rel.step, error: "interrupted" },
+    });
+    return "failed" as const;
+  };
+
+  if ("error" in loaded || !touchedServer || !manifest || !rel.commit) {
+    if (touchedServer) return settleRows({ status: "failed", statusMessage: "interrupted" });
+    return settleRows({ status: before === "deploying" ? statusWithoutChange(app ?? { currentReleaseId: null }, "deploying") : before });
+  }
+  const { c } = loaded;
+  c.sha = rel.commit;
+  c.manifest = manifest;
+  if (c.current) {
+    try {
+      c.currentManifest = parseManifest(c.current.manifest);
+    } catch {
+      c.currentManifest = null;
+    }
+  }
+  c.state = {
+    step: rel.step ?? "prepare",
+    appTouched: true,
+    appStatusBefore: before,
+    envInstalled: stepAtLeast(rel.step, "env"),
+    migrated: !!cp?.migrated,
+    backup: rel.dbBackup,
+    activated: !!cp?.activated,
+    oldStopped,
+  };
+  // the server must answer before anything is undone on it
+  try {
+    await helperCall(c.target, "unit-status", [c.app.slug], { timeoutMs: 30_000 });
+  } catch (e) {
+    log.warn({ releaseId: rel.id, err: errorMessage(e) }, "interrupted release: server not reachable, nothing undone");
+    await c.log.close().catch(() => null);
+    return settleRows({ status: "failed", statusMessage: "interrupted" });
+  }
+  c.log.line(`interrupted at ${rel.step ?? "prepare"} (the worker stopped): undoing it`);
+  return settle(c, new Error("interrupted"));
+}
