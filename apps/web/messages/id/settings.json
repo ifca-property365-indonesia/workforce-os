@@ -187,7 +187,13 @@
     "token": "Token akses (opsional)",
     "tokenHelp": "Diperlukan untuk repositori privat, push, dan pull request. Gunakan token fine-grained yang dibatasi ke repositori ini (contents + pull requests). Disimpan terenkripsi; hanya 4 karakter terakhir yang ditampilkan.",
     "add": "Hubungkan repositori",
-    "added": "Repositori terhubung"
+    "added": "Repositori terhubung",
+    "edit": "Ubah",
+    "save": "Simpan perubahan",
+    "updated": "Repositori diperbarui",
+    "newToken": "Token akses baru",
+    "newTokenHelp": "Kosongkan untuk tetap memakai token sekarang. Token baru langsung menggantikannya (token lama tidak disimpan).",
+    "removeToken": "Hapus token (hanya untuk repositori publik)"
   },
   "departments": {
     "title": "Departemen",

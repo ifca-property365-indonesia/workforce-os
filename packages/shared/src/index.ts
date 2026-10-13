@@ -841,12 +841,52 @@ export const taskInputSchema = z.object({
 });
 
 /** A git repository connected to a workspace (https only; the token never reaches the agent). */
+export type RepositoryProvider = "github" | "gitlab" | "git";
+
+/**
+ * Why `url` is not a clone URL of a repository at that provider, or null. GitHub: https://github.com/<owner>/<repo>
+ * (optionally .git); GitLab: a group and a project at least; other git: at least one path segment. Catches e.g. a
+ * website address pasted in place of the repository's.
+ */
+export function repositoryUrlProblem(provider: RepositoryProvider, url: string): string | null {
+  if (!/^https:\/\/[^@\s]+$/.test(url)) return "Use an https clone URL without credentials";
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return "Not a valid URL";
+  }
+  if (u.search || u.hash) return "A clone URL has no ?query or #fragment";
+  const segments = u.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+  if (provider === "github") {
+    if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return "A GitHub repository lives at https://github.com/<owner>/<repository>";
+    if (segments.length !== 2) return "Use https://github.com/<owner>/<repository>.git";
+  } else if (provider === "gitlab") {
+    if (segments.length < 2) return "Use https://<gitlab host>/<group>/<project>.git";
+  } else if (segments.length < 1) {
+    return "This is a website address, not a repository: add the repository's path";
+  }
+  return null;
+}
+
+const repositoryNameSchema = z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/, "letters, digits, dot, dash, underscore");
+const repositoryBranchSchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._/-]+$/);
+const repositoryTokenSchema = z.string().trim().min(10).max(500);
+
+/** the URL itself is checked with repositoryUrlProblem by the route (error code repository_url_invalid) */
 export const repositoryInputSchema = z.object({
-  name: z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._-]+$/, "letters, digits, dot, dash, underscore"),
+  name: repositoryNameSchema,
   provider: z.enum(["github", "gitlab", "git"]),
-  url: z.url().refine((u) => /^https:\/\/[^@\s]+$/.test(u) && !/\s/.test(u), "an https clone URL without credentials"),
-  defaultBranch: z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9._/-]+$/).default("main"),
-  token: z.string().trim().min(10).max(500).optional(),
+  url: z.url().trim(),
+  defaultBranch: repositoryBranchSchema.default("main"),
+  token: repositoryTokenSchema.optional(),
+});
+
+/** change a connected repository (its provider stays); token: a new one, or null to remove it */
+export const repositoryUpdateSchema = z.object({
+  url: z.url().trim().optional(),
+  defaultBranch: repositoryBranchSchema.optional(),
+  token: repositoryTokenSchema.nullable().optional(),
 });
 
 export const ROUTINE_OVERLAP_MODES = ["skip", "queue"] as const;

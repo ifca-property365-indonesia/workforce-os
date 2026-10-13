@@ -156,5 +156,7 @@
   "app_not_running": "The app is not running.",
   "app_never_deployed": "Deploy the app first: there is no version to start.",
   "app_already_running": "The app is already running.",
-  "app_removing": "This app is already being deleted."
+  "app_removing": "This app is already being deleted.",
+  "repository_url_invalid": "This is not a clone URL of a repository at that provider, e.g. https://github.com/owner/repository.git.",
+  "repository_url_is_preview": "That is an app preview address, not a repository. Use the repository's clone URL, e.g. https://github.com/owner/repository.git."
 }

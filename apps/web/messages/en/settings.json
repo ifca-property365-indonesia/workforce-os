@@ -187,7 +187,13 @@
     "token": "Access token (optional)",
     "tokenHelp": "Needed for private repositories, pushing and pull requests. Use a fine-grained token limited to this repository (contents + pull requests). Stored encrypted; only its last 4 characters are shown.",
     "add": "Connect repository",
-    "added": "Repository connected"
+    "added": "Repository connected",
+    "edit": "Edit",
+    "save": "Save changes",
+    "updated": "Repository updated",
+    "newToken": "New access token",
+    "newTokenHelp": "Leave empty to keep the current token. A new one replaces it at once (the old one is not kept).",
+    "removeToken": "Remove the token (only for public repositories)"
   },
   "departments": {
     "title": "Departments",

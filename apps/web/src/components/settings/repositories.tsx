@@ -36,6 +36,7 @@ export function RepositoriesSettings({ owner }: { owner: boolean }) {
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  const [editing, setEditing] = useState<string | null>(null);
   const remove = useMutation({
     mutationFn: (id: string) => api.del(`/api/repositories/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["repositories"] }),
@@ -55,10 +56,16 @@ export function RepositoriesSettings({ owner }: { owner: boolean }) {
               <code className="text-xs text-muted-foreground">{r.url}</code>
               <span className="text-xs text-muted-foreground">{t("repositories.branchAndToken", { branch: r.defaultBranch, token: r.tokenSet ? `…${r.tokenLast4}` : t("repositories.noToken") })}</span>
               {owner && (
-                <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => confirm(t("repositories.removeConfirm", { name: r.name })) && remove.mutate(r.id)}>
-                  {tc("remove")}
-                </Button>
+                <span className="ml-auto flex gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => setEditing(editing === r.id ? null : r.id)}>
+                    {t("repositories.edit")}
+                  </Button>
+                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => confirm(t("repositories.removeConfirm", { name: r.name })) && remove.mutate(r.id)}>
+                    {tc("remove")}
+                  </Button>
+                </span>
               )}
+              {owner && editing === r.id && <EditRepository repo={r} onDone={() => setEditing(null)} />}
             </li>
           ))}
           {!data?.length && <li className="text-muted-foreground">{t("repositories.empty")}</li>}
@@ -104,5 +111,72 @@ export function RepositoriesSettings({ owner }: { owner: boolean }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Change a repository's clone URL, default branch or token without removing it (its tasks and apps stay linked). */
+function EditRepository({ repo, onDone }: { repo: Repo; onDone: () => void }) {
+  const t = useTranslations("settings");
+  const tc = useTranslations("common");
+  const qc = useQueryClient();
+  const [f, setF] = useState({ url: repo.url, defaultBranch: repo.defaultBranch, token: "", removeToken: false });
+  const save = useMutation({
+    mutationFn: () =>
+      api.patch(`/api/repositories/${repo.id}`, {
+        ...(f.url !== repo.url ? { url: f.url } : {}),
+        ...(f.defaultBranch !== repo.defaultBranch ? { defaultBranch: f.defaultBranch } : {}),
+        ...(f.removeToken ? { token: null } : f.token ? { token: f.token } : {}),
+      }),
+    onSuccess: () => {
+      toast.success(t("repositories.updated"));
+      void qc.invalidateQueries({ queryKey: ["repositories"] });
+      onDone();
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  return (
+    <form
+      className="grid w-full gap-3 border-t pt-3 sm:grid-cols-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        save.mutate();
+      }}
+    >
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label htmlFor={`repo-url-${repo.id}`}>{t("repositories.url")}</Label>
+        <Input id={`repo-url-${repo.id}`} value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={`repo-branch-${repo.id}`}>{t("repositories.defaultBranch")}</Label>
+        <Input id={`repo-branch-${repo.id}`} value={f.defaultBranch} onChange={(e) => setF({ ...f, defaultBranch: e.target.value })} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor={`repo-token-${repo.id}`}>{t("repositories.newToken")}</Label>
+        <Input
+          id={`repo-token-${repo.id}`}
+          type="password"
+          autoComplete="off"
+          disabled={f.removeToken}
+          value={f.token}
+          placeholder={repo.tokenSet ? `…${repo.tokenLast4}` : ""}
+          onChange={(e) => setF({ ...f, token: e.target.value })}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground sm:col-span-2">{t("repositories.newTokenHelp")}</p>
+      {repo.tokenSet && (
+        <label className="flex items-center gap-2 text-xs sm:col-span-2">
+          <input type="checkbox" checked={f.removeToken} onChange={(e) => setF({ ...f, removeToken: e.target.checked, token: "" })} />
+          {t("repositories.removeToken")}
+        </label>
+      )}
+      <div className="flex gap-2 sm:col-span-2">
+        <Button size="sm" disabled={!f.url || !f.defaultBranch || save.isPending}>
+          {t("repositories.save")}
+        </Button>
+        <Button size="sm" type="button" variant="ghost" onClick={onDone}>
+          {tc("cancel")}
+        </Button>
+      </div>
+    </form>
   );
 }

@@ -615,6 +615,39 @@ else
   fi
 fi
 grep -qs 'sites-enabled' /etc/nginx/nginx.conf || warn "/etc/nginx/nginx.conf does not include sites-enabled/*: app sites would not be served"
+# Names under the preview domain that no app owns: 404 over http, TLS handshake refused over https (no wildcard
+# certificate needed). Without this nginx would answer them with its default site (often another product on this
+# server). Exact app names (wfos-app-<slug>) always win over this wildcard.
+CATCHALL=/etc/nginx/sites-available/wfos-apps-catchall
+catchall_changed=0
+write_if_changed "$CATCHALL" 0644 root:root << EOF && catchall_changed=1
+# Managed by Workforce OS prepare.sh: names under $DOMAIN that no app is published at.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name $DOMAIN *.$DOMAIN;
+    return 404;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name $DOMAIN *.$DOMAIN;
+    ssl_reject_handshake on;
+}
+EOF
+if ((catchall_changed)) || [[ ! -L /etc/nginx/sites-enabled/wfos-apps-catchall ]] || fresh_test; then
+  run ln -sfn "$CATCHALL" /etc/nginx/sites-enabled/wfos-apps-catchall
+  if [[ "$DRY" == 1 ]]; then
+    run nginx -t
+    run systemctl reload nginx
+  elif nginx -t > /dev/null 2>&1; then
+    systemctl reload nginx
+  else
+    rm -f /etc/nginx/sites-enabled/wfos-apps-catchall "$CATCHALL"
+    fail "nginx -t fails with the catch-all site for $DOMAIN (see: nginx -t); it was removed again"
+  fi
+fi
 # An app can set cookies for its parent domains (up to the registrable one): when another site on this server sits
 # under the same registrable domain, apps can toss cookies at it. Approximation of the registrable domain without
 # the public suffix list: the last two labels, or three when the second-to-last is a short second level (co.id).

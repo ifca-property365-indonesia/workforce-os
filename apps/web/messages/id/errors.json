@@ -156,5 +156,7 @@
   "app_not_running": "Aplikasi tidak sedang berjalan.",
   "app_never_deployed": "Terbitkan aplikasi dulu: belum ada versi yang bisa dijalankan.",
   "app_already_running": "Aplikasi sudah berjalan.",
-  "app_removing": "Aplikasi ini sedang dihapus."
+  "app_removing": "Aplikasi ini sedang dihapus.",
+  "repository_url_invalid": "Ini bukan URL clone repositori di penyedia itu, contohnya https://github.com/pemilik/repositori.git.",
+  "repository_url_is_preview": "Itu alamat preview aplikasi, bukan repositori. Pakai URL clone repositorinya, contohnya https://github.com/pemilik/repositori.git."
 }
