@@ -783,6 +783,7 @@ for line in \
   "log_statement = 'none'" "log_min_error_statement = panic" \
   "[dry-run] write /etc/systemd/system/wfos-apps.slice" "  | MemoryMax=40%" "  | MemoryHigh=35%" "  | CPUQuota=200%" "  | TasksMax=2048" "  | IOWeight=50" \
   "fib daddr type { local, broadcast, multicast, anycast } reject" \
+  "server_names_hash_bucket_size 128;" \
   "168.63.129.16/32" "192.0.0.0/24" "198.18.0.0/15" "64:ff9b::/96" \
   "APPS_ROOT=/srv/wfos-apps" \
   "APPS_ROOT moves from /home/wfos-apps/apps to /srv/wfos-apps" \

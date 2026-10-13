@@ -580,8 +580,22 @@ map \$http_upgrade \$wfos_connection_upgrade {
     default upgrade;
     '' close;
 }"
-if [[ -f "$NGX_MAP" && "$(cat "$NGX_MAP")" == "$map_content" ]]; then
-  echo "websocket map present"
+# app names like <slug>.preview.<company domain> are longer than nginx's default hash bucket (64) holds ("could not
+# build server_names_hash"): raise it, unless the main config already sets it (twice is an error)
+hash_elsewhere=0
+for f in /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf; do
+  [[ "$f" != "$NGX_MAP" && -f "$f" ]] || continue
+  if grep -qsE '^[[:space:]]*server_names_hash_bucket_size[[:space:]]' "$f"; then hash_elsewhere=1; fi
+done
+if ((hash_elsewhere)); then
+  warn "server_names_hash_bucket_size is set elsewhere in nginx; make sure it is at least 128 for long app names"
+else
+  map_content+="
+# long app names (<slug>.<preview domain>) need more than the default 64
+server_names_hash_bucket_size 128;"
+fi
+if ! fresh_test && [[ -f "$NGX_MAP" && "$(cat "$NGX_MAP")" == "$map_content" ]]; then
+  echo "nginx settings for apps present"
 else
   prev=""
   if [[ "$DRY" == 0 && -f "$NGX_MAP" ]]; then
