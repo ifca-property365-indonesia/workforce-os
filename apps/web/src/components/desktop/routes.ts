@@ -31,7 +31,7 @@ export const APPS: readonly DesktopApp[] = [
   { key: "approvals", href: "/approvals", icon: ShieldCheck, color: "kuning", group: "work", dock: true, size: [900, 740] },
   { key: "outbox", href: "/outbox", icon: Send, color: "hijau", group: "work", dock: true, size: [1080, 760] },
   { key: "employees", href: "/employees", icon: Bot, color: "oranye", group: "team", dock: true, size: [1120, 760] },
-  { key: "teams", href: "/teams", icon: UsersRound, color: "magenta", group: "team", dock: true, size: [1040, 720] },
+  { key: "teams", href: "/teams", icon: UsersRound, color: "magenta", group: "team", dock: true, size: [1240, 800] },
   { key: "routines", href: "/routines", icon: CalendarClock, color: "hijau", group: "operations", dock: true, size: [1040, 720] },
   { key: "clients", href: "/clients", icon: Building2, color: "merah", group: "operations", dock: true, size: [1080, 740] },
   { key: "apps", href: "/apps", icon: Rocket, color: "biru", group: "operations", dock: true, size: [1120, 780] },

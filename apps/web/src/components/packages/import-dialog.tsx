@@ -28,21 +28,19 @@ interface Details {
     toolPermissions: string[];
     egressDomains: string[];
     executionMode: string;
-    department: string | null;
+    specialty: string;
   }[];
-  departments: { key: string; isNew: boolean; name: Bi; sop: Bi; subagents: { name: string; description: Bi; prompt: Bi; tools: string[] | null }[] }[];
   skills: { slug: string; as: string | null; description: string; body: string }[];
-  teams: { name: string; description: string }[];
+  teams: { name: string; description: string; head: string | null; codeLead: string | null; members: string[]; subagents: string[]; sop: Bi | null }[];
   routines: { name: string; cron: string; timezone: string; brief: string }[];
   mcpSlots: { name: string; url: string }[];
   egressHosts: string[];
-  subagentTools: string[];
 }
 interface Preview {
   ok: boolean;
   name: string;
   details: Details;
-  will: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number };
+  will: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number };
   warnings: Note[];
   conflicts: { kind: string; name: string; as?: string }[];
   errors: Note[];
@@ -51,7 +49,6 @@ interface Created {
   employees: { id: string }[];
   teams: { id: string }[];
   routines: { id: string }[];
-  departments: string[];
   skills: { id: string }[];
   mcpSlots: { id: string }[];
   memories: number;
@@ -115,6 +112,7 @@ function PackageContents({ d }: { d: Details }) {
             {e.name} <span className="font-normal text-muted-foreground">· {e.role}</span>
           </summary>
           <div className="mt-2 space-y-2">
+            {e.specialty && <Field label={t("import.specialty")} text={e.specialty} />}
             <Field label={t("import.persona")} text={e.persona} />
             <Field label={t("import.instructions")} text={e.instructions} />
             <Field label={t("import.businessContext")} text={e.businessContext} />
@@ -140,21 +138,21 @@ function PackageContents({ d }: { d: Details }) {
           </div>
         </details>
       ))}
-      {d.departments.map((dep) => (
-        <details key={dep.key} className="rounded-md border p-2">
-          <summary className="cursor-pointer font-medium">
-            {t("import.department", { name: dep.name.en || dep.key })}
-            {!dep.isNew && <span className="font-normal text-muted-foreground"> · {t("import.departmentKept")}</span>}
-          </summary>
-          <div className="mt-2 space-y-2">
-            <Field label={t("import.sop")} text={[dep.sop.en, dep.sop.id].filter((x) => x.trim()).join("\n\n")} />
-            {dep.subagents.map((sa) => (
-              <div key={sa.name} className="space-y-1 rounded border p-2">
-                <div className="text-xs font-medium">{t("import.subagent", { name: sa.name })}</div>
-                <Field label={t("import.subagentPrompt")} text={[sa.prompt.en, sa.prompt.id].filter((x) => x.trim()).join("\n\n")} />
-                {sa.tools && sa.tools.length > 0 && chips(sa.tools)}
-              </div>
-            ))}
+      {d.teams.map((dv, i) => (
+        <details key={i} className="rounded-md border p-2">
+          <summary className="cursor-pointer font-medium">{t("import.division", { name: dv.name })}</summary>
+          <div className="mt-2 space-y-2 text-xs">
+            <dl className="grid gap-x-3 gap-y-1 sm:grid-cols-[9rem_1fr]">
+              <dt className="text-muted-foreground">{t("import.divisionHead")}</dt>
+              <dd>{dv.head ?? "—"}</dd>
+              <dt className="text-muted-foreground">{t("import.divisionCodeLead")}</dt>
+              <dd>{dv.codeLead ?? "—"}</dd>
+              <dt className="text-muted-foreground">{t("import.divisionMembers")}</dt>
+              <dd>{dv.members.join(", ") || "—"}</dd>
+              <dt className="text-muted-foreground">{t("import.divisionSubagents")}</dt>
+              <dd>{dv.subagents.join(", ") || "—"}</dd>
+            </dl>
+            {dv.sop && <Field label={t("import.sop")} text={[dv.sop.en, dv.sop.id].filter((x) => x.trim()).join("\n\n")} />}
           </div>
         </details>
       ))}
@@ -196,10 +194,6 @@ function PackageContents({ d }: { d: Details }) {
         <div className="text-xs font-medium text-muted-foreground">{t("import.egressAll")}</div>
         {d.egressHosts.length ? chips(d.egressHosts) : <p className="text-xs text-muted-foreground">{t("import.none")}</p>}
       </div>
-      <div className="space-y-0.5">
-        <div className="text-xs font-medium text-muted-foreground">{t("import.subagentToolsAll")}</div>
-        {d.subagentTools.length ? chips(d.subagentTools) : <p className="text-xs text-muted-foreground">{t("import.none")}</p>}
-      </div>
     </section>
   );
 }
@@ -224,7 +218,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     onSuccess: (created) => {
       if (!created) return; // step-up cancelled
       toast.success(t("import.done", { employees: created.employees.length, teams: created.teams.length, routines: created.routines.length }));
-      for (const key of ["teams", "employees", "routines", "departments", "skills"]) void qc.invalidateQueries({ queryKey: [key] });
+      for (const key of ["teams", "employees", "routines", "skills"]) void qc.invalidateQueries({ queryKey: [key] });
       onClose();
     },
     onError: (e) => toast.error((e as Error).message),

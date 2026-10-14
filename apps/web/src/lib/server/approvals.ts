@@ -1,19 +1,26 @@
 import "server-only";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { appEnvironments, appReleases, approvals, audit, db, tasks } from "@wfos/db";
+import { appEnvironments, appReleases, approvals, audit, db, tasks, teams } from "@wfos/db";
 import { emailPayloadSchema, invoicePayloadSchema, isWithinReleaseWindow, requestReleasePayloadSchema, webhookPayloadSchema, type Role } from "@wfos/shared";
 import { nextReleaseWindowOpening } from "@/lib/release-window";
 import { HttpError } from "./auth";
 import { notFound } from "./route";
 import { publish, q } from "./queue";
 
+/** what Edit & Approve may change on a PRD handoff: the division (older payloads: the developer) and the repository */
+const handoffEditSchema = z.object({
+  teamId: z.string().uuid().nullable().optional(),
+  developerId: z.string().uuid().nullable().optional(),
+  repositoryId: z.string().uuid().nullable().default(null),
+});
+
 function validatePayload(toolName: string, payload: Record<string, unknown>) {
   if (toolName === "send_email") return emailPayloadSchema.parse(payload);
   if (toolName === "send_invoice") return invoicePayloadSchema.parse(payload);
   if (toolName === "post_webhook") return webhookPayloadSchema.parse(payload);
-  // a PRD handoff may only change who builds it and where; the approved PRD text stays as written
-  if (toolName === "handoff_prd") return z.object({ developerId: z.string().uuid().nullable(), repositoryId: z.string().uuid().nullable() }).parse(payload);
+  // a PRD handoff may only change which division builds it and where; the approved PRD text stays as written
+  if (toolName === "handoff_prd") return handoffEditSchema.parse(payload);
   return payload;
 }
 
@@ -122,9 +129,21 @@ export async function decideApproval(actor: DecisionActor, approvalId: string, i
 
   let edited: Record<string, unknown> | null = null;
   if (input.decision === "edit_approve" && a.toolName === "handoff_prd" && input.editedPayload) {
-    const pick = validatePayload(a.toolName, input.editedPayload) as { developerId: string | null; repositoryId: string | null };
-    input.editedPayload = { ...a.payload, developerId: pick.developerId, repositoryId: pick.repositoryId };
-    edited = input.editedPayload;
+    const pick = handoffEditSchema.parse(input.editedPayload);
+    const next: Record<string, unknown> = { ...a.payload, repositoryId: pick.repositoryId };
+    if (pick.teamId !== undefined) {
+      // the division must be one of this workspace's; its name travels with the payload (the preview shows it)
+      const [team] = pick.teamId
+        ? await db.select({ id: teams.id, name: teams.name }).from(teams).where(and(eq(teams.id, pick.teamId), eq(teams.workspaceId, session.workspaceId)))
+        : [];
+      if (pick.teamId && !team) throw new HttpError(400, "Unknown team", { code: "unknown_team" });
+      next.teamId = team?.id ?? null;
+      next.teamName = team?.name ?? null;
+    }
+    // a payload made before divisions keeps its developer choice
+    if (pick.developerId !== undefined && "developerId" in a.payload) next.developerId = pick.developerId;
+    input.editedPayload = next;
+    edited = next;
   } else if (input.decision === "edit_approve") {
     // a push is approved for one exact commit; it can be approved or rejected, never rewritten
     if (a.toolName === "git_push") throw new HttpError(400, "A push can only be approved or rejected", { code: "push_not_editable" });

@@ -32,7 +32,9 @@
     "instructionsVersion": "Versi instruksi",
     "version": "v{version}",
     "recentTasks": "Tugas terbaru",
-    "noTasks": "Belum ada tugas."
+    "noTasks": "Belum ada tugas.",
+    "spent7d": "Biaya 7 hari",
+    "spent7dNote": "Termasuk kerja sebagai subagent"
   },
   "outputLanguage": {
     "label": "Bahasa keluaran",
@@ -146,7 +148,9 @@
         "import": "impor",
         "rejection": "masukan penolakan"
       }
-    }
+    },
+    "clientBadge": "Klien {client}",
+    "clientHelp": "Dipelajari dari pekerjaan untuk klien ini: hanya dipanggil kembali saat mengerjakan klien yang sama."
   },
   "toolPermissions": {
     "grant": "Izinkan {tool}",
@@ -296,6 +300,10 @@
     "request_release": {
       "label": "Usulkan rilis LIVE",
       "description": "Mode Workspace: mengusulkan versi preview yang sudah berjalan untuk diterbitkan ke situs live aplikasi (hanya Owner yang bisa menyetujuinya)"
+    },
+    "handoff_to_division": {
+      "label": "Serahkan ke divisi",
+      "description": "Kepala divisi: menyerahkan pekerjaan ke divisi lain sebagai tugas baru (hasil kerja ikut sebagai data)"
     }
   },
   "executionMode": {
@@ -308,12 +316,6 @@
     "egressLabel": "Host yang boleh diakses sandbox",
     "egressHelp": "Satu host per baris, mis. registry.npmjs.org atau *.pypi.org. Selain itu diblokir. Menambah host memerlukan konfirmasi 2FA.",
     "saveEgress": "Simpan host"
-  },
-  "department": {
-    "label": "Departemen",
-    "help": "Karyawan mengikuti SOP departemen ini (dan bisa memakai subagennya di mode workspace).",
-    "none": "Tidak ada",
-    "saved": "Departemen tersimpan"
   },
   "activity": {
     "loading": "Memuat aktivitas…",
@@ -370,8 +372,23 @@
       "preview_deployed": "Preview sudah jalan di {url}",
       "request_release": "Mengusulkan penerbitan ke live",
       "waiting_for_live": "Menunggu platform merilis versi yang disetujui ke LIVE",
-      "live_deployed": "LIVE sekarang menjalankan versi baru di {url}"
-    }
+      "live_deployed": "LIVE sekarang menjalankan versi baru di {url}",
+      "handoff_to_division": "Menyerahkan pekerjaan ke divisi {division}: {title}",
+      "code_bash": "Menjalankan perintah: {command}",
+      "code_edit": "Mengubah {file}",
+      "code_write": "Menulis {file}",
+      "code_read": "Membaca {file}",
+      "code_search": "Mencari di kode: {pattern}",
+      "code_web": "Membaca halaman web: {url}",
+      "subagent_started": "Mulai mengerjakan bagiannya sebagai subagent: {task}",
+      "subagent_finished": "Selesai mengerjakan bagiannya sebagai subagent",
+      "subagent_failed": "Bagiannya sebagai subagent berakhir dengan galat",
+      "dependencies_done": "Subtugas yang ditunggu sudah selesai: mulai bekerja",
+      "subtask_blocked": "Terhenti: subtugas yang ditunggu tidak selesai",
+      "division_budget_cap": "Dijeda: anggaran harian divisi sudah habis",
+      "waiting_for_prd_decision": "Menunggu keputusan pemilik atas PRD"
+    },
+    "asSubagent": "sebagai subagent dalam sesi {name}"
   },
   "bot": {
     "label": "Avatar bot",
@@ -432,5 +449,16 @@
       "blase": "Bosan",
       "somnolent": "Ngantuk"
     }
+  },
+  "specialty": {
+    "label": "Keahlian",
+    "placeholder": "mis. antarmuka React dan Tailwind, formulir yang aksesibel",
+    "help": "Satu baris. Kepala divisi dan Tech Lead membacanya saat memutuskan siapa mengerjakan apa.",
+    "save": "Simpan keahlian",
+    "saved": "Keahlian tersimpan"
+  },
+  "division": {
+    "none": "Belum ada divisi",
+    "badge": "{division}, {role}: buka halaman Divisi"
   }
 }

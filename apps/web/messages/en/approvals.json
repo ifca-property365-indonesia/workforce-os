@@ -88,10 +88,13 @@
     "hooksDisabled": "The platform pushes this exact commit from its own copy with git hooks disabled; the employee never sees the token."
   },
   "handoff": {
-    "to": "Creates a Developer task for {name} when approved.",
-    "noDeveloper": "No developer chosen yet: use Edit & Approve to pick one.",
-    "developer": "Developer",
-    "repository": "Repository"
+    "to": "Creates a task for {name} when approved.",
+    "repository": "Repository",
+    "toDivision": "Goes to the {name} division when approved.",
+    "noDivision": "No division chosen yet: use Edit & Approve to pick one.",
+    "division": "Division",
+    "legacyDeveloper": "Proposed before divisions, for {name}.",
+    "resumes": "The waiting division task picks up again with this PRD."
   },
   "routine": {
     "rule": "Rule",

@@ -23,7 +23,7 @@ import { api, ApiError } from "@/lib/api";
 import { applyRealtimeMessage, mergeMessages } from "@/lib/chat-thread";
 import { useRealtime } from "@/lib/events";
 import { useFormat } from "@/lib/use-format";
-import { useEmployees, useMe, useTeams, type Employee } from "@/lib/hooks";
+import { divisionMemberIds, useEmployees, useMe, useTeams, type Employee } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
 interface Conv {
@@ -344,7 +344,7 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
   const empById = useMemo(() => new Map((emps ?? []).map((e) => [e.id, e])), [emps]);
   const nameOf = useCallback((id: string) => empById.get(id)?.name, [empById]);
   const members: MentionCandidate[] | null = team
-    ? [...new Set([...(team.leadId ? [team.leadId] : []), ...team.memberIds])]
+    ? divisionMemberIds(team)
         .map((id) => empById.get(id))
         .filter((e): e is Employee => !!e && e.status !== "ARCHIVED")
         .map((e) => ({ id: e.id, name: e.name, avatar: e.avatar, role: e.role }))

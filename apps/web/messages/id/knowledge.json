@@ -8,11 +8,19 @@
   "confirmDelete": "Hapus {name}?",
   "empty": {
     "title": "Belum ada dokumen",
-    "description": "Letakkan file di sini atau gunakan tombol Unggah. Buku panduan, kebijakan, daftar harga, FAQ…"
+    "description": "Letakkan file di sini atau gunakan tombol Unggah. Buku panduan, kebijakan, daftar harga, FAQ…",
+    "filtered": "Tidak ada dokumen di sini"
   },
   "status": {
     "pending": "menunggu",
     "indexed": "terindeks",
     "failed": "gagal"
-  }
+  },
+  "uploadFor": "Unggah untuk",
+  "general": "Umum",
+  "forClient": "Klien: {client}",
+  "clientScope": "Dokumen milik klien hanya dibaca saat mengerjakan tugas untuk klien itu; dokumen umum dibaca untuk semua pekerjaan.",
+  "filter": "Tampilkan",
+  "filterAll": "Semua dokumen",
+  "clientOnly": "Hanya untuk pekerjaan klien {client}"
 }

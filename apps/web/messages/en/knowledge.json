@@ -8,11 +8,19 @@
   "confirmDelete": "Delete {name}?",
   "empty": {
     "title": "No documents",
-    "description": "Drop files here or use Upload. Handbooks, policies, price lists, FAQs…"
+    "description": "Drop files here or use Upload. Handbooks, policies, price lists, FAQs…",
+    "filtered": "No documents here"
   },
   "status": {
     "pending": "pending",
     "indexed": "indexed",
     "failed": "failed"
-  }
+  },
+  "uploadFor": "Upload for",
+  "general": "General",
+  "forClient": "Client: {client}",
+  "clientScope": "A client's documents are only read on work for that client; general documents are read on all work.",
+  "filter": "Show",
+  "filterAll": "All documents",
+  "clientOnly": "Only for work for {client}"
 }

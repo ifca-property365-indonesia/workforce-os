@@ -91,30 +91,34 @@ describe("POST /api/tasks", () => {
   });
 });
 
-describe("teams", () => {
-  it("POST refuses a Lead or member from another workspace", async () => {
+describe("teams (divisions)", () => {
+  it("POST refuses a head or member from another workspace", async () => {
     const { a, b } = await signedIn();
-    for (const input of [{ leadId: b.emp.id }, { leadId: a.emp.id, memberIds: [b.emp.id] }]) {
+    for (const input of [
+      { leadId: b.emp.id, members: [{ employeeId: b.emp.id }] },
+      { leadId: a.emp.id, members: [{ employeeId: a.emp.id }, { employeeId: b.emp.id }] },
+    ]) {
       const r = await call(createTeam, "POST", "/api/teams", { name: "Mixed", ...input });
       expect(r.status).toBe(400);
       expect(r.json.code).toBe("unknown_employee");
     }
     expect((await db.select().from(teams).where(eq(teams.name, "Mixed"))).length).toBe(0);
-    const ok = await call(createTeam, "POST", "/api/teams", { name: "Good", leadId: a.emp.id, memberIds: [a.emp.id] });
+    const [fresh] = await db.insert(employees).values({ workspaceId: a.ws.id, name: "Nia", role: "PM", model: "m" }).returning();
+    const ok = await call(createTeam, "POST", "/api/teams", { name: "Good", leadId: fresh!.id, members: [{ employeeId: fresh!.id }] });
     expect(ok.status).toBe(200);
   });
 
-  it("PATCH refuses a Lead or member from another workspace", async () => {
+  it("PATCH refuses a head or member from another workspace", async () => {
     const { a, b } = await signedIn();
-    const lead = await callWithParams(patchTeam, "PATCH", `/api/teams/${a.team.id}`, { leadId: b.emp.id }, { id: a.team.id });
+    const lead = await callWithParams(patchTeam, "PATCH", `/api/teams/${a.team.id}`, { leadId: b.emp.id, members: [{ employeeId: b.emp.id }] }, { id: a.team.id });
     expect(lead.status).toBe(400);
     expect(lead.json.code).toBe("unknown_employee");
-    const mem = await callWithParams(patchTeam, "PATCH", `/api/teams/${a.team.id}`, { memberIds: [b.emp.id] }, { id: a.team.id });
+    const mem = await callWithParams(patchTeam, "PATCH", `/api/teams/${a.team.id}`, { members: [{ employeeId: a.emp.id }, { employeeId: b.emp.id }] }, { id: a.team.id });
     expect(mem.status).toBe(400);
     const [team] = await db.select().from(teams).where(eq(teams.id, a.team.id));
     expect(team!.leadId).toBe(a.emp.id);
     expect(await db.select().from(teamMembers).where(eq(teamMembers.employeeId, b.emp.id))).toEqual([]);
-    const ok = await callWithParams(patchTeam, "PATCH", `/api/teams/${a.team.id}`, { memberIds: [a.emp.id] }, { id: a.team.id });
+    const ok = await callWithParams(patchTeam, "PATCH", `/api/teams/${a.team.id}`, { members: [{ employeeId: a.emp.id }] }, { id: a.team.id });
     expect(ok.status).toBe(200);
   });
 });

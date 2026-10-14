@@ -1,39 +1,114 @@
 {
-  "title": "Teams",
-  "description": "Drag employees into a team and crown a Lead. The Lead plans, delegates subtasks and reviews deliverables.",
-  "employees": "Employees",
-  "newTeamPlaceholder": "New team name",
-  "createTeam": "Create team",
-  "briefTeam": "Brief team",
-  "deleteTeam": "Delete team",
-  "confirmDelete": "Delete {name}?",
-  "dropHere": "Drop employees here",
-  "lead": "Lead",
-  "makeLead": "Make Lead",
-  "removeMember": "Remove",
-  "chooseLead": "Click the crown to choose a Lead.",
+  "title": "Divisions",
+  "description": "Work goes to a division. Its head does the task or hands parts to members; the code lead builds in one sandbox with the subagents. Every employee belongs to one division.",
+  "newDivision": "New division",
+  "viewerNote": "Only an Owner or Admin can change divisions.",
+  "confirmDelete": "Delete the division {name}? Its people stay employees, without a division. Their tasks and history are kept.",
+  "saved": "Saved",
+  "headcount": "{count, plural, =0 {Nobody yet} one {# person} other {# people}}",
+  "parallel": "{count, plural, one {# task at a time} other {# tasks at a time}}",
+  "creditsShort": "{credits} cr",
+  "paused": "paused",
+  "noHead": "No head yet: tasks for this division need one.",
+  "sandbox": "works inside the code lead's sandbox",
+  "members": "Members",
+  "noMembers": "No other members.",
+  "sign": {
+    "busy": "{running} running · {queued} queued",
+    "idle": "Quiet"
+  },
+  "stats": {
+    "running": "Running",
+    "queued": "Queued",
+    "credits": "Credits, 7 days"
+  },
+  "roles": {
+    "head": "Head",
+    "code_lead": "Code lead",
+    "member": "Member",
+    "subagent": "Subagent"
+  },
+  "unassigned": {
+    "title": "Not in a division",
+    "help": "Drag someone onto a division, or use the add list on its card."
+  },
   "empty": {
-    "title": "No teams yet",
-    "description": "Create a team, then drag employees into it."
+    "title": "No divisions yet",
+    "description": "Create a division, then add its head and members."
+  },
+  "actions": {
+    "brief": "Brief",
+    "edit": "Edit {name}",
+    "delete": "Delete {name}",
+    "menu": "Change {name}'s place",
+    "makeHead": "Make head",
+    "makeCodeLead": "Make code lead",
+    "clearCodeLead": "Stop being code lead",
+    "toSubagent": "Work as subagent of the code lead",
+    "toMember": "Work as a regular member",
+    "remove": "Remove from division",
+    "addMember": "Add someone to this division",
+    "addPlaceholder": "Add someone…",
+    "addAs": "Add as",
+    "asMember": "as member",
+    "asSubagent": "as subagent",
+    "otherDivisions": "In another division (moves them)",
+    "inOther": "{name} (in {division})",
+    "move": "Move here anyway",
+    "dismiss": "Dismiss"
+  },
+  "form": {
+    "createTitle": "New division",
+    "editTitle": "Edit {name}",
+    "description": "Members, the head and the code lead are set on the division's card.",
+    "name": "Name",
+    "namePlaceholder": "Division",
+    "key": "Key",
+    "keyHelp": "Short, stable name employees use for handoffs, such as delivery. Lowercase letters, numbers and dashes.",
+    "descriptionLabel": "What this division does",
+    "color": "Sign colour",
+    "colorAuto": "Automatic",
+    "colorHex": "Colour as hex",
+    "colors": {
+      "merah": "Red",
+      "kuning": "Yellow",
+      "tosca": "Teal",
+      "biru": "Blue",
+      "hijau": "Green",
+      "oranye": "Orange",
+      "ungu": "Purple",
+      "magenta": "Magenta"
+    },
+    "maxParallel": "Tasks at a time",
+    "maxParallelHelp": "How many of this division's tasks may run at once.",
+    "dailyBudget": "Daily budget (credits)",
+    "dailyBudgetNone": "None",
+    "dailyBudgetHelp": "For all members together. Empty: only each employee's own budget applies.",
+    "order": "Position",
+    "orderHelp": "Lower numbers come first on the org chart.",
+    "sop": "SOP",
+    "sopHelp": "How this division works. Each employee reads the version in their output language.",
+    "sopId": "Bahasa Indonesia",
+    "sopEn": "English",
+    "save": "Save",
+    "create": "Create division"
   },
   "brief": {
-    "title": "Brief the {team}",
+    "title": "Brief {team}",
     "titleLabel": "Title",
     "brief": "Brief",
-    "briefPlaceholder": "The Lead will plan, delegate subtasks to members and review their deliverables.",
+    "briefPlaceholder": "The head decides how it gets done: alone, or by handing parts to members and reviewing their work.",
     "client": "Client (optional)",
     "dryRun": "Dry run",
     "send": "Send brief"
   },
   "responder": {
-    "title": "Who answers in the team chat",
+    "title": "Who answers in the division chat",
     "help": "When a message mentions nobody. An @mention always reaches that member.",
-    "adminOnly": "Only admins can change this.",
-    "saved": "Saved",
     "modes": {
       "lead": {
-        "label": "Lead",
-        "description": "The Lead answers and can delegate to members."
+        "label": "Head",
+        "description": "The head answers and can delegate to members."
       },
       "everyone": {
         "label": "Everyone",
@@ -45,7 +120,7 @@
       },
       "auto": {
         "label": "Automatic",
-        "description": "A fast model picks the best-suited member; unsure picks go to the Lead."
+        "description": "A fast model picks the best-suited member; unsure picks go to the head."
       }
     }
   }

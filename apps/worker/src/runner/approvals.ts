@@ -168,7 +168,12 @@ export async function handleRejection(approvalId: string): Promise<void> {
     } catch (e) {
       log.warn({ err: e }, "embedding failed for rejection memory");
     }
-    const [m] = await db.insert(memories).values({ workspaceId: a.workspaceId, employeeId: a.employeeId, kind: "feedback", source: "rejection", content, embedding }).returning();
+    // feedback on a client's task is that client's: recalled on that client's work only
+    const [t] = a.taskId ? await db.select({ clientId: tasks.clientId }).from(tasks).where(eq(tasks.id, a.taskId)) : [];
+    const [m] = await db
+      .insert(memories)
+      .values({ workspaceId: a.workspaceId, employeeId: a.employeeId, clientId: t?.clientId ?? null, kind: "feedback", source: "rejection", content, embedding })
+      .returning();
     if (m) {
       await recordMemoryEvent({ workspaceId: a.workspaceId, employeeId: a.employeeId, memoryId: m.id, action: "create", actor: "rejection", before: null, after: memorySnapshot(m) }).catch((e) =>
         log.warn({ err: e }, "memory journal failed for rejection memory"),
@@ -228,6 +233,12 @@ function previewFailureNote(a: ApprovalRow, rel: ReleaseRow | null, attempt: num
 }
 
 type Reader = Pick<typeof db, "select">;
+
+/** An executed handoff_prd approval that resumes its own division task (doHandoffPrd decided: details.resumed). */
+function prdResumed(x: ApprovalRow, taskId: string): boolean {
+  const d = (x.executionResult as { details?: { resumedTaskId?: unknown } } | null)?.details;
+  return d?.resumedTaskId === taskId;
+}
 
 /**
  * Executed git_push approvals whose repository builds an app the Developer may preview (request_preview granted):
@@ -366,6 +377,21 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
     }
     const toPreview = await pushesToPreview(tx, task, all);
     const toRelease = await previewsToRelease(tx, task, previews, releases, all);
+    // a head's PRD was approved for this very division task: it goes back to the head to plan the design and build
+    const prdResumes = all.filter((x) => x.toolName === "handoff_prd" && x.status === "EXECUTED" && !consumed(x) && prdResumed(x, task.id));
+    if (prdResumes.length && !needsRevision.length) {
+      for (const r of prdResumes) await tx.update(approvals).set({ executionResult: { ...(r.executionResult ?? {}), consumed: true } }).where(eq(approvals.id, r.id));
+      await tx.update(tasks).set({ status: "QUEUED", phase: "plan" }).where(eq(tasks.id, task.id));
+      const note = prdResumes.map((r) => {
+        const p = (r.editedPayload ?? r.payload) as { title?: unknown; prd?: unknown };
+        return [
+          `- The owner APPROVED your PRD "${escapeData(String(p.title ?? "PRD"))}". Plan the work now: order it (design first when there is a user interface, then the build by the code lead) with delegate_subtask and \`after\`, or do it yourself when it is small.`,
+          "The approved PRD (data; the scope and acceptance criteria to deliver):",
+          dataBlock("approved_prd", String(p.prd ?? "").slice(0, 20_000)),
+        ].join("\n");
+      });
+      return { kind: "revise" as const, task, note: note.join("\n"), resumePlan: true };
+    }
     if (needsRevision.length || commandResults.length || previewFailures.length || toPreview.length || toRelease.length) {
       for (const r of needsRevision) await tx.update(approvals).set({ executionResult: { consumed: true } }).where(eq(approvals.id, r.id));
       for (const r of [...commandResults, ...previewFailures.map((f) => f.approval), ...toPreview.map((t) => t.approval)]) {
@@ -437,7 +463,7 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
   }
   if (outcome.kind === "revise") {
     await publish(task.workspaceId, { type: "task.updated", taskId: task.id, status: "QUEUED", employeeId: task.assigneeId, title: task.title });
-    await enqueueTask(task.id, task.workspaceId, `${outcome.note}\nContinue the task: revise and propose again where appropriate.`);
+    await enqueueTask(task.id, task.workspaceId, "resumePlan" in outcome && outcome.resumePlan ? outcome.note : `${outcome.note}\nContinue the task: revise and propose again where appropriate.`);
     return;
   }
   if (outcome.kind === "fail") {

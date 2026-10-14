@@ -9,7 +9,6 @@
     "members": "Anggota",
     "audit": "Log audit",
     "repositories": "Repositori",
-    "departments": "Departemen",
     "webhooks": "Webhook",
     "apiTokens": "Akses API",
     "skills": "Skill",
@@ -194,19 +193,6 @@
     "newToken": "Token akses baru",
     "newTokenHelp": "Kosongkan untuk tetap memakai token sekarang. Token baru langsung menggantikannya (token lama tidak disimpan).",
     "removeToken": "Hapus token (hanya untuk repositori publik)"
-  },
-  "departments": {
-    "title": "Departemen",
-    "intro": "Prosedur operasi standar dan subagen per departemen, dalam Bahasa Indonesia dan English. Karyawan mengikuti SOP dalam bahasa keluarannya; subagen dipakai di mode workspace.",
-    "sop": "SOP",
-    "subagents": "Subagen",
-    "noSubagents": "Tidak ada subagen.",
-    "description": "Deskripsi",
-    "prompt": "Instruksi",
-    "tools": "Tool:",
-    "addSubagent": "Tambah subagen",
-    "subagentsHelp": "Subagen berjalan di sandbox yang sama, dengan persetujuan yang sama.",
-    "saved": "Departemen tersimpan"
   },
   "emailPolicy": {
     "title": "Email keluar",

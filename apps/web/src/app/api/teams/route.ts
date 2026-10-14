@@ -1,21 +1,11 @@
-import { eq, desc } from "drizzle-orm";
-import { audit, db, teamMembers, teams } from "@wfos/db";
-import { teamInputSchema } from "@wfos/shared";
-import { body, route } from "@/lib/server/route";
-import { assertWorkspaceEmployees } from "@/lib/server/teams";
+import { jsonObject, route } from "@/lib/server/route";
+import { listDivisions, saveDivision } from "@/lib/server/teams";
 
-export const GET = route("VIEWER", async ({ session }) => {
-  const ts = await db.select().from(teams).where(eq(teams.workspaceId, session.workspaceId)).orderBy(desc(teams.createdAt));
-  const ms = await db.select().from(teamMembers);
-  return { teams: ts.map((t) => ({ ...t, memberIds: ms.filter((m) => m.teamId === t.id).map((m) => m.employeeId) })) };
-});
+/** Divisions (UI "Divisi") in org-chart order: members with their role, workload and 7-day credits. */
+export const GET = route("VIEWER", async ({ session }) => ({ teams: await listDivisions(session.workspaceId) }));
 
+/** Create a division (Owner/Admin). `move: true` moves people who are in another division instead of a 409. */
 export const POST = route("ADMIN", async ({ session, req }) => {
-  const input = await body(req, teamInputSchema);
-  await assertWorkspaceEmployees(session.workspaceId, [input.leadId, ...input.memberIds]);
-  const [t] = await db.insert(teams).values({ workspaceId: session.workspaceId, name: input.name, description: input.description, leadId: input.leadId, responderMode: input.responderMode }).returning();
-  const ids = [...new Set([...(input.leadId ? [input.leadId] : []), ...input.memberIds])];
-  if (ids.length) await db.insert(teamMembers).values(ids.map((employeeId) => ({ teamId: t!.id, employeeId })));
-  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "team.created", targetType: "team", targetId: t!.id, details: input });
-  return { team: t };
+  const raw = await jsonObject(req);
+  return { team: await saveDivision(session, raw, { move: raw.move === true }) };
 });

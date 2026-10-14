@@ -9,6 +9,7 @@ import { failTask, settleDispatchedRoutineRuns } from "../runner/task-status";
 import { afterApprovalResolved, handBackMissedReleases } from "../runner/approvals";
 import { sweepLostReleases } from "../deploy";
 import { onChildFinished } from "../orchestration/team";
+import { DEPENDENCY_PHASES } from "../orchestration/phases";
 import { CHAT_TURN_STALE_MS, closeStaleTurns } from "../runner/chat-turns";
 import { activeQuotaPause } from "../lib/limits";
 import { failStuckSends } from "../lib/outbox";
@@ -42,7 +43,7 @@ import { failStuckSends } from "../lib/outbox";
  * - chat replies left 'streaming' for more than CHAT_TURN_STALE_MS (closed as errors),
  * - dispatched routine runs whose tasks all ended,
  * - QUEUED tasks older than LOST_QUEUED_AFTER_MS that no BullMQ job will ever run (the enqueue was lost):
- *   re-enqueued, unless held (phase hold), behind the kill switch, a quota pause or an employee that is not active,
+ *   re-enqueued, unless held (phase hold), an ordered subtask waiting for or blocked by its dependencies, behind the kill switch, a quota pause or an employee that is not active,
  * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches),
  * - outbox rows left `sending` for more than STUCK_SENDING_MS (failed with an "interrupted, check before resending" note),
  * - app releases whose job was lost (queued) or whose worker died (deploying, no progress), settled "lost", and settled
@@ -184,7 +185,8 @@ async function requeueLostTasks(now: Date, liveElsewhere: (c: OrphanCandidate[])
       .select({ id: tasks.id, workspaceId: tasks.workspaceId, assigneeId: tasks.assigneeId, teamId: tasks.teamId, parentTaskId: tasks.parentTaskId })
       .from(tasks)
       .innerJoin(workspaces, eq(workspaces.id, tasks.workspaceId))
-      .where(and(eq(tasks.status, "QUEUED"), or(isNull(tasks.phase), notInArray(tasks.phase, ["hold", "wait"])), lt(tasks.updatedAt, cutoff), eq(workspaces.killSwitch, false)))
+      // ordered subtasks waiting for (after) or blocked by their dependencies have no job on purpose: onChildFinished starts them
+      .where(and(eq(tasks.status, "QUEUED"), or(isNull(tasks.phase), notInArray(tasks.phase, ["hold", "wait", ...DEPENDENCY_PHASES])), lt(tasks.updatedAt, cutoff), eq(workspaces.killSwitch, false)))
       .limit(100);
     if (!rows.length) return [];
 

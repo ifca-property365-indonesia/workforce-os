@@ -1,8 +1,8 @@
 import "server-only";
-import { and, eq, inArray, isNotNull, max, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, max, ne, sql } from "drizzle-orm";
 import { clients, db, employees, invoices, nextCronRun, projects, recurringBillings, tasks, workspaces } from "@wfos/db";
 import { billingCron, type BillingPeriod } from "@wfos/shared";
-import { projectHealth, todayIn } from "@wfos/shared/health";
+import { projectHealth, todayIn, type ProjectHealth } from "@wfos/shared/health";
 import { HttpError } from "./auth";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -15,12 +15,36 @@ export function clientIdParam(sp: URLSearchParams): string | undefined {
   return raw;
 }
 
+/** A client code is unique per workspace (409 client_code_taken); "" means none and never clashes. */
+export async function assertClientCodeFree(workspaceId: string, code: string | undefined, exceptId?: string): Promise<void> {
+  if (!code) return;
+  const [taken] = await db
+    .select({ id: clients.id })
+    .from(clients)
+    .where(and(eq(clients.workspaceId, workspaceId), eq(clients.code, code), exceptId ? ne(clients.id, exceptId) : undefined));
+  if (taken) throw new HttpError(409, "Another client already uses this code", { code: "client_code_taken", clientCode: code });
+}
+
+/** A unique violation on the client code (two saves at once) as the same 409; anything else is rethrown. */
+export function clientCodeConflict(e: unknown, code: string | undefined): never {
+  const err = (e as { cause?: unknown })?.cause ?? e;
+  const pg = err as { code?: string; constraint_name?: string };
+  if (pg?.code === "23505" && pg.constraint_name === "clients_ws_code") throw new HttpError(409, "Another client already uses this code", { code: "client_code_taken", clientCode: code ?? "" });
+  throw e;
+}
+
 export async function workspaceTimeZone(workspaceId: string): Promise<string> {
   const [ws] = await db.select({ tz: workspaces.timezone }).from(workspaces).where(eq(workspaces.id, workspaceId));
   return ws?.tz ?? "Asia/Jakarta";
 }
 
-/** Projects of the workspace (or of one client) with their health, all date math in the workspace time zone. */
+const HEALTH_RANK: Record<ProjectHealth, number> = { done: 0, on_track: 1, at_risk: 2, late: 3 };
+
+/**
+ * Projects of the workspace (or of one client) with their health, all date math in the workspace time zone.
+ * `health` is the more serious of the computed signal (deadline, progress, activity) and the status the team set
+ * (`statusHealth`, projects.health); "reported" joins the reasons when the team's status is the more serious one.
+ */
 export async function projectsWithHealth(workspaceId: string, tz: string, clientId?: string) {
   const ps = await db
     .select()
@@ -39,7 +63,16 @@ export async function projectsWithHealth(workspaceId: string, tz: string, client
     const t = lastTask.get(p.id) ?? null;
     const last = t && t > p.updatedAt ? t : p.updatedAt;
     const done = ["done", "completed", "archived"].includes(p.status);
-    return { ...p, lastActivityAt: last.toISOString(), ...projectHealth({ deadline: p.deadline, progress: p.progress, done, lastActivityAt: last, createdAt: p.createdAt }, tz, now) };
+    const auto = projectHealth({ deadline: p.deadline, progress: p.progress, done, lastActivityAt: last, createdAt: p.createdAt }, tz, now);
+    const reported = !done && HEALTH_RANK[p.health] > HEALTH_RANK[auto.health];
+    return {
+      ...p,
+      statusHealth: p.health,
+      lastActivityAt: last.toISOString(),
+      ...auto,
+      health: reported ? p.health : auto.health,
+      reasons: reported ? [...auto.reasons, "reported" as const] : auto.reasons,
+    };
   });
 }
 

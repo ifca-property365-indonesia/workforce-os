@@ -73,7 +73,13 @@
     "subtasks": "Subtasks",
     "channel": "Inter-agent channel",
     "activityTab": "Activity ({count})",
-    "deliverablesTab": "Deliverables ({count})"
+    "deliverablesTab": "Deliverables ({count})",
+    "from": "From:",
+    "waitsFor": "Waits for",
+    "waitedFor": "Waited for (all done)",
+    "phaseAfter": "waiting for other subtasks",
+    "phaseBlocked": "blocked",
+    "blocked": "Blocked: a subtask it waits for did not finish"
   },
   "source": {
     "chat": "chat",
@@ -81,7 +87,8 @@
     "routine": "routine",
     "team": "team",
     "replay": "replay",
-    "demo": "demo"
+    "demo": "demo",
+    "handoff": "division handoff"
   },
   "actions": {
     "start": "Start",
@@ -149,6 +156,18 @@
       "escalated": "Incident escalated to a person",
       "resolved": "Incident resolved",
       "muted": "Incident muted (hourly limit)"
+    },
+    "named": {
+      "subagent_started": "Subagent started",
+      "subagent_finished": "Subagent finished",
+      "dependencies_done": "Dependencies done: starting",
+      "subtask_blocked": "Blocked by a dependency",
+      "division_budget_cap": "Division budget reached",
+      "waiting_for_prd_decision": "Waiting for the PRD decision",
+      "waiting_for_preview": "Waiting for the preview deploy",
+      "preview_deployed": "Preview deployed",
+      "waiting_for_live": "Waiting for the LIVE release",
+      "live_deployed": "Released to LIVE"
     }
   },
   "incidentKind": {
@@ -165,5 +184,6 @@
   "stoppedHint": {
     "stalled": "No progress was reported for too long, so the run was stopped.",
     "loop": "The same tool call kept repeating, so the run was stopped."
-  }
+  },
+  "stepActor": "by {name} (subagent)"
 }

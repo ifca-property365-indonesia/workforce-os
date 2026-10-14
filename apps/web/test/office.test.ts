@@ -14,7 +14,7 @@ async function workspace() {
 }
 
 describe("office snapshot", () => {
-  it("returns this workspace's employees with rooms, current task and last step, nothing else", async () => {
+  it("returns this workspace's employees with their division rooms, current task and last step, nothing else", async () => {
     const ws = await workspace();
     const other = await workspace();
     const email = `o-${randomUUID().slice(0, 8)}@test.local`;
@@ -23,7 +23,7 @@ describe("office snapshot", () => {
     const [dev, pm, gone] = await db
       .insert(employees)
       .values([
-        { workspaceId: ws.id, name: "Dewi", role: "Developer", model: "m", department: "developer" },
+        { workspaceId: ws.id, name: "Dewi", role: "Developer", model: "m", specialty: "Frontend" },
         { workspaceId: ws.id, name: "Putu", role: "PM", model: "m" },
         { workspaceId: ws.id, name: "Old", role: "X", model: "m", status: "ARCHIVED" },
       ])
@@ -52,6 +52,7 @@ describe("office snapshot", () => {
     expect(raw).not.toContain("SECRET OUTPUT");
     expect(raw).not.toContain("file contents");
     expect(raw).not.toContain("Their task");
-    expect((r.json.departments as Record<string, string>).developer).toBeTruthy();
+    // rooms come from divisions only: no department map any more
+    expect(r.json.departments).toBeUndefined();
   });
 });

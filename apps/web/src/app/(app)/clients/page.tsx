@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { EmptyState, PageHeader } from "@/components/layout/common";
 import { NewClientDialog } from "@/components/clients/new-client-dialog";
-import { ClientStatusBadge, HealthBadge, useClientRights, worstHealth } from "@/components/clients/shared";
+import { ClientCode, ClientStatusBadge, HealthSign, useClientRights, worstHealth } from "@/components/clients/shared";
 import { useClients, type Client } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
@@ -40,8 +40,11 @@ function ClientCard({ c }: { c: Client }) {
         <CardContent className="flex h-full flex-col gap-3 p-4">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="font-display truncate text-[1.65rem]">{c.name}</div>
-              {c.legalName && <div className="truncate text-xs text-muted-foreground">{c.legalName}</div>}
+              <div className="flex items-center gap-2">
+                <ClientCode code={c.code} />
+                <div className="font-display truncate text-[1.65rem]">{c.name}</div>
+              </div>
+              {(c.industry || c.legalName) && <div className="truncate text-xs text-muted-foreground">{[c.industry, c.legalName].filter(Boolean).join(" · ")}</div>}
             </div>
             <ClientStatusBadge status={c.status} className="mt-1" />
           </div>
@@ -49,7 +52,7 @@ function ClientCard({ c }: { c: Client }) {
             <Metric label={t("list.projects")}>
               <span className="flex items-center gap-1.5">
                 {c.projects.length}
-                {worst && worst !== "done" && <HealthBadge health={worst} />}
+                {worst && worst !== "done" && <HealthSign health={worst} />}
               </span>
             </Metric>
             <Metric label={t("list.monthly")}>{c.recurringMonthly ? f.money(c.recurringMonthly, c.currency) : "—"}</Metric>
@@ -88,7 +91,7 @@ export default function ClientsPage() {
   const shown = (data ?? []).filter(
     (c) =>
       (!status || c.status === status) &&
-      (!needle || [c.name, c.legalName, c.email, ...c.contacts.flatMap((x) => [x.name, x.email])].some((s) => s.toLowerCase().includes(needle))),
+      (!needle || [c.name, c.code, c.industry, c.legalName, c.email, ...c.contacts.flatMap((x) => [x.name, x.email])].some((s) => s.toLowerCase().includes(needle))),
   );
   const count = (s: ClientStatus) => (data ?? []).filter((c) => c.status === s).length;
   return (

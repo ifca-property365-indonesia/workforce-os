@@ -9,7 +9,6 @@
     "members": "Members",
     "audit": "Audit log",
     "repositories": "Repositories",
-    "departments": "Departments",
     "webhooks": "Webhooks",
     "apiTokens": "API access",
     "skills": "Skills",
@@ -194,19 +193,6 @@
     "newToken": "New access token",
     "newTokenHelp": "Leave empty to keep the current token. A new one replaces it at once (the old one is not kept).",
     "removeToken": "Remove the token (only for public repositories)"
-  },
-  "departments": {
-    "title": "Departments",
-    "intro": "Standard operating procedures and subagents per department, in Bahasa Indonesia and English. Employees follow the SOP in their output language; subagents are used in Workspace mode.",
-    "sop": "SOP",
-    "subagents": "Subagents",
-    "noSubagents": "No subagents.",
-    "description": "Description",
-    "prompt": "Instructions",
-    "tools": "Tools:",
-    "addSubagent": "Add subagent",
-    "subagentsHelp": "Subagents run inside the same sandbox, with the same approvals.",
-    "saved": "Department saved"
   },
   "emailPolicy": {
     "title": "Outgoing email",

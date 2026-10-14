@@ -8,6 +8,7 @@ import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
 import { isTaskRunActive } from "../guards/killswitch";
 import { onChildFinished } from "../orchestration/team";
+import { DEPENDENCY_PHASES } from "../orchestration/phases";
 import { closeTurnOfMessage } from "./chat-turns";
 import { incidentKindOf, openIncident, openRoutineIncident, resolveIncidentsOnTerminal, type FailureKind } from "./incidents";
 
@@ -36,12 +37,29 @@ async function bestEffort(label: string, taskId: string, fn: () => Promise<unkno
  * `task` is the row as written (status already terminal).
  */
 export async function afterTerminal(task: Task, status: TerminalStatus, opts: { notifyFailure?: boolean } = {}): Promise<void> {
+  await bestEffort("cancel waiting subtasks", task.id, () => cancelWaitingSubtasks(task, status));
   if (task.parentTaskId) await bestEffort("wake parent", task.id, () => onChildFinished(task.workspaceId, task.parentTaskId!));
   await bestEffort("routine run settle", task.id, () => settleRoutineRun(task));
   await bestEffort("incidents resolve", task.id, () => resolveIncidentsOnTerminal(task, status));
   await bestEffort("publish", task.id, () => publish(task.workspaceId, { type: "task.updated", taskId: task.id, status, employeeId: task.assigneeId, title: task.title }));
   if (status === "DONE") await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
   if (status === "FAILED" && opts.notifyFailure) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.error ?? ""));
+}
+
+/**
+ * A parent that ended (DONE / FAILED / CANCELLED) takes its ordered subtasks that never got to start with it: those
+ * still waiting for (phase after) or blocked by (phase blocked) their dependencies are CANCELLED with the reason.
+ */
+async function cancelWaitingSubtasks(parent: Pick<Task, "id" | "workspaceId">, status: TerminalStatus): Promise<void> {
+  const rows = await db
+    .update(tasks)
+    .set({ status: "CANCELLED", completedAt: new Date(), error: `Cancelled: the parent task ended (${status}) before the subtasks this one waits for were done.` })
+    .where(and(eq(tasks.parentTaskId, parent.id), eq(tasks.status, "QUEUED"), inArray(tasks.phase, DEPENDENCY_PHASES)))
+    .returning();
+  for (const r of rows) {
+    log.info({ taskId: r.id, parentTaskId: parent.id }, "waiting subtask cancelled with its parent");
+    await afterTerminal(r, "CANCELLED");
+  }
 }
 
 /**

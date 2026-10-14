@@ -7,9 +7,41 @@ import { redis } from "../lib/redis";
 export const LEASE_TTL_MS = 30 * 60 * 1000;
 
 export const employeeLeaseKey = (employeeId: string) => `wfos:emp-lease:${employeeId}`;
+/** Per-division concurrency (teams.max_parallel): every task run of a division member holds one member of this set. */
+export const divisionLeaseKey = (teamId: string) => `wfos:div-lease:${teamId}`;
 
 export async function acquireEmployeeLease(employeeId: string, leaseId: string, limit: number): Promise<boolean> {
-  const key = employeeLeaseKey(employeeId);
+  return acquireLease(employeeLeaseKey(employeeId), leaseId, limit);
+}
+
+export async function releaseEmployeeLease(employeeId: string, leaseId: string): Promise<void> {
+  await redis.zrem(employeeLeaseKey(employeeId), leaseId);
+}
+
+/** A run slot of the division (at most `limit` runs of its members at once, across every worker process). */
+export async function acquireDivisionLease(teamId: string, leaseId: string, limit: number): Promise<boolean> {
+  return acquireLease(divisionLeaseKey(teamId), leaseId, limit);
+}
+
+export async function releaseDivisionLease(teamId: string, leaseId: string): Promise<void> {
+  await redis.zrem(divisionLeaseKey(teamId), leaseId);
+}
+
+/** Keep a held employee lease alive: a run longer than LEASE_TTL_MS must not look stale (to other workers or the reaper). */
+export async function refreshEmployeeLease(employeeId: string, leaseId: string): Promise<void> {
+  await refreshLease(employeeLeaseKey(employeeId), leaseId);
+}
+
+export async function refreshDivisionLease(teamId: string, leaseId: string): Promise<void> {
+  await refreshLease(divisionLeaseKey(teamId), leaseId);
+}
+
+/** New score for a lease still in the set (XX: a lease released meanwhile is not added back). */
+async function refreshLease(key: string, leaseId: string): Promise<void> {
+  await redis.multi().zadd(key, "XX", Date.now(), leaseId).pexpire(key, LEASE_TTL_MS).exec();
+}
+
+async function acquireLease(key: string, leaseId: string, limit: number): Promise<boolean> {
   const now = Date.now();
   const res = await redis
     .multi()
@@ -24,10 +56,6 @@ export async function acquireEmployeeLease(employeeId: string, leaseId: string, 
     return false;
   }
   return true;
-}
-
-export async function releaseEmployeeLease(employeeId: string, leaseId: string): Promise<void> {
-  await redis.zrem(employeeLeaseKey(employeeId), leaseId);
 }
 
 /** Task ids (of `candidates`) that hold a live lease of `employeeId`, i.e. a job of theirs is being processed by some worker. */

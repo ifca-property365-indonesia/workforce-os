@@ -72,6 +72,18 @@ export async function body<S extends z.ZodType>(req: NextRequest, schema: S): Pr
   return schema.parse(json);
 }
 
+/** The request body as a plain JSON object (400 invalid_json otherwise), for routes that validate it themselves. */
+export async function jsonObject(req: NextRequest): Promise<Record<string, unknown>> {
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    throw new HttpError(400, "Invalid JSON body", { code: "invalid_json" });
+  }
+  if (!json || typeof json !== "object" || Array.isArray(json)) throw new HttpError(400, "Body must be an object", { code: "invalid_json" });
+  return json as Record<string, unknown>;
+}
+
 export function notFound(code = "not_found"): never {
   // i18n-ignore: codes are checked where notFound() is called
   throw new HttpError(404, "Not found", { code });

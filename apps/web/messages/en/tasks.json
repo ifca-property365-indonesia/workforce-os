@@ -9,7 +9,9 @@
     "dryRun": "dry run",
     "subtask": "sub",
     "waitingOnSubtasks": "waiting on subtasks",
-    "credits": "{amount} cr"
+    "credits": "{amount} cr",
+    "waitingOnDependencies": "waiting for other subtasks",
+    "blocked": "blocked"
   },
   "page": {
     "back": "Task board"
@@ -19,8 +21,6 @@
     "fieldTitle": "Title",
     "brief": "Brief",
     "assignTo": "Assign to",
-    "employees": "Employees",
-    "teams": "Teams (lead plans & delegates)",
     "client": "Client",
     "project": "Project",
     "dryRun": "Dry run",
@@ -29,7 +29,14 @@
     "created": "Task created",
     "repository": "Repository",
     "noRepository": "No repository (empty workspace)",
-    "repositoryHelp": "Checked out on its own branch agent/<task> in the employee's sandbox. Pushing needs your approval."
+    "repositoryHelp": "Checked out on its own branch agent/<task> in the employee's sandbox. Pushing needs your approval.",
+    "division": "Division",
+    "person": "Person",
+    "projectDivision": "The project's division",
+    "divisionNoHead": "{name} (no head yet)",
+    "divisionHelp": "The head decides how it gets done: alone, or by handing parts to members.",
+    "toPerson": "Give it to a specific person instead",
+    "toDivision": "Give it to a division instead"
   },
   "progress": {
     "title": "Progress",

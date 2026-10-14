@@ -1,6 +1,6 @@
 {
   "newChat": "New chat",
-  "team": "Team",
+  "team": "Division",
   "deleteChat": "Delete chat",
   "fallbackTitle": "Chat",
   "emptyThread": "Say hello, ask a question, or describe work to turn into a task.",
@@ -30,10 +30,10 @@
     "open": "Open"
   },
   "teamMode": {
-    "lead": "Team chat (the Lead answers)",
-    "everyone": "Team chat (everyone answers)",
-    "mentions": "Team chat (only @mentioned members answer)",
-    "auto": "Team chat (the best-suited member answers)"
+    "lead": "Division chat (the head answers)",
+    "everyone": "Division chat (everyone answers)",
+    "mentions": "Division chat (only @mentioned members answer)",
+    "auto": "Division chat (the best-suited member answers)"
   },
   "placeholderTeam": "Message (type @ to mention someone, Enter to send)",
   "messageLabel": "Message",

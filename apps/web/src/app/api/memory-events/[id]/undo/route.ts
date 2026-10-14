@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { db, employees, memories, memoryEvents } from "@wfos/db";
+import { clients, db, employees, memories, memoryEvents } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { notFound, route } from "@/lib/server/route";
 import { fromSnapshot, journal, memorySnapshot, sameAsSnapshot } from "@/lib/server/memory-journal";
@@ -14,6 +14,8 @@ type P = { id: string };
  * Refused (409 memory_changed_since) when the memory changed after the entry (it no longer looks like the entry's
  * `after`): undoing would silently throw that later change away. `?force=1` undoes anyway. A restored memory
  * whose old expiry date has passed would come back already expired: its expiry is cleared (`expiryCleared`).
+ * A client memory comes back for the same client; when that client was deleted meanwhile, the undo is refused
+ * (409 memory_client_gone) rather than turning it into a general memory every run would recall.
  */
 export const POST = route<P>("MEMBER", async ({ session, req, params }) => {
   const force = req.nextUrl.searchParams.get("force") === "1";
@@ -47,6 +49,12 @@ export const POST = route<P>("MEMBER", async ({ session, req, params }) => {
     } else {
       const s = fromSnapshot(ev.before);
       if (!s.content) throw new HttpError(409, "This entry cannot be undone", { code: "memory_event_not_undoable" });
+      // the client scope: what the journal recorded (an older entry without it keeps the row's, else general)
+      const clientId = s.clientId !== undefined ? s.clientId : (cur?.clientId ?? null);
+      if (clientId) {
+        const [c] = await tx.select({ id: clients.id }).from(clients).where(and(eq(clients.id, clientId), eq(clients.workspaceId, session.workspaceId)));
+        if (!c) throw new HttpError(409, "The client this memory belonged to no longer exists", { code: "memory_client_gone" });
+      }
       // a superseding memory that is gone by now cannot be pointed at
       let supersededBy = s.supersededBy;
       if (supersededBy) {
@@ -60,7 +68,15 @@ export const POST = route<P>("MEMBER", async ({ session, req, params }) => {
         expiryCleared = true;
       }
       // where a memory came from is a fact about the row: the row's own source, else what the journal recorded
-      const values = { kind: s.kind, content: s.content, source: cur?.source ?? s.source ?? "agent", untrusted: s.untrusted ?? cur?.untrusted ?? false, expiresAt, supersededBy };
+      const values = {
+        kind: s.kind,
+        content: s.content,
+        source: cur?.source ?? s.source ?? "agent",
+        untrusted: s.untrusted ?? cur?.untrusted ?? false,
+        clientId,
+        expiresAt,
+        supersededBy,
+      };
       if (cur) {
         const [row] = await tx
           .update(memories)

@@ -195,7 +195,8 @@ async function main(): Promise<void> {
         ...(s.resume ? { resume: s.resume } : {}),
         ...(s.agents && Object.keys(s.agents).length ? { agents: s.agents } : {}),
         canUseTool: async (toolName, input, opts): Promise<PermissionResult> => {
-          const r = await rpc<PermissionReply>({ t: "perm", id: nextId++, tool: toolName, input, toolUseId: (opts as { toolUseID?: string }).toolUseID });
+          const o = opts as { toolUseID?: string; agentID?: string };
+          const r = await rpc<PermissionReply>({ t: "perm", id: nextId++, tool: toolName, input, toolUseId: o.toolUseID, ...(o.agentID ? { agentId: o.agentID } : {}) });
           return r.behavior === "allow" ? { behavior: "allow", updatedInput: r.updatedInput ?? input } : { behavior: "deny", message: r.message };
         },
         stderr: (d) => send({ t: "log", level: "warn", msg: d.slice(0, 2000) }),

@@ -122,6 +122,8 @@ function Board() {
                           </span>
                         )}
                         {task.phase === "wait" && <span className="text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]">{t("board.waitingOnSubtasks")}</span>}
+                        {task.status === "QUEUED" && task.phase === "after" && <span>{t("board.waitingOnDependencies")}</span>}
+                        {task.status === "QUEUED" && task.phase === "blocked" && <span className="font-medium text-destructive">{t("board.blocked")}</span>}
                       </div>
                       <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
                         <span>{f.ago(task.updatedAt)}</span>

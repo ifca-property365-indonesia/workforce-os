@@ -12,10 +12,12 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/layout/common";
+import { PROJECT_HEALTH } from "@wfos/shared";
 import { api } from "@/lib/api";
-import type { ClientProject } from "@/lib/hooks";
+import { useTeams, type ClientProject } from "@/lib/hooks";
+import { divisionSignVars } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
-import { HEALTH_TONE, HealthBadge, invalidateClient, useClientRights } from "./shared";
+import { HEALTH_TONE, HealthSign, invalidateClient, selectClass, useClientRights } from "./shared";
 
 /** Per-client health summary: how many projects are late / at risk / on track. */
 export function HealthSummary({ projects }: { projects: ClientProject[] }) {
@@ -33,36 +35,117 @@ export function HealthSummary({ projects }: { projects: ClientProject[] }) {
   );
 }
 
+/** The status fields a project carries for the client page: who is responsible, when it started, what is next. */
+type StatusForm = { teamId: string; startDate: string; health: ClientProject["statusHealth"]; nextMilestone: string; nextStep: string };
+
+const statusOf = (p: ClientProject): StatusForm => ({ teamId: p.teamId ?? "", startDate: p.startDate ?? "", health: p.statusHealth ?? "on_track", nextMilestone: p.nextMilestone ?? "", nextStep: p.nextStep ?? "" });
+
+/** division, start date, status, next milestone and next step: shared by the add form and a project's edit form */
+function StatusFields({ f, set, disabled }: { f: StatusForm; set: (v: StatusForm) => void; disabled?: boolean }) {
+  const t = useTranslations("clients");
+  const { data: divisions } = useTeams();
+  const uid = useId();
+  return (
+    <div className="grid gap-2 sm:grid-cols-3">
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor={`${uid}-team`}>
+          {t("project.division")}
+        </Label>
+        <select id={`${uid}-team`} className={selectClass} value={f.teamId} disabled={disabled} onChange={(e) => set({ ...f, teamId: e.target.value })}>
+          <option value="">{t("project.noDivision")}</option>
+          {divisions?.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor={`${uid}-start`}>
+          {t("project.startDate")}
+        </Label>
+        <Input id={`${uid}-start`} type="date" className="h-9" value={f.startDate} disabled={disabled} onChange={(e) => set({ ...f, startDate: e.target.value })} />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs" htmlFor={`${uid}-health`}>
+          {t("project.statusHealth")}
+        </Label>
+        <select id={`${uid}-health`} className={selectClass} value={f.health} disabled={disabled} onChange={(e) => set({ ...f, health: e.target.value as StatusForm["health"] })}>
+          {PROJECT_HEALTH.map((h) => (
+            <option key={h} value={h}>
+              {t(`health.${h}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1 sm:col-span-3">
+        <Label className="text-xs" htmlFor={`${uid}-milestone`}>
+          {t("project.nextMilestone")}
+        </Label>
+        <Input id={`${uid}-milestone`} value={f.nextMilestone} maxLength={500} disabled={disabled} placeholder={t("project.nextMilestonePlaceholder")} onChange={(e) => set({ ...f, nextMilestone: e.target.value })} />
+      </div>
+      <div className="space-y-1 sm:col-span-3">
+        <Label className="text-xs" htmlFor={`${uid}-step`}>
+          {t("project.nextStep")}
+        </Label>
+        <Textarea id={`${uid}-step`} rows={2} maxLength={1000} value={f.nextStep} disabled={disabled} placeholder={t("project.nextStepPlaceholder")} onChange={(e) => set({ ...f, nextStep: e.target.value })} />
+      </div>
+    </div>
+  );
+}
+
 function ProjectRow({ p, currency }: { p: ClientProject; currency: string }) {
   const t = useTranslations("clients");
+  const tc = useTranslations("common");
   const f = useFormat();
   const qc = useQueryClient();
   const { canEdit, admin } = useClientRights();
+  const { data: divisions } = useTeams();
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState<StatusForm>(() => statusOf(p));
+  const division = divisions?.find((d) => d.id === p.teamId);
   const del = useMutation({ mutationFn: () => api.del(`/api/projects/${p.id}`), onSuccess: () => invalidateClient(qc, p.clientId) });
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch(`/api/projects/${p.id}`, body),
-    onSuccess: () => invalidateClient(qc, p.clientId),
+    onSuccess: () => (setEditing(false), invalidateClient(qc, p.clientId)),
     onError: (e) => toast.error((e as Error).message),
   });
   return (
-    <div className="flex items-start gap-2 rounded-lg border bg-card p-3 text-sm">
+    <div className="flex items-start gap-2 rounded-xl border bg-card p-3 text-sm">
       <div className="min-w-0 flex-1">
-        <div className="font-medium">
-          {p.name} <span className="ml-1 rounded bg-muted px-1.5 text-[11px]">{t.has(`project.status.${p.status}`) ? t(`project.status.${p.status}`) : p.status}</span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold">{p.name}</span>
+          <HealthSign health={p.health} title={p.reasons.map((r) => t(`health.reason.${r}`)).join(" · ")} />
+          <span className="rounded bg-muted px-1.5 text-[11px]">{t.has(`project.status.${p.status}`) ? t(`project.status.${p.status}`) : p.status}</span>
+          {division && (
+            <span className="sign rounded-md px-1.5 text-[11px] font-semibold leading-5" data-state="lit" style={divisionSignVars(division.color, division.id)}>
+              {division.name}
+            </span>
+          )}
         </div>
         {p.description && <div className="text-xs text-muted-foreground">{p.description}</div>}
-        <div className="text-xs text-muted-foreground">{t("project.rate", { rate: f.money(p.hourlyRate, currency) })}</div>
+        {(p.nextMilestone || p.nextStep) && !editing && (
+          <dl className="mt-1.5 grid gap-x-3 gap-y-0.5 text-xs sm:grid-cols-[7.5rem_1fr]">
+            {p.nextMilestone && (
+              <>
+                <dt className="text-muted-foreground">{t("project.nextMilestone")}</dt>
+                <dd>{p.nextMilestone}</dd>
+              </>
+            )}
+            {p.nextStep && (
+              <>
+                <dt className="text-muted-foreground">{t("project.nextStep")}</dt>
+                <dd className="whitespace-pre-wrap">{p.nextStep}</dd>
+              </>
+            )}
+          </dl>
+        )}
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
-          <HealthBadge health={p.health} title={p.reasons.map((r) => t(`health.reason.${r}`)).join(" · ")} />
+          <span className="text-muted-foreground">{t("project.rate", { rate: f.money(p.hourlyRate, currency) })}</span>
+          {p.startDate && <span className="text-muted-foreground">{t("project.started", { date: f.date(p.startDate) })}</span>}
           <label className="flex items-center gap-1 text-muted-foreground">
             {t("project.deadline")}
-            <input
-              type="date"
-              className="rounded border bg-background px-1 py-0.5"
-              defaultValue={p.deadline ?? ""}
-              disabled={!canEdit}
-              onChange={(e) => save.mutate({ deadline: e.target.value || null })}
-            />
+            <input type="date" className="rounded border bg-background px-1 py-0.5" defaultValue={p.deadline ?? ""} disabled={!canEdit} onChange={(e) => save.mutate({ deadline: e.target.value || null })} />
           </label>
           <label className="flex items-center gap-1 text-muted-foreground">
             {t("project.progress")}
@@ -82,20 +165,49 @@ function ProjectRow({ p, currency }: { p: ClientProject; currency: string }) {
             {p.daysToDeadline !== null && p.health !== "done" && " · "}
             {t("health.lastActivity", { when: f.ago(p.lastActivityAt) })}
           </span>
+          {p.statusUpdatedAt && <span className="text-muted-foreground">{t("project.statusUpdated", { when: f.ago(p.statusUpdatedAt) })}</span>}
         </div>
         <Progress value={p.progress} className="mt-2 h-1" />
+        {editing && (
+          <form
+            className="mt-3 space-y-2 rounded-lg border p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save.mutate({ teamId: form.teamId || null, startDate: form.startDate || null, health: form.health, nextMilestone: form.nextMilestone, nextStep: form.nextStep });
+            }}
+          >
+            <StatusFields f={form} set={setForm} />
+            <div className="flex gap-2">
+              <Button size="sm" disabled={save.isPending}>
+                {tc("save")}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => (setForm(statusOf(p)), setEditing(false))}>
+                {tc("cancel")}
+              </Button>
+            </div>
+          </form>
+        )}
       </div>
-      <Link href={`/tasks?projectId=${p.id}`} className="text-xs text-primary hover:underline">
-        {t("project.tasks")}
-      </Link>
-      {admin && (
-        <button type="button" onClick={() => confirm(t("project.confirmDelete", { name: p.name })) && del.mutate()} aria-label={t("project.delete")}>
-          <Trash2 className="size-3.5 text-muted-foreground" />
-        </button>
-      )}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        <Link href={`/tasks?projectId=${p.id}`} className="text-xs text-primary hover:underline">
+          {t("project.tasks")}
+        </Link>
+        {canEdit && !editing && (
+          <Button size="xs" variant="ghost" onClick={() => setEditing(true)}>
+            {t("project.editStatus")}
+          </Button>
+        )}
+        {admin && (
+          <button type="button" onClick={() => confirm(t("project.confirmDelete", { name: p.name })) && del.mutate()} aria-label={t("project.delete")}>
+            <Trash2 className="size-3.5 text-muted-foreground" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
+
+const EMPTY_STATUS: StatusForm = { teamId: "", startDate: "", health: "on_track", nextMilestone: "", nextStep: "" };
 
 function AddProject({ clientId }: { clientId: string }) {
   const t = useTranslations("clients");
@@ -103,10 +215,12 @@ function AddProject({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const uid = useId();
   const [f, setF] = useState({ name: "", description: "", hourlyRate: 0 });
+  const [status, setStatus] = useState<StatusForm>(EMPTY_STATUS);
   const [open, setOpen] = useState(false);
   const m = useMutation({
-    mutationFn: () => api.post("/api/projects", { ...f, clientId }),
-    onSuccess: () => (setF({ name: "", description: "", hourlyRate: 0 }), setOpen(false), invalidateClient(qc, clientId)),
+    mutationFn: () =>
+      api.post("/api/projects", { ...f, clientId, teamId: status.teamId || null, startDate: status.startDate || null, health: status.health, nextMilestone: status.nextMilestone, nextStep: status.nextStep }),
+    onSuccess: () => (setF({ name: "", description: "", hourlyRate: 0 }), setStatus(EMPTY_STATUS), setOpen(false), invalidateClient(qc, clientId)),
     onError: (e) => toast.error((e as Error).message),
   });
   if (!open)
@@ -128,6 +242,9 @@ function AddProject({ clientId }: { clientId: string }) {
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor={`${uid}-description`}>{t("project.descriptionPlaceholder")}</Label>
         <Textarea id={`${uid}-description`} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
+      </div>
+      <div className="sm:col-span-2">
+        <StatusFields f={status} set={setStatus} />
       </div>
       <div className="flex gap-2 sm:col-span-2">
         <Button size="sm" onClick={() => m.mutate()} disabled={!f.name || m.isPending}>

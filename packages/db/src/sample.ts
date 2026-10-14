@@ -3,7 +3,10 @@ import { CronExpressionParser } from "cron-parser";
 import { DEFAULT_MODEL, DEFAULT_MODEL_PRICES } from "@wfos/shared";
 import { DIVISION_TEMPLATES, TEMPLATE_BY_KEY, type DivisionTemplate } from "@wfos/templates";
 import type { DB } from "./index";
-import { clients, employees, modelPrices, projects, routines, teamMembers, teams } from "./schema";
+
+/** The db or a transaction: both can run queries and open a (nested: savepoint) transaction. */
+export type DbOrTx = DB | Parameters<Parameters<DB["transaction"]>[0]>[0];
+import { clients, employees, modelPrices, projects, routines, teamMembers, teams, workspaces } from "./schema";
 
 export async function seedPrices(db: DB): Promise<void> {
   for (const p of DEFAULT_MODEL_PRICES) {
@@ -24,14 +27,18 @@ export interface SeededDivision {
 
 /**
  * The standard organisation (DIVISION_TEMPLATES): each division with its head, members and subagents, built from the
- * role templates. Idempotent per division key: a division that already exists is left as it is.
+ * role templates. Idempotent per division key: a division that already exists is left as it is. Pass a transaction to
+ * make it part of a larger change (each division then commits as a savepoint inside it).
  */
 export async function seedOrganization(
-  db: DB,
+  db: DbOrTx,
   workspaceId: string,
   opts: { businessContext?: string; only?: string[] } = {},
 ): Promise<SeededDivision[]> {
   const out: SeededDivision[] = [];
+  // names stay as they are; descriptions and specialties follow the workspace language (Indonesian unless set to English)
+  const [ws] = await db.select({ locale: workspaces.defaultLocale }).from(workspaces).where(eq(workspaces.id, workspaceId));
+  const lang = ws?.locale === "en" ? "en" : "id";
   const templates = DIVISION_TEMPLATES.filter((d) => !opts.only || opts.only.includes(d.key));
   for (const [i, d] of templates.entries()) {
     const [existing] = await db.select().from(teams).where(and(eq(teams.workspaceId, workspaceId), eq(teams.key, d.key)));
@@ -39,12 +46,12 @@ export async function seedOrganization(
       out.push({ key: d.key, id: existing.id, headId: existing.leadId ?? "", created: false });
       continue;
     }
-    out.push(await seedDivision(db, workspaceId, d, i, opts.businessContext ?? ""));
+    out.push(await seedDivision(db, workspaceId, d, i, opts.businessContext ?? "", lang));
   }
   return out;
 }
 
-async function seedDivision(db: DB, workspaceId: string, d: DivisionTemplate, order: number, businessContext: string): Promise<SeededDivision> {
+async function seedDivision(db: DbOrTx, workspaceId: string, d: DivisionTemplate, order: number, businessContext: string, lang: "en" | "id"): Promise<SeededDivision> {
   return db.transaction(async (tx) => {
     const roles = [{ role: d.head, membership: "member" as const }, ...d.members];
     const rows = await tx
@@ -59,7 +66,7 @@ async function seedDivision(db: DB, workspaceId: string, d: DivisionTemplate, or
             avatar: t.avatar,
             role: t.role,
             templateKey: t.key,
-            specialty: t.specialty,
+            specialty: lang === "id" ? t.specialtyId : t.specialty,
             persona: t.persona,
             instructions: t.instructions,
             businessContext,
@@ -79,7 +86,7 @@ async function seedDivision(db: DB, workspaceId: string, d: DivisionTemplate, or
         workspaceId,
         key: d.key,
         name: d.name.en,
-        description: d.description.en,
+        description: d.description[lang],
         leadId: idOf(d.head),
         codeLeadId: d.codeLead ? idOf(d.codeLead) : null,
         sop: d.sop,

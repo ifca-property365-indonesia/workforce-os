@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import type { NextRequest } from "next/server";
-import { credentials, db, departments, employees, employeeSkills, memories, routines, skills, teamMembers, teams, workspaceDepartments, workspaces, type DB } from "@wfos/db";
+import { credentials, db, employees, employeeSkills, memories, routines, skills, teamMembers, teams, workspaces, type DB } from "@wfos/db";
 import {
   isTimeZone,
   mcpServerOfSelector,
@@ -21,7 +21,6 @@ import {
   truncateUtf8,
   uniqueMcpName,
   uniqueSkillSlug,
-  type PackageDepartment,
   type PackageEmployee,
   type PackageMcpSlot,
   type PackageRoutine,
@@ -37,6 +36,9 @@ import { MCP_RESERVED_NAMES } from "./mcp";
 import { skillProvenanceHash } from "./skills";
 
 type Q = Pick<DB, "select">;
+
+/** a division key (teamInputSchema.key) */
+const DIVISION_KEY_RE = /^[a-z][a-z0-9-]{1,39}$/;
 
 // ---------------------------------------------------------------------------
 // Reading a package from a request
@@ -86,7 +88,6 @@ export const exportRequestSchema = z.object({
   employeeIds: z.array(z.uuid()).max(500).optional(),
   teamIds: z.array(z.uuid()).max(200).optional(),
   includeMemories: z.boolean().default(false),
-  includeDepartments: z.boolean().default(false),
   dryRun: z.boolean().default(false),
   name: z.string().trim().min(1).max(120).optional(),
 });
@@ -99,15 +100,18 @@ export interface PackageRedaction {
 }
 
 export interface ExportReport {
-  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; skills: string[]; mcpSlots: string[] };
+  included: { employees: string[]; teams: string[]; routines: string[]; skills: string[]; mcpSlots: string[] };
   redactions: PackageRedaction[];
   leftOut: string[];
-  counts: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number; redactions: number };
+  counts: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number; redactions: number };
 }
 
 const MEMORIES_PER_EMPLOYEE = 200;
 
-/** Build a secret-free package from the workspace's selection. Selecting a team includes its (non-archived) members. */
+/**
+ * Build a secret-free package from the workspace's selection. Selecting a division (team) includes its (non-archived)
+ * members; a division carries its head, code lead, subagents, SOP, colour and parallel runs.
+ */
 export async function buildExport(workspaceId: string, input: ExportRequest): Promise<{ pkg: WfosPackage; report: ExportReport }> {
   const wantEmployees = [...new Set(input.employeeIds ?? [])];
   const wantTeams = [...new Set(input.teamIds ?? [])];
@@ -212,7 +216,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
       toolPermissions: tools,
       outputLanguage: e.outputLanguage,
       executionMode: e.executionMode,
-      department: e.department,
+      specialty: clean(`employee:${k}.specialty`, e.specialty, 200),
       egressDomains: e.egressDomains,
       look: e.look ?? null,
       ...(input.includeMemories ? { seedMemories: seeds } : {}),
@@ -225,13 +229,23 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
   const pkgTeams: PackageTeam[] = teamRows.map((t) => {
     const k = packageKey(t.name, takenTeam);
     teamKeys.set(t.id, k);
-    const members = [...new Set([...(t.leadId ? [t.leadId] : []), ...memberRows.filter((m) => m.teamId === t.id).map((m) => m.employeeId)])];
+    const mine = memberRows.filter((m) => m.teamId === t.id);
+    const keyOf = (id: string | null) => (id && empKeys.get(id)) || null;
+    const codeLeadKey = keyOf(t.codeLeadId);
+    // subagents work for the code lead: without one in the package (archived, left out) they travel as members
+    const subagentIds = codeLeadKey ? mine.filter((m) => m.role === "subagent" && m.employeeId !== t.leadId && m.employeeId !== t.codeLeadId).map((m) => m.employeeId) : [];
+    const memberIds = [...new Set([...(t.leadId ? [t.leadId] : []), ...(t.codeLeadId ? [t.codeLeadId] : []), ...mine.map((m) => m.employeeId)])].filter((id) => !subagentIds.includes(id));
     return {
       key: k,
       name: clean(`team:${k}.name`, t.name, 120),
       description: clean(`team:${k}.description`, t.description, 2000),
-      leadKey: (t.leadId && empKeys.get(t.leadId)) || null,
-      memberKeys: members.map((id) => empKeys.get(id)).filter((x): x is string => !!x),
+      leadKey: keyOf(t.leadId),
+      memberKeys: memberIds.map(keyOf).filter((x): x is string => !!x),
+      codeLeadKey,
+      subagentKeys: subagentIds.map(keyOf).filter((x): x is string => !!x),
+      sop: { en: clean(`team:${k}.sop.en`, t.sop.en, 20000), id: clean(`team:${k}.sop.id`, t.sop.id, 20000) },
+      color: t.color,
+      maxParallel: t.maxParallel,
       responderMode: t.responderMode,
     };
   });
@@ -248,24 +262,6 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
     perClient: r.perClient,
     dryRun: r.dryRun,
   }));
-
-  let pkgDepartments: PackageDepartment[] | undefined;
-  if (input.includeDepartments) {
-    const used = new Set(empRows.map((e) => e.department).filter((x): x is string => !!x));
-    const rows = used.size ? (await workspaceDepartments(workspaceId)).filter((d) => used.has(d.key)) : [];
-    const bi = (where: string, v: { en: string; id: string }) => ({ en: clean(`${where}.en`, v.en, 20000), id: clean(`${where}.id`, v.id, 20000) });
-    pkgDepartments = rows.map((d) => ({
-      key: d.key,
-      name: bi(`department:${d.key}.name`, d.name),
-      sop: bi(`department:${d.key}.sop`, d.sop),
-      subagents: d.subagents.map((s, i) => ({
-        name: s.name,
-        description: bi(`department:${d.key}.subagents.${i}.description`, s.description),
-        prompt: bi(`department:${d.key}.subagents.${i}.prompt`, s.prompt),
-        ...(s.tools ? { tools: s.tools } : {}),
-      })),
-    }));
-  }
 
   const mcpSlots: PackageMcpSlot[] = [];
   if (mcpNames.size) {
@@ -292,7 +288,6 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
     employees: pkgEmployees,
     teams: pkgTeams,
     routines: pkgRoutines,
-    ...(pkgDepartments ? { departments: pkgDepartments } : {}),
     ...(pkgSkills.length ? { skills: pkgSkills } : {}),
     mcpSlots,
   };
@@ -301,13 +296,11 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
 
   const leftOut: string[] = [...PACKAGE_LEFT_OUT];
   if (!input.includeMemories) leftOut.push("memories");
-  if (!input.includeDepartments) leftOut.push("departments");
   const report: ExportReport = {
     included: {
       employees: pkg.employees.map((e) => e.name),
       teams: pkg.teams.map((t) => t.name),
       routines: pkg.routines.map((r) => r.name),
-      departments: (pkg.departments ?? []).map((d) => d.key),
       skills: (pkg.skills ?? []).map((s) => s.slug),
       mcpSlots: pkg.mcpSlots.map((s) => s.name),
     },
@@ -317,7 +310,6 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
       employees: pkg.employees.length,
       teams: pkg.teams.length,
       routines: pkg.routines.length,
-      departments: pkg.departments?.length ?? 0,
       skills: pkg.skills?.length ?? 0,
       mcpSlots: pkg.mcpSlots.length,
       memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
@@ -333,7 +325,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
 
 export type ImportWarning = { code: string } & Record<string, string | number>;
 export interface ImportConflict {
-  kind: "employee" | "team" | "routine" | "department" | "mcpSlot" | "skill";
+  kind: "employee" | "team" | "routine" | "mcpSlot" | "skill";
   name: string;
   /** the name it will be created under, when it differs */
   as?: string;
@@ -343,18 +335,18 @@ interface Existing {
   employeeNames: Set<string>;
   teamNames: Set<string>;
   routineNames: Set<string>;
-  departmentKeys: Set<string>;
+  /** division keys already used here (a package division keeps its key only when it is free) */
+  teamKeys: Set<string>;
   mcpNames: Set<string>;
   skillSlugs: Set<string>;
 }
 
 async function loadExisting(q: Q, workspaceId: string): Promise<Existing> {
   const lower = (xs: { name: string }[]) => new Set(xs.map((x) => x.name.trim().toLowerCase()));
-  const [emps, ts, rs, ds, ms, ss] = await Promise.all([
+  const [emps, ts, rs, ms, ss] = await Promise.all([
     q.select({ name: employees.name, status: employees.status }).from(employees).where(eq(employees.workspaceId, workspaceId)),
-    q.select({ name: teams.name }).from(teams).where(eq(teams.workspaceId, workspaceId)),
+    q.select({ name: teams.name, key: teams.key }).from(teams).where(eq(teams.workspaceId, workspaceId)),
     q.select({ name: routines.name }).from(routines).where(eq(routines.workspaceId, workspaceId)),
-    q.select({ key: departments.key }).from(departments).where(eq(departments.workspaceId, workspaceId)),
     q.select({ name: credentials.name }).from(credentials).where(and(eq(credentials.workspaceId, workspaceId), eq(credentials.kind, "mcp"))),
     q.select({ slug: skills.slug }).from(skills).where(eq(skills.workspaceId, workspaceId)),
   ]);
@@ -362,7 +354,7 @@ async function loadExisting(q: Q, workspaceId: string): Promise<Existing> {
     employeeNames: lower(emps.filter((e) => e.status !== "ARCHIVED")),
     teamNames: lower(ts),
     routineNames: lower(rs),
-    departmentKeys: new Set(ds.map((d) => d.key)),
+    teamKeys: new Set(ts.map((t) => t.key).filter((k): k is string => !!k)),
     mcpNames: new Set(ms.map((m) => m.name)),
     skillSlugs: new Set(ss.map((s) => s.slug)),
   };
@@ -372,9 +364,8 @@ interface Plan {
   mcpRenames: Map<string, string>;
   /** package skill slug → the slug it is created under (a clash gets -2, -3 …) */
   skillRenames: Map<string, string>;
-  newDepartments: PackageDepartment[];
-  /** employee key → department key to store (null when it exists neither in the package nor the workspace) */
-  departmentOf: Map<string, string | null>;
+  /** package division key → the members it is created with (one division per employee: a later duplicate is skipped) */
+  divisions: Map<string, { key: string | null; leadKey: string | null; members: { key: string; role: "member" | "subagent" }[] }>;
   warnings: ImportWarning[];
   conflicts: ImportConflict[];
 }
@@ -416,19 +407,43 @@ function plan(pkg: WfosPackage, ex: Existing): Plan {
   for (const f of skillLeaks(pkg)) warnings.push({ code: "skill_leak_findings", slug: f.slug, rules: f.rules.join(", ") });
   if (pkg.skills?.length) warnings.push({ code: "skills_untrusted", count: pkg.skills.length });
 
-  const newDepartments: PackageDepartment[] = [];
-  for (const d of pkg.departments ?? []) {
-    if (ex.departmentKeys.has(d.key)) {
-      conflicts.push({ kind: "department", name: d.key });
-      warnings.push({ code: "department_exists", key: d.key });
-    } else newDepartments.push(d);
-  }
-  const knownDepartments = new Set([...ex.departmentKeys, ...newDepartments.map((d) => d.key)]);
-  const departmentOf = new Map<string, string | null>();
-  for (const e of pkg.employees) {
-    const d = e.department ?? null;
-    if (d && !knownDepartments.has(d)) warnings.push({ code: "department_missing", name: e.name, key: d });
-    departmentOf.set(e.key, d && knownDepartments.has(d) ? d : null);
+  // departments are gone (the SOP lives on the division): a package made before divisions still imports without them
+  const legacyDepartments = (pkg.departments?.length ?? 0) + pkg.employees.filter((e) => e.department).length;
+  if (legacyDepartments) warnings.push({ code: "departments_ignored", count: legacyDepartments });
+
+  // one division per employee: the schema refuses an employee listed in two divisions; an older package's head who
+  // is not among the members and already belongs to another division is left out of this one (with a note)
+  const divisions: Plan["divisions"] = new Map();
+  const placed = new Map<string, string>();
+  const nameOf = (k: string) => pkg.employees.find((e) => e.key === k)?.name ?? k;
+  for (const t of pkg.teams) for (const k of [...t.memberKeys, ...t.subagentKeys]) placed.set(k, t.name);
+  const takenKeys = new Set(ex.teamKeys);
+  for (const t of pkg.teams) {
+    const members: { key: string; role: "member" | "subagent" }[] = [
+      ...t.memberKeys.map((key) => ({ key, role: "member" as const })),
+      ...t.subagentKeys.filter((k) => !t.memberKeys.includes(k)).map((key) => ({ key, role: "subagent" as const })),
+    ];
+    let leadKey = t.leadKey;
+    // a head works as a member: one listed only as a subagent is not made head
+    if (leadKey && members.some((m) => m.key === leadKey && m.role === "subagent")) {
+      warnings.push({ code: "division_head_skipped", name: nameOf(leadKey), division: t.name, other: t.name });
+      leadKey = null;
+    }
+    if (leadKey && !members.some((m) => m.key === leadKey)) {
+      const other = placed.get(leadKey);
+      if (other && other !== t.name) {
+        warnings.push({ code: "division_head_skipped", name: nameOf(leadKey), division: t.name, other });
+        leadKey = null;
+      } else {
+        members.unshift({ key: leadKey, role: "member" });
+        placed.set(leadKey, t.name);
+      }
+    }
+    // a division keeps its package key when it is a valid, free division key here
+    const key = DIVISION_KEY_RE.test(t.key) && !takenKeys.has(t.key) ? t.key : null;
+    if (!key && DIVISION_KEY_RE.test(t.key)) warnings.push({ code: "division_key_taken", name: t.name, key: t.key });
+    if (key) takenKeys.add(key);
+    divisions.set(t.key, { key, leadKey, members });
   }
 
   if (pkg.employees.length) warnings.push({ code: "employees_draft", count: pkg.employees.length });
@@ -446,7 +461,7 @@ function plan(pkg: WfosPackage, ex: Existing): Plan {
     }
   }
   for (const server of unknown) warnings.push({ code: "mcp_unknown", server });
-  return { mcpRenames, skillRenames, newDepartments, departmentOf, warnings, conflicts };
+  return { mcpRenames, skillRenames, divisions, warnings, conflicts };
 }
 
 /**
@@ -509,16 +524,7 @@ export interface ImportPreviewEmployee {
   toolPermissions: string[];
   egressDomains: string[];
   executionMode: string;
-  department: string | null;
-}
-
-export interface ImportPreviewDepartment {
-  key: string;
-  /** false: the workspace already has this key and keeps its own (nothing of this one is imported) */
-  isNew: boolean;
-  name: { en: string; id: string };
-  sop: { en: string; id: string };
-  subagents: { name: string; description: { en: string; id: string }; prompt: { en: string; id: string }; tools: string[] | null }[];
+  specialty: string;
 }
 
 export interface ImportPreviewSkill {
@@ -531,27 +537,18 @@ export interface ImportPreviewSkill {
 
 export interface ImportPreviewDetails {
   employees: ImportPreviewEmployee[];
-  departments: ImportPreviewDepartment[];
   /** every skill in full: imported skills are untrusted and read back into prompts */
   skills: ImportPreviewSkill[];
-  teams: { name: string; description: string }[];
+  /** divisions with their structure and SOP (read back into the head's and members' prompts) */
+  teams: { name: string; description: string; head: string | null; codeLead: string | null; members: string[]; subagents: string[]; sop: { en: string; id: string } | null }[];
   routines: { name: string; cron: string; timezone: string; brief: string }[];
   mcpSlots: { name: string; url: string }[];
   /** every host the package's employees may reach from a sandbox (egressDomains), deduplicated */
   egressHosts: string[];
-  /** every tool a package subagent may use, deduplicated */
-  subagentTools: string[];
 }
 
 function previewDetails(pkg: WfosPackage, p: Plan): ImportPreviewDetails {
-  const newKeys = new Set(p.newDepartments.map((d) => d.key));
-  const departments = (pkg.departments ?? []).map((d) => ({
-    key: d.key,
-    isNew: newKeys.has(d.key),
-    name: d.name,
-    sop: d.sop,
-    subagents: d.subagents.map((s) => ({ name: s.name, description: s.description, prompt: s.prompt, tools: s.tools ?? null })),
-  }));
+  const nameOf = (k: string | null) => (k ? (pkg.employees.find((e) => e.key === k)?.name ?? k) : null);
   return {
     employees: pkg.employees.map((e) => ({
       key: e.key,
@@ -565,27 +562,37 @@ function previewDetails(pkg: WfosPackage, p: Plan): ImportPreviewDetails {
       toolPermissions: e.toolPermissions,
       egressDomains: e.egressDomains,
       executionMode: e.executionMode,
-      department: e.department ?? null,
+      specialty: e.specialty,
     })),
-    departments,
     skills: (pkg.skills ?? []).map((s) => {
       const as = p.skillRenames.get(s.slug) ?? s.slug;
       return { slug: s.slug, as: as === s.slug ? null : as, description: s.description, body: s.body };
     }),
-    teams: pkg.teams.map((t) => ({ name: t.name, description: t.description })),
+    teams: pkg.teams.map((t) => {
+      const d = p.divisions.get(t.key);
+      const members = d?.members ?? [];
+      return {
+        name: t.name,
+        description: t.description,
+        head: nameOf(d?.leadKey ?? null),
+        codeLead: nameOf(t.codeLeadKey),
+        members: members.filter((m) => m.role === "member").map((m) => nameOf(m.key)!),
+        subagents: members.filter((m) => m.role === "subagent").map((m) => nameOf(m.key)!),
+        sop: t.sop && (t.sop.en || t.sop.id) ? t.sop : null,
+      };
+    }),
     routines: pkg.routines.map((r) => ({ name: r.name, cron: r.cron, timezone: r.timezone, brief: r.brief })),
     mcpSlots: pkg.mcpSlots.map((s) => ({ name: s.name, url: s.url })),
     egressHosts: [...new Set(pkg.employees.flatMap((e) => e.egressDomains))].sort(),
-    subagentTools: [...new Set(departments.filter((d) => d.isNew).flatMap((d) => d.subagents.flatMap((s) => s.tools ?? [])))].sort(),
   };
 }
 
 export interface ImportPreview {
   ok: boolean;
   name: string;
-  /** the full text of what would be imported (instructions, memories, SOPs, subagent prompts), for review */
+  /** the full text of what would be imported (instructions, memories, division SOPs, skills), for review */
   details: ImportPreviewDetails;
-  will: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number };
+  will: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number };
   warnings: ImportWarning[];
   conflicts: ImportConflict[];
   /** problems that make the commit fail */
@@ -593,7 +600,6 @@ export interface ImportPreview {
 }
 
 export async function previewImport(workspaceId: string, pkg: WfosPackage, opts: { resolver?: Resolver } = {}): Promise<ImportPreview> {
-  await workspaceDepartments(workspaceId); // the defaults count as existing departments
   const p = plan(pkg, await loadExisting(db, workspaceId));
   const errors: ImportWarning[] = [];
   for (const r of pkg.routines) {
@@ -610,7 +616,6 @@ export async function previewImport(workspaceId: string, pkg: WfosPackage, opts:
       employees: pkg.employees.length,
       teams: pkg.teams.length,
       routines: pkg.routines.length,
-      departments: p.newDepartments.length,
       skills: pkg.skills?.length ?? 0,
       mcpSlots: pkg.mcpSlots.length,
       memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
@@ -625,7 +630,6 @@ export interface ImportResult {
   employees: { key: string; id: string; name: string }[];
   teams: { key: string; id: string; name: string }[];
   routines: { id: string; name: string }[];
-  departments: string[];
   skills: { id: string; slug: string; from: string }[];
   mcpSlots: { id: string; name: string; from: string }[];
   memories: number;
@@ -634,7 +638,7 @@ export interface ImportResult {
 
 /**
  * Create everything in one transaction, additive only: employees at DRAFT with every tool disabled and no
- * allow-list, routines disabled, MCP slots disabled without a secret, departments only where the key is new, skills
+ * allow-list, routines disabled, MCP slots disabled without a secret, divisions with one division per employee, skills
  * marked untrusted (source "import", a clashing slug renamed) and assigned to the imported employees.
  * Any failure (e.g. an invalid cron) rolls the whole import back.
  */
@@ -649,10 +653,9 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
   if (leak) {
     throw new HttpError(400, `Skill ${leak.slug} in the package contains secrets`, { code: "package_skill_leak", slug: leak.slug, rules: leak.high.join(", "), ruleList: leak.high });
   }
-  await workspaceDepartments(workspaceId);
   return db.transaction(async (tx) => {
     const p = plan(pkg, await loadExisting(tx, workspaceId));
-    const out: ImportResult = { employees: [], teams: [], routines: [], departments: [], skills: [], mcpSlots: [], memories: 0, warnings: p.warnings };
+    const out: ImportResult = { employees: [], teams: [], routines: [], skills: [], mcpSlots: [], memories: 0, warnings: p.warnings };
 
     for (const s of pkg.mcpSlots) {
       const name = p.mcpRenames.get(s.name)!;
@@ -660,15 +663,6 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
       // worker's getExternalMcpServers skips config.disabled. (encryptSecret("") cannot be decrypted, so no empty box.)
       const [row] = await tx.insert(credentials).values({ workspaceId, kind: "mcp", name, config: { url: s.url, disabled: true }, secretEnc: null }).returning({ id: credentials.id });
       out.mcpSlots.push({ id: row!.id, name, from: s.name });
-    }
-
-    if (p.newDepartments.length) {
-      const rows = await tx
-        .insert(departments)
-        .values(p.newDepartments.map((d) => ({ workspaceId, key: d.key, name: d.name, sop: d.sop, subagents: d.subagents })))
-        .onConflictDoNothing()
-        .returning({ key: departments.key });
-      out.departments = rows.map((r) => r.key);
     }
 
     // someone else's instructions: read back as data, and reading one taints the run. Enabled, so that the imported
@@ -721,7 +715,7 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
           outputLanguage: e.outputLanguage,
           executionMode: e.executionMode,
           egressDomains: e.egressDomains,
-          department: p.departmentOf.get(e.key) ?? null,
+          specialty: e.specialty,
           look: e.look ?? null,
         })
         .returning({ id: employees.id });
@@ -741,12 +735,27 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
     }
 
     const teamIds = new Map<string, string>();
-    for (const t of pkg.teams) {
-      const leadId = t.leadKey ? empIds.get(t.leadKey)! : null;
-      const [row] = await tx.insert(teams).values({ workspaceId, name: t.name, description: t.description, leadId, responderMode: t.responderMode }).returning({ id: teams.id });
+    for (const [i, t] of pkg.teams.entries()) {
+      const d = p.divisions.get(t.key)!;
+      const leadId = d.leadKey ? empIds.get(d.leadKey)! : null;
+      const [row] = await tx
+        .insert(teams)
+        .values({
+          workspaceId,
+          name: t.name,
+          key: d.key,
+          description: t.description,
+          leadId,
+          codeLeadId: t.codeLeadKey ? empIds.get(t.codeLeadKey)! : null,
+          responderMode: t.responderMode,
+          sop: t.sop ?? { en: "", id: "" },
+          color: t.color,
+          maxParallel: t.maxParallel,
+          sortOrder: i,
+        })
+        .returning({ id: teams.id });
       teamIds.set(t.key, row!.id);
-      const memberIds = [...new Set([...(leadId ? [leadId] : []), ...t.memberKeys.map((k) => empIds.get(k)!)])];
-      if (memberIds.length) await tx.insert(teamMembers).values(memberIds.map((employeeId) => ({ teamId: row!.id, employeeId })));
+      if (d.members.length) await tx.insert(teamMembers).values(d.members.map((m) => ({ teamId: row!.id, employeeId: empIds.get(m.key)!, role: m.role })));
       out.teams.push({ key: t.key, id: row!.id, name: t.name });
     }
 

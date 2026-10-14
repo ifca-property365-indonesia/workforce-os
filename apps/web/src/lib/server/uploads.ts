@@ -18,8 +18,11 @@ function checkDocument(file: File): string {
   return ext;
 }
 
-/** Store an uploaded file and queue it for chunking + embedding. */
-export async function saveDocument(workspaceId: string, userId: string, file: File) {
+/**
+ * Store an uploaded file and queue it for chunking + embedding. With `clientId` it is that client's knowledge: only
+ * work for that client finds it.
+ */
+export async function saveDocument(workspaceId: string, userId: string, file: File, opts: { clientId?: string | null } = {}) {
   const ext = checkDocument(file);
   const dir = path.resolve(serverEnv.storageDir, "uploads", workspaceId);
   await mkdir(dir, { recursive: true });
@@ -27,7 +30,7 @@ export async function saveDocument(workspaceId: string, userId: string, file: Fi
   await writeFile(storagePath, Buffer.from(await file.arrayBuffer()));
   const [doc] = await db
     .insert(documents)
-    .values({ workspaceId, name: file.name.slice(0, 200), mime: file.type || "application/octet-stream", size: file.size, storagePath, uploadedBy: userId })
+    .values({ workspaceId, name: file.name.slice(0, 200), mime: file.type || "application/octet-stream", size: file.size, storagePath, uploadedBy: userId, clientId: opts.clientId ?? null })
     .returning();
   await q.ingest(doc!.id, workspaceId);
   return doc!;

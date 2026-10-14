@@ -41,7 +41,7 @@ describe("memory_save: expiry, supersedes, journal", () => {
     const ev = await eventsOf(emp.id);
     expect(ev).toHaveLength(1);
     expect(ev[0]).toMatchObject({ memoryId: m!.id, action: "create", actor: "agent", before: null, workspaceId: ws.id });
-    expect(ev[0]!.after).toEqual({ content: "Office closed for renovation", kind: "fact", expiresAt: until, supersededBy: null, untrusted: false });
+    expect(ev[0]!.after).toEqual({ content: "Office closed for renovation", kind: "fact", expiresAt: until, supersededBy: null, untrusted: false, clientId: null });
   });
 
   it("refuses an expiresAt in the past, more than 2 years ahead, or not a date", async () => {

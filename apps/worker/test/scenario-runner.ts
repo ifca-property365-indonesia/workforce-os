@@ -83,7 +83,7 @@ const EmployeeSpec = z.strictObject({
   toolPermissions: z.array(toolPermissionSchema).optional(),
   allowList: z.array(allowListEntrySchema).optional(),
   dailyBudget: z.number().positive().optional(),
-  department: z.string().optional(),
+  specialty: z.string().optional(),
   status: z.enum(EMPLOYEE_STATUSES).optional(),
 });
 
@@ -557,7 +557,7 @@ async function build(s: Scenario): Promise<{ ids: Ids; names: Map<string, string
         toolPermissions: e.toolPermissions ?? [],
         allowList: e.allowList ?? [],
         dailyBudget: e.dailyBudget ?? 200,
-        department: e.department ?? null,
+        specialty: e.specialty ?? "",
         status: e.status ?? "ACTIVE",
       })
       .returning();

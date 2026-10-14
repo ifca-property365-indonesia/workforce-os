@@ -112,3 +112,27 @@ export function signStateOf(activity: Activity, incident: boolean): Exclude<Sign
   if (incident) return "fault";
   return activity === "idle" || activity === "paused" ? "off" : "lit";
 }
+
+/**
+ * A division's sign: its own colour ("#rrggbb" from the Divisions page) or, without one, a set colour dealt from its
+ * id. Lettering is dark on light panels and cream on dark ones, as for the set.
+ */
+export function divisionSignVars(color: string, id: string): CSSProperties {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return signVars(SIGN_COLORS[stableHash(`division:${id}`) % SIGN_COLORS.length]!);
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return { "--sign": color, "--sign-ink": luminance > 0.28 ? "#2a1a02" : "#fff8ee" } as CSSProperties;
+}
+
+/** The set as hex values, for the division colour picker (globals.css --sign-*). */
+export const SIGN_HEX: Record<SignColor, string> = {
+  merah: "#d42a20",
+  kuning: "#f6b51e",
+  tosca: "#19b3a4",
+  biru: "#3561d6",
+  hijau: "#45ad55",
+  oranye: "#ee7418",
+  ungu: "#8752d4",
+  magenta: "#c02f7c",
+};

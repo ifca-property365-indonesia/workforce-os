@@ -3,13 +3,13 @@
 import { useStepUp } from "@/components/account/step-up";
 
 import Link, { useSearchParams } from "@/lib/nav";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
-import { useTranslations } from "next-intl";
-import { DEFAULT_MODEL, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
-import type { RoleTemplate } from "@wfos/templates";
+import { useLocale, useTranslations } from "next-intl";
+import { DEFAULT_MODEL, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type TeamMemberRole, type ToolPermission } from "@wfos/shared";
+import { DIVISION_TEMPLATES, type RoleTemplate } from "@wfos/templates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,8 @@ import { Avatar, PageHeader } from "@/components/layout/common";
 import { AutonomyPicker, ToolPermissionsEditor } from "@/components/employees/tool-permissions";
 import { TaskDetail } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
-import { useTemplates, type Employee } from "@/lib/hooks";
+import { useTeams, useTemplates, type Employee, type Team } from "@/lib/hooks";
+import { divisionSignVars } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -41,7 +42,10 @@ interface Draft {
   outputLanguage: OutputLanguage;
   executionMode: "tool" | "workspace";
   egressDomains: string[];
-  department: string | null;
+  specialty: string;
+  /** the division the new employee joins right away (optional) */
+  teamId: string;
+  membership: TeamMemberRole;
 }
 
 const blank: Draft = {
@@ -59,10 +63,24 @@ const blank: Draft = {
   outputLanguage: "inherit",
   executionMode: "tool",
   egressDomains: [],
-  department: null,
+  specialty: "",
+  teamId: "",
+  membership: "member",
 };
 
-function fromTemplate(t: RoleTemplate): Draft {
+/** the standard division a template belongs to, and how (member or subagent of the code lead) */
+function templateDivision(key: string): { key: string; membership: TeamMemberRole } | null {
+  for (const d of DIVISION_TEMPLATES) {
+    if (d.head === key || d.codeLead === key) return { key: d.key, membership: "member" };
+    const m = d.members.find((x) => x.role === key);
+    if (m) return { key: d.key, membership: m.membership };
+  }
+  return null;
+}
+
+function fromTemplate(t: RoleTemplate, divisions: Team[]): Draft {
+  const home = templateDivision(t.key);
+  const division = home ? divisions.find((d) => d.key === home.key) : undefined;
   return {
     ...blank,
     templateKey: t.key,
@@ -75,7 +93,11 @@ function fromTemplate(t: RoleTemplate): Draft {
     toolPermissions: t.suggestedTools,
     executionMode: t.executionMode ?? "tool",
     egressDomains: t.egressDomains ?? [],
-    department: t.department ?? null,
+    model: t.model ?? DEFAULT_MODEL,
+    specialty: t.specialty,
+    teamId: division?.id ?? "",
+    // a subagent needs a code lead to work for: without one yet, the new hire starts as a member
+    membership: home?.membership === "subagent" && division?.codeLeadId ? "subagent" : "member",
   };
 }
 
@@ -87,6 +109,9 @@ function Wizard() {
   const sp = useSearchParams();
   const qc = useQueryClient();
   const { data: tpl } = useTemplates();
+  const { data: divisions } = useTeams();
+  const tt = useTranslations("teams");
+  const locale = useLocale() as "en" | "id";
   const { data: pricing } = useQuery({ queryKey: ["pricing"], queryFn: () => api.get<{ models: { model: string; label: string; inputPer1k: number; outputPer1k: number }[] }>("/api/pricing") });
   const { data: mcp } = useQuery({ queryKey: ["mcp"], queryFn: () => api.get<{ servers: { name: string }[] }>("/api/settings/mcp").catch(() => ({ servers: [] })) });
   const [step, setStep] = useState(0);
@@ -99,11 +124,12 @@ function Wizard() {
   useEffect(() => {
     const key = sp.get("template");
     const tp = tpl?.templates.find((x) => x.key === key);
-    if (tp && !d.templateKey) {
-      setD(fromTemplate(tp));
+    // wait for the divisions too: a template lands in its standard division when the workspace has it
+    if (tp && !d.templateKey && divisions) {
+      setD(fromTemplate(tp, divisions));
       setStep(1);
     }
-  }, [tpl, sp, d.templateKey]);
+  }, [tpl, sp, d.templateKey, divisions]);
 
   useEffect(() => {
     const tp = tpl?.templates.find((x) => x.key === d.templateKey);
@@ -112,11 +138,15 @@ function Wizard() {
 
   const hire = useMutation({
     // Workspace mode asks for a 2FA confirmation first (server answers step_up_required)
-    mutationFn: () => withStepUp(() => api.post<{ employee: Employee }>("/api/employees", d)),
+    mutationFn: () => {
+      const { teamId, membership, ...input } = d;
+      return withStepUp(() => api.post<{ employee: Employee }>("/api/employees", { ...input, division: teamId ? { teamId, role: membership } : null }));
+    },
     onSuccess: (r) => {
       if (!r) return;
       setEmployee(r.employee);
       void qc.invalidateQueries({ queryKey: ["employees"] });
+      void qc.invalidateQueries({ queryKey: ["teams"] });
       toast.success(t("joined", { name: r.employee.name }));
       setStep(3);
     },
@@ -144,31 +174,79 @@ function Wizard() {
       </ol>
 
       {step === 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {tpl?.templates.map((tp) => (
-            <button
-              key={tp.key}
-              type="button"
-              onClick={() => {
-                setD(fromTemplate(tp));
-                setStep(1);
-              }}
-              className="rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-sm"
-            >
-              <div className="flex items-center gap-2">
-                <Avatar seed={tp.key} />
-                <span className="font-semibold">{tp.role}</span>
-              </div>
-              <p className="mt-2 text-sm text-muted-foreground">{tp.tagline}</p>
-              <p className="mt-2 text-xs text-muted-foreground">{t("template.suggested", { count: tp.suggestedTools.length, level: ts(`autonomy.${tp.autonomyLevel}`) })}</p>
-            </button>
-          ))}
-          <button type="button" onClick={() => (setD(blank), setStep(1))} className="rounded-xl border border-dashed p-4 text-left hover:border-primary">
-            <div className="flex items-center gap-2 font-semibold">
-              <Sparkles className="size-5" /> {t("template.startBlank")}
+        <div className="space-y-6">
+          {DIVISION_TEMPLATES.map((dv) => {
+            const keys = [dv.head, ...(dv.codeLead ? [dv.codeLead] : []), ...dv.members.map((m) => m.role)];
+            const tps = [...new Set(keys)].map((k) => tpl?.templates.find((x) => x.key === k)).filter((x): x is RoleTemplate => !!x);
+            if (!tps.length) return null;
+            const here = divisions?.find((x) => x.key === dv.key);
+            return (
+              <section key={dv.key} aria-labelledby={`hire-${dv.key}`}>
+                <div className="mb-2 flex flex-wrap items-end gap-3">
+                  <h2 id={`hire-${dv.key}`} className="sign rounded-[10px] px-3 py-1.5" data-state="lit" style={divisionSignVars(here?.color || dv.color, dv.key) as CSSProperties}>
+                    <span className="font-display text-[1.5rem]">{here?.name ?? dv.name[locale]}</span>
+                  </h2>
+                  <p className="max-w-[70ch] text-xs text-muted-foreground">{dv.description[locale]}</p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {tps.map((tp) => {
+                    const place = tp.key === dv.head ? "head" : tp.key === dv.codeLead ? "code_lead" : (dv.members.find((m) => m.role === tp.key)?.membership ?? "member");
+                    return (
+                      <button
+                        key={tp.key}
+                        type="button"
+                        onClick={() => {
+                          setD(fromTemplate(tp, divisions ?? []));
+                          setStep(1);
+                        }}
+                        className="rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-sm"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Avatar seed={tp.key} />
+                          <span className="min-w-0 flex-1 truncate font-semibold">{tp.role}</span>
+                          <span className="shrink-0 rounded-md bg-secondary px-1.5 text-[10.5px] font-bold uppercase leading-4 text-muted-foreground">{tt(`roles.${place}`)}</span>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">{tp.tagline}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">{t("template.suggested", { count: tp.suggestedTools.length, level: ts(`autonomy.${tp.autonomyLevel}`) })}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+          <section aria-labelledby="hire-other">
+            <h2 id="hire-other" className="mb-2 text-sm font-semibold">
+              {t("template.other")}
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {tpl?.templates
+                .filter((tp) => !templateDivision(tp.key))
+                .map((tp) => (
+                  <button
+                    key={tp.key}
+                    type="button"
+                    onClick={() => {
+                      setD(fromTemplate(tp, divisions ?? []));
+                      setStep(1);
+                    }}
+                    className="rounded-xl border bg-card p-4 text-left transition hover:border-primary hover:shadow-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Avatar seed={tp.key} />
+                      <span className="font-semibold">{tp.role}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{tp.tagline}</p>
+                  </button>
+                ))}
+              <button type="button" onClick={() => (setD(blank), setStep(1))} className="rounded-xl border border-dashed p-4 text-left hover:border-primary">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Sparkles className="size-5" /> {t("template.startBlank")}
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{t("template.startBlankDescription")}</p>
+              </button>
             </div>
-            <p className="mt-2 text-sm text-muted-foreground">{t("template.startBlankDescription")}</p>
-          </button>
+          </section>
         </div>
       )}
 
@@ -183,6 +261,42 @@ function Wizard() {
               <div className="space-y-1.5">
                 <Label htmlFor="role">{tc("role")}</Label>
                 <Input id="role" value={d.role} onChange={(e) => set("role", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="specialty">{t("persona.specialty")}</Label>
+                <Input id="specialty" value={d.specialty} maxLength={200} onChange={(e) => set("specialty", e.target.value)} placeholder={t("persona.specialtyPlaceholder")} />
+                <p className="text-xs text-muted-foreground">{t("persona.specialtyHelp")}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="division">{t("persona.division")}</Label>
+                  <select
+                    id="division"
+                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={d.teamId}
+                    onChange={(e) => {
+                      const next = divisions?.find((x) => x.id === e.target.value);
+                      setD((x) => ({ ...x, teamId: e.target.value, membership: next?.codeLeadId ? x.membership : "member" }));
+                    }}
+                  >
+                    <option value="">{t("persona.noDivision")}</option>
+                    {divisions?.map((dv) => (
+                      <option key={dv.id} value={dv.id}>
+                        {dv.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="membership">{t("persona.membership")}</Label>
+                  <select id="membership" className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={d.membership} disabled={!d.teamId} onChange={(e) => set("membership", e.target.value as TeamMemberRole)}>
+                    <option value="member">{tt("roles.member")}</option>
+                    <option value="subagent" disabled={!divisions?.find((x) => x.id === d.teamId)?.codeLeadId}>
+                      {tt("roles.subagent")}
+                    </option>
+                  </select>
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">{d.membership === "subagent" ? t("persona.subagentHelp") : t("persona.divisionHelp")}</p>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="persona">{t("persona.persona")}</Label>

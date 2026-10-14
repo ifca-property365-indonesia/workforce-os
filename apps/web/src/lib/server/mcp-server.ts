@@ -118,7 +118,7 @@ export function buildMcpServer(s: ApiTokenSession, opts: McpServerOptions = {}):
     },
     tool(s, "list_employees", async ({ status }: { status?: (typeof EMPLOYEE_STATUSES)[number] }) => {
       const rows = await db
-        .select({ id: employees.id, name: employees.name, role: employees.role, status: employees.status, autonomyLevel: employees.autonomyLevel, department: employees.department, persona: employees.persona })
+        .select({ id: employees.id, name: employees.name, role: employees.role, status: employees.status, autonomyLevel: employees.autonomyLevel, specialty: employees.specialty, persona: employees.persona })
         .from(employees)
         .where(and(eq(employees.workspaceId, ws), status ? eq(employees.status, status) : ne(employees.status, "ARCHIVED")))
         .orderBy(asc(employees.name))
@@ -129,11 +129,26 @@ export function buildMcpServer(s: ApiTokenSession, opts: McpServerOptions = {}):
 
   server.registerTool(
     "list_teams",
-    { description: "List the teams of the workspace with their Lead and members.", inputSchema: {}, annotations: { readOnlyHint: true } },
+    {
+      description:
+        "List the divisions (teams) of the workspace: head (leadId), code lead, and members with their role (member, or subagent working inside the code lead's run). Give a task to a division with create_task teamId.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
     tool(s, "list_teams", async () => {
-      const ts = await db.select({ id: teams.id, name: teams.name, description: teams.description, leadId: teams.leadId, responderMode: teams.responderMode }).from(teams).where(eq(teams.workspaceId, ws)).orderBy(asc(teams.name)).limit(200);
+      const ts = await db
+        .select({ id: teams.id, key: teams.key, name: teams.name, description: teams.description, leadId: teams.leadId, codeLeadId: teams.codeLeadId, responderMode: teams.responderMode, maxParallel: teams.maxParallel })
+        .from(teams)
+        .where(eq(teams.workspaceId, ws))
+        .orderBy(asc(teams.sortOrder), asc(teams.name))
+        .limit(200);
       const ms = ts.length ? await db.select().from(teamMembers).where(inArray(teamMembers.teamId, ts.map((t) => t.id))) : [];
-      return { teams: ts.map((t) => ({ ...t, memberIds: ms.filter((m) => m.teamId === t.id).map((m) => m.employeeId) })) };
+      return {
+        teams: ts.map((t) => {
+          const mine = ms.filter((m) => m.teamId === t.id);
+          return { ...t, members: mine.map((m) => ({ employeeId: m.employeeId, role: m.role })), memberIds: mine.map((m) => m.employeeId) };
+        }),
+      };
     }),
   );
 

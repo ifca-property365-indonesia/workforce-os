@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "@/lib/nav";
+
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -25,6 +27,10 @@ interface Memory {
   content: string;
   source: string;
   untrusted: boolean;
+  /** learned on work for this client: recalled only on that client's work */
+  clientId: string | null;
+  clientName: string | null;
+  clientCode: string | null;
   expiresAt: string | null;
   supersededBy: string | null;
   createdAt: string;
@@ -185,6 +191,11 @@ export function MemoryPanel({ employeeId }: { employeeId: string }) {
               <span className="rounded bg-destructive/10 px-1.5 text-[11px] text-destructive" title={t("memory.untrustedHelp")}>
                 {t("memory.untrusted")}
               </span>
+            )}
+            {m.clientId && (
+              <Link href={`/clients/${m.clientId}`} className="max-w-[9rem] truncate rounded border px-1.5 text-[11px] font-medium hover:bg-accent" title={t("memory.clientHelp")}>
+                {t("memory.clientBadge", { client: m.clientCode || m.clientName || "?" })}
+              </Link>
             )}
           </div>
           <div className="min-w-0 flex-1">

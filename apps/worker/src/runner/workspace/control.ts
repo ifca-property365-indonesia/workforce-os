@@ -93,7 +93,7 @@ export async function startControl(o: ControlOptions): Promise<Control> {
           case "perm": {
             let result: PermissionReply;
             try {
-              const r = (await o.canUseTool(m.tool, m.input, { signal: o.signal, toolUseID: m.toolUseId ?? "", suggestions: [] } as never)) as
+              const r = (await o.canUseTool(m.tool, m.input, { signal: o.signal, toolUseID: m.toolUseId ?? "", suggestions: [], ...(m.agentId ? { agentID: m.agentId } : {}) } as never)) as
                 | { behavior: "allow"; updatedInput?: Record<string, unknown> }
                 | { behavior: "deny"; message: string }
                 | null;

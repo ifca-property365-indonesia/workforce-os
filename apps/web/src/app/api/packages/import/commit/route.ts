@@ -21,7 +21,6 @@ export const POST = route("ADMIN", async ({ session, req }) => {
         employees: created.employees.length,
         teams: created.teams.length,
         routines: created.routines.length,
-        departments: created.departments.length,
         skills: created.skills.length,
         mcpSlots: created.mcpSlots.length,
         memories: created.memories,

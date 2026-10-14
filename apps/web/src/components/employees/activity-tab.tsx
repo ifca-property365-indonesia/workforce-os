@@ -22,6 +22,8 @@ interface ActivityStep {
   taskTitle: string | null;
   conversationId: string | null;
   conversationTitle: string | null;
+  /** taken inside another employee's run, as a subagent of the code lead */
+  asSubagentOf: { id: string; name: string } | null;
   createdAt: string;
 }
 
@@ -96,6 +98,9 @@ export function ActivityTab({ employeeId }: { employeeId: string }) {
                   <time dateTime={s.createdAt} title={f.dateTime(s.createdAt)}>
                     {f.ago(s.createdAt)}
                   </time>
+                  {s.asSubagentOf && (
+                    <span className="rounded bg-secondary px-1.5 text-[11px] font-medium text-foreground">{t("activity.asSubagent", { name: s.asSubagentOf.name })}</span>
+                  )}
                   {s.taskId && (
                     <Link href={`/tasks/${s.taskId}`} className="truncate text-primary hover:underline">
                       {t("activity.inTask", { title: s.taskTitle ?? s.taskId.slice(0, 8) })}

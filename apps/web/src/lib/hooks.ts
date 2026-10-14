@@ -17,6 +17,7 @@ import type {
   ToolPermission,
   TaskStatus,
   Role,
+  TeamMemberRole,
   TeamResponderMode,
 } from "@wfos/shared";
 import type { RoleTemplate } from "@wfos/templates";
@@ -48,14 +49,22 @@ export interface Employee {
   dailyBudget: number;
   outputLanguage: "inherit" | "id" | "en";
   executionMode: "tool" | "workspace";
-  department: string | null;
+  /** one line of expertise: how a division head or code lead picks this employee */
+  specialty: string;
   egressDomains: string[];
   look: OfficeLook | null;
   status: EmployeeStatus;
   instructionsVersion: number;
   spentToday?: number;
+  /** credits over the last 7 days, including work as a subagent in a code lead's run (profile only) */
+  credits7d?: number;
+  /** the employee's division and their place in it (null: in none) */
+  division?: { id: string; key: string | null; name: string; color: string; role: DivisionRole } | null;
   createdAt: string;
 }
+
+/** an employee's place in their division: the head and the code lead are set on the division, the rest are members */
+export type DivisionRole = "head" | "code_lead" | TeamMemberRole;
 
 export interface TaskRow {
   id: string;
@@ -89,17 +98,30 @@ export interface ClientProject {
   clientId: string;
   deadline: string | null;
   progress: number;
+  /** division responsible: the project's tasks go to it */
+  teamId: string | null;
+  startDate: string | null;
+  nextMilestone: string;
+  nextStep: string;
+  /** the status the team set (on_track | at_risk | late) */
+  statusHealth: "late" | "at_risk" | "on_track";
+  statusUpdatedAt: string | null;
   lastActivityAt: string;
+  /** the more serious of the computed signal and the team's status */
   health: "late" | "at_risk" | "on_track" | "done";
   daysToDeadline: number | null;
   idleDays: number;
-  reasons: ("past_deadline" | "deadline_soon" | "no_activity")[];
+  reasons: ("past_deadline" | "deadline_soon" | "no_activity" | "reported")[];
 }
 
 /** a client as the list and detail APIs return it: contacts parsed, receivables and recurring billing summed */
 export interface ClientSummary {
   id: string;
   name: string;
+  /** short code, e.g. GOB ("" = none) */
+  code: string;
+  website: string;
+  industry: string;
   email: string;
   contacts: ClientContact[];
   notes: string;
@@ -168,6 +190,8 @@ export interface ClientDetail {
   projects: ClientProject[];
   recurring: RecurringBilling[];
   invoices: Invoice[];
+  /** this client's work in progress (queued, running, awaiting approval) */
+  running: { id: string; title: string; status: TaskStatus; assigneeId: string | null; teamId: string | null; projectId: string | null; parentTaskId: string | null; progress: number | null; updatedAt: string }[];
   history: {
     tasks: { id: string; title: string; status: TaskStatus; updatedAt: string }[];
     emails: { id: string; kind: "email" | "invoice"; subject: string; status: OutboundEmailStatus; to: string[]; error: string | null; createdAt: string; sentAt: string | null }[];
@@ -175,15 +199,32 @@ export interface ClientDetail {
   };
 }
 
+/** A division (UI "Divisi", stored as a team): head, code lead, members with their role, workload and spend. */
 export interface Team {
   id: string;
+  key: string | null;
   name: string;
   description: string;
+  /** "#rrggbb", "" = dealt from the id */
+  color: string;
+  sop: { en: string; id: string };
+  /** the head: takes division tasks, does them or delegates */
   leadId: string | null;
+  /** works in a sandbox; the subagent members work inside that run */
+  codeLeadId: string | null;
+  maxParallel: number;
+  dailyBudget: number | null;
+  sortOrder: number;
   /** who answers an un-mentioned message in the team chat */
   responderMode: TeamResponderMode;
-  memberIds: string[];
+  members: { employeeId: string; role: TeamMemberRole; credits7d: number }[];
+  workload: { running: number; queued: number };
+  credits7d: number;
 }
+export type Division = Team;
+
+/** everyone in a division, head first (the head may be missing from members in older data) */
+export const divisionMemberIds = (t: Pick<Team, "leadId" | "members">) => [...new Set([...(t.leadId ? [t.leadId] : []), ...t.members.map((m) => m.employeeId)])];
 
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
 export const useEmployees = () =>

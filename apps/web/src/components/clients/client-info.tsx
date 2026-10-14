@@ -13,12 +13,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useRouter } from "@/lib/nav";
 import type { ClientSummary } from "@/lib/hooks";
-import { invalidateClient, selectClass, useClientRights } from "./shared";
+import { clientCode, invalidateClient, selectClass, useClientRights } from "./shared";
 
-type Form = Pick<ClientSummary, "name" | "legalName" | "status" | "currency" | "email" | "phone" | "taxId" | "address" | "notes">;
+type Form = Pick<ClientSummary, "name" | "code" | "industry" | "website" | "legalName" | "status" | "currency" | "email" | "phone" | "taxId" | "address" | "notes">;
 
 const pick = (c: ClientSummary): Form => ({
   name: c.name,
+  code: c.code ?? "",
+  industry: c.industry ?? "",
+  website: c.website ?? "",
   legalName: c.legalName,
   status: c.status,
   currency: c.currency,
@@ -65,7 +68,10 @@ export function ClientInfo({ client }: { client: ClientSummary }) {
     >
       <div className="grid gap-3 sm:grid-cols-2">
         {field("name", tc("name"))}
+        {field("code", t("form.code"), { onChange: (e) => setF({ ...f, code: clientCode(e.target.value) }), maxLength: 12, className: "font-mono uppercase", placeholder: t("form.codePlaceholder") })}
         {field("legalName", t("form.legalName"), { placeholder: t("form.legalNamePlaceholder") })}
+        {field("industry", t("form.industry"), { placeholder: t("form.industryPlaceholder"), maxLength: 200 })}
+        {field("website", t("form.website"), { placeholder: t("form.websitePlaceholder"), maxLength: 300, inputMode: "url" })}
         <div className="space-y-1.5">
           <Label htmlFor={`${uid}-status`}>{tc("status")}</Label>
           <select id={`${uid}-status`} className={selectClass} value={f.status} disabled={!canEdit} onChange={(e) => setF({ ...f, status: e.target.value as ClientStatus })}>

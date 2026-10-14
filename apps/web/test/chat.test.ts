@@ -165,7 +165,7 @@ describe("POST /api/conversations/[id]/messages", () => {
 describe("teams responderMode", () => {
   it("defaults to lead, is accepted on create and PATCH, returned by GET, and validated", async () => {
     const { a } = await signedIn();
-    const created = await call(createTeam, "POST", "/api/teams", { name: "Auto squad", leadId: a.sari.id, responderMode: "mentions" });
+    const created = await call(createTeam, "POST", "/api/teams", { name: "Auto squad", leadId: a.rina.id, members: [{ employeeId: a.rina.id }], responderMode: "mentions" });
     expect(created.status).toBe(200);
     expect((created.json.team as { responderMode: string }).responderMode).toBe("mentions");
     const plain = await call(createTeam, "POST", "/api/teams", { name: "Plain", leadId: null });

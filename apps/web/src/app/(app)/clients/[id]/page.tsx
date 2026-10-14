@@ -3,7 +3,7 @@
 import Link from "@/lib/nav";
 import { use, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Building2, FileText, ReceiptText } from "lucide-react";
+import { Building2, ExternalLink, FileText, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/layout/common";
@@ -14,8 +14,9 @@ import { ClientProjects } from "@/components/clients/client-projects";
 import { RecurringBillings } from "@/components/clients/recurring-billing";
 import { InvoiceLedger } from "@/components/clients/invoice-ledger";
 import { ClientHistory } from "@/components/clients/client-history";
-import { ClientStatusBadge, HealthBadge, useClientRights, worstHealth } from "@/components/clients/shared";
-import { useClient, useEmployees } from "@/lib/hooks";
+import { ClientOverview } from "@/components/clients/client-overview";
+import { ClientCode, ClientStatusBadge, HealthSign, useClientRights, worstHealth } from "@/components/clients/shared";
+import { useClient, useTeams } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -34,7 +35,7 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
   const t = useTranslations("clients");
   const f = useFormat();
   const { data, isLoading, isError } = useClient(id);
-  const { data: emps } = useEmployees();
+  const { data: divisions } = useTeams();
   const { canEdit } = useClientRights();
   const [task, setTask] = useState<{ key: number; initial: NewTaskPrefill } | null>(null);
   const back = (
@@ -52,7 +53,8 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
     );
   const { client: c, projects, recurring, invoices, history } = data;
   const worst = worstHealth(projects);
-  const finance = emps?.find((e) => e.department === "finance" && e.status !== "ARCHIVED");
+  // invoices are Finance & Accounting's work: the quick action gives it to that division
+  const finance = divisions?.find((d) => d.key === "finance" && d.leadId);
   const open = (initial: NewTaskPrefill) => setTask({ key: Date.now(), initial: { clientId: c.id, ...initial } });
   return (
     <div className="space-y-5">
@@ -61,10 +63,16 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-display text-[2.6rem] text-balance">{c.name}</h1>
+            <ClientCode code={c.code} className="text-sm" />
             <ClientStatusBadge status={c.status} />
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {[c.legalName, c.email, c.currency].filter(Boolean).join(" · ")}
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+            {[c.industry, c.legalName, c.email, c.currency].filter(Boolean).join(" · ")}
+            {c.website && (
+              <a href={/^https?:\/\//i.test(c.website) ? c.website : `https://${c.website}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
+                {c.website.replace(/^https?:\/\//i, "")} <ExternalLink className="size-3" aria-hidden />
+              </a>
+            )}
           </p>
         </div>
         {canEdit && (
@@ -74,7 +82,7 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
             </Button>
             <Button
               className="gap-1.5"
-              onClick={() => open({ title: t("quick.invoiceTitle", { name: c.name }), brief: t("quick.invoiceBrief", { name: c.name }), assignee: finance ? `e:${finance.id}` : "" })}
+              onClick={() => open({ title: t("quick.invoiceTitle", { name: c.name }), brief: t("quick.invoiceBrief", { name: c.name }), assignee: finance ? `t:${finance.id}` : "" })}
             >
               <ReceiptText className="size-4" /> {t("quick.invoice")}
             </Button>
@@ -82,13 +90,14 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
         )}
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label={t("list.projects")} value={projects.length} note={worst && <HealthBadge health={worst} />} />
+        <Tile label={t("list.projects")} value={projects.length} note={worst && <HealthSign health={worst} />} />
         <Tile label={t("list.monthly")} value={c.recurringMonthly ? f.money(c.recurringMonthly, c.currency) : "—"} note={t("detail.beforeTax")} />
         <Tile label={t("list.outstanding")} value={c.outstanding ? f.money(c.outstanding, c.currency) : "—"} note={t("detail.unpaid")} />
         <Tile label={t("detail.overdue")} value={c.overdue} tone={c.overdue ? "text-destructive" : undefined} note={t("detail.overdueNote")} />
       </div>
-      <Tabs defaultValue="info">
-        <TabsList className="w-full justify-start sm:w-fit">
+      <Tabs defaultValue="overview">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+          <TabsTrigger value="overview">{t("tabs.overview")}</TabsTrigger>
           <TabsTrigger value="info">{t("tabs.info")}</TabsTrigger>
           <TabsTrigger value="contacts">{t("tabs.contacts", { count: c.contacts.length })}</TabsTrigger>
           <TabsTrigger value="projects">{t("tabs.projects", { count: projects.length })}</TabsTrigger>
@@ -96,6 +105,9 @@ export default function ClientPage({ params }: { params: Promise<{ id: string }>
           <TabsTrigger value="invoices">{t("tabs.invoices", { count: invoices.length })}</TabsTrigger>
           <TabsTrigger value="history">{t("tabs.history")}</TabsTrigger>
         </TabsList>
+        <TabsContent value="overview" className="mt-4">
+          <ClientOverview data={data} />
+        </TabsContent>
         <TabsContent value="info" className="mt-4">
           <ClientInfo key={c.id} client={c} />
         </TabsContent>

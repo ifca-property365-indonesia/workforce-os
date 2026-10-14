@@ -1,35 +1,18 @@
-import { and, eq } from "drizzle-orm";
-import { audit, db, teamMembers, teams } from "@wfos/db";
-import { teamInputSchema } from "@wfos/shared";
-import { notFound, patchBody, route } from "@/lib/server/route";
-import { assertWorkspaceEmployees } from "@/lib/server/teams";
+import { jsonObject, route } from "@/lib/server/route";
+import { deleteDivision, saveDivision } from "@/lib/server/teams";
 
 type P = { id: string };
 
+/**
+ * Change a division (Owner/Admin). The body is merged over the stored division and the whole structure is validated:
+ * head and code lead are members, subagents need a code lead, one division per employee (409 unless `move: true`).
+ */
 export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
-  const input = await patchBody(req, teamInputSchema.partial());
-  await assertWorkspaceEmployees(session.workspaceId, [input.leadId, ...(input.memberIds ?? [])]);
-  const set = {
-    ...(input.name ? { name: input.name } : {}),
-    ...(input.description !== undefined ? { description: input.description } : {}),
-    ...(input.leadId !== undefined ? { leadId: input.leadId } : {}),
-    ...(input.responderMode !== undefined ? { responderMode: input.responderMode } : {}),
-  };
-  const mine = and(eq(teams.id, params.id), eq(teams.workspaceId, session.workspaceId));
-  // a members-only change has no team columns to set
-  const [t] = Object.keys(set).length ? await db.update(teams).set(set).where(mine).returning() : await db.select().from(teams).where(mine);
-  if (!t) notFound();
-  if (input.memberIds) {
-    await db.delete(teamMembers).where(eq(teamMembers.teamId, t.id));
-    const ids = [...new Set([...(t.leadId ? [t.leadId] : []), ...input.memberIds])];
-    if (ids.length) await db.insert(teamMembers).values(ids.map((employeeId) => ({ teamId: t.id, employeeId })));
-  }
-  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "team.updated", targetType: "team", targetId: t.id, details: input });
-  return { team: t };
+  const raw = await jsonObject(req);
+  return { team: await saveDivision(session, raw, { id: params.id, move: raw.move === true }) };
 });
 
 export const DELETE = route<P>("ADMIN", async ({ session, params }) => {
-  await db.delete(teams).where(and(eq(teams.id, params.id), eq(teams.workspaceId, session.workspaceId)));
-  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "team.deleted", targetType: "team", targetId: params.id });
+  await deleteDivision(session, params.id);
   return { ok: true };
 });

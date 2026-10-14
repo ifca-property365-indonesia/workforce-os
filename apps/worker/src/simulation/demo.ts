@@ -97,10 +97,10 @@ async function stage(workspaceId: string, stageName: string, detail: string) {
  * Emits the same SSE events as real runs; uses no tokens and no network.
  */
 export async function runDemoLifecycle(workspaceId: string, userId: string): Promise<void> {
-  const pm = await ensureEmployee(workspaceId, "project_manager", { name: "Pratama", role: "Project Manager", avatar: "🧭" });
-  const dev = await ensureEmployee(workspaceId, "developer", { name: "Dewi", role: "Developer", avatar: "👩‍💻" });
-  const qa = await ensureEmployee(workspaceId, "qa", { name: "Quinn", role: "QA Reviewer", avatar: "🧪" });
-  const fin = await ensureEmployee(workspaceId, "finance", { name: "Fajar", role: "Finance & Billing", avatar: "🧾" });
+  const pm = await ensureEmployee(workspaceId, "project_manager", { name: "Pratiwi", role: "Project Manager", avatar: "🧭" });
+  const dev = await ensureEmployee(workspaceId, "tech_lead", { name: "Arif", role: "Tech Lead", avatar: "🧑‍💻" });
+  const qa = await ensureEmployee(workspaceId, "qa", { name: "Gilang", role: "QA Tester", avatar: "🧪" });
+  const fin = await ensureEmployee(workspaceId, "billing", { name: "Fajri", role: "Billing & Invoice", avatar: "🧾" });
   const [client] = await db.select().from(clients).where(eq(clients.workspaceId, workspaceId)).limit(1);
   const [project] = client ? await db.select().from(projects).where(eq(projects.clientId, client.id)).limit(1) : [];
 

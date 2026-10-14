@@ -1,39 +1,114 @@
 {
-  "title": "Tim",
-  "description": "Seret karyawan ke dalam tim dan tetapkan Ketua. Ketua menyusun rencana, mendelegasikan subtugas, dan meninjau hasil kerja.",
-  "employees": "Karyawan",
-  "newTeamPlaceholder": "Nama tim baru",
-  "createTeam": "Buat tim",
-  "briefTeam": "Kirim brief",
-  "deleteTeam": "Hapus tim",
-  "confirmDelete": "Hapus {name}?",
-  "dropHere": "Letakkan karyawan di sini",
-  "lead": "Ketua",
-  "makeLead": "Jadikan Ketua",
-  "removeMember": "Keluarkan",
-  "chooseLead": "Klik ikon mahkota untuk memilih Ketua.",
+  "title": "Divisi",
+  "description": "Pekerjaan diberikan ke divisi. Kepala divisi mengerjakannya sendiri atau membagi sebagian ke anggota; Tech Lead membangun di satu sandbox bersama subagent-nya. Setiap karyawan hanya ada di satu divisi.",
+  "newDivision": "Divisi baru",
+  "viewerNote": "Hanya Owner atau Admin yang bisa mengubah divisi.",
+  "confirmDelete": "Hapus divisi {name}? Orang-orangnya tetap menjadi karyawan, tanpa divisi. Tugas dan riwayat mereka tetap tersimpan.",
+  "saved": "Tersimpan",
+  "headcount": "{count, plural, =0 {Belum ada orang} other {# orang}}",
+  "parallel": "{count, plural, other {# tugas sekaligus}}",
+  "creditsShort": "{credits} kredit",
+  "paused": "dijeda",
+  "noHead": "Belum ada kepala divisi: tugas untuk divisi ini butuh kepala.",
+  "sandbox": "bekerja di sandbox Tech Lead",
+  "members": "Anggota",
+  "noMembers": "Tidak ada anggota lain.",
+  "sign": {
+    "busy": "{running} berjalan · {queued} antre",
+    "idle": "Santai"
+  },
+  "stats": {
+    "running": "Berjalan",
+    "queued": "Antre",
+    "credits": "Kredit, 7 hari"
+  },
+  "roles": {
+    "head": "Kepala",
+    "code_lead": "Tech Lead",
+    "member": "Anggota",
+    "subagent": "Subagent"
+  },
+  "unassigned": {
+    "title": "Belum masuk divisi",
+    "help": "Seret orangnya ke kartu divisi, atau pakai daftar tambah di kartu itu."
+  },
   "empty": {
-    "title": "Belum ada tim",
-    "description": "Buat tim, lalu seret karyawan ke dalamnya."
+    "title": "Belum ada divisi",
+    "description": "Buat divisi, lalu tambahkan kepala dan anggotanya."
+  },
+  "actions": {
+    "brief": "Kirim brief",
+    "edit": "Ubah {name}",
+    "delete": "Hapus {name}",
+    "menu": "Ubah posisi {name}",
+    "makeHead": "Jadikan kepala",
+    "makeCodeLead": "Jadikan Tech Lead",
+    "clearCodeLead": "Lepas dari Tech Lead",
+    "toSubagent": "Bekerja sebagai subagent Tech Lead",
+    "toMember": "Bekerja sebagai anggota biasa",
+    "remove": "Keluarkan dari divisi",
+    "addMember": "Tambahkan orang ke divisi ini",
+    "addPlaceholder": "Tambah orang…",
+    "addAs": "Tambah sebagai",
+    "asMember": "sebagai anggota",
+    "asSubagent": "sebagai subagent",
+    "otherDivisions": "Di divisi lain (akan dipindah)",
+    "inOther": "{name} (di {division})",
+    "move": "Tetap pindahkan ke sini",
+    "dismiss": "Tutup"
+  },
+  "form": {
+    "createTitle": "Divisi baru",
+    "editTitle": "Ubah {name}",
+    "description": "Anggota, kepala divisi, dan Tech Lead diatur langsung di kartu divisi.",
+    "name": "Nama",
+    "namePlaceholder": "Divisi",
+    "key": "Kunci",
+    "keyHelp": "Nama pendek yang tetap, dipakai karyawan saat serah terima, misalnya delivery. Huruf kecil, angka, dan tanda hubung.",
+    "descriptionLabel": "Tugas divisi ini",
+    "color": "Warna papan",
+    "colorAuto": "Otomatis",
+    "colorHex": "Warna dalam hex",
+    "colors": {
+      "merah": "Merah",
+      "kuning": "Kuning",
+      "tosca": "Tosca",
+      "biru": "Biru",
+      "hijau": "Hijau",
+      "oranye": "Oranye",
+      "ungu": "Ungu",
+      "magenta": "Magenta"
+    },
+    "maxParallel": "Tugas sekaligus",
+    "maxParallelHelp": "Berapa banyak tugas divisi ini yang boleh berjalan bersamaan.",
+    "dailyBudget": "Anggaran harian (kredit)",
+    "dailyBudgetNone": "Tanpa batas",
+    "dailyBudgetHelp": "Untuk semua anggota sekaligus. Kosong: hanya anggaran masing-masing karyawan yang berlaku.",
+    "order": "Urutan",
+    "orderHelp": "Angka lebih kecil tampil lebih dulu di bagan organisasi.",
+    "sop": "SOP",
+    "sopHelp": "Cara kerja divisi ini. Setiap karyawan membaca versi sesuai bahasa keluarannya.",
+    "sopId": "Bahasa Indonesia",
+    "sopEn": "English",
+    "save": "Simpan",
+    "create": "Buat divisi"
   },
   "brief": {
     "title": "Kirim brief ke {team}",
     "titleLabel": "Judul",
     "brief": "Brief",
-    "briefPlaceholder": "Ketua akan menyusun rencana, mendelegasikan subtugas ke anggota, dan meninjau hasil kerja mereka.",
+    "briefPlaceholder": "Kepala divisi yang menentukan caranya: dikerjakan sendiri, atau dibagi ke anggota lalu hasilnya ditinjau.",
     "client": "Klien (opsional)",
     "dryRun": "Dry run",
     "send": "Kirim brief"
   },
   "responder": {
-    "title": "Siapa yang menjawab di chat tim",
+    "title": "Siapa yang menjawab di chat divisi",
     "help": "Saat pesan tidak menyebut siapa pun. @mention selalu sampai ke anggota yang disebut.",
-    "adminOnly": "Hanya admin yang dapat mengubahnya.",
-    "saved": "Tersimpan",
     "modes": {
       "lead": {
-        "label": "Ketua",
-        "description": "Ketua menjawab dan dapat mendelegasikan ke anggota."
+        "label": "Kepala",
+        "description": "Kepala divisi menjawab dan bisa mendelegasikan ke anggota."
       },
       "everyone": {
         "label": "Semua",
@@ -45,7 +120,7 @@
       },
       "auto": {
         "label": "Otomatis",
-        "description": "Model cepat memilih anggota yang paling sesuai; jika ragu, Ketua yang menjawab."
+        "description": "Model cepat memilih anggota yang paling cocok; jika ragu, kepala divisi yang menjawab."
       }
     }
   }

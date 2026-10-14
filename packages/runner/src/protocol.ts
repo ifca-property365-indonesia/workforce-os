@@ -27,8 +27,11 @@ export interface RunSpec {
   /** which header the gateway will rewrite; the runner itself only holds a per-run dummy */
   credentialType: "oauth" | "api_key";
   gitIdentity: { name: string; email: string };
-  /** department subagents (Claude Code Task tool) */
-  agents?: Record<string, { description: string; prompt: string; tools?: string[] }>;
+  /**
+   * The code lead's subagents (Claude Code Task tool): division members with role "subagent", each with their own
+   * prompt and model. Passed through to the SDK as AgentDefinitions.
+   */
+  agents?: Record<string, { description: string; prompt: string; tools?: string[]; disallowedTools?: string[]; model?: string }>;
   /**
    * The employee's assigned, enabled TRUSTED skills: the runner writes them to ~/.claude/skills/wfos-<slug>/SKILL.md
    * on every run and removes managed wfos-* directories not listed (an empty list removes them all). Untrusted
@@ -40,7 +43,8 @@ export interface RunSpec {
 export type RunnerToWorker =
   | { t: "hello"; token: string; pid: number }
   | { t: "sdk"; m: unknown }
-  | { t: "perm"; id: number; tool: string; input: Record<string, unknown>; toolUseId?: string }
+  /** agentId: set when a subagent (Task tool) makes the call (the SDK's canUseTool agentID) */
+  | { t: "perm"; id: number; tool: string; input: Record<string, unknown>; toolUseId?: string; agentId?: string }
   | { t: "call"; id: number; tool: string; args: Record<string, unknown> }
   | { t: "log"; level: "info" | "warn" | "error"; msg: string }
   | { t: "end"; error?: string };

@@ -1,4 +1,4 @@
-import { approvals, audit, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, teams, users, type TaskRow } from "@wfos/db";
+import { approvals, audit, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, tasks, teams, users, type TaskRow } from "@wfos/db";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
@@ -6,7 +6,7 @@ import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } 
 import { runApprovedCommand } from "../runner/workspace/exec";
 import { queuePreviewRelease } from "../deploy/preview";
 import { queueLiveRelease } from "../deploy/live-request";
-import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, webhookPayloadSchema, type OutboundEmailTrigger } from "@wfos/shared";
+import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, TERMINAL_STATUSES, webhookPayloadSchema, type OutboundEmailTrigger } from "@wfos/shared";
 import { decryptSecret, screenLeakage, withRetry } from "@wfos/shared/server";
 import { msg } from "@wfos/shared/messages";
 import { and, desc, eq } from "drizzle-orm";
@@ -56,14 +56,54 @@ async function doRunApprovedCommand(workspaceId: string, command: string, contex
   };
 }
 
-/** Approved PRD → a Developer task carrying the PRD as context, linked to the Project task. */
+/**
+ * Approved PRD → the build. teamId (the division that builds it; Edit & Approve may change it) must belong to the
+ * workspace and have a head. When the PRD was written by the head of a still-open division task of that division
+ * (resumeTaskId = the approval's own task), that task resumes in the plan phase with the PRD (afterApprovalResolved
+ * does it, seeing details.resumedTaskId); otherwise a new division-level task carries the PRD (originTaskId = the PRD
+ * task). Approvals made before divisions carry developerId instead: the task goes to that employee while they exist.
+ */
 async function doHandoffPrd(workspaceId: string, p: Record<string, unknown>, context: { taskId?: string | null; untrusted?: boolean }): Promise<ActionResult> {
-  const developerId = typeof p.developerId === "string" ? p.developerId : null;
-  if (!developerId) return { ok: false, summary: "Choose a developer (Edit & Approve) before approving the handoff." };
-  const [dev] = await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, developerId), eq(employees.workspaceId, workspaceId)));
-  if (!dev) return { ok: false, summary: "The chosen developer does not exist in this workspace." };
-  const repositoryId = typeof p.repositoryId === "string" ? p.repositoryId : null;
+  const teamId = typeof p.teamId === "string" && p.teamId ? p.teamId : null;
+  const developerId = typeof p.developerId === "string" && p.developerId ? p.developerId : null;
   const title = String(p.title ?? "PRD").slice(0, 180);
+  let team: { id: string; name: string; leadId: string | null } | undefined;
+  if (teamId) {
+    [team] = UUID_RE.test(teamId) ? await db.select({ id: teams.id, name: teams.name, leadId: teams.leadId }).from(teams).where(and(eq(teams.id, teamId), eq(teams.workspaceId, workspaceId))) : [];
+    if (!team) return { ok: false, summary: "The chosen division does not exist in this workspace." };
+    if (!team.leadId) return { ok: false, summary: `${team.name} has no head to take the work: choose another division (Edit & Approve) or set its head first.` };
+    // the head's own division task goes on with the PRD instead of a new task
+    const resumeTaskId = typeof p.resumeTaskId === "string" ? p.resumeTaskId : null;
+    if (resumeTaskId && resumeTaskId === context.taskId) {
+      const [t] = await db
+        .select({ id: tasks.id, status: tasks.status, teamId: tasks.teamId, parentTaskId: tasks.parentTaskId, repositoryId: tasks.repositoryId })
+        .from(tasks)
+        .where(and(eq(tasks.id, resumeTaskId), eq(tasks.workspaceId, workspaceId)));
+      if (t && t.teamId === team.id && !t.parentTaskId && !TERMINAL_STATUSES.includes(t.status)) {
+        // Edit & Approve may have picked another repository (or none): the resumed task builds there
+        if ("repositoryId" in p) {
+          const repositoryId = typeof p.repositoryId === "string" && p.repositoryId ? p.repositoryId : null;
+          if (repositoryId !== t.repositoryId) {
+            if (repositoryId) {
+              const [repo] = UUID_RE.test(repositoryId)
+                ? await db.select({ id: repositories.id }).from(repositories).where(and(eq(repositories.id, repositoryId), eq(repositories.workspaceId, workspaceId)))
+                : [];
+              if (!repo) return { ok: false, summary: "The chosen repository does not exist in this workspace." };
+            }
+            await db.update(tasks).set({ repositoryId }).where(eq(tasks.id, t.id));
+          }
+        }
+        return { ok: true, summary: `Approved: ${team.name} continues this task with the PRD`, details: { resumedTaskId: t.id } };
+      }
+    }
+  }
+  let dev: { id: string; name: string } | undefined;
+  if (!team) {
+    if (!developerId) return { ok: false, summary: "Choose a division (Edit & Approve) before approving the handoff." };
+    [dev] = UUID_RE.test(developerId) ? await db.select({ id: employees.id, name: employees.name }).from(employees).where(and(eq(employees.id, developerId), eq(employees.workspaceId, workspaceId))) : [];
+    if (!dev) return { ok: false, summary: "The chosen developer no longer exists in this workspace: choose a division (Edit & Approve)." };
+  }
+  const repositoryId = typeof p.repositoryId === "string" ? p.repositoryId : null;
   let t: TaskRow;
   try {
     t = await createTask(db, {
@@ -73,7 +113,7 @@ async function doHandoffPrd(workspaceId: string, p: Record<string, unknown>, con
 
 ---
 ${String(p.prd ?? "")}`,
-      assigneeId: dev.id,
+      ...(team ? { teamId: team.id } : { assigneeId: dev!.id }),
       originTaskId: context.taskId ?? null,
       repositoryId,
       clientId: typeof p.clientId === "string" ? p.clientId : null,
@@ -85,12 +125,15 @@ ${String(p.prd ?? "")}`,
   } catch (e) {
     if (!(e instanceof TaskInputError)) throw e;
     if (e.code === "repository_not_found") return { ok: false, summary: "The chosen repository does not exist in this workspace." };
-    return { ok: false, summary: `The Developer task could not be created: ${e.message}.` };
+    return { ok: false, summary: `The ${team ? "division" : "Developer"} task could not be created: ${e.message}.` };
   }
-  await publish(workspaceId, { type: "task.created", taskId: t.id, title: t.title, employeeId: dev.id });
+  const executor = team?.leadId ?? dev!.id;
+  await publish(workspaceId, { type: "task.created", taskId: t.id, title: t.title, employeeId: executor });
   await enqueueTask(t.id, workspaceId);
-  return { ok: true, summary: `Created Developer task "${t.title}" for ${dev.name}`, details: { taskId: t.id } };
+  return { ok: true, summary: team ? `Created task "${t.title}" for ${team.name}` : `Created Developer task "${t.title}" for ${dev!.name}`, details: { taskId: t.id } };
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ---------------------------------------------------------------------------
 // Routines proposed by an employee (propose_routine → approval "create_routine" → created here)

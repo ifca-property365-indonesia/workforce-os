@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { asc, eq } from "drizzle-orm";
-import { db, employees, memories, memoryEvents, members, users, workspaces } from "@wfos/db";
+import { clients, db, employees, memories, memoryEvents, members, users, workspaces } from "@wfos/db";
 import { POST as login } from "@/app/api/auth/login/route";
 import { GET as listMemories, POST as addMemory } from "@/app/api/employees/[id]/memories/route";
 import { GET as listEvents } from "@/app/api/employees/[id]/memory-events/route";
@@ -107,6 +107,33 @@ describe("memory journal from the web", () => {
     expect(restore.before).toBeNull();
     expect((await undoEvent(restore.id)).status).toBe(200);
     expect(await memory(m!.id)).toBeUndefined();
+  });
+
+  it("a client's memory comes back for that client; when the client is gone the undo is refused", async () => {
+    const { ws, emp } = await setup();
+    const [alpha] = await db.insert(clients).values({ workspaceId: ws.id, name: "Alpha Co" }).returning();
+    const [beta] = await db.insert(clients).values({ workspaceId: ws.id, name: "Beta Co" }).returning();
+    const [a] = await db.insert(memories).values({ workspaceId: ws.id, employeeId: emp.id, clientId: alpha!.id, content: "Alpha pays late" }).returning();
+    const [b] = await db.insert(memories).values({ workspaceId: ws.id, employeeId: emp.id, clientId: beta!.id, content: "Beta's CFO is Mr. Secret" }).returning();
+    await callWithParams(deleteMemory, "DELETE", `/api/memories/${a!.id}`, undefined, { id: a!.id });
+    await callWithParams(deleteMemory, "DELETE", `/api/memories/${b!.id}`, undefined, { id: b!.id });
+    const [delA, delB] = await events(emp.id);
+    expect(delA!.before).toMatchObject({ clientId: alpha!.id });
+
+    const r = await undoEvent(delA!.id);
+    expect(r.status).toBe(200);
+    expect(r.json.memory).toMatchObject({ clientId: alpha!.id });
+    expect(await memory(a!.id)).toMatchObject({ content: "Alpha pays late", clientId: alpha!.id });
+
+    // Beta was deleted meanwhile: never bring its memory back as a general one every run would recall
+    await db.delete(clients).where(eq(clients.id, beta!.id));
+    const refused = await undoEvent(delB!.id);
+    expect(refused.status).toBe(409);
+    expect(refused.json.code).toBe("memory_client_gone");
+    expect(await memory(b!.id)).toBeUndefined();
+    expect((await db.select().from(memoryEvents).where(eq(memoryEvents.id, delB!.id)))[0]!.undoneAt).toBeNull();
+    // even forced: the client is not there to restore it for
+    expect((await undoEvent(delB!.id, true)).status).toBe(409);
   });
 
   it("undo of a create removes the memory; worker-written events (actor agent / tidy) can be undone too", async () => {

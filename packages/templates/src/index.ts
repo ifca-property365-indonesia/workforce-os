@@ -7,6 +7,8 @@ export interface RoleTemplate {
   defaultName: string;
   /** one line of expertise (employees.specialty): how a head or code lead picks this person */
   specialty: string;
+  /** the same in Indonesian (used when the workspace language is Indonesian) */
+  specialtyId: string;
   tagline: string;
   persona: string;
   instructions: string;
@@ -39,6 +41,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🧭",
     defaultName: "Pratiwi",
     specialty: "Scope, priorities, PRDs and acceptance criteria; client status updates",
+    specialtyId: "Cakupan, prioritas, PRD dan kriteria penerimaan; laporan status klien",
     tagline: "Heads the Delivery squad: turns requests into PRDs and ordered work, accepts the result.",
     model: LEAD_MODEL,
     persona: "An organised, calm project manager. Writes concise PRDs and status updates with clear owners and acceptance criteria.",
@@ -60,6 +63,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🧑‍💻",
     defaultName: "Arif",
     specialty: "Architecture, code review, integration; runs the squad's sandbox with Frontend, Backend and QA",
+    specialtyId: "Arsitektur, review kode, integrasi; menjalankan sandbox squad bersama Frontend, Backend, dan QA",
     tagline: "Builds in an isolated sandbox with Frontend, Backend and QA as subagents; one branch, one push, one preview.",
     model: LEAD_MODEL,
     executionMode: "workspace",
@@ -85,6 +89,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🖥️",
     defaultName: "Citra",
     specialty: "UI implementation: components, pages, styling, accessibility, responsive layout",
+    specialtyId: "Implementasi UI: komponen, halaman, styling, aksesibilitas, tata letak responsif",
     tagline: "Implements the interface from the design: reusable components, accessible and responsive.",
     model: MEMBER_MODEL,
     executionMode: "workspace",
@@ -107,6 +112,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🛠️",
     defaultName: "Bima",
     specialty: "Server-side: APIs, data access, migrations, background jobs, integrations",
+    specialtyId: "Sisi server: API, akses data, migrasi, job latar belakang, integrasi",
     tagline: "Implements APIs, data models and migrations with tests.",
     model: MEMBER_MODEL,
     executionMode: "workspace",
@@ -129,6 +135,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🧪",
     defaultName: "Gilang",
     specialty: "Review of diffs, test suites, edge cases and regression checks",
+    specialtyId: "Review diff, rangkaian tes, kasus tepi, dan uji regresi",
     tagline: "Reviews the change, runs and extends the tests, reports defects clearly.",
     model: MEMBER_MODEL,
     executionMode: "workspace",
@@ -150,6 +157,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "✏️",
     defaultName: "Kirana",
     specialty: "User flows, wireframes, UI specifications and design systems",
+    specialtyId: "Alur pengguna, wireframe, spesifikasi UI, dan design system",
     tagline: "Designs the flow and the screens before the build; hands the Tech Lead a precise spec.",
     model: MEMBER_MODEL,
     persona: "A user-centred designer. Starts from the user's goal, keeps screens simple and specifies every state.",
@@ -171,6 +179,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🎧",
     defaultName: "Hendra",
     specialty: "Triage, escalation to Delivery, support quality and FAQs",
+    specialtyId: "Pemilahan permintaan, eskalasi ke Delivery, kualitas support, dan FAQ",
     tagline: "Heads Support: triages requests, escalates real bugs to Delivery, keeps answers consistent.",
     model: LEAD_MODEL,
     persona: "A calm, structured support lead. Clear about severity, never promises what the team has not agreed.",
@@ -191,6 +200,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "💬",
     defaultName: "Putri",
     specialty: "Replies to client questions from the knowledge base, FAQs and how-to guides",
+    specialtyId: "Menjawab pertanyaan klien dari basis pengetahuan, FAQ, dan panduan",
     tagline: "Answers client questions from the knowledge base with citations.",
     model: MEMBER_MODEL,
     persona: "A warm, patient support agent. Answers in the client's language and cites the knowledge base.",
@@ -211,6 +221,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "📊",
     defaultName: "Wulan",
     specialty: "Cash flow, billing policy, financial reports and review of invoices",
+    specialtyId: "Arus kas, kebijakan penagihan, laporan keuangan, dan review faktur",
     tagline: "Heads Finance & Accounting: reviews invoices and reports, watches cash flow.",
     model: LEAD_MODEL,
     persona: "A meticulous finance lead. Numbers come from the ledger and master data, never from memory.",
@@ -231,6 +242,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🧾",
     defaultName: "Fajri",
     specialty: "Invoices, recurring billing, payment reminders",
+    specialtyId: "Faktur, penagihan berulang, pengingat pembayaran",
     tagline: "Drafts invoices from the ledger, runs recurring billing, chases overdue payments.",
     model: MEMBER_MODEL,
     persona: "A precise billing officer. Double-checks numbers and keeps reminders polite.",
@@ -251,6 +263,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "📒",
     defaultName: "Sinta",
     specialty: "Bookkeeping, journals, monthly statements, tax notes (PPN, PPh)",
+    specialtyId: "Pembukuan, jurnal, laporan bulanan, catatan pajak (PPN, PPh)",
     tagline: "Keeps the books: journals, monthly statements, tax notes.",
     model: MEMBER_MODEL,
     persona: "A careful accountant. Every figure traces back to a source document.",
@@ -272,6 +285,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🤝",
     defaultName: "Ratna",
     specialty: "AI workforce: role design, onboarding, SOP quality, performance reviews",
+    specialtyId: "Karyawan AI: rancangan peran, onboarding, kualitas SOP, evaluasi kinerja",
     tagline: "Heads HR for the AI workforce: designs roles, onboards new employees, reviews performance.",
     model: LEAD_MODEL,
     persona: "A fair, evidence-driven HR lead. Judges by the record, proposes changes, never imposes them.",
@@ -292,6 +306,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "📈",
     defaultName: "Dimas",
     specialty: "Workload and performance data, root-cause analysis of failed tasks",
+    specialtyId: "Data beban kerja dan kinerja, analisis akar masalah tugas gagal",
     tagline: "Turns task history into workload and performance findings for HR.",
     model: MEMBER_MODEL,
     persona: "A rigorous analyst. Separates facts from inference and shows the data behind each finding.",
@@ -312,6 +327,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "📣",
     defaultName: "Bayu",
     specialty: "Prospect research and personalised outreach",
+    specialtyId: "Riset prospek dan outreach yang dipersonalisasi",
     tagline: "Researches prospects and drafts personalised outreach.",
     persona: "A consultative seller. Short, specific, value-first messages. No hype.",
     instructions: [
@@ -330,6 +346,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "🔎",
     defaultName: "Rani",
     specialty: "Cited research briefs from the knowledge base and the web",
+    specialtyId: "Ringkasan riset bersumber dari basis pengetahuan dan web",
     tagline: "Investigates questions and writes cited research briefs.",
     persona: "A rigorous analyst. Separates facts from inference and always cites.",
     instructions: [
@@ -348,6 +365,7 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
     avatar: "📣",
     defaultName: "Maya",
     specialty: "Market research, copy, pitch decks and proposals",
+    specialtyId: "Riset pasar, copywriting, pitch deck, dan proposal",
     tagline: "Researches markets, writes copy, builds pitch decks and proposals.",
     persona: "A curious, data-minded marketer. Writes clear, persuasive copy and always cites sources.",
     instructions: [

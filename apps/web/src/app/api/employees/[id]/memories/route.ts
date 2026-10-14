@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
-import { db, employees, memories } from "@wfos/db";
+import { clients, db, employees, memories } from "@wfos/db";
 import { body, notFound, route } from "@/lib/server/route";
 import { journal, memorySnapshot, memoryState } from "@/lib/server/memory-journal";
 
@@ -21,12 +21,17 @@ export const GET = route<P>("VIEWER", async ({ session, params }) => {
       content: memories.content,
       source: memories.source,
       untrusted: memories.untrusted,
+      // learned on a client's task: recalled only on that client's work
+      clientId: memories.clientId,
+      clientName: clients.name,
+      clientCode: clients.code,
       expiresAt: memories.expiresAt,
       supersededBy: memories.supersededBy,
       createdAt: memories.createdAt,
       updatedAt: memories.updatedAt,
     })
     .from(memories)
+    .leftJoin(clients, and(eq(clients.id, memories.clientId), eq(clients.workspaceId, session.workspaceId)))
     .where(and(eq(memories.employeeId, params.id), eq(memories.workspaceId, session.workspaceId)))
     .orderBy(desc(memories.createdAt));
   const now = Date.now();

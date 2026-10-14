@@ -7,7 +7,7 @@ import { use, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Archive, MessageSquare, Pause, Play, FlaskConical } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { hasRole, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type ToolPermission } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,7 @@ import { DiffView } from "@/components/inspector/task-detail";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { useMe, useTemplates, type Employee, type TaskRow } from "@/lib/hooks";
+import { divisionSignVars } from "@/lib/sign";
 import { useBotMoods } from "@/components/office/employee-sign";
 
 type P = { params: Promise<{ id: string }> };
@@ -233,42 +234,70 @@ function OutputLanguageCard({ e }: { e: Employee }) {
   );
 }
 
-function DepartmentCard({ e }: { e: Employee }) {
+/** One line of expertise: the division head and the code lead read it when they pick who does what. */
+function SpecialtyCard({ e, canEdit }: { e: Employee; canEdit: boolean }) {
   const t = useTranslations("employees");
   const qc = useQueryClient();
-  const { data } = useQuery({ queryKey: ["departments"], queryFn: () => api.get<{ departments: { key: string; name: { en: string; id: string } }[] }>("/api/departments").then((r) => r.departments) });
-  const locale = useLocale() as "en" | "id";
+  const [value, setValue] = useState(e.specialty ?? "");
   const save = useMutation({
-    mutationFn: (department: string | null) => api.patch(`/api/employees/${e.id}`, { department }),
+    mutationFn: () => api.patch(`/api/employees/${e.id}`, { specialty: value.trim() }),
     onSuccess: () => {
-      toast.success(t("department.saved"));
+      toast.success(t("specialty.saved"));
       void qc.invalidateQueries({ queryKey: ["employee", e.id] });
+      void qc.invalidateQueries({ queryKey: ["employees"] });
     },
     onError: (x) => toast.error((x as Error).message),
   });
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
-        <div className="flex-1 space-y-0.5">
-          <Label htmlFor="employee-department">{t("department.label")}</Label>
-          <p className="text-xs text-muted-foreground">{t("department.help")}</p>
-        </div>
-        <select
-          id="employee-department"
-          className="h-9 w-full rounded-md border bg-background px-2 text-sm sm:w-56"
-          value={e.department ?? ""}
-          disabled={save.isPending}
-          onChange={(ev) => save.mutate(ev.target.value || null)}
+      <CardContent className="p-4">
+        <form
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            save.mutate();
+          }}
         >
-          <option value="">{t("department.none")}</option>
-          {data?.map((d) => (
-            <option key={d.key} value={d.key}>
-              {d.name[locale] ?? d.name.en}
-            </option>
-          ))}
-        </select>
+          <div className="flex-1 space-y-1.5">
+            <Label htmlFor="employee-specialty">{t("specialty.label")}</Label>
+            <Input id="employee-specialty" value={value} maxLength={200} disabled={!canEdit} placeholder={t("specialty.placeholder")} onChange={(ev) => setValue(ev.target.value)} aria-describedby="employee-specialty-help" />
+            <p id="employee-specialty-help" className="text-xs text-muted-foreground">
+              {t("specialty.help")}
+            </p>
+          </div>
+          {canEdit && (
+            <Button type="submit" variant="outline" disabled={save.isPending || value.trim() === (e.specialty ?? "")}>
+              {t("specialty.save")}
+            </Button>
+          )}
+        </form>
       </CardContent>
     </Card>
+  );
+}
+
+/** The employee's division and their place in it, as a small sign plate linking to the Divisions page. */
+function DivisionBadge({ e }: { e: Employee }) {
+  const t = useTranslations("employees");
+  const tt = useTranslations("teams");
+  if (!e.division) {
+    return (
+      <Link href="/teams" className="inline-flex items-center gap-1 rounded-md border border-dashed px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground">
+        {t("division.none")}
+      </Link>
+    );
+  }
+  return (
+    <Link
+      href="/teams"
+      className="sign inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-semibold"
+      data-state="lit"
+      style={divisionSignVars(e.division.color, e.division.id)}
+      aria-label={t("division.badge", { division: e.division.name, role: tt(`roles.${e.division.role}`) })}
+    >
+      <span className="font-display text-[0.95rem] leading-none">{e.division.name}</span>
+      <span className="rounded bg-black/20 px-1 text-[10.5px] uppercase leading-4">{tt(`roles.${e.division.role}`)}</span>
+    </Link>
   );
 }
 
@@ -356,6 +385,7 @@ export default function EmployeePage({ params }: P) {
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-[2.6rem]">{e.name}</h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <DivisionBadge e={e} />
             {e.role} · {e.model} · <AutonomyBadge level={e.autonomyLevel} /> · <span className={e.status === "ACTIVE" ? "text-success" : "text-warning"}>{ts(`employee.${e.status}`)}</span>
           </div>
         </div>
@@ -396,9 +426,16 @@ export default function EmployeePage({ params }: P) {
         <TabsContent value="overview" className="mt-4 space-y-4">
           <OutputLanguageCard e={e} />
           <ExecutionModeCard e={e} />
-          <DepartmentCard e={e} />
+          <SpecialtyCard key={e.specialty} e={e} canEdit={!!me && hasRole(me.role, "ADMIN")} />
           <BotEditor e={e} canEdit={!!me && hasRole(me.role, "ADMIN")} />
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Card>
+              <CardContent className="p-4 text-sm">
+                <div className="text-xs uppercase text-muted-foreground">{t("detail.spent7d")}</div>
+                <div className="text-xl font-semibold">{f.credits(e.credits7d ?? 0)}</div>
+                <div className="text-xs text-muted-foreground">{t("detail.spent7dNote")}</div>
+              </CardContent>
+            </Card>
             <Card>
               <CardContent className="p-4 text-sm">
                 <div className="text-xs uppercase text-muted-foreground">{t("detail.spentToday")}</div>

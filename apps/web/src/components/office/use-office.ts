@@ -13,7 +13,6 @@ export interface OfficePerson {
   /** office character; null derives one from the id */
   look: OfficeLook | null;
   role: string;
-  department: string | null;
   status: string;
   teams: { id: string; name: string }[];
   task: { id: string; title: string; status: string } | null;
@@ -21,7 +20,6 @@ export interface OfficePerson {
 }
 interface Snapshot {
   workspace: { name: string };
-  departments: Record<string, string>;
   employees: OfficePerson[];
 }
 
@@ -109,18 +107,12 @@ export function useOffice(generalLabel: string): OfficeState {
     }
   });
 
-  // the layout depends only on what layoutOffice reads (who, names for ordering, departments, teams and their labels);
-  // a refetch that changes a task title keeps the same layout object, so the 3D scene (and its camera) is not rebuilt
-  const structure = JSON.stringify([
-    (data?.employees ?? []).map((e) => [e.id, e.name, e.department, e.teams.map((t) => [t.id, t.name])]),
-    data?.departments ?? {},
-  ]);
+  // the layout depends only on what layoutOffice reads (who, names for ordering, divisions and their names); a refetch
+  // that changes a task title keeps the same layout object, so the 3D scene (and its camera) is not rebuilt
+  const structure = JSON.stringify((data?.employees ?? []).map((e) => [e.id, e.name, e.teams.map((t) => [t.id, t.name])]));
   const layout = useMemo(() => {
-    const [emps, deps] = JSON.parse(structure) as [[string, string, string | null, [string, string][]][], Record<string, string>];
-    return layoutOffice(
-      emps.map(([id, name, department, teams]) => ({ id, name, department, teams: teams.map(([tid, tname]) => ({ id: tid, name: tname })) })),
-      (k) => deps[k] ?? k,
-    );
+    const emps = JSON.parse(structure) as [string, string, [string, string][]][];
+    return layoutOffice(emps.map(([id, name, teams]) => ({ id, name, teams: teams.map(([tid, tname]) => ({ id: tid, name: tname })) })));
   }, [structure]);
   const roomLabel = (key: string) => layout.rooms.find((r) => r.key === key)?.label || generalLabel;
   return { layout, people, version, activityOf: activity, roomLabel, workspaceName: data?.workspace.name ?? "", loading: isLoading };

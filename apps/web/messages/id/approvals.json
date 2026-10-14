@@ -88,10 +88,13 @@
     "hooksDisabled": "Platform mem-push commit ini persis dari salinannya sendiri dengan git hooks dinonaktifkan; karyawan tidak pernah melihat token."
   },
   "handoff": {
-    "to": "Membuat tugas Developer untuk {name} jika disetujui.",
-    "noDeveloper": "Belum ada developer yang dipilih: gunakan Edit & Setujui untuk memilih.",
-    "developer": "Developer",
-    "repository": "Repositori"
+    "to": "Membuat tugas untuk {name} setelah disetujui.",
+    "repository": "Repositori",
+    "toDivision": "Diteruskan ke divisi {name} setelah disetujui.",
+    "noDivision": "Belum ada divisi yang dipilih: pakai Edit & Setujui untuk memilihnya.",
+    "division": "Divisi",
+    "legacyDeveloper": "Diusulkan sebelum ada divisi, untuk {name}.",
+    "resumes": "Tugas divisi yang sedang menunggu akan dilanjutkan dengan PRD ini."
   },
   "routine": {
     "rule": "Aturan",

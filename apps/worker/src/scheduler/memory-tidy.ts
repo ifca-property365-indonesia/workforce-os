@@ -27,10 +27,12 @@ export function normalizeMemory(content: string): string {
 }
 
 /**
- * May `newer` supersede `older`? Never hide a reviewer's feedback behind a non-feedback memory, and never hide
- * a trusted memory behind an untrusted one (that would let a tainted run's memory push out a trusted one).
+ * May `newer` supersede `older`? Only within one client scope; never hide a reviewer's feedback behind a non-feedback
+ * memory, and never hide a trusted memory behind an untrusted one (that would let a tainted run's memory push out a trusted one).
  */
-function maySupersede(older: Pick<Memory, "kind" | "untrusted">, newer: Pick<Memory, "kind" | "untrusted">): boolean {
+function maySupersede(older: Pick<Memory, "kind" | "untrusted" | "clientId">, newer: Pick<Memory, "kind" | "untrusted" | "clientId">): boolean {
+  // client isolation: a memory is only ever replaced by one of the same scope (general, or the same client)
+  if ((older.clientId ?? null) !== (newer.clientId ?? null)) return false;
   if (older.kind === "feedback" && newer.kind !== "feedback") return false;
   if (!older.untrusted && newer.untrusted) return false;
   return true;
@@ -94,7 +96,8 @@ async function expireMemories(employeeId: string, now: Date, budget: number): Pr
 async function dedupeExact(live: Memory[], budget: number, changed: Set<string>): Promise<number> {
   const groups = new Map<string, Memory[]>();
   for (const m of live) {
-    const k = normalizeMemory(m.content);
+    // per client scope: duplicates are only merged within general memories or within one client's
+    const k = `${m.clientId ?? ""}\u0000${normalizeMemory(m.content)}`;
     groups.set(k, [...(groups.get(k) ?? []), m]);
   }
   let changes = 0;

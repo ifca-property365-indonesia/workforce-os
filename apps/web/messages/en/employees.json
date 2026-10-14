@@ -32,7 +32,9 @@
     "instructionsVersion": "Instructions version",
     "version": "v{version}",
     "recentTasks": "Recent tasks",
-    "noTasks": "No tasks yet."
+    "noTasks": "No tasks yet.",
+    "spent7d": "Cost, 7 days",
+    "spent7dNote": "Includes work as a subagent"
   },
   "outputLanguage": {
     "label": "Output language",
@@ -146,7 +148,9 @@
         "import": "an import",
         "rejection": "rejection feedback"
       }
-    }
+    },
+    "clientBadge": "Client {client}",
+    "clientHelp": "Learned on work for this client: recalled only on that client's work."
   },
   "toolPermissions": {
     "grant": "Grant {tool}",
@@ -296,6 +300,10 @@
     "request_release": {
       "label": "Propose LIVE release",
       "description": "Workspace mode: propose releasing a preview version that already ran to the app's live site (only the Owner can approve it)"
+    },
+    "handoff_to_division": {
+      "label": "Hand off to division",
+      "description": "Division head: hand work over to another division as a new task (deliverables go along as data)"
     }
   },
   "executionMode": {
@@ -308,12 +316,6 @@
     "egressLabel": "Hosts the sandbox may reach",
     "egressHelp": "One host per line, e.g. registry.npmjs.org or *.pypi.org. Everything else is blocked. Adding hosts needs a 2FA confirmation.",
     "saveEgress": "Save hosts"
-  },
-  "department": {
-    "label": "Department",
-    "help": "The employee follows this department's SOP (and can use its subagents in Workspace mode).",
-    "none": "None",
-    "saved": "Department saved"
   },
   "activity": {
     "loading": "Loading activity…",
@@ -370,8 +372,23 @@
       "preview_deployed": "Preview is live at {url}",
       "request_release": "Proposed a release to live",
       "waiting_for_live": "Waiting for the platform to release the approved version to LIVE",
-      "live_deployed": "LIVE now runs the new version at {url}"
-    }
+      "live_deployed": "LIVE now runs the new version at {url}",
+      "handoff_to_division": "Handed work to the {division} division: {title}",
+      "code_bash": "Ran a command: {command}",
+      "code_edit": "Edited {file}",
+      "code_write": "Wrote {file}",
+      "code_read": "Read {file}",
+      "code_search": "Searched the code for {pattern}",
+      "code_web": "Read a web page: {url}",
+      "subagent_started": "Started its part as a subagent: {task}",
+      "subagent_finished": "Finished its part as a subagent",
+      "subagent_failed": "Its part as a subagent ended with an error",
+      "dependencies_done": "The subtasks it waited for are done: starting",
+      "subtask_blocked": "Blocked: a subtask it waits for did not finish",
+      "division_budget_cap": "Paused: the division's daily budget is used up",
+      "waiting_for_prd_decision": "Waiting for the owner to decide on the PRD"
+    },
+    "asSubagent": "as subagent in {name}'s run"
   },
   "bot": {
     "label": "Bot avatar",
@@ -432,5 +449,16 @@
       "blase": "Bored",
       "somnolent": "Sleepy"
     }
+  },
+  "specialty": {
+    "label": "Specialty",
+    "placeholder": "e.g. React and Tailwind interfaces, accessible forms",
+    "help": "One line. The division head and the code lead read it when they decide who does what.",
+    "save": "Save specialty",
+    "saved": "Specialty saved"
+  },
+  "division": {
+    "none": "No division",
+    "badge": "{division}, {role}: open Divisions"
   }
 }

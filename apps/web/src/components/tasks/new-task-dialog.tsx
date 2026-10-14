@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useClients, useEmployees, useTeams } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
 
 const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
@@ -18,44 +19,63 @@ const EMPTY = { title: "", brief: "", assignee: "", clientId: "", projectId: "",
 /** what a quick action fills in; `assignee` is "e:<employeeId>" or "t:<teamId>". Read when the dialog mounts: give it a new `key` per prefill. */
 export type NewTaskPrefill = Partial<Pick<typeof EMPTY, "title" | "brief" | "assignee" | "clientId" | "projectId">>;
 
+/**
+ * A new task. It goes to a division by default (its head decides how it gets done); a specific person is the
+ * exception. Picking a project fills in its client and its responsible division.
+ */
 export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; onOpenChange: (o: boolean) => void; initial?: NewTaskPrefill }) {
   const qc = useQueryClient();
   const t = useTranslations("tasks");
   const tc = useTranslations("common");
   const { data: emps } = useEmployees();
-  const { data: teams } = useTeams();
+  const { data: divisions } = useTeams();
   const { data: clients } = useClients();
   const [f, setF] = useState(() => ({ ...EMPTY, ...initial }));
+  const [mode, setMode] = useState<"division" | "person">(() => (initial?.assignee?.startsWith("e:") ? "person" : "division"));
   const uid = useId();
   const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
-  const assignedEmployee = f.assignee.startsWith("e:") ? emps?.find((e) => e.id === f.assignee.slice(2)) : undefined;
-  const workspaceMode = assignedEmployee?.executionMode === "workspace";
-  const projects = clients?.find((c) => c.id === f.clientId)?.projects ?? [];
+  const teamId = mode === "division" && f.assignee.startsWith("t:") ? f.assignee.slice(2) : "";
+  const assigneeId = mode === "person" && f.assignee.startsWith("e:") ? f.assignee.slice(2) : "";
+  const division = divisions?.find((d) => d.id === teamId);
+  const assignedEmployee = emps?.find((e) => e.id === assigneeId);
+  // code work: a person in Workspace mode, or a division whose code lead builds in a sandbox
+  const codeWork = assignedEmployee?.executionMode === "workspace" || !!division?.codeLeadId;
+  const allProjects = (clients ?? []).flatMap((c) => c.projects.map((p) => ({ ...p, clientName: c.code || c.name })));
+  const projects = f.clientId ? allProjects.filter((p) => p.clientId === f.clientId) : allProjects;
+  const pickProject = (projectId: string) => {
+    const p = allProjects.find((x) => x.id === projectId);
+    if (!p) return setF({ ...f, projectId: "" });
+    // the project fixes the client; its division takes the work unless a person was chosen on purpose
+    setF({ ...f, projectId, clientId: p.clientId, ...(p.teamId && mode === "division" ? { assignee: `t:${p.teamId}` } : {}) });
+  };
   const m = useMutation({
-    mutationFn: () => {
-      const [kind, id] = f.assignee.split(":");
-      return api.post("/api/tasks", {
+    mutationFn: () =>
+      api.post("/api/tasks", {
         title: f.title,
         brief: f.brief,
-        assigneeId: kind === "e" ? id : null,
-        teamId: kind === "t" ? id : null,
+        assigneeId: assigneeId || null,
+        teamId: teamId || null,
         clientId: f.clientId || null,
         projectId: f.projectId || null,
-        repositoryId: workspaceMode && f.repositoryId ? f.repositoryId : null,
+        repositoryId: codeWork && f.repositoryId ? f.repositoryId : null,
         dryRun: f.dryRun,
         start: f.start,
-      });
-    },
+      }),
     onSuccess: () => {
       toast.success(t("newTask.created"));
       onOpenChange(false);
       setF(EMPTY);
+      setMode("division");
       void qc.invalidateQueries({ queryKey: ["tasks"] });
+      void qc.invalidateQueries({ queryKey: ["teams"] });
       // the client's page lists its tasks
       if (f.clientId) void qc.invalidateQueries({ queryKey: ["client", f.clientId] });
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  // a project with a responsible division can go without an explicit target: the server routes it there
+  const projectDivision = allProjects.find((p) => p.id === f.projectId)?.teamId ?? null;
+  const ready = !!f.title && (!!teamId || !!assigneeId || (mode === "division" && !!projectDivision));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -71,55 +91,84 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
             <Label htmlFor={`${uid}-brief`}>{t("newTask.brief")}</Label>
             <Textarea id={`${uid}-brief`} rows={5} value={f.brief} onChange={(e) => setF({ ...f, brief: e.target.value })} />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`${uid}-assignee`}>{t("newTask.assignTo")}</Label>
-            <select id={`${uid}-assignee`} className={sel} value={f.assignee} onChange={(e) => setF({ ...f, assignee: e.target.value })}>
-              <option value="">{tc("selectPlaceholder")}</option>
-              <optgroup label={t("newTask.employees")}>
-                {emps
-                  ?.filter((e) => e.status !== "ARCHIVED")
-                  .map((e) => (
-                    <option key={e.id} value={`e:${e.id}`}>
-                      {e.avatar} {e.name} — {e.role}
+
+          <fieldset className="space-y-2 rounded-xl border p-3">
+            <legend className="px-1 text-sm font-medium">{t("newTask.assignTo")}</legend>
+            {mode === "division" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${uid}-division`} className="sr-only">
+                  {t("newTask.division")}
+                </Label>
+                <select id={`${uid}-division`} className={sel} value={teamId ? `t:${teamId}` : ""} onChange={(e) => setF({ ...f, assignee: e.target.value })}>
+                  <option value="">{projectDivision ? t("newTask.projectDivision") : tc("selectPlaceholder")}</option>
+                  {divisions?.map((d) => (
+                    <option key={d.id} value={`t:${d.id}`} disabled={!d.leadId}>
+                      {d.leadId ? d.name : t("newTask.divisionNoHead", { name: d.name })}
                     </option>
                   ))}
-              </optgroup>
-              <optgroup label={t("newTask.teams")}>
-                {teams
-                  ?.filter((team) => team.leadId)
-                  .map((team) => (
-                    <option key={team.id} value={`t:${team.id}`}>
-                      👥 {team.name}
-                    </option>
-                  ))}
-              </optgroup>
-            </select>
-          </div>
+                </select>
+                <p className="text-xs text-muted-foreground">{t("newTask.divisionHelp")}</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor={`${uid}-person`} className="sr-only">
+                  {t("newTask.person")}
+                </Label>
+                <select id={`${uid}-person`} className={sel} value={assigneeId ? `e:${assigneeId}` : ""} onChange={(e) => setF({ ...f, assignee: e.target.value })}>
+                  <option value="">{tc("selectPlaceholder")}</option>
+                  {emps
+                    ?.filter((e) => e.status !== "ARCHIVED")
+                    .map((e) => (
+                      <option key={e.id} value={`e:${e.id}`}>
+                        {e.name} — {e.role}
+                        {e.division ? ` · ${e.division.name}` : ""}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+            <button
+              type="button"
+              className={cn("text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline")}
+              onClick={() => {
+                setMode(mode === "division" ? "person" : "division");
+                setF({ ...f, assignee: "" });
+              }}
+            >
+              {mode === "division" ? t("newTask.toPerson") : t("newTask.toDivision")}
+            </button>
+          </fieldset>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor={`${uid}-client`}>{t("newTask.client")}</Label>
-              <select id={`${uid}-client`} className={sel} value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value, projectId: "" })}>
+              <select
+                id={`${uid}-client`}
+                className={sel}
+                value={f.clientId}
+                onChange={(e) => setF({ ...f, clientId: e.target.value, projectId: allProjects.find((p) => p.id === f.projectId)?.clientId === e.target.value ? f.projectId : "" })}
+              >
                 <option value="">—</option>
                 {clients?.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.code ? `${c.code} · ${c.name}` : c.name}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`${uid}-project`}>{t("newTask.project")}</Label>
-              <select id={`${uid}-project`} className={sel} value={f.projectId} onChange={(e) => setF({ ...f, projectId: e.target.value })} disabled={!projects.length}>
+              <select id={`${uid}-project`} className={sel} value={f.projectId} onChange={(e) => pickProject(e.target.value)} disabled={!projects.length}>
                 <option value="">—</option>
                 {projects.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name}
+                    {f.clientId ? p.name : `${p.clientName} · ${p.name}`}
                   </option>
                 ))}
               </select>
             </div>
           </div>
-          {workspaceMode && (
+          {codeWork && (
             <div className="space-y-1.5">
               <Label htmlFor={`${uid}-repository`}>{t("newTask.repository")}</Label>
               <select id={`${uid}-repository`} className={sel} value={f.repositoryId} onChange={(e) => setF({ ...f, repositoryId: e.target.value })}>
@@ -143,7 +192,7 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={() => m.mutate()} disabled={!f.title || !f.assignee || m.isPending}>
+          <Button onClick={() => m.mutate()} disabled={!ready || m.isPending}>
             {t("newTask.submit")}
           </Button>
         </DialogFooter>

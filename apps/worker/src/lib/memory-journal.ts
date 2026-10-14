@@ -11,9 +11,11 @@ export interface MemorySnapshot {
   expiresAt: string | null;
   supersededBy: string | null;
   untrusted: boolean;
+  /** the client the memory belongs to (null = general): an undo puts it back in the same scope */
+  clientId: string | null;
 }
 
-type MemoryRow = Pick<typeof memories.$inferSelect, "content" | "kind" | "untrusted"> & {
+type MemoryRow = Pick<typeof memories.$inferSelect, "content" | "kind" | "untrusted" | "clientId"> & {
   expiresAt?: Date | string | null;
   supersededBy?: string | null;
 };
@@ -26,6 +28,7 @@ export function memorySnapshot(m: MemoryRow): MemorySnapshot {
     expiresAt: exp === null ? null : exp instanceof Date ? exp.toISOString() : new Date(exp).toISOString(),
     supersededBy: m.supersededBy ?? null,
     untrusted: m.untrusted,
+    clientId: m.clientId ?? null,
   };
 }
 

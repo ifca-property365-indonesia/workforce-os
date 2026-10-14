@@ -81,6 +81,33 @@ const RECEIPT_TOOLS = new Set([
   "request_release",
   "post_webhook",
   "propose_routine",
+  "handoff_to_division",
+]);
+
+/** Claude Code's own tools, as a subagent uses them inside the code lead's sandbox */
+const CODE_TOOL_RECEIPT: Record<string, string> = {
+  Bash: "code_bash",
+  Edit: "code_edit",
+  MultiEdit: "code_edit",
+  Write: "code_write",
+  Read: "code_read",
+  Grep: "code_search",
+  Glob: "code_search",
+  WebFetch: "code_web",
+};
+
+/** platform steps with a fixed meaning (employees.activity.receipt.<name>, inspector.stepName.named.<name>) */
+export const NAMED_STEPS: ReadonlySet<string> = new Set([
+  "subagent_started",
+  "subagent_finished",
+  "dependencies_done",
+  "subtask_blocked",
+  "division_budget_cap",
+  "waiting_for_prd_decision",
+  "waiting_for_preview",
+  "preview_deployed",
+  "waiting_for_live",
+  "live_deployed",
 ]);
 /** recorded-but-not-run variants: "simulated:send_email", "draft:send_email" */
 const MODE_PREFIX = /^(simulated|simulate|draft|drafted):/;
@@ -88,8 +115,17 @@ const MODE_PREFIX = /^(simulated|simulate|draft|drafted):/;
 const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 const text = (v: unknown): string => (typeof v === "string" ? clip(v) : Array.isArray(v) ? clip(v.filter((x) => typeof x === "string").join(", ")) : "");
 
+const base = (p: unknown) => (typeof p === "string" ? clip(p.split("/").filter(Boolean).pop() ?? p) : "");
+
 function toolReceipt(tool: string, input: unknown): Receipt {
   const a = isObj(input) ? input : {};
+  const code = CODE_TOOL_RECEIPT[tool];
+  if (code) {
+    if (code === "code_bash") return { key: code, values: { command: text(a.command) || "—" }, tool };
+    if (code === "code_edit" || code === "code_write" || code === "code_read") return { key: code, values: { file: base(a.file_path) || "—" }, tool };
+    if (code === "code_search") return { key: code, values: { pattern: text(a.pattern) || "—" }, tool };
+    return { key: code, values: { url: text(a.url) || "—" }, tool };
+  }
   if (!RECEIPT_TOOLS.has(tool)) return { key: "tool", values: { tool }, tool };
   const values: Record<string, string> = {};
   if (tool === "send_email" || tool === "draft_email") values.to = text(a.to) || "—";
@@ -97,13 +133,17 @@ function toolReceipt(tool: string, input: unknown): Receipt {
   if (tool === "web_fetch") values.url = text(a.url) || "—";
   if (tool === "draft_document" || tool === "create_task" || tool === "delegate_subtask" || tool === "create_pull_request") values.title = text(a.title) || "—";
   if (tool === "propose_routine") values.name = text(a.name) || "—";
+  if (tool === "handoff_to_division") {
+    values.division = text(a.divisionKey) || "—";
+    values.title = text(a.title) || "—";
+  }
   if (tool === "report_progress") values.percent = typeof a.percent === "number" ? String(Math.round(a.percent)) : "—";
   if (tool === "kb_search" && text(a.query)) return { key: "kb_search_query", values: { query: text(a.query) }, tool };
   return { key: tool, values, tool };
 }
 
 /** "Sent an email to …", "Asked for approval: …", "Searched the knowledge base" — what the Activity tab says about a step. */
-export function describeReceipt(s: { kind: string; name: string; input: unknown; output: unknown }): Receipt {
+export function describeReceipt(s: { kind: string; name: string; status?: string; input: unknown; output: unknown }): Receipt {
   const info = describeStep(s);
   if (info.type === "gate") return { key: "gate", values: { target: info.target } };
   if (info.type === "incident") return { key: "incident", values: {} };
@@ -114,6 +154,10 @@ export function describeReceipt(s: { kind: string; name: string; input: unknown;
     return { key: "approval", values: { tool }, tool };
   }
   if (s.kind === "tool") return toolReceipt(s.name.replace(MODE_PREFIX, ""), s.input);
+  // division work: subagent runs, ordered subtasks, the division budget, a PRD waiting for the owner
+  if (s.name === "subagent_started") return { key: "subagent_started", values: { task: isObj(s.input) ? text(s.input.description) || "—" : "—" } };
+  if (s.name === "subagent_finished") return { key: s.status === "error" ? "subagent_failed" : "subagent_finished", values: {} };
+  if (s.name === "dependencies_done" || s.name === "subtask_blocked" || s.name === "division_budget_cap" || s.name === "waiting_for_prd_decision") return { key: s.name, values: {} };
   if (s.kind === "agent_message") return { key: "agent_message", values: { name: clip(s.name) } };
   if (s.kind === "guard") return { key: "guard", values: { name: clip(s.name) } };
   if (s.kind === "llm" || s.kind === "compaction" || s.kind === "budget" || s.kind === "error") return { key: s.kind, values: {} };

@@ -1,7 +1,6 @@
 "use client";
 
 import { RepositoriesSettings } from "@/components/settings/repositories";
-import { DepartmentsSettings } from "@/components/settings/departments";
 import { WebhooksSettings } from "@/components/settings/webhooks";
 import { ServersSettings } from "@/components/settings/servers";
 import { ApiTokensSettings } from "@/components/settings/api-tokens";
@@ -887,7 +886,6 @@ export default function SettingsPage() {
           {admin && <TabsTrigger value="integrations">{t("tabs.integrations")}</TabsTrigger>}
           {admin && <TabsTrigger value="repositories">{t("tabs.repositories")}</TabsTrigger>}
           <TabsTrigger value="servers">{t("tabs.servers")}</TabsTrigger>
-          <TabsTrigger value="departments">{t("tabs.departments")}</TabsTrigger>
           <TabsTrigger value="skills">{t("tabs.skills")}</TabsTrigger>
           <TabsTrigger value="pricing">{t("tabs.pricing")}</TabsTrigger>
           <TabsTrigger value="members">{t("tabs.members")}</TabsTrigger>
@@ -907,9 +905,6 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="integrations" className="mt-4">
           <Integrations />
-        </TabsContent>
-        <TabsContent value="departments" className="mt-4">
-          <DepartmentsSettings admin={admin} />
         </TabsContent>
         <TabsContent value="skills" className="mt-4">
           <SkillsSettings admin={admin} />

@@ -2,7 +2,7 @@
   "items": {
     "dashboard": "Dashboard",
     "employees": "Karyawan",
-    "teams": "Tim",
+    "teams": "Divisi",
     "office": "Kantor",
     "chat": "Obrolan",
     "tasks": "Papan tugas",
@@ -65,7 +65,7 @@
   "rail": {
     "dashboard": "Dasbor",
     "employees": "Karyawan",
-    "teams": "Tim",
+    "teams": "Divisi",
     "office": "Kantor",
     "chat": "Obrolan",
     "tasks": "Tugas",

@@ -33,7 +33,7 @@ import { TaskProgressHeader } from "@/components/tasks/task-progress";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import type { TaskPreview } from "@/lib/app-previews";
-import { describeStep } from "@/lib/step-labels";
+import { describeStep, NAMED_STEPS } from "@/lib/step-labels";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
@@ -73,6 +73,8 @@ interface Step {
   id: string;
   taskId: string | null;
   employeeId: string | null;
+  /** a division member who acted as a subagent inside this (code lead's) run */
+  actorEmployeeId?: string | null;
   kind: StepKind;
   name: string;
   model: string | null;
@@ -91,6 +93,10 @@ interface Detail {
   task: TaskFull;
   children: TaskFull[];
   parent: { id: string; title: string } | null;
+  /** where this work came from: a handoff from another division, an approved PRD */
+  origin?: { id: string; title: string; status: TaskStatus; teamId: string | null; teamName: string | null } | null;
+  /** sibling subtasks that must be done before this one starts */
+  dependsOn?: { id: string; title: string; status: TaskStatus }[];
   approvals: { id: string; title: string; status: string; toolName: string; createdAt: string }[];
   messages: { id: string; fromEmployeeId: string | null; toEmployeeId: string | null; intent: string; content: string; createdAt: string; taskId: string | null }[];
   employees: { id: string; name: string; avatar: string }[];
@@ -155,6 +161,7 @@ function StepName({ step }: { step: Step }) {
     return <span className="font-medium">{known ? t(`stepName.incident.${info.action}`, { kind }) : step.name}</span>;
   }
   if (info.type === "stopped") return <span className="font-medium">{t(`stoppedTitle.${info.reason}`)}</span>;
+  if (NAMED_STEPS.has(step.name) && t.has(`stepName.named.${step.name}`)) return <span className="font-medium">{t(`stepName.named.${step.name}`)}</span>;
   return <span className="font-medium">{step.name}</span>;
 }
 
@@ -210,6 +217,9 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
                 <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} />
                 {emp && <span title={emp.name}>{emp.avatar}</span>}
                 <StepName step={s} />
+                {s.actorEmployeeId && s.actorEmployeeId !== s.employeeId && (
+                  <span className="rounded bg-secondary px-1.5 text-[11px] font-medium">{t("stepActor", { name: employees.get(s.actorEmployeeId)?.name ?? "—" })}</span>
+                )}
                 <span className="rounded bg-muted px-1.5 text-[11px] uppercase text-muted-foreground">{t.has(`stepKind.${s.kind}`) ? t(`stepKind.${s.kind}`) : s.kind}</span>
                 {info.type === "gate" && info.rule && (
                   <span className="rounded border px-1.5 text-[11px] text-muted-foreground" title={info.reason ?? undefined}>
@@ -341,7 +351,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
     onError: (e) => toast.error((e as Error).message),
   });
   if (!data) return <p className="text-sm text-muted-foreground">{tc("loading")}</p>;
-  const { task, children, approvals, messages, parent } = data;
+  const { task, children, approvals, messages, parent, origin, dependsOn = [] } = data;
   const emp = new Map(data.employees.map((e) => [e.id, e]));
   const assignee = task.assigneeId ? emp.get(task.assigneeId) : undefined;
 
@@ -354,11 +364,22 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
               {t("task.subtaskOf", { title: parent.title })}
             </Link>
           )}
+          {origin && (
+            <div className="text-xs text-muted-foreground">
+              {t("task.from")}{" "}
+              <Link href={`/tasks/${origin.id}`} className="text-primary hover:underline">
+                {origin.title}
+              </Link>
+              {origin.teamName && ` · ${origin.teamName}`}
+            </div>
+          )}
           <h2 className={cn("font-semibold", compact ? "text-lg" : "text-xl")}>{task.title}</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge status={task.status} />
             {task.dryRun && <span className="rounded-full bg-[var(--sign-ungu)]/15 px-2 py-0.5 font-medium text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]">{t("task.dryRun")}</span>}
-            {task.phase && task.teamId && <span className="rounded-full bg-muted px-2 py-0.5">{t("task.team", { phase: task.phase })}</span>}
+            {task.phase && task.teamId && !["after", "blocked"].includes(task.phase) && <span className="rounded-full bg-muted px-2 py-0.5">{t("task.team", { phase: task.phase })}</span>}
+            {task.status === "QUEUED" && task.phase === "after" && <span className="rounded-full bg-muted px-2 py-0.5">{t("task.phaseAfter")}</span>}
+            {task.status === "QUEUED" && task.phase === "blocked" && <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-destructive">{t("task.phaseBlocked")}</span>}
             {assignee && (
               <span className="inline-flex items-center gap-1">
                 <Avatar id={assignee.id} size="sm" /> {assignee.name}
@@ -392,6 +413,24 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
       </div>
 
       <TaskProgressHeader task={task} />
+
+      {dependsOn.length > 0 && (
+        <div className={cn("rounded-xl border px-3 py-2 text-sm", task.phase === "blocked" && task.status === "QUEUED" && "border-destructive/50 bg-destructive/5")}>
+          <div className={cn("mb-1 text-xs font-medium text-muted-foreground", task.phase === "blocked" && task.status === "QUEUED" && "text-destructive")}>
+            {task.phase === "blocked" && task.status === "QUEUED" ? t("task.blocked") : dependsOn.every((x) => x.status === "DONE") ? t("task.waitedFor") : t("task.waitsFor")}
+          </div>
+          <ul className="flex flex-wrap gap-2">
+            {dependsOn.map((x) => (
+              <li key={x.id} className="flex items-center gap-1.5">
+                <Link href={`/tasks/${x.id}`} className="hover:underline">
+                  {x.title}
+                </Link>
+                <StatusBadge status={x.status} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {task.error && (
         <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">

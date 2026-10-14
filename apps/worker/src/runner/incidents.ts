@@ -342,7 +342,8 @@ export async function applyRecoveries(
   const loaded = await (async () => {
     const [parent] = await db.select().from(tasks).where(eq(tasks.id, parentTaskId));
     if (!parent?.teamId) return null;
-    const memberIds = (await db.select({ id: teamMembers.employeeId }).from(teamMembers).where(eq(teamMembers.teamId, parent.teamId)))
+    // members the lead may hand work to: role "member" (a subagent works inside the code lead's run)
+    const memberIds = (await db.select({ id: teamMembers.employeeId }).from(teamMembers).where(and(eq(teamMembers.teamId, parent.teamId), eq(teamMembers.role, "member"))))
       .map((r) => r.id)
       .filter((id) => id !== leadId);
     return { parent, memberIds };
@@ -402,7 +403,7 @@ async function bookkeeping(workspaceId: string, parentTaskId: string, leadId: st
   }
   await bestEffort("mark incident", child.id, () => markIncident(child.id, "reassigned"));
   await bestEffort("agent message", task.id, () =>
-    db.insert(agentMessages).values({ workspaceId, taskId: task.id, fromEmployeeId: leadId, toEmployeeId: task.assigneeId, intent: "request", content: `Reassigned subtask: ${task.title}`, untrusted }),
+    db.insert(agentMessages).values({ workspaceId, taskId: task.id, fromEmployeeId: leadId, toEmployeeId: task.assigneeId, intent: "request", content: `Reassigned subtask: ${task.title}`, untrusted, clientId: task.clientId }),
   );
   await bestEffort("reassign step", child.id, () =>
     recordStep({ workspaceId, taskId: child.id, employeeId: leadId, kind: "system", name: "subtask_reassigned", output: { newTaskId: task.id, employeeId: task.assigneeId } }),
@@ -473,6 +474,9 @@ async function markReassign(workspaceId: string, parent: Task, req: RecoveryRequ
       clientId: child.clientId,
       projectId: child.projectId,
       originTaskId: child.id,
+      repositoryId: child.repositoryId,
+      // it waits for what the failed subtask waited for (DONE by now, since that one ran)
+      dependsOn: child.dependsOn,
       source: "team",
       dryRun: child.dryRun,
       requireTeamLead: false,
@@ -481,6 +485,11 @@ async function markReassign(workspaceId: string, parent: Task, req: RecoveryRequ
     });
     // the retry budget follows the work, not the employee (same transaction as the insert)
     const [task] = await tx.update(tasks).set({ retryCount: child.retryCount + 1 }).where(eq(tasks.id, created.id)).returning();
+    // subtasks that waited for the failed one now wait for its replacement
+    await tx
+      .update(tasks)
+      .set({ dependsOn: sql`array_replace(${tasks.dependsOn}, ${child.id}::uuid, ${created.id}::uuid)` })
+      .where(and(eq(tasks.parentTaskId, parent.id), sql`${child.id}::uuid = any(${tasks.dependsOn})`));
     return { req, task: task!, child };
   });
 }

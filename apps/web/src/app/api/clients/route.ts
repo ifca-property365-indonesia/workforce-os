@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { audit, clients, db } from "@wfos/db";
 import { clientInputSchema, parseContacts } from "@wfos/shared";
 import { body, route } from "@/lib/server/route";
-import { EMPTY_BILLING, billingSummaries, projectsWithHealth, workspaceTimeZone } from "@/lib/server/clients";
+import { EMPTY_BILLING, assertClientCodeFree, billingSummaries, clientCodeConflict, projectsWithHealth, workspaceTimeZone } from "@/lib/server/clients";
 
 export const GET = route("VIEWER", async ({ session }) => {
   const tz = await workspaceTimeZone(session.workspaceId);
@@ -24,7 +24,12 @@ export const GET = route("VIEWER", async ({ session }) => {
 
 export const POST = route("MEMBER", async ({ session, req }) => {
   const input = await body(req, clientInputSchema);
-  const [c] = await db.insert(clients).values({ ...input, workspaceId: session.workspaceId }).returning();
-  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "client.created", targetType: "client", targetId: c!.id, details: { name: c!.name } });
+  await assertClientCodeFree(session.workspaceId, input.code);
+  const [c] = await db
+    .insert(clients)
+    .values({ ...input, workspaceId: session.workspaceId })
+    .returning()
+    .catch((e) => clientCodeConflict(e, input.code));
+  await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "client.created", targetType: "client", targetId: c!.id, details: { name: c!.name, code: c!.code } });
   return { client: { ...c!, contacts: parseContacts(c!.contacts) } };
 });

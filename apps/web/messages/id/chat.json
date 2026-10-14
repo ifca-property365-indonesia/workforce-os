@@ -1,6 +1,6 @@
 {
   "newChat": "Chat baru",
-  "team": "Tim",
+  "team": "Divisi",
   "deleteChat": "Hapus chat",
   "fallbackTitle": "Chat",
   "emptyThread": "Sapa, ajukan pertanyaan, atau jelaskan pekerjaan yang ingin dijadikan tugas.",
@@ -30,10 +30,10 @@
     "open": "Buka"
   },
   "teamMode": {
-    "lead": "Chat tim (dijawab oleh Ketua)",
-    "everyone": "Chat tim (semua anggota menjawab)",
-    "mentions": "Chat tim (hanya anggota yang di-@mention yang menjawab)",
-    "auto": "Chat tim (dijawab anggota yang paling sesuai)"
+    "lead": "Chat divisi (dijawab kepala divisi)",
+    "everyone": "Chat divisi (semua anggota menjawab)",
+    "mentions": "Chat divisi (hanya anggota yang di-@mention yang menjawab)",
+    "auto": "Chat divisi (dijawab anggota yang paling sesuai)"
   },
   "placeholderTeam": "Pesan (ketik @ untuk menyebut seseorang, Enter untuk mengirim)",
   "messageLabel": "Pesan",

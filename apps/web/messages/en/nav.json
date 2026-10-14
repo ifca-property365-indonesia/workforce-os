@@ -2,7 +2,7 @@
   "items": {
     "dashboard": "Dashboard",
     "employees": "Employees",
-    "teams": "Teams",
+    "teams": "Divisions",
     "office": "Office",
     "chat": "Chat",
     "tasks": "Task board",
@@ -65,7 +65,7 @@
   "rail": {
     "dashboard": "Home",
     "employees": "Staff",
-    "teams": "Teams",
+    "teams": "Divisions",
     "office": "Office",
     "chat": "Chat",
     "tasks": "Tasks",

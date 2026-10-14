@@ -1,22 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { approvals, clients, db, employees, projects, repositories, steps, tasks, workspaceDepartments } from "@wfos/db";
-import { ROLE_TEMPLATES } from "@wfos/templates";
+import { approvals, audit, clients, db, employeeDivision, employees, projects, repositories, steps, tasks } from "@wfos/db";
 import { decryptSecret } from "@wfos/shared/server";
 import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
 import type { TaskStatus } from "@wfos/shared";
-import { enqueueTask, miscQueue } from "../lib/redis";
+import { enqueueTask, miscQueue, publish, redis } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { getWorkspace } from "../lib/settings";
 import { activeQuotaPause } from "../lib/limits";
 import { employeeOutputLocale } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
 import { log } from "../lib/logger";
-import { checkBudget, pauseForBudget } from "../guards/budget";
+import { checkBudget, checkDivisionBudget, msUntilNextBudgetDay, pauseForBudget, startOfUtcDay } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, inboxSection, memoryNotesBlock, recallMemories, recentWorkBrief, taintFromStoredInput, workspaceDirectory } from "./prompt";
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
-import { planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
+import { dependencyContext, dependencyStateOf, onChildFinished, planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
+import { DEPENDENCY_PHASES, PHASE_AFTER, PHASE_BLOCKED } from "../orchestration/phases";
+import { runDivision } from "./division";
 import { failTask, setTaskStatus } from "./task-status";
 import { afterApprovalResolved, previewOutstanding } from "./approvals";
 import { applyRecoveries } from "./incidents";
@@ -72,6 +73,22 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     return;
   }
   if (task.phase === "hold") return;
+  // an ordered subtask starts only once every sibling it waits for is DONE (onChildFinished enqueues it then)
+  if (task.status === "QUEUED" && task.parentTaskId && task.dependsOn.length) {
+    const state = await dependencyStateOf(task);
+    if (state === "waiting" || state === "blocked") {
+      const phase = state === "blocked" ? PHASE_BLOCKED : PHASE_AFTER;
+      if (task.phase !== phase) await db.update(tasks).set({ phase }).where(and(eq(tasks.id, task.id), eq(tasks.status, "QUEUED")));
+      log.info({ taskId, state }, "subtask waits for its dependencies; not started");
+      // blocked: the parent may now have nothing left to wait for
+      if (state === "blocked") await onChildFinished(task.workspaceId, task.parentTaskId);
+      return;
+    }
+    if (task.phase && DEPENDENCY_PHASES.includes(task.phase)) {
+      await db.update(tasks).set({ phase: null }).where(and(eq(tasks.id, task.id), eq(tasks.status, "QUEUED")));
+      task.phase = null;
+    }
+  }
   const ws = await getWorkspace(task.workspaceId);
   if (ws.killSwitch) {
     await recordStep({ workspaceId: ws.id, taskId, kind: "system", name: "kill_switch_engaged", status: "blocked" });
@@ -115,19 +132,62 @@ export async function runTask(taskId: string, resumeNote?: string): Promise<void
     return;
   }
 
+  // the division's daily budget (teams.daily_budget) across its members: the run is held until the next budget day
+  const div = await employeeDivision(emp.id);
+  const divBudget = div ? await checkDivisionBudget(div.division) : null;
+  if (div && divBudget && !divBudget.ok) {
+    await holdForDivisionBudget(task, ws, emp, div.division, divBudget.reason!, resumeNote);
+    return;
+  }
+  const divisionLimited = !!divBudget && divBudget.remaining < budget.remaining;
+
   if (!(await setTaskStatus(task, "RUNNING", { error: null }))) {
     log.info({ taskId }, "task changed before the run started (cancelled, or another job took it); skipping");
     return;
   }
   const stopHeartbeat = startRunHeartbeat(task.id);
   try {
-    await runStarted({ ...task, status: "RUNNING" }, ws, emp, team, budget.remaining, resumeNote);
+    const limit = divisionLimited ? { credits: divBudget!.remaining, division: div!.division } : { credits: budget.remaining, division: null };
+    await runStarted({ ...task, status: "RUNNING" }, ws, emp, team, limit, resumeNote);
   } catch (e) {
     // Anything unexpected after RUNNING fails the task now: a BullMQ retry would only see RUNNING and skip it.
     log.error({ err: e, taskId }, "task run threw");
     await failTask(task, `Runner error: ${errorMessage(e)}`, { kind: "error", onlyIfStatus: ["RUNNING"], step: true, stepName: "runner_error", employeeId: emp.id });
   } finally {
     stopHeartbeat();
+  }
+}
+
+/**
+ * The division spent its daily budget: the task stays QUEUED (error "Paused: ...") and is tried again after the next
+ * budget day starts. The division is not paused (its members' other work is held the same way, run by run); the
+ * owners are told once per division and day, like an employee reaching its cap.
+ */
+async function holdForDivisionBudget(
+  task: Task,
+  ws: { id: string; defaultLocale: Parameters<typeof msg>[0] },
+  emp: { id: string },
+  division: { id: string; name: string },
+  reason: string,
+  resumeNote?: string,
+): Promise<void> {
+  await db.update(tasks).set({ error: `Paused: ${reason}` }).where(eq(tasks.id, task.id));
+  await recordStep({ workspaceId: ws.id, taskId: task.id, employeeId: emp.id, kind: "budget", name: "division_budget_cap", status: "blocked", output: { reason, divisionId: division.id } });
+  await enqueueTask(task.id, ws.id, resumeNote, msUntilNextBudgetDay());
+  const day = startOfUtcDay().toISOString().slice(0, 10);
+  const first = await redis.set(`wfos:div-budget:${division.id}:${day}`, "1", "EX", 2 * 86_400, "NX").catch(() => null);
+  if (first) {
+    await audit({ workspaceId: ws.id, actorLabel: "system", action: "division.paused_budget", targetType: "team", targetId: division.id, details: { reason } });
+    await publish(ws.id, { type: "task.updated", taskId: task.id, status: "QUEUED" });
+    await miscQueue.add("notify", {
+      kind: "notify",
+      notificationKind: "limits",
+      employeeId: emp.id,
+      workspaceId: ws.id,
+      subject: msg(ws.defaultLocale, "notify.pausedBudget", { name: division.name }),
+      text: reason,
+      link: `/tasks/${task.id}`,
+    });
   }
 }
 
@@ -156,11 +216,22 @@ type Employee = typeof employees.$inferSelect;
 type Team = Awaited<ReturnType<typeof resolveExecutor>>["team"];
 
 /** The run proper, entered with the task RUNNING. */
-async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, creditBudget: number, resumeNote?: string): Promise<void> {
+async function runStarted(
+  task: Task,
+  ws: Workspace,
+  emp: Employee,
+  team: Team,
+  /** credits this run may spend; division: the division's daily budget is the tighter limit */
+  limit: { credits: number; division: { id: string; name: string } | null },
+  resumeNote?: string,
+): Promise<void> {
   const taskId = task.id;
-  // Workspace mode with a repository: refresh the platform mirror, then clone/refresh inside the sandbox
+  const creditBudget = limit.credits;
+  // Workspace mode (not for a head planning or reviewing: that is platform work), with a repository: refresh the
+  // platform mirror, then clone/refresh inside the sandbox. A member's subtask (the code lead's build) runs in it too.
+  const workspaceMode = emp.executionMode === "workspace" && team?.role !== "lead";
   let repository: (RepoRef & { name: string }) | undefined;
-  if (emp.executionMode === "workspace" && !team && task.repositoryId) {
+  if (workspaceMode && task.repositoryId) {
     const [r] = await db.select().from(repositories).where(and(eq(repositories.id, task.repositoryId), eq(repositories.workspaceId, ws.id)));
     if (!r) {
       await failTask(task, "The task's repository no longer exists.", { kind: "could_not_start" });
@@ -185,6 +256,9 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   const untrustedKids = team?.role === "lead" ? await untrustedSubtaskIds(task.id) : [];
   if (untrustedKids.length) await recordTaskTaint(task, emp.id, "untrusted_subtask", UNTRUSTED_SUBTASK_NOTE, { taskIds: untrustedKids });
 
+  const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
+  const division = await runDivision(emp, ws, lang, { workspaceMode });
+
   const ctx: RunContext = {
     runId: randomUUID(),
     workspaceId: ws.id,
@@ -202,7 +276,10 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     delegatedTaskIds: [],
     revisionRequests: [],
     team,
-    ...(emp.executionMode === "workspace" && !team
+    division: division.context,
+    // client isolation: knowledge, memory, recent work and client lookups of this client (plus general ones) only
+    clientId: task.clientId,
+    ...(workspaceMode
       ? {
           workspace: {
             egressDomains: emp.egressDomains,
@@ -218,11 +295,11 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   };
 
   const [mem, directory, context, inbox, recent, assignedSkills] = await Promise.all([
-    recallMemories(emp.id, `${task.title}\n${task.brief}`),
+    recallMemories(emp.id, `${task.title}\n${task.brief}`, task.clientId),
     workspaceDirectory(ws.id),
     taskContext(task),
-    unreadMessagesFor(emp.id),
-    recentWorkBrief(emp.id, { excludeTaskId: task.id }).catch((e: unknown) => (log.warn({ err: e, taskId }, "recent work brief failed"), "")),
+    unreadMessagesFor(emp.id, task.clientId),
+    recentWorkBrief(emp.id, { excludeTaskId: task.id, clientId: task.clientId }).catch((e: unknown) => (log.warn({ err: e, taskId }, "recent work brief failed"), "")),
     loadAssignedSkills(emp.id, ws.id, ctx.employee.toolPermissions),
   ]);
   // listed in the system prompt; skill_read is granted implicitly while there is one. Workspace mode: the runner
@@ -233,7 +310,7 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   await taintFromStoredInput(ctx, mem, inbox);
 
   // memories and recent work lead the user message (data, not instructions): the system prompt stays stable across runs
-  const promptParts = [memoryNotesBlock(mem), `# Task: ${task.title}`, task.brief, context && `## Context\n${context}`, recent];
+  const promptParts = [memoryNotesBlock(mem), `# Task: ${task.title}`, task.brief, context && `## Context\n${context}`, await dependencyContext(task), recent];
   if (inbox.length) promptParts.push(inboxSection(inbox));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
@@ -242,14 +319,8 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     promptParts.push(`## Your previous deliverables on this task\n${task.deliverables.map((d) => `- ${d.title} (${d.kind})`).join("\n")}`);
   }
 
-  // department SOP (in the employee's output language) and, in Workspace mode, its subagents
-  const deptKey = emp.department ?? ROLE_TEMPLATES.find((t) => t.key === emp.templateKey)?.department ?? null;
-  const dept = deptKey ? (await workspaceDepartments(ws.id)).find((d) => d.key === deptKey) : undefined;
-  const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
-  const agents =
-    dept && ctx.workspace
-      ? Object.fromEntries(dept.subagents.map((a) => [a.name, { description: a.description[lang], prompt: a.prompt[lang], ...(a.tools ? { tools: a.tools } : {}) }]))
-      : undefined;
+  // the code lead's subagents (Workspace mode): the division's members with role "subagent", from their own profiles
+  const agents = ctx.workspace ? division.agents : undefined;
 
   const systemPrompt = buildSystemPrompt({
     employee: emp,
@@ -259,14 +330,14 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     dryRun: task.dryRun,
     mode: "task",
     workspace: ctx.workspace ? { egressDomains: ctx.workspace.egressDomains, hasRepository: !!task.repositoryId } : undefined,
-    department: dept ? { name: dept.name[lang], sop: dept.sop[lang], subagents: agents ? Object.keys(agents) : [] } : undefined,
+    division: division.prompt,
     outputLocale: employeeOutputLocale(emp.outputLanguage, ws.defaultLocale),
     skills: assignedSkills,
   });
 
   let out;
   try {
-    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget, agents });
+    out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget, agents, agentEmployees: agents ? division.agentEmployees : undefined });
   } catch (e) {
     await persistRunTaint(ctx.guard, task);
     if (e instanceof WorkspaceBusyError) {
@@ -287,6 +358,12 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
 
   const running = { ...task, status: "RUNNING" as TaskStatus };
 
+  if (out.stopped === "budget" && limit.division) {
+    // the division's daily budget ran out mid-run: held like a division run that could not start (resumable)
+    if (!(await setTaskStatus(running, "QUEUED", { error: null }))) return;
+    await holdForDivisionBudget(task, ws, emp, limit.division, "Division daily budget reached during the run", resumeNote ?? "You were paused by the division's daily budget. Continue where you left off.");
+    return;
+  }
   if (out.stopped === "budget") {
     await pauseForBudget(ws.id, emp.id, "Budget reached during the run", taskId);
     if (!(await setTaskStatus(running, "QUEUED", { error: "Paused mid-run: budget cap reached. Resume after raising the budget." }))) return;
@@ -319,9 +396,10 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
   }
 
   // Start tasks created from this run (chat → board, delegation).
+  // A subtask that waits for others (phase after) is started by onChildFinished once they are DONE.
   for (const id of [...ctx.createdTaskIds, ...ctx.delegatedTaskIds]) {
     const [t] = await db.select({ phase: tasks.phase }).from(tasks).where(eq(tasks.id, id));
-    if (t?.phase !== "hold") await enqueueTask(id, ws.id);
+    if (t && t.phase !== "hold" && !(t.phase && DEPENDENCY_PHASES.includes(t.phase))) await enqueueTask(id, ws.id);
   }
 
   // Team lead: planning → wait for subtasks
@@ -350,16 +428,25 @@ async function runStarted(task: Task, ws: Workspace, emp: Employee, team: Team, 
     .from(approvals)
     .where(and(eq(approvals.taskId, task.id), eq(approvals.status, "PENDING")));
   if (pending.length > 0) {
-    await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: team?.role === "lead" ? "review" : task.phase });
+    await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: leadPhaseAfterRun(team, task.phase) });
     return;
   }
   // a preview approved while the run went on is still being deployed (or came back failed): the task waits for the
   // platform's result instead of finishing; afterApprovalResolved decides now that the run is over
   if (await previewOutstanding(task.id)) {
-    if (await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: team?.role === "lead" ? "review" : task.phase })) await afterApprovalResolved(task.id);
+    if (await setTaskStatus(running, "AWAITING_APPROVAL", { result: out.text, phase: leadPhaseAfterRun(team, task.phase) })) await afterApprovalResolved(task.id);
     return;
   }
 
   // DONE wakes the parent, settles the routine run, publishes and notifies (afterTerminal)
   await setTaskStatus(running, "DONE", { result: out.text, phase: team ? "done" : task.phase });
+}
+
+/**
+ * The phase a task keeps while it waits for an approval: a head that worked in the plan phase (did the task itself, or
+ * wrote a PRD) resumes planning; a head in review resumes the review; anyone else keeps the task's phase.
+ */
+function leadPhaseAfterRun(team: Team, phase: string | null): string | null {
+  if (team?.role !== "lead") return phase;
+  return team.phase === "plan" ? "plan" : "review";
 }

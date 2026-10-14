@@ -10,7 +10,8 @@
   "template": {
     "suggested": "{count, plural, other {# tool yang disarankan}} · {level}",
     "startBlank": "Mulai dari kosong",
-    "startBlankDescription": "Tentukan peran khusus dari awal."
+    "startBlankDescription": "Tentukan peran khusus dari awal.",
+    "other": "Peran lain"
   },
   "persona": {
     "avatar": "Avatar",
@@ -27,7 +28,15 @@
     "modeTool": "Mode tool (hanya tool platform)",
     "modeWorkspace": "Mode workspace (Claude Code di sandbox)",
     "modeToolHelp": "Pilihan paling aman: draf, email, basis pengetahuan, dan tool platform lain.",
-    "modeWorkspaceHelp": "Shell, berkas, dan git di sandbox terisolasi per tugas. Merekrut dalam mode ini meminta kata sandi dan kode 2FA Anda."
+    "modeWorkspaceHelp": "Shell, berkas, dan git di sandbox terisolasi per tugas. Merekrut dalam mode ini meminta kata sandi dan kode 2FA Anda.",
+    "specialty": "Keahlian",
+    "specialtyPlaceholder": "Satu baris, mis. invoice dan penagihan",
+    "specialtyHelp": "Kepala divisi dan Tech Lead membaca ini saat memilih siapa mengerjakan apa.",
+    "division": "Divisi",
+    "noDivision": "Belum masuk divisi",
+    "membership": "Bekerja sebagai",
+    "divisionHelp": "Masuk sebagai anggota. Jadikan kepala divisi atau Tech Lead nanti di halaman Divisi. Satu karyawan hanya ada di satu divisi.",
+    "subagentHelp": "Bekerja di dalam sandbox Tech Lead, di branch milik Tech Lead."
   },
   "tools": {
     "defaultAutonomy": "Otonomi bawaan",

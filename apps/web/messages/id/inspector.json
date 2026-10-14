@@ -73,7 +73,13 @@
     "subtasks": "Subtugas",
     "channel": "Kanal antaragen",
     "activityTab": "Aktivitas ({count})",
-    "deliverablesTab": "Hasil kerja ({count})"
+    "deliverablesTab": "Hasil kerja ({count})",
+    "from": "Dari:",
+    "waitsFor": "Menunggu",
+    "waitedFor": "Sudah menunggu (semua selesai)",
+    "phaseAfter": "menunggu subtugas lain",
+    "phaseBlocked": "terhenti",
+    "blocked": "Terhenti: subtugas yang ditunggu tidak selesai"
   },
   "source": {
     "chat": "obrolan",
@@ -81,7 +87,8 @@
     "routine": "rutinitas",
     "team": "tim",
     "replay": "replay",
-    "demo": "demo"
+    "demo": "demo",
+    "handoff": "serah terima divisi"
   },
   "actions": {
     "start": "Mulai",
@@ -149,6 +156,18 @@
       "escalated": "Insiden dieskalasi ke orang",
       "resolved": "Insiden selesai",
       "muted": "Insiden dibisukan (batas per jam)"
+    },
+    "named": {
+      "subagent_started": "Subagent mulai",
+      "subagent_finished": "Subagent selesai",
+      "dependencies_done": "Ketergantungan selesai: mulai",
+      "subtask_blocked": "Terhenti karena ketergantungan",
+      "division_budget_cap": "Anggaran divisi tercapai",
+      "waiting_for_prd_decision": "Menunggu keputusan PRD",
+      "waiting_for_preview": "Menunggu preview diterbitkan",
+      "preview_deployed": "Preview terbit",
+      "waiting_for_live": "Menunggu rilis LIVE",
+      "live_deployed": "Rilis LIVE selesai"
     }
   },
   "incidentKind": {
@@ -165,5 +184,6 @@
   "stoppedHint": {
     "stalled": "Tidak ada kemajuan terlalu lama, jadi proses dihentikan.",
     "loop": "Panggilan tool yang sama terus berulang, jadi proses dihentikan."
-  }
+  },
+  "stepActor": "oleh {name} (subagent)"
 }

@@ -1,6 +1,6 @@
-import { and, eq, gte, sum } from "drizzle-orm";
+import { and, eq, gte, isNull, or, sum } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, employees, steps } from "@wfos/db";
+import { audit, db, employeeDivision, employees, steps } from "@wfos/db";
 import { allowListEntrySchema, employeeInputSchema, hasRole } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { notFound, patchBody, route } from "@/lib/server/route";
@@ -17,8 +17,31 @@ export const GET = route<P>("VIEWER", async ({ session, params }) => {
   const e = await load(session.workspaceId, params.id);
   const day = new Date();
   day.setUTCHours(0, 0, 0, 0);
-  const [s] = await db.select({ s: sum(steps.credits) }).from(steps).where(and(eq(steps.employeeId, e.id), gte(steps.createdAt, day)));
-  return { employee: { ...e, spentToday: Number(s?.s ?? 0) } };
+  const week = new Date(Date.now() - 7 * 86_400_000);
+  // the 7-day cost includes the steps this employee took as a subagent in the code lead's run, and leaves those out of
+  // the code lead's: each step counts once, for coalesce(actor_employee_id, employee_id) (written so the indexes apply)
+  const [[s], [w], division] = await Promise.all([
+    db.select({ s: sum(steps.credits) }).from(steps).where(and(eq(steps.employeeId, e.id), eq(steps.workspaceId, session.workspaceId), gte(steps.createdAt, day))),
+    db
+      .select({ s: sum(steps.credits) })
+      .from(steps)
+      .where(
+        and(
+          or(eq(steps.actorEmployeeId, e.id), and(isNull(steps.actorEmployeeId), eq(steps.employeeId, e.id))),
+          eq(steps.workspaceId, session.workspaceId),
+          gte(steps.createdAt, week),
+        ),
+      ),
+    employeeDivision(e.id),
+  ]);
+  return {
+    employee: {
+      ...e,
+      spentToday: Number(s?.s ?? 0),
+      credits7d: Number(w?.s ?? 0),
+      division: division && division.division.workspaceId === session.workspaceId ? { id: division.division.id, key: division.division.key, name: division.division.name, color: division.division.color, role: division.role } : null,
+    },
+  };
 });
 
 const patchSchema = employeeInputSchema.partial().extend({ allowList: z.array(allowListEntrySchema).optional() });

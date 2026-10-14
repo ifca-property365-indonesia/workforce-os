@@ -119,7 +119,8 @@ export const STEP_KINDS = [
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
-export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo", "webhook"] as const;
+/** handoff: made by handoff_to_division (another division's head handed the work over; chains are limited) */
+export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo", "webhook", "handoff"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
 export const WEBHOOK_DELIVERY_STATUSES = ["accepted", "duplicate", "rejected", "failed"] as const;
@@ -212,6 +213,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "request_revision", label: "Request revision", description: "Team lead: send a subtask back with feedback", class: "reversible", credits: 0.05, category: "team" },
   { name: "retry_subtask", label: "Retry subtask", description: "Team lead: run a failed subtask again (bounded retries)", class: "reversible", credits: 0.05, category: "team" },
   { name: "reassign_subtask", label: "Reassign subtask", description: "Team lead: give a failed subtask to another team member", class: "reversible", credits: 0.05, category: "team" },
+  { name: "handoff_to_division", label: "Hand off to division", description: "Division head: hand work over to another division as a new task (deliverables passed as data)", class: "reversible", credits: 0.05, category: "team" },
   { name: "message_teammate", label: "Message teammate", description: "Send a structured message to another employee", class: "reversible", credits: 0.05, category: "team" },
   { name: "ask_teammate", label: "Ask a colleague", description: "Chat: bring a colleague into this chat to help; they reply right after you (granted automatically in chats)", class: "reversible", credits: 0.02, category: "team" },
   { name: "send_email", label: "Send email", description: "Send an email via workspace SMTP", class: "irreversible", credits: 1, category: "comms" },
@@ -607,6 +609,8 @@ export interface StepDTO {
   id: string;
   taskId: string | null;
   employeeId: string | null;
+  /** who acted when it was not the run's employee: a division member working as a subagent in the code lead's run */
+  actorEmployeeId?: string | null;
   kind: StepKind;
   name: string;
   model?: string | null;

@@ -8,6 +8,8 @@ export interface StepRecord {
   taskId?: string | null;
   conversationId?: string | null;
   employeeId?: string | null;
+  /** a division member who acted as a subagent in the run of `employeeId` (the code lead) */
+  actorEmployeeId?: string | null;
   kind: StepKind;
   name: string;
   model?: string | null;
@@ -38,6 +40,7 @@ export async function recordStep(r: StepRecord, database: DB = db): Promise<Step
       taskId: r.taskId ?? null,
       conversationId: r.conversationId ?? null,
       employeeId: r.employeeId ?? null,
+      actorEmployeeId: r.actorEmployeeId ?? null,
       kind: r.kind,
       name: r.name,
       model: r.model ?? null,
@@ -59,6 +62,7 @@ export async function recordStep(r: StepRecord, database: DB = db): Promise<Step
     id: row!.id,
     taskId: row!.taskId,
     employeeId: row!.employeeId,
+    ...(row!.actorEmployeeId ? { actorEmployeeId: row!.actorEmployeeId } : {}),
     kind: row!.kind,
     name: row!.name,
     model: row!.model,

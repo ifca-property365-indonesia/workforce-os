@@ -11,10 +11,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { api } from "@/lib/api";
 
 export interface ExportReport {
-  included: { employees: string[]; teams: string[]; routines: string[]; departments: string[]; skills: string[]; mcpSlots: string[] };
+  included: { employees: string[]; teams: string[]; routines: string[]; skills: string[]; mcpSlots: string[] };
   redactions: { where: string; rule: string }[];
   leftOut: string[];
-  counts: { employees: number; teams: number; routines: number; departments: number; skills: number; mcpSlots: number; memories: number; redactions: number };
+  counts: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number; redactions: number };
 }
 
 interface Selection {
@@ -22,7 +22,7 @@ interface Selection {
   teamIds?: string[];
 }
 
-const GROUPS = ["employees", "teams", "routines", "departments", "skills", "mcpSlots"] as const;
+const GROUPS = ["employees", "teams", "routines", "skills", "mcpSlots"] as const;
 
 /** Save a package as <name>.wfos.json in the browser. */
 function download(pkg: WfosPackage): string {
@@ -43,8 +43,7 @@ export function ExportDialog({ selection, name, onClose }: { selection: Selectio
   const t = useTranslations("packages");
   const tc = useTranslations("common");
   const [includeMemories, setIncludeMemories] = useState(false);
-  const [includeDepartments, setIncludeDepartments] = useState(true);
-  const opts = { ...selection, includeMemories, includeDepartments };
+  const opts = { ...selection, includeMemories };
   const dry = useMutation({
     mutationFn: () => api.post<{ report: ExportReport }>("/api/packages/export", { ...opts, dryRun: true }).then((r) => r.report),
     onError: (e) => toast.error((e as Error).message),
@@ -60,7 +59,7 @@ export function ExportDialog({ selection, name, onClose }: { selection: Selectio
   const { mutate } = dry;
   useEffect(() => {
     mutate();
-  }, [mutate, includeMemories, includeDepartments]);
+  }, [mutate, includeMemories]);
 
   const report = dry.data;
   const empty = !!report && report.counts.employees === 0 && report.counts.teams === 0;
@@ -73,9 +72,6 @@ export function ExportDialog({ selection, name, onClose }: { selection: Selectio
         </DialogHeader>
         <div className="space-y-4 text-sm">
           <div className="flex flex-col gap-1.5">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={includeDepartments} onChange={(e) => setIncludeDepartments(e.target.checked)} /> {t("export.includeDepartments")}
-            </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={includeMemories} onChange={(e) => setIncludeMemories(e.target.checked)} /> {t("export.includeMemories")}
             </label>

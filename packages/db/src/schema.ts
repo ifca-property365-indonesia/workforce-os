@@ -495,6 +495,8 @@ export const agentMessages = pgTable("agent_messages", {
   content: text("content").notNull(),
   /** written by a tainted run: shown to the recipient as data and taints the recipient's run */
   untrusted: boolean("untrusted").notNull().default(false),
+  /** the client of the sender's run; a run for another client never sees the message */
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
   readAt: timestamp("read_at", { withTimezone: true }),
   createdAt: createdAt(),
 });

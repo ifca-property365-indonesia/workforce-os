@@ -6,18 +6,20 @@
  *   - creates the standard organisation (Delivery squad, Support, Finance & Accounting, HR),
  *   - adds the two real clients with public data and clearly marked placeholders.
  *
- * Dry run by default: prints what would change. `--apply` runs it in one transaction and writes the audit log.
+ * Dry run by default: prints what would change. `--apply` runs it all (seeding and the audit row included) in one
+ * transaction. Run it with wfos-worker stopped: it refuses while any task of the workspace is RUNNING or
+ * AWAITING_APPROVAL, but a stopped worker is what keeps new runs from starting meanwhile.
  *   pnpm --filter @wfos/db exec tsx src/org-rebuild-2026-10.ts --workspace <slug> [--apply]
  */
 import { config } from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
+import type { TaskStatus } from "@wfos/shared";
 import { assertNotProductionTarget } from "@wfos/shared/runtime";
 import { getDb, getSql } from "./index";
-import { audit } from "./audit";
-import { seedOrganization } from "./sample";
-import { clients, employees, routines, tasks, teams, webhookTriggers, workspaces } from "./schema";
+import { seedOrganization, type DbOrTx } from "./sample";
+import { auditLog, clients, employees, routines, tasks, teams, webhookTriggers, workspaces } from "./schema";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(here, "../../../.env"), quiet: true });
@@ -68,6 +70,21 @@ const REAL_CLIENTS = [
     ].join("\n"),
   },
 ];
+
+/** Tasks in these states have a run in flight or waiting on a person: rebuilding under them breaks that run. */
+const BUSY_STATUSES: TaskStatus[] = ["RUNNING", "AWAITING_APPROVAL"];
+
+async function busyTaskCount(db: DbOrTx, workspaceId: string): Promise<number> {
+  const rows = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(and(eq(tasks.workspaceId, workspaceId), inArray(tasks.status, BUSY_STATUSES)));
+  return rows.length;
+}
+
+function busyError(n: number): Error {
+  return new Error(`${n} task(s) are RUNNING or AWAITING_APPROVAL: wait until they finish (or cancel them) before rebuilding.`);
+}
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -131,11 +148,9 @@ async function main() {
     .select({ code: clients.code, name: clients.name })
     .from(clients)
     .where(and(eq(clients.workspaceId, ws.id), or(inArray(clients.code, REAL_CLIENTS.map((c) => c.code)), inArray(clients.name, REAL_CLIENTS.map((c) => c.name)))));
-  const runningTasks = await db
-    .select({ id: tasks.id })
-    .from(tasks)
-    .where(and(eq(tasks.workspaceId, ws.id), inArray(tasks.status, ["RUNNING"]), isNotNull(tasks.assigneeId)));
+  const busy = await busyTaskCount(db, ws.id);
 
+  console.log("Run this with wfos-worker stopped (pm2 stop wfos-worker), so no task starts while the organisation is rebuilt.");
   console.log(`Workspace: ${ws.name} (${ws.slug})`);
   console.log(`Example clients to delete: ${exampleClients.map((c) => c.name).join(", ") || "(none)"}`);
   console.log(`  their tasks (incl. subtasks/handoffs): ${doomed.length}`);
@@ -144,13 +159,16 @@ async function main() {
   console.log(`Routines to delete: ${orphanRoutines.map((r) => r.name).join(", ") || "(none)"}`);
   console.log(`Webhook triggers to delete: ${orphanHooks.map((h) => h.name).join(", ") || "(none)"}`);
   console.log(`Real clients already present: ${existingReal.map((c) => c.name).join(", ") || "(none)"}`);
-  if (runningTasks.length) throw new Error(`${runningTasks.length} task(s) are RUNNING: wait until they finish (or cancel them) before rebuilding.`);
+  if (busy) throw busyError(busy);
   if (!apply) {
     console.log("\nDry run. Re-run with --apply to make these changes.");
     return;
   }
 
-  await db.transaction(async (tx) => {
+  const { divisions, addedClients } = await db.transaction(async (tx) => {
+    // checked again inside: a task may have started since the dry-run listing above
+    const busyNow = await busyTaskCount(tx, ws.id);
+    if (busyNow) throw busyError(busyNow);
     if (doomed.length) await tx.delete(tasks).where(inArray(tasks.id, doomed));
     if (exampleIds.length) await tx.delete(clients).where(inArray(clients.id, exampleIds));
     if (orphanRoutines.length) await tx.delete(routines).where(inArray(routines.id, orphanRoutines.map((r) => r.id)));
@@ -159,29 +177,34 @@ async function main() {
     if (empIds.length) await tx.delete(employees).where(inArray(employees.id, empIds));
     const present = new Set(existingReal.map((c) => c.code));
     const toAdd = REAL_CLIENTS.filter((c) => !present.has(c.code) && !existingReal.some((e) => e.name === c.name));
-    if (toAdd.length) await tx.insert(clients).values(toAdd.map((c) => ({ ...c, workspaceId: ws.id, currency: "IDR", status: "active" as const })));
+    const added = toAdd.length
+      ? await tx
+          .insert(clients)
+          .values(toAdd.map((c) => ({ ...c, workspaceId: ws.id, currency: "IDR", status: "active" as const })))
+          .returning({ code: clients.code })
+      : [];
+    const seeded = await seedOrganization(tx, ws.id);
+    await tx.insert(auditLog).values({
+      workspaceId: ws.id,
+      actorUserId: null,
+      actorLabel: `cli:${process.env.USER ?? "unknown"}`,
+      action: "org.rebuilt",
+      targetType: "workspace",
+      targetId: ws.id,
+      details: {
+        deletedClients: exampleClients.map((c) => c.name),
+        deletedTasks: doomed.length,
+        deletedEmployees: oldEmployees.map((e) => e.name),
+        deletedTeams: oldTeams.map((t) => t.name),
+        deletedRoutines: orphanRoutines.map((r) => r.name),
+        deletedWebhookTriggers: orphanHooks.map((h) => h.name),
+        divisions: seeded.map((d) => ({ key: d.key, created: d.created })),
+        addedClients: added.map((c) => c.code),
+      },
+    });
+    return { divisions: seeded, addedClients: added.map((c) => c.code) };
   });
-  const divisions = await seedOrganization(db, ws.id);
-
-  const actorLabel = `cli:${process.env.USER ?? "unknown"}`;
-  await audit({
-    workspaceId: ws.id,
-    actorLabel,
-    action: "org.rebuilt",
-    targetType: "workspace",
-    targetId: ws.id,
-    details: {
-      deletedClients: exampleClients.map((c) => c.name),
-      deletedTasks: doomed.length,
-      deletedEmployees: oldEmployees.map((e) => e.name),
-      deletedTeams: oldTeams.map((t) => t.name),
-      deletedRoutines: orphanRoutines.map((r) => r.name),
-      deletedWebhookTriggers: orphanHooks.map((h) => h.name),
-      divisions: divisions.map((d) => ({ key: d.key, created: d.created })),
-      addedClients: REAL_CLIENTS.map((c) => c.code),
-    },
-  });
-  console.log(`\nDone. Divisions: ${divisions.map((d) => `${d.key}${d.created ? "" : " (kept)"}`).join(", ")}.`);
+  console.log(`\nDone. Divisions: ${divisions.map((d) => `${d.key}${d.created ? "" : " (kept)"}`).join(", ")}. Clients added: ${addedClients.join(", ") || "(none)"}.`);
 }
 
 main()

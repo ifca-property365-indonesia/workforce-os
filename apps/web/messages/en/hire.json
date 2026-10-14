@@ -10,7 +10,8 @@
   "template": {
     "suggested": "{count, plural, one {# suggested tool} other {# suggested tools}} · {level}",
     "startBlank": "Start blank",
-    "startBlankDescription": "Define a custom role from scratch."
+    "startBlankDescription": "Define a custom role from scratch.",
+    "other": "Other roles"
   },
   "persona": {
     "avatar": "Avatar",
@@ -27,7 +28,15 @@
     "modeTool": "Tool mode (platform tools only)",
     "modeWorkspace": "Workspace mode (Claude Code in a sandbox)",
     "modeToolHelp": "Safest choice: drafts, email, knowledge base and other platform tools.",
-    "modeWorkspaceHelp": "Shell, files and git in an isolated sandbox per task. Hiring in this mode asks for your password and a 2FA code."
+    "modeWorkspaceHelp": "Shell, files and git in an isolated sandbox per task. Hiring in this mode asks for your password and a 2FA code.",
+    "specialty": "Specialty",
+    "specialtyPlaceholder": "One line, e.g. invoices and payment follow-up",
+    "specialtyHelp": "The division head and the code lead read this when they pick who does what.",
+    "division": "Division",
+    "noDivision": "No division yet",
+    "membership": "Works as",
+    "divisionHelp": "Joins as a member. Make them head or code lead later on the Divisions page. An employee belongs to one division.",
+    "subagentHelp": "Works inside the code lead's sandbox, on the code lead's branch."
   },
   "tools": {
     "defaultAutonomy": "Default autonomy",

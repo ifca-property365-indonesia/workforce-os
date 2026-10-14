@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { approvals, conversations, credentials, db, employees, messages, tasks, workspaces } from "@wfos/db";
+import { approvals, conversations, credentials, db, employees, messages, tasks, teamMembers, teams, workspaces } from "@wfos/db";
 import type { AllowListEntry, AutonomyLevel, ToolPermission } from "@wfos/shared";
 import { encryptSecret } from "@wfos/shared/server";
 import type { RunContext } from "../src/tools/registry";
@@ -38,6 +38,47 @@ export async function makeEmployee(
     })
     .returning();
   return e!;
+}
+
+/**
+ * A division (teams row): the head and the code lead are members with role "member"; `members` lists everyone else
+ * with their role. Every employee may be in one division only.
+ */
+export async function makeDivision(
+  workspaceId: string,
+  opts: {
+    name?: string;
+    key?: string | null;
+    head?: { id: string } | null;
+    codeLead?: { id: string } | null;
+    members?: { emp: { id: string }; role?: "member" | "subagent" }[];
+    sop?: { en: string; id: string };
+    maxParallel?: number;
+    dailyBudget?: number | null;
+    sortOrder?: number;
+  } = {},
+) {
+  const [team] = await db
+    .insert(teams)
+    .values({
+      workspaceId,
+      name: opts.name ?? "Delivery",
+      key: opts.key === undefined ? `div-${randomUUID().slice(0, 8)}` : opts.key,
+      leadId: opts.head?.id ?? null,
+      codeLeadId: opts.codeLead?.id ?? null,
+      sop: opts.sop ?? { en: "", id: "" },
+      maxParallel: opts.maxParallel ?? 1,
+      dailyBudget: opts.dailyBudget ?? null,
+      sortOrder: opts.sortOrder ?? 0,
+    })
+    .returning();
+  const rows = [
+    ...(opts.head ? [{ employeeId: opts.head.id, role: "member" as const }] : []),
+    ...(opts.codeLead ? [{ employeeId: opts.codeLead.id, role: "member" as const }] : []),
+    ...(opts.members ?? []).map((m) => ({ employeeId: m.emp.id, role: m.role ?? ("member" as const) })),
+  ];
+  if (rows.length) await db.insert(teamMembers).values(rows.map((r) => ({ teamId: team!.id, ...r })));
+  return team!;
 }
 
 export async function makeTask(workspaceId: string, assigneeId: string, over: Partial<typeof tasks.$inferInsert> = {}) {

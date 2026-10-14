@@ -1,7 +1,6 @@
 import "./lib/env";
 import { DelayedError, Worker, type Job } from "bullmq";
-import { eq } from "drizzle-orm";
-import { conversations, db, getSql, tasks, teams } from "@wfos/db";
+import { getSql } from "@wfos/db";
 import { QUEUE_ACTIONS, QUEUE_DEPLOYS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
 import { env, instanceCredentialSummary } from "./lib/env";
 import { log } from "./lib/logger";
@@ -18,7 +17,7 @@ import { backfillMemoryEmbeddings, runRoutineJob, tickRoutines } from "./schedul
 import { tickBilling } from "./scheduler/billing";
 import { resendOutbound } from "./lib/outbox";
 import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
-import { acquireEmployeeLease, releaseEmployeeLease } from "./guards/lease";
+import { acquireRunLeases } from "./runner/run-lease";
 import { handleRunJobFailed } from "./runner/task-status";
 import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
 import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
@@ -32,30 +31,11 @@ import { telegramDailySummary } from "./lib/telegram";
 import { writeHeartbeat } from "./lib/heartbeat";
 import { HEARTBEAT_EVERY_MS } from "@wfos/shared/ops";
 
-// Per-employee concurrency: a Redis lease set per employee (./guards/lease), one member per job.
-async function employeeForRun(data: RunJob): Promise<string | null> {
-  if (data.kind === "task") {
-    const [t] = await db.select({ assigneeId: tasks.assigneeId, teamId: tasks.teamId, parentTaskId: tasks.parentTaskId }).from(tasks).where(eq(tasks.id, data.taskId));
-    if (!t) return null;
-    if (t.teamId && !t.parentTaskId) {
-      const [team] = await db.select({ leadId: teams.leadId }).from(teams).where(eq(teams.id, t.teamId));
-      return team?.leadId ?? t.assigneeId;
-    }
-    return t.assigneeId;
-  }
-  const [c] = await db.select({ employeeId: conversations.employeeId, teamId: conversations.teamId }).from(conversations).where(eq(conversations.id, data.conversationId));
-  if (c?.employeeId) return c.employeeId;
-  if (c?.teamId) {
-    const [team] = await db.select({ leadId: teams.leadId }).from(teams).where(eq(teams.id, c.teamId));
-    return team?.leadId ?? null;
-  }
-  return null;
-}
-
+// Per-employee and per-division concurrency: Redis lease sets (./runner/run-lease), one member per job.
 async function processRun(job: Job<RunJob>, token?: string): Promise<void> {
-  const employeeId = await employeeForRun(job.data);
-  const leaseId = `${job.id}`;
-  if (employeeId && !(await acquireEmployeeLease(employeeId, leaseId, env.perEmployeeConcurrency))) {
+  const leases = await acquireRunLeases(job.data, `${job.id}`, env.perEmployeeConcurrency);
+  if (!leases.ok) {
+    // the employee or its division is busy: try again shortly
     await job.moveToDelayed(Date.now() + 4000, token);
     throw new DelayedError();
   }
@@ -64,7 +44,7 @@ async function processRun(job: Job<RunJob>, token?: string): Promise<void> {
     else if (job.data.kind === "chat_regenerate") await runChat(job.data.conversationId, job.data.userMessageId, { regenerate: true, enqueuedAt: new Date(job.timestamp) });
     else await runChat(job.data.conversationId, job.data.messageId);
   } finally {
-    if (employeeId) await releaseEmployeeLease(employeeId, leaseId);
+    await leases.release();
   }
 }
 

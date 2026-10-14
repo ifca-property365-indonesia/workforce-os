@@ -24,7 +24,7 @@ import { resolveClaudeCredential } from "@wfos/db";
 import { agentEnv, env } from "../lib/env";
 import { log } from "../lib/logger";
 import { priceFor } from "../lib/pricing";
-import { recordStep } from "../lib/steps";
+import { recordStep, type StepRecord } from "../lib/steps";
 import { getExternalMcpServers } from "../lib/settings";
 import { guardOutput, guardToolResult } from "../guards/content";
 import { redactSecrets } from "@wfos/shared/server";
@@ -45,8 +45,10 @@ export interface AgentRunInput {
   onTextDelta?: (text: string) => void;
   /** record LLM steps under this name (e.g. "replay") */
   stepName?: string;
-  /** department subagents (Workspace mode only: they need Claude Code's Task tool) */
-  agents?: Record<string, { description: string; prompt: string; tools?: string[] }>;
+  /** the code lead's subagents (Workspace mode only: they need Claude Code's Task tool), built from division members */
+  agents?: Record<string, { description: string; prompt: string; tools?: string[]; model?: string }>;
+  /** agents key → the employee behind it: their subagent activity is recorded with them as actor */
+  agentEmployees?: Record<string, { id: string; name: string }>;
 }
 
 export interface AgentImage {
@@ -428,6 +430,116 @@ interface OpenTurn {
   outputTokens: number;
   cacheRead: number;
   cacheWrite: number;
+  /** a subagent's turn: the division member it is attributed to */
+  actorId?: string | null;
+}
+
+/** Claude Code's subagent tool (named Task, or Agent in newer CLIs). */
+const SUBAGENT_TOOLS = new Set(["Task", "Agent"]);
+
+/** Text of a tool_result block's content (string or text blocks). */
+function toolResultText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) return (content as { text?: unknown }[]).map((x) => (typeof x.text === "string" ? x.text : "")).join("");
+  return "";
+}
+
+/**
+ * Attribution of a code lead's subagents: the Task tool_use that starts one names it (input.subagent_type); every
+ * message of that subagent carries parent_tool_use_id = that tool_use id. Steps are recorded on the run (employeeId =
+ * the code lead) with actorEmployeeId = the member: the start and end of each invocation and each of its tool calls.
+ */
+export class SubagentTracker {
+  /** Task tool_use id → the member running it */
+  private invocations = new Map<string, { id: string; name: string; key: string; startedAt: number }>();
+  /** a subagent's tool_use id → its call, until its result comes back */
+  private calls = new Map<string, { name: string; input: unknown; actorId: string; startedAt: number }>();
+
+  constructor(
+    private ctx: RunContext,
+    private members: Record<string, { id: string; name: string }>,
+  ) {}
+
+  get active(): boolean {
+    return Object.keys(this.members).length > 0;
+  }
+
+  /** The member a message belongs to (null: the code lead itself, or a subagent that is not a division member). */
+  actorOf(parentToolUseId: string | null | undefined): string | null {
+    return parentToolUseId ? (this.invocations.get(parentToolUseId)?.id ?? null) : null;
+  }
+
+  private step(r: Omit<StepRecord, "workspaceId" | "taskId" | "conversationId" | "employeeId">): Promise<unknown> {
+    return recordStep({ workspaceId: this.ctx.workspaceId, taskId: this.ctx.taskId, conversationId: this.ctx.conversationId, employeeId: this.ctx.employee.id, ...r }).catch((e: unknown) =>
+      log.warn({ err: e, runId: this.ctx.runId }, "subagent step not recorded"),
+    );
+  }
+
+  /** An assistant message: the code lead starting a subagent, or a subagent calling a tool. */
+  async onAssistant(parentToolUseId: string | null, content: unknown): Promise<void> {
+    if (!Array.isArray(content)) return;
+    for (const b of content as { type: string; id?: string; name?: string; input?: Record<string, unknown> }[]) {
+      if (b.type !== "tool_use" || !b.id) continue;
+      if (!parentToolUseId) {
+        if (!SUBAGENT_TOOLS.has(b.name ?? "") || this.invocations.has(b.id)) continue;
+        const key = String(b.input?.subagent_type ?? "");
+        const member = this.members[key];
+        if (!member) continue;
+        this.invocations.set(b.id, { ...member, key, startedAt: Date.now() });
+        await this.step({
+          kind: "system",
+          name: "subagent_started",
+          actorEmployeeId: member.id,
+          input: { subagent: key, description: String(b.input?.description ?? "").slice(0, 300), prompt: redactSecrets(String(b.input?.prompt ?? "")).slice(0, 4000) },
+        });
+        continue;
+      }
+      const actorId = this.actorOf(parentToolUseId);
+      if (actorId && !this.calls.has(b.id)) this.calls.set(b.id, { name: b.name ?? "tool", input: b.input ?? {}, actorId, startedAt: Date.now() });
+    }
+  }
+
+  /** A user message: tool results of a subagent's calls, or (main thread) the end of a subagent invocation. */
+  async onUser(parentToolUseId: string | null, content: unknown): Promise<void> {
+    if (!Array.isArray(content)) return;
+    for (const b of content as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]) {
+      if (b.type !== "tool_result" || !b.tool_use_id) continue;
+      if (!parentToolUseId) {
+        const inv = this.invocations.get(b.tool_use_id);
+        if (!inv) continue;
+        await this.step({
+          kind: "system",
+          name: "subagent_finished",
+          actorEmployeeId: inv.id,
+          status: b.is_error ? "error" : "ok",
+          latencyMs: Date.now() - inv.startedAt,
+          input: { subagent: inv.key },
+          output: redactSecrets(toolResultText(b.content)).slice(0, 4000),
+        });
+        continue;
+      }
+      const call = this.calls.get(b.tool_use_id);
+      if (!call) continue;
+      this.calls.delete(b.tool_use_id);
+      await this.step({
+        kind: "tool",
+        name: call.name,
+        actorEmployeeId: call.actorId,
+        status: b.is_error ? "error" : "ok",
+        latencyMs: Date.now() - call.startedAt,
+        input: redactInput(call.input),
+        output: redactSecrets(toolResultText(b.content)).slice(-4000),
+      });
+    }
+  }
+}
+
+/** A subagent's tool input for the timeline: secrets redacted, long file contents cut. */
+function redactInput(input: unknown): unknown {
+  if (!input || typeof input !== "object") return input;
+  return Object.fromEntries(
+    Object.entries(input as Record<string, unknown>).map(([k, v]) => [k, typeof v === "string" ? redactSecrets(v).slice(0, 4000) : v]),
+  );
 }
 
 export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
@@ -463,6 +575,9 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   let lastAssistantText = "";
   const recordedMessageIds = new Set<string>();
   let turn: OpenTurn | null = null;
+  /** subagents' open turns, by the Task tool_use id that started them */
+  const subTurns = new Map<string, OpenTurn>();
+  const subagents = new SubagentTracker(ctx, ctx.workspace && input.agents ? (input.agentEmployees ?? {}) : {});
   let requestStartedAt = Date.now();
 
   const price = await priceFor(input.model);
@@ -505,6 +620,20 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     if (!turn) return;
     const t = turn;
     turn = null;
+    await recordTurn(t);
+  };
+  const closeSubTurn = async (parentId: string) => {
+    const t = subTurns.get(parentId);
+    if (!t) return;
+    subTurns.delete(parentId);
+    await recordTurn(t);
+  };
+  const closeAllTurns = async () => {
+    await closeTurn();
+    for (const id of [...subTurns.keys()]) await closeSubTurn(id);
+  };
+  /** One model turn → an llm step and the run's credits (a subagent's turn too: counted once, attributed to its member). */
+  const recordTurn = async (t: OpenTurn) => {
     if (recordedMessageIds.has(t.id)) return;
     recordedMessageIds.add(t.id);
     const c = computeLlmCredits(
@@ -517,6 +646,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
       taskId: ctx.taskId,
       conversationId: ctx.conversationId,
       employeeId: ctx.employee.id,
+      ...(t.actorId ? { actorEmployeeId: t.actorId } : {}),
       kind: "llm",
       name: input.stepName ?? "llm_call",
       model: t.model,
@@ -621,7 +751,11 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           touch();
           let r: Awaited<ReturnType<CanUseTool>>;
           try {
-            r = await guardedCanUseTool(toolName, toolInput, opts);
+            // a subagent works with files and the shell only: platform and external MCP tools stay with the code lead
+            r =
+              (opts as { agentID?: string } | undefined)?.agentID && toolName.startsWith("mcp__")
+                ? { behavior: "deny", message: "Subagents cannot use platform or MCP tools: report back to the code lead, who pushes, previews and releases." }
+                : await guardedCanUseTool(toolName, toolInput, opts);
           } catch (e) {
             // fail closed: a DB or gate error never throws into the SDK, and never runs the tool
             log.error({ err: e, runId: ctx.runId, toolName }, "permission check failed");
@@ -647,7 +781,33 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
       touch();
       switch (m.type) {
         case "stream_event": {
-          if (m.parent_tool_use_id) break;
+          if (m.parent_tool_use_id) {
+            // a subagent's model turn: accounted like the main one, attributed to the member running it
+            const pid = m.parent_tool_use_id;
+            const ev = m.event;
+            if (ev.type === "message_start") {
+              await closeSubTurn(pid);
+              const u = ev.message.usage;
+              subTurns.set(pid, {
+                id: ev.message.id,
+                model: ev.message.model,
+                startedAt: Date.now(),
+                inputTokens: u?.input_tokens ?? 0,
+                outputTokens: u?.output_tokens ?? 0,
+                cacheRead: u?.cache_read_input_tokens ?? 0,
+                cacheWrite: u?.cache_creation_input_tokens ?? 0,
+                actorId: subagents.actorOf(pid),
+              });
+            } else if (ev.type === "message_delta") {
+              const t = subTurns.get(pid);
+              const u = ev.usage as { output_tokens?: number; input_tokens?: number | null } | undefined;
+              if (t && u?.output_tokens != null) t.outputTokens = u.output_tokens;
+              if (t && u?.input_tokens) t.inputTokens = u.input_tokens;
+            } else if (ev.type === "message_stop") {
+              await closeSubTurn(pid);
+            }
+            break;
+          }
           const ev = m.event;
           if (ev.type === "message_start") {
             await closeTurn();
@@ -673,7 +833,25 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           break;
         }
         case "assistant": {
-          if (m.parent_tool_use_id) break;
+          if (m.parent_tool_use_id) {
+            // a subagent's message: its tool calls (attributed when their results come back) and, without stream
+            // events, its usage; nothing of it is the run's answer
+            await subagents.onAssistant(m.parent_tool_use_id, m.message.content);
+            if (!recordedMessageIds.has(m.message.id) && subTurns.get(m.parent_tool_use_id)?.id !== m.message.id && m.message.stop_reason) {
+              const u = m.message.usage;
+              await recordTurn({
+                id: m.message.id,
+                model: m.message.model,
+                startedAt: Date.now(),
+                inputTokens: u?.input_tokens ?? 0,
+                outputTokens: u?.output_tokens ?? 0,
+                cacheRead: u?.cache_read_input_tokens ?? 0,
+                cacheWrite: u?.cache_creation_input_tokens ?? 0,
+                actorId: subagents.actorOf(m.parent_tool_use_id),
+              });
+            }
+            break;
+          }
           if (m.error) error = `Claude API error: ${m.error}`;
           const text = m.message.content
             .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
@@ -681,6 +859,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
             .join("");
           if (text) lastAssistantText = text;
           for (const b of m.message.content) if (b.type === "tool_use" && b.name === "Bash") bashCalls.set(b.id, String((b.input as { command?: string }).command ?? ""));
+          if (subagents.active) await subagents.onAssistant(null, m.message.content);
           // Fallback accounting when no stream events were delivered for this message.
           if (!recordedMessageIds.has(m.message.id) && (!turn || turn.id !== m.message.id) && m.message.stop_reason) {
             const u = m.message.usage;
@@ -702,6 +881,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           requestStartedAt = Date.now();
           if (!m.parent_tool_use_id) await settleAutoActions(ctx, m.message.content);
           if (ctx.workspace && !m.parent_tool_use_id) await recordBashOutputs(ctx, bashCalls, m.message.content);
+          if (subagents.active) await subagents.onUser(m.parent_tool_use_id ?? null, m.message.content);
           break;
         }
         case "rate_limit_event": {
@@ -736,7 +916,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           break;
         }
         case "result": {
-          await closeTurn();
+          await closeAllTurns();
           if (m.subtype === "success") {
             finalText = m.result;
             succeeded = true;
@@ -754,9 +934,9 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           break;
       }
     }
-    await closeTurn();
+    await closeAllTurns();
   } catch (e) {
-    await closeTurn().catch(() => {});
+    await closeAllTurns().catch(() => {});
     const reason = controller.signal.reason as Error | undefined;
     if (safetyStop && !succeeded) stopped = safetyStop;
     else if (succeeded && stopped === "completed") {

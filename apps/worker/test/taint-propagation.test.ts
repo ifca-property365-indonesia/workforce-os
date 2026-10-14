@@ -10,7 +10,7 @@ import { inboxSection, memorySection } from "../src/runner/prompt";
 import { setQueryImpl, type QueryFn } from "../src/runner/sdk";
 import { mockRunner, type MockStep } from "../src/runner/mock-sdk";
 import { buildTools } from "../src/tools/registry";
-import { makeEmployee, makeTask, makeWorkspace, runContext, sendUserMessage } from "./fixtures";
+import { makeEmployee, makeTask, makeWorkspace, runContext, sendUserMessage, makeDivision } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 
 /** CLOSE autonomy, send_email allow-listed for client.co.id: runs unattended unless the run is tainted. */
@@ -107,11 +107,12 @@ describe("create_task from a tainted run (no taint laundering)", () => {
     expect(m!.untrusted).toBe(true);
   });
 
-  it("a PRD handoff approved from a tainted run creates an untrusted Developer task (the edited payload cannot clear it)", async () => {
+  it("a PRD handoff approved from a tainted run creates an untrusted division task (the edited payload cannot clear it)", async () => {
     const ws = await makeWorkspace();
     const pm = await makeEmployee(ws.id, allowListed);
+    const head = await makeEmployee(ws.id);
     const dev = await makeEmployee(ws.id);
-    await db.update(employees).set({ department: "developer" }).where(eq(employees.id, dev.id));
+    const delivery = await makeDivision(ws.id, { head, codeLead: dev });
     const ctx = runContext(ws, pm, null);
     ctx.guard.tainted = true;
     await tool(ctx, "draft_document").handler({ title: "Export", content: "Build an export.", kind: "prd" }, {});
@@ -122,7 +123,7 @@ describe("create_task from a tainted run (no taint laundering)", () => {
       .set({ status: "APPROVED", editedPayload: { ...a!.payload, untrustedInput: false } })
       .where(eq(approvals.id, a!.id));
     await executeApproval(a!.id);
-    const [t] = await db.select().from(tasks).where(and(eq(tasks.workspaceId, ws.id), eq(tasks.assigneeId, dev.id)));
+    const [t] = await db.select().from(tasks).where(and(eq(tasks.workspaceId, ws.id), eq(tasks.teamId, delivery.id)));
     expect(t).toMatchObject({ title: "Implement: Export", untrustedInput: true });
   });
 

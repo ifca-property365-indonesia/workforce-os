@@ -14,6 +14,8 @@ export function memorySnapshot(m: Memory): Record<string, unknown> {
     content: m.content,
     source: m.source,
     untrusted: m.untrusted,
+    /** the client the memory belongs to (null = general): an undo puts it back in the same scope */
+    clientId: m.clientId ?? null,
     expiresAt: m.expiresAt?.toISOString() ?? null,
     supersededBy: m.supersededBy ?? null,
     createdAt: m.createdAt.toISOString(),
@@ -35,6 +37,8 @@ export function fromSnapshot(s: Record<string, unknown>) {
     /** null when the snapshot did not record it (the worker's journal leaves it out): keep what the row has */
     source: str(s.source),
     untrusted: typeof s.untrusted === "boolean" ? s.untrusted : null,
+    /** undefined when the snapshot predates client scopes (keep what the row has, else general) */
+    clientId: "clientId" in s || "client_id" in s ? str(s.clientId ?? s.client_id) : undefined,
     expiresAt: date(s.expiresAt ?? s.expires_at),
     supersededBy: str(s.supersededBy ?? s.superseded_by),
     createdAt: date(s.createdAt ?? s.created_at),

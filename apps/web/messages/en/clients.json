@@ -18,7 +18,13 @@
     "legalNamePlaceholder": "e.g. PT Contoh Jaya Abadi",
     "phone": "Phone",
     "taxId": "Tax ID (NPWP)",
-    "address": "Billing address"
+    "address": "Billing address",
+    "code": "Code",
+    "codePlaceholder": "GOB",
+    "industry": "Industry",
+    "industryPlaceholder": "e.g. Retail, outlet mall",
+    "website": "Website",
+    "websitePlaceholder": "example.com"
   },
   "project": {
     "rate": "Rate: {rate}/h",
@@ -38,7 +44,18 @@
     },
     "deadline": "Deadline",
     "progress": "Progress",
-    "empty": "No projects yet"
+    "empty": "No projects yet",
+    "division": "Responsible division",
+    "noDivision": "None",
+    "startDate": "Start date",
+    "statusHealth": "Status",
+    "nextMilestone": "Next milestone",
+    "nextMilestonePlaceholder": "e.g. Check-in page live on 1 Nov",
+    "nextStep": "Next step",
+    "nextStepPlaceholder": "What happens next, and who does it",
+    "started": "started {date}",
+    "statusUpdated": "status updated {when}",
+    "editStatus": "Update status"
   },
   "health": {
     "late": "Late",
@@ -52,7 +69,8 @@
     "reason": {
       "past_deadline": "Past the deadline",
       "deadline_soon": "Deadline in less than 14 days with progress below 70%",
-      "no_activity": "No activity for 7 days"
+      "no_activity": "No activity for 7 days",
+      "reported": "Set by the team"
     }
   },
   "emptyHelp": "Add the companies you work for: employees use them for status reports, minutes and invoices.",
@@ -93,7 +111,8 @@
     "projects": "Projects ({count})",
     "recurring": "Recurring billing ({count})",
     "invoices": "Invoices ({count})",
-    "history": "History"
+    "history": "History",
+    "overview": "Overview"
   },
   "contacts": {
     "help": "Who to talk to at this client, and which mail each person gets. Employees send status reports, minutes and invoices to the ticked contacts.",
@@ -213,5 +232,22 @@
     "defaultTaxHelp": "Used when an invoice doesn't say otherwise, e.g. 11 for PPN.",
     "invoiceFooter": "Invoice footer",
     "invoiceFooterPlaceholder": "e.g. Thank you for your business. Please include the invoice number with your payment."
+  },
+  "overview": {
+    "projects": "Projects",
+    "deadline": "deadline {date}",
+    "noDeadline": "no deadline",
+    "running": "Work in progress",
+    "noRunning": "Nothing running for this client.",
+    "apps": "Apps",
+    "noApps": "No apps for this client.",
+    "previewOnly": "preview only",
+    "uptime": "{pct}% up, 7 days",
+    "unpaid": "Unpaid invoices",
+    "noUnpaid": "Nothing outstanding.",
+    "unpaidTotal": "Total outstanding: {total}",
+    "emails": "Latest emails",
+    "noEmails": "No emails sent yet.",
+    "contacts": "Contacts"
   }
 }

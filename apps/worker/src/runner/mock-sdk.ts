@@ -18,7 +18,11 @@ export type MockStep =
    * `output`: the text an allowed external MCP tool returns (default "ok");
    * `durationMs`: how long an allowed call runs before its result (no SDK event meanwhile; honours abort)
    */
-  | { tool: string; input: Record<string, unknown>; error?: boolean; output?: string; durationMs?: number }
+  /**
+   * `parentToolUseId`: the call is made by the subagent started by that Task tool_use (canUseTool gets `agentID`, the
+   * assistant tool_use and its result carry parent_tool_use_id); `toolUseId`: a fixed id for the call
+   */
+  | { tool: string; input: Record<string, unknown>; error?: boolean; output?: string; durationMs?: number; parentToolUseId?: string; toolUseId?: string }
   | { wait: number }
   | { result: string }
   /** emit a raw SDK message (e.g. a recorded rate_limit_event) */
@@ -39,6 +43,8 @@ export interface MockRunner {
   started: number;
   /** options of the most recent query() call (env, cwd, tools…) */
   lastOptions?: NonNullable<Parameters<QueryFn>[0]["options"]>;
+  /** the prompt of the most recent query() call, when it was a string */
+  lastPrompt?: string;
 }
 
 function aborted(signal?: AbortSignal): void {
@@ -131,6 +137,7 @@ export function mockRunner(script: MockStep[]): MockRunner {
     runner.started++;
     const options = params.options ?? {};
     runner.lastOptions = options;
+    runner.lastPrompt = typeof params.prompt === "string" ? params.prompt : undefined;
     const signal = options.abortController?.signal;
     const canUseTool = options.canUseTool as CanUseTool | undefined;
     let n = 0;
@@ -156,11 +163,23 @@ export function mockRunner(script: MockStep[]): MockRunner {
             },
           } as unknown as SDKMessage;
         } else if ("tool" in step) {
-          const toolUseId = `toolu_mock_${++toolN}`;
+          const toolUseId = step.toolUseId ?? `toolu_mock_${++toolN}`;
+          const parent = step.parentToolUseId ?? null;
           let isError = false;
           let resultText = "ok";
+          if (parent) {
+            // a subagent's call: its assistant message comes first, as in the SDK stream
+            n++;
+            yield {
+              type: "assistant",
+              parent_tool_use_id: parent,
+              uuid: `mock-${n}`,
+              session_id: "mock-session",
+              message: { id: `msg_mock_${n}`, model: "claude-sonnet-5-5", role: "assistant", type: "message", content: [{ type: "tool_use", id: toolUseId, name: step.tool, input: step.input }], stop_reason: null, usage: { input_tokens: 0, output_tokens: 0 } },
+            } as unknown as SDKMessage;
+          }
           const permission: PermissionResult = (canUseTool
-            ? await canUseTool(step.tool, step.input, { signal: signal ?? new AbortController().signal, toolUseID: toolUseId } as never)
+            ? await canUseTool(step.tool, step.input, { signal: signal ?? new AbortController().signal, toolUseID: toolUseId, ...(parent ? { agentID: `agent-${parent}` } : {}) } as never)
             : null) ?? { behavior: "deny", message: "no permission decision" };
           const call: MockToolCall = { name: step.tool, input: step.input, permission };
           runner.calls.push(call);
@@ -200,7 +219,7 @@ export function mockRunner(script: MockStep[]): MockRunner {
           }
           yield {
             type: "user",
-            parent_tool_use_id: null,
+            parent_tool_use_id: parent,
             session_id: "mock-session",
             message: { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseId, content: resultText, is_error: isError }] },
           } as unknown as SDKMessage;

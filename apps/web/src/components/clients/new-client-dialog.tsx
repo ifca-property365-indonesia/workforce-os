@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { useRouter } from "@/lib/nav";
-import { selectClass } from "./shared";
+import { clientCode, selectClass } from "./shared";
 
 /** The essentials of a new client; contacts, billing and the rest are filled in on its page, which opens next. */
 export function NewClientDialog({ onClose }: { onClose: () => void }) {
@@ -20,7 +20,7 @@ export function NewClientDialog({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const router = useRouter();
   const uid = useId();
-  const [f, setF] = useState({ name: "", legalName: "", email: "", currency: "IDR", status: "active" as ClientStatus });
+  const [f, setF] = useState({ name: "", code: "", industry: "", website: "", legalName: "", email: "", currency: "IDR", status: "active" as ClientStatus });
   const m = useMutation({
     mutationFn: () => api.post<{ client: { id: string } }>("/api/clients", f),
     onSuccess: (r) => {
@@ -44,9 +44,17 @@ export function NewClientDialog({ onClose }: { onClose: () => void }) {
             if (f.name) m.mutate();
           }}
         >
-          <div className="space-y-1.5 sm:col-span-3">
+          <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor={`${uid}-name`}>{tc("name")}</Label>
             <Input id={`${uid}-name`} autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-code`}>{t("form.code")}</Label>
+            <Input id={`${uid}-code`} value={f.code} maxLength={12} pattern="[A-Z0-9][A-Z0-9\-]{1,11}" className="font-mono uppercase" placeholder={t("form.codePlaceholder")} onChange={(e) => setF({ ...f, code: clientCode(e.target.value) })} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-3">
+            <Label htmlFor={`${uid}-industry`}>{t("form.industry")}</Label>
+            <Input id={`${uid}-industry`} value={f.industry} maxLength={200} placeholder={t("form.industryPlaceholder")} onChange={(e) => setF({ ...f, industry: e.target.value })} />
           </div>
           <div className="space-y-1.5 sm:col-span-3">
             <Label htmlFor={`${uid}-legal`}>{t("form.legalName")}</Label>

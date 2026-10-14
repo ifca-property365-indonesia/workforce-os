@@ -18,7 +18,13 @@
     "legalNamePlaceholder": "mis. PT Contoh Jaya Abadi",
     "phone": "Telepon",
     "taxId": "NPWP",
-    "address": "Alamat penagihan"
+    "address": "Alamat penagihan",
+    "code": "Kode",
+    "codePlaceholder": "GOB",
+    "industry": "Bidang usaha",
+    "industryPlaceholder": "mis. Ritel, factory outlet",
+    "website": "Situs web",
+    "websitePlaceholder": "contoh.com"
   },
   "project": {
     "rate": "Tarif: {rate}/jam",
@@ -38,7 +44,18 @@
     },
     "deadline": "Tenggat",
     "progress": "Progres",
-    "empty": "Belum ada proyek"
+    "empty": "Belum ada proyek",
+    "division": "Divisi penanggung jawab",
+    "noDivision": "Tidak ada",
+    "startDate": "Tanggal mulai",
+    "statusHealth": "Status",
+    "nextMilestone": "Milestone berikutnya",
+    "nextMilestonePlaceholder": "mis. Halaman check-in tayang 1 Nov",
+    "nextStep": "Langkah berikutnya",
+    "nextStepPlaceholder": "Apa yang dikerjakan berikutnya, dan oleh siapa",
+    "started": "mulai {date}",
+    "statusUpdated": "status diperbarui {when}",
+    "editStatus": "Perbarui status"
   },
   "health": {
     "late": "Terlambat",
@@ -52,7 +69,8 @@
     "reason": {
       "past_deadline": "Melewati tenggat",
       "deadline_soon": "Tenggat kurang dari 14 hari dengan progres di bawah 70%",
-      "no_activity": "Tidak ada aktivitas selama 7 hari"
+      "no_activity": "Tidak ada aktivitas selama 7 hari",
+      "reported": "Ditetapkan oleh tim"
     }
   },
   "emptyHelp": "Tambahkan perusahaan yang Anda layani: karyawan memakainya untuk laporan status, notulen, dan invoice.",
@@ -93,7 +111,8 @@
     "projects": "Proyek ({count})",
     "recurring": "Tagihan rutin ({count})",
     "invoices": "Invoice ({count})",
-    "history": "Riwayat"
+    "history": "Riwayat",
+    "overview": "Ringkasan"
   },
   "contacts": {
     "help": "Siapa yang dihubungi di klien ini, dan email apa yang diterima masing-masing. Karyawan mengirim laporan status, notulen, dan invoice ke kontak yang dicentang.",
@@ -213,5 +232,22 @@
     "defaultTaxHelp": "Dipakai jika invoice tidak menyebutkan lain, mis. 11 untuk PPN.",
     "invoiceFooter": "Catatan kaki invoice",
     "invoiceFooterPlaceholder": "mis. Terima kasih atas kepercayaan Anda. Cantumkan nomor invoice saat melakukan pembayaran."
+  },
+  "overview": {
+    "projects": "Proyek",
+    "deadline": "tenggat {date}",
+    "noDeadline": "tanpa tenggat",
+    "running": "Pekerjaan berjalan",
+    "noRunning": "Tidak ada pekerjaan berjalan untuk klien ini.",
+    "apps": "Aplikasi",
+    "noApps": "Belum ada aplikasi untuk klien ini.",
+    "previewOnly": "baru preview",
+    "uptime": "{pct}% aktif, 7 hari",
+    "unpaid": "Invoice belum dibayar",
+    "noUnpaid": "Tidak ada tagihan terbuka.",
+    "unpaidTotal": "Total belum dibayar: {total}",
+    "emails": "Email terakhir",
+    "noEmails": "Belum ada email terkirim.",
+    "contacts": "Kontak"
   }
 }

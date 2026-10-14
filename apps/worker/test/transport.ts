@@ -29,7 +29,14 @@ function fakeQueue(queue: string) {
 const zsets = new Map<string, Map<string, number>>();
 const z = (k: string) => zsets.get(k) ?? zsets.set(k, new Map()).get(k)!;
 const zops = {
-  zadd: (k: string, score: number, m: string) => (z(k).set(m, score), 1),
+  // ZADD key [XX] score member
+  zadd: (k: string, ...a: (string | number)[]) => {
+    const xx = a[0] === "XX";
+    const [score, m] = (xx ? a.slice(1) : a) as [number, string];
+    if (xx && !z(k).has(m)) return 0;
+    z(k).set(m, score);
+    return 1;
+  },
   zrem: (k: string, m: string) => (z(k).delete(m) ? 1 : 0),
   zcard: (k: string) => z(k).size,
   zremrangebyscore: (k: string, min: number, max: number) => {
@@ -67,7 +74,7 @@ async function set(k: string, v: string, ...opts: unknown[]) {
 
 export const redisModule = {
   newRedis: () => ({ subscribe: vi.fn(), on: vi.fn(), disconnect: vi.fn() }),
-  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m), set, get: async (k: string) => kv.get(k) ?? null, del: async (k: string) => (kv.delete(k) ? 1 : 0) },
+  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m), zscore: async (k: string, m: string) => z(k).get(m)?.toString() ?? null, set, get: async (k: string) => kv.get(k) ?? null, del: async (k: string) => (kv.delete(k) ? 1 : 0) },
   connection: { url: "redis://mock" },
   prefix: "wfos-test",
   runsQueue: fakeQueue("runs"),

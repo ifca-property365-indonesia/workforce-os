@@ -9,7 +9,9 @@
     "dryRun": "dry run",
     "subtask": "subtugas",
     "waitingOnSubtasks": "menunggu subtugas",
-    "credits": "{amount} kredit"
+    "credits": "{amount} kredit",
+    "waitingOnDependencies": "menunggu subtugas lain",
+    "blocked": "terhenti"
   },
   "page": {
     "back": "Papan tugas"
@@ -19,8 +21,6 @@
     "fieldTitle": "Judul",
     "brief": "Arahan",
     "assignTo": "Tugaskan ke",
-    "employees": "Karyawan",
-    "teams": "Tim (ketua tim merencanakan & mendelegasikan)",
     "client": "Klien",
     "project": "Proyek",
     "dryRun": "Dry run",
@@ -29,7 +29,14 @@
     "created": "Tugas berhasil dibuat",
     "repository": "Repositori",
     "noRepository": "Tanpa repositori (workspace kosong)",
-    "repositoryHelp": "Di-checkout ke branch sendiri agent/<task> di sandbox karyawan. Push memerlukan persetujuan Anda."
+    "repositoryHelp": "Di-checkout ke branch sendiri agent/<task> di sandbox karyawan. Push memerlukan persetujuan Anda.",
+    "division": "Divisi",
+    "person": "Orang",
+    "projectDivision": "Divisi penanggung jawab proyek",
+    "divisionNoHead": "{name} (belum ada kepala)",
+    "divisionHelp": "Kepala divisi yang menentukan caranya: dikerjakan sendiri, atau dibagi ke anggota.",
+    "toPerson": "Berikan ke orang tertentu saja",
+    "toDivision": "Berikan ke divisi saja"
   },
   "progress": {
     "title": "Kemajuan",

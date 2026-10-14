@@ -53,8 +53,8 @@ function BillingDialog({ clientId, currency, projects, row, onClose }: { clientI
   const { data: company } = useCompanyProfile();
   const active = (emps ?? []).filter((e) => e.status !== "ARCHIVED");
   // Finance employees first: the approval shows them as the one asking to send the invoice
-  const finance = active.filter((e) => e.department === "finance");
-  const others = active.filter((e) => e.department !== "finance");
+  const finance = active.filter((e) => e.division?.key === "finance");
+  const others = active.filter((e) => e.division?.key !== "finance");
   const [f, setF] = useState<Form>(() =>
     row
       ? {

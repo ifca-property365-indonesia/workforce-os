@@ -13,6 +13,8 @@ import { api } from "@/lib/api";
 import { useClients, useEmployees, useTeams } from "@/lib/hooks";
 import { SchedulePreviewView, useSchedulePreview } from "@/components/routines/schedule-preview";
 import { useFormat } from "@/lib/use-format";
+import { cn } from "@/lib/utils";
+import { handoffPick, handoffTarget, type HandoffPayload } from "@/lib/handoff";
 import { PreviewApprovalPreview } from "./preview-approval";
 import { ReleaseApprovalPreview } from "./release-approval";
 import type { Approval, Email } from "./types";
@@ -64,25 +66,32 @@ export function EmailEditor({ value, onChange }: { value: Email; onChange: (v: E
   );
 }
 
-/** Who builds the approved PRD, and in which repository (the PRD text itself is approved as written). */
-export function HandoffPicker({ value, onChange }: { value: { developerId: string | null; repositoryId: string | null }; onChange: (v: { developerId: string | null; repositoryId: string | null }) => void }) {
+/** The PRD handoff fields Edit & Approve may change: the division that builds it and the repository (older payloads: the developer). */
+type HandoffPick = ReturnType<typeof handoffPick>;
+
+/** Which division builds the approved PRD, and in which repository (the PRD text itself is approved as written). */
+export function HandoffPicker({ value, onChange }: { value: HandoffPick; onChange: (v: HandoffPick) => void }) {
   const t = useTranslations("approvals");
+  const { data: divisions } = useTeams();
   const { data: emps } = useEmployees();
   const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
   const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
   const uid = useId();
+  // a payload made before divisions names a developer; it can still be changed to a division
+  const legacy = value.teamId === undefined && value.developerId !== undefined;
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-1">
-        <Label className="text-xs" htmlFor={`${uid}-dev`}>{t("handoff.developer")}</Label>
-        <select id={`${uid}-dev`} className={sel} value={value.developerId ?? ""} onChange={(e) => onChange({ ...value, developerId: e.target.value || null })}>
+        <Label className="text-xs" htmlFor={`${uid}-team`}>{t("handoff.division")}</Label>
+        <select id={`${uid}-team`} className={sel} value={value.teamId ?? ""} onChange={(e) => onChange({ ...value, teamId: e.target.value || null })}>
           <option value="">—</option>
-          {emps?.filter((e) => e.status !== "ARCHIVED").map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name} ({e.role})
+          {divisions?.map((d) => (
+            <option key={d.id} value={d.id} disabled={!d.leadId}>
+              {d.name}
             </option>
           ))}
         </select>
+        {legacy && value.developerId && <p className="text-xs text-muted-foreground">{t("handoff.legacyDeveloper", { name: emps?.find((e) => e.id === value.developerId)?.name ?? "—" })}</p>}
       </div>
       <div className="space-y-1">
         <Label className="text-xs" htmlFor={`${uid}-repo`}>{t("handoff.repository")}</Label>
@@ -254,13 +263,20 @@ export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; e
     );
   }
   if (a.toolName === "handoff_prd") {
-    const h = p as { title: string; prd: string; developerId: string | null; developerName: string | null; repositoryId: string | null };
+    // teamId/teamName since divisions; developerId/developerName in payloads made before
+    const h = p as HandoffPayload;
+    const target = handoffTarget(h);
     return (
       <div className="space-y-3 text-sm">
         {editing ? (
-          <HandoffPicker value={h} onChange={(v) => setDraft({ ...p, ...v })} />
+          <HandoffPicker value={handoffPick(h)} onChange={(v) => setDraft({ ...p, ...v })} />
         ) : (
-          <div className="text-xs text-muted-foreground">{h.developerName ? t("handoff.to", { name: h.developerName }) : t("handoff.noDeveloper")}</div>
+          <div className="space-y-0.5 text-xs text-muted-foreground">
+            <div className={cn(target.kind === "division" && "font-medium text-foreground")}>
+              {target.kind === "division" ? t("handoff.toDivision", { name: target.name }) : target.kind === "developer" ? t("handoff.to", { name: target.name }) : t("handoff.noDivision")}
+            </div>
+            {h.resumeTaskId && <div>{t("handoff.resumes")}</div>}
+          </div>
         )}
         <div className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg border bg-background p-3">{h.prd}</div>
       </div>
