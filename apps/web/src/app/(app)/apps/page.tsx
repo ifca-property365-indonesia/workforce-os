@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/common";
 import { NewAppDialog, useRepositories, useServers } from "@/components/apps/new-app-dialog";
 import { UrlPlate } from "@/components/apps/environment-panel";
+import { UptimeDot } from "@/components/apps/uptime";
 import { AppSign, AppStatusBadge, CommitChip, EnvPlate, HealthDot, appColors, appSignStatus, appsQueryKey, copyText, useApps, useAppRights, useStatusMessage } from "@/components/apps/shared";
 import { api } from "@/lib/api";
 import { useClients } from "@/lib/hooks";
@@ -48,6 +49,12 @@ function AppCard({ app, color }: { app: AppDTO; color: SignColor }) {
         {live && (
           <span className="flex min-w-0 max-w-full items-center gap-1.5">
             <EnvPlate kind="live" status={live.status} />
+            {live.status === "running" && !live.maintenance && live.uptimeStatus !== "unknown" && (
+              <span className="inline-flex shrink-0" title={t(live.uptimeStatus === "up" ? "uptime.up" : "uptime.down")}>
+                <UptimeDot status={live.uptimeStatus} />
+                <span className="sr-only">{t(live.uptimeStatus === "up" ? "uptime.up" : "uptime.down")}</span>
+              </span>
+            )}
             <UrlPlate url={live.url} kind="live" size="sm" />
           </span>
         )}

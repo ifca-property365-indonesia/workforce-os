@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { appEnvironments, audit, db, servers } from "@wfos/db";
-import { appInstanceName, appRemoveLockKey, liveEnvironmentInputSchema, liveEnvironmentUpdateSchema } from "@wfos/shared";
+import { appInstanceName, appRemoveLockKey, liveEnvironmentInputSchema, liveEnvironmentUpdateSchema, type ReleaseWindow } from "@wfos/shared";
 import { checkDomains } from "@wfos/shared/dns";
 import { HttpError } from "@/lib/server/auth";
+import { isValidTimeZone, normaliseDays, sameReleaseWindow } from "@/lib/release-window";
 import { serverEnv } from "@/lib/server/env";
 import {
   activeRelease,
@@ -112,9 +113,10 @@ export const POST = route<{ id: string }>("OWNER", async ({ session, req, params
 });
 
 /**
- * Change the live domain, its extra names or its access mode. The Owner. New names reset the DNS check (it runs
- * again at once) and are refused while the live environment runs or deploys: stop it first, so the site never
- * serves a name whose certificate and DNS were not checked. An access change republishes a running site.
+ * Change the live domain, its extra names, its access mode or its release window. The Owner. New names reset the DNS
+ * check (it runs again at once) and are refused while the live environment runs or deploys: stop it first, so the
+ * site never serves a name whose certificate and DNS were not checked. An access change republishes a running site.
+ * The release window (`null` removes it) needs a fresh step-up too; its time zone must be one Intl knows.
  */
 export const PATCH = route<{ id: string }>("OWNER", async ({ session, req, params }) => {
   const a = await loadApp(session.workspaceId, params.id);
@@ -126,10 +128,21 @@ export const PATCH = route<{ id: string }>("OWNER", async ({ session, req, param
   const names = [domain, ...extraDomains];
   const namesChanged = names.length !== before.length || names.some((n, i) => n !== before[i]);
   const accessChanged = input.accessMode !== undefined && input.accessMode !== env.accessMode;
-  if (!namesChanged && !accessChanged) return { app: await appDTO(session.workspaceId, a.id) };
+  let releaseWindow: ReleaseWindow | null | undefined;
+  if (input.releaseWindow !== undefined) {
+    if (input.releaseWindow && !isValidTimeZone(input.releaseWindow.timeZone)) {
+      throw new HttpError(400, "Unknown time zone", { code: "release_window_time_zone", timeZone: input.releaseWindow.timeZone });
+    }
+    releaseWindow = input.releaseWindow && { ...input.releaseWindow, days: normaliseDays(input.releaseWindow.days) };
+  }
+  const windowChanged = releaseWindow !== undefined && !sameReleaseWindow(releaseWindow, env.releaseWindow ?? null);
+  if (!namesChanged && !accessChanged && !windowChanged) return { app: await appDTO(session.workspaceId, a.id) };
+  // when releases may reach live is a guard of the live site: confirmed with a fresh step-up like a release itself
+  if (windowChanged) await requireStepUp(session);
   const set: Partial<typeof appEnvironments.$inferInsert> = { updatedAt: new Date() };
   if (namesChanged) Object.assign(set, { domain, extraDomains, dnsCheck: null });
   if (accessChanged) set.accessMode = input.accessMode;
+  if (windowChanged) set.releaseWindow = releaseWindow ?? null;
   // the status seen under the environment's row lock (the same one deploy / rollback take) decides
   let status = env.status;
   try {
@@ -170,6 +183,7 @@ export const PATCH = route<{ id: string }>("OWNER", async ({ session, req, param
       environmentId: env.id,
       ...(namesChanged && { domain: { from: env.domain, to: domain }, extraDomains: { from: env.extraDomains, to: extraDomains }, dns }),
       ...(accessChanged && { accessMode: { from: env.accessMode, to: input.accessMode } }),
+      ...(windowChanged && { releaseWindow: { from: env.releaseWindow ?? null, to: releaseWindow ?? null } }),
     },
   });
   if (accessChanged && status === "running") {

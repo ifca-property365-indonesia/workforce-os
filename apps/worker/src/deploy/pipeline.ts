@@ -1,7 +1,7 @@
 import { Transform } from "node:stream";
 import { and, eq, inArray, ne } from "drizzle-orm";
-import { appBackups, appEnvironments, apps, appReleases, audit, db, repositories, servers, tasks, users, workspaces } from "@wfos/db";
-import { APP_LIVE_GRACE_SECONDS, RELEASE_STEPS, WFOS_HELPER_VERSION, type AppManifest, type AppSlot, type AppStatus, type ReleaseStatus, type ReleaseStep } from "@wfos/shared";
+import { appBackups, appEnvironments, approvals, apps, appReleases, audit, db, repositories, servers, tasks, users, workspaces } from "@wfos/db";
+import { APP_LIVE_GRACE_SECONDS, RELEASE_STEPS, requestReleasePayloadSchema, WFOS_HELPER_VERSION, type AppManifest, type AppSlot, type AppStatus, type ReleaseStatus, type ReleaseStep } from "@wfos/shared";
 import { decryptSecret } from "@wfos/shared/server";
 import { sftpPut, type SshTarget } from "@wfos/shared/ssh";
 import { errorMessage } from "../lib/errors";
@@ -59,6 +59,7 @@ import { assertCommit, commitSubject, DeployInputError, expandRefusalMessage, ex
 import { takeBackup } from "./backups";
 import { GRACE_MS, queueGraceStop } from "./slots";
 import { appMsg } from "./messages";
+import { outsideWindowMessage } from "./window";
 import { afterReleaseSettled } from "../runner/approvals";
 
 /** git archive of a release, at most */
@@ -253,6 +254,22 @@ async function liveDnsRefusal(c: Ctx): Promise<string | null> {
   return dnsRefusalMessage(check, c.server.name);
 }
 
+/**
+ * A LIVE release a task brought (trigger "approval", B3): only from a request_release approval of the same task and
+ * workspace, decided by an Owner (who is also the release's createdBy), never edited, naming exactly this environment,
+ * commit and preview release. The approval is EXECUTED, or still EXECUTING when the deploy worker was faster than
+ * executeApproval storing its result (the executor that queued this release is that very execution).
+ */
+async function ownerApprovedLiveRelease(rel: Release): Promise<boolean> {
+  if (rel.trigger !== "approval" || !rel.approvalId || !rel.taskId || !rel.createdBy) return false;
+  const [a] = await db.select().from(approvals).where(and(eq(approvals.id, rel.approvalId), eq(approvals.workspaceId, rel.workspaceId)));
+  if (!a || a.toolName !== "request_release" || a.taskId !== rel.taskId || a.editedPayload) return false;
+  if (a.status !== "EXECUTED" && a.status !== "EXECUTING") return false;
+  if (!a.decidedBy || a.decidedBy !== rel.createdBy || !(await isOwner(rel.workspaceId, a.decidedBy))) return false;
+  const p = requestReleasePayloadSchema.safeParse(a.payload);
+  return p.success && p.data.environmentId === rel.environmentId && p.data.commit === rel.commit && p.data.fromReleaseId === rel.promotedFromReleaseId && p.data.appId === rel.appId;
+}
+
 /** Refusals, then the commit, its manifest and the warnings. */
 async function prepare(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): Promise<void> {
   const { rel, app, env, server } = c;
@@ -261,12 +278,25 @@ async function prepare(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): 
   const [task] = rel.taskId ? await db.select({ dryRun: tasks.dryRun }).from(tasks).where(eq(tasks.id, rel.taskId)) : [];
   if (ws.demoMode || task?.dryRun) throw new Refusal("Dry run: nothing is deployed");
   if (live) {
-    // agents publish previews only; LIVE is an Owner's decision (with step-up on the web)
-    if (rel.taskId || rel.approvalId || rel.trigger === "approval") throw new Refusal("A task cannot release to LIVE: an Owner releases a checked preview");
+    // LIVE is an Owner's decision: on the web (with step-up), or an Owner approving a task's request_release (B3);
+    // any other task or approval origin is refused
+    if ((rel.taskId || rel.approvalId || rel.trigger === "approval") && !(await ownerApprovedLiveRelease(rel))) {
+      throw new Refusal("A task cannot release to LIVE: an Owner releases a checked preview (or approves the task's request_release)");
+    }
     if (!(await isOwner(c.app.workspaceId, c.rel.createdBy))) throw new Refusal("Only an Owner of the workspace can release to LIVE");
     if (!rel.commit) throw new Refusal("A LIVE release names the commit it brings (a release of the preview)");
     const refusal = await livePromotionRefusal(c, rel.commit);
     if (refusal) throw new Refusal(refusal);
+    // the release window (B3), as stored now (an Owner may have changed it while the release waited); a rollback always passes
+    if (rel.trigger !== "rollback") {
+      const [w] = await db.select({ releaseWindow: appEnvironments.releaseWindow }).from(appEnvironments).where(eq(appEnvironments.id, env.id));
+      const outside = outsideWindowMessage(w ? w.releaseWindow : env.releaseWindow);
+      if (outside) {
+        // a closed window is not a failure of the code: a task does not count it toward its attempts
+        await checkpoint(c, { refusal: "release_window" });
+        throw new Refusal(outside);
+      }
+    }
   }
   if (server.status !== "ready") throw new Refusal(`Server ${server.name} is not ready (${server.status}); check it in Settings → Servers`);
   if ((server.info?.helperVersion ?? 0) < WFOS_HELPER_VERSION) {
@@ -999,8 +1029,9 @@ async function succeed(c: Ctx): Promise<ReleaseStatus> {
     );
   }
   await auditRelease(c, "app.deployed", { warnings: c.rel.warnings });
-  // a preview a task asked for is announced by that task (done, with the URL): one notification, not two
-  if (!c.rel.taskId) await notifyApp({
+  // a preview a task asked for is announced by that task (done, with the URL): one notification, not two; a LIVE
+  // release is always announced to the Owner who started or approved it
+  if (!c.rel.taskId || c.env.kind === "live") await notifyApp({
     workspaceId: c.app.workspaceId,
     appId: c.app.id,
     userId: c.rel.createdBy,

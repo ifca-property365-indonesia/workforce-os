@@ -47,6 +47,8 @@ export async function errorResponse(e: unknown, req: NextRequest, started = Date
       const v: Record<string, string | number> = {};
       for (const [k, x] of Object.entries(values)) if (typeof x === "string" || typeof x === "number") v[k] = x;
       if (typeof values.lockedUntil === "string") v.time = createFormatter(locale, APP_TIME_ZONE).time(values.lockedUntil);
+      // a release window's next opening, on the window's own clock
+      if (typeof values.opensAt === "string") v.opens = createFormatter(locale, typeof values.timeZone === "string" ? values.timeZone : APP_TIME_ZONE).dateTime(values.opensAt);
       if (typeof values.status === "string" && t.has(`status.any.${values.status}`)) v.status = t(`status.any.${values.status}`);
       message = t(`errors.${code}`, v);
     }

@@ -14,14 +14,14 @@ import type { Approval } from "./types";
 const RELEASE_STATUSES: readonly ReleaseStatus[] = ["queued", "deploying", "deployed", "failed", "rolled_back", "superseded"];
 
 /** what the worker recorded once the preview ran: executionResult.details.release = { id, status, url } */
-function releaseOutcome(a: Approval): { id: string; status: ReleaseStatus; url: string | null } | null {
+export function releaseOutcome(a: Approval): { id: string; status: ReleaseStatus; url: string | null } | null {
   const details = a.executionResult?.details as { release?: { id?: unknown; status?: unknown; url?: unknown } } | undefined;
   const r = details?.release;
   if (!r || typeof r.id !== "string" || !RELEASE_STATUSES.includes(r.status as ReleaseStatus)) return null;
   return { id: r.id, status: r.status as ReleaseStatus, url: typeof r.url === "string" && r.url.startsWith("https://") ? r.url : null };
 }
 
-function FileBar({ added, removed, max }: { added: number; removed: number; max: number }) {
+export function FileBar({ added, removed, max }: { added: number; removed: number; max: number }) {
   const scale = (n: number) => (max > 0 && n > 0 ? Math.max(2, Math.round((n / max) * 48)) : 0);
   return (
     <span className="flex h-1.5 w-12 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden>

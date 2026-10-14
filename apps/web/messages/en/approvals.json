@@ -22,7 +22,8 @@
     "handoff_prd": "PRD handoff",
     "create_routine": "Create routine",
     "list_apps": "List apps",
-    "request_preview": "Publish preview"
+    "request_preview": "Publish preview",
+    "request_release": "Propose LIVE release"
   },
   "email": {
     "to": "To:",
@@ -75,7 +76,9 @@
     "showDetails": "Show details",
     "hideDetails": "Hide details",
     "openInInbox": "Open in Approvals",
-    "stripPending": "Needs your approval"
+    "stripPending": "Needs your approval",
+    "waitingForOwner": "Only the Owner can decide a LIVE release, with password and authenticator code.",
+    "approveRelease": "Approve LIVE release"
   },
   "bash": {
     "runsWhere": "Runs exactly this command in the employee's sandbox (same workspace, no host access, allow-listed network only, git hooks disabled)."
@@ -143,5 +146,21 @@
     "liveAt": "Live at {url}",
     "followOnApp": "Follow the deploy on the app's page",
     "howItRuns": "Approving deploys exactly commit {commit} to this address. The platform first checks that the branch still points at it, then builds, migrates and health-checks it; if a step fails, the version running now stays."
+  },
+  "release": {
+    "update": "Update of the live site",
+    "firstRelease": "First LIVE release",
+    "openLive": "Open the live site",
+    "realSite": "The client's real site: its visitors get this version.",
+    "runsNow": "Live runs now",
+    "nothingLive": "Nothing runs live yet",
+    "ranInPreview": "This exact commit already ran in the preview.",
+    "howTitle": "How it reaches live",
+    "commitsSince": "{count, plural, one {# commit} other {# commits}} since the version live now",
+    "waitForWindow": "Approve once the release window opens: outside it the release would be refused.",
+    "ownerOnly": "Only the Owner decides, with password and authenticator code.",
+    "howItRuns": "Approving builds exactly commit {commit} on the live server, migrates as shown and switches traffic over once it answers its health check; if a step fails, the version live now keeps running. Rollbacks stay possible.",
+    "stale": "LIVE changed since this request: it was made against another live version. Reject it and ask the Developer to propose the release again.",
+    "expired": "This request is older than 24 hours: reject it and ask the Developer again."
   }
 }

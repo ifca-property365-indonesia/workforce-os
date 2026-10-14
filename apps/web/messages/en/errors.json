@@ -178,5 +178,12 @@
   "app_backup_running": "A backup of this environment is already queued or running. Wait for it to finish.",
   "restore_confirm_mismatch": "Type the environment's domain exactly to confirm.",
   "backup_not_found": "Backup not found.",
-  "backup_pruned": "This backup was pruned from the server and can no longer be restored."
+  "backup_pruned": "This backup was pruned from the server and can no longer be restored.",
+  "live_outside_window": "Releases to live start only in the release window ({start}–{end}, {timeZone}). It opens next {opens}. Rollbacks are still possible.",
+  "release_window_time_zone": "Unknown time zone: {timeZone}. Use a name like Asia/Jakarta.",
+  "uptime_days": "Choose 1, 7 or 30 days.",
+  "release_web_only": "Decide this LIVE release on the web: only the Owner can, with password and authenticator code.",
+  "release_not_editable": "A LIVE release can only be approved or rejected, not edited.",
+  "release_request_expired": "This LIVE release request is older than 24 hours. Reject it and ask the Developer again.",
+  "release_request_stale": "LIVE changed since this request was made. Reject it and ask the Developer to propose the release again."
 }

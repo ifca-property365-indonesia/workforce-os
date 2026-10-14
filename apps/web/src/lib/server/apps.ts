@@ -103,22 +103,24 @@ export async function appReleasesShown(workspaceId: string, appId: string): Prom
 }
 
 /**
- * The previews a task published (releases it triggered through request_preview), newest first. Scoped twice to
+ * The previews a task published (releases it triggered through request_preview, and LIVE releases through
+ * request_release), newest first. Scoped twice to
  * the workspace: the release row and its app.
  */
 export async function taskPreviews(workspaceId: string, taskId: string): Promise<TaskPreview[]> {
   const rows = await db
-    .select({ r: appReleases, appName: apps.name, domain: appEnvironments.domain })
+    .select({ r: appReleases, appName: apps.name, domain: appEnvironments.domain, kind: appEnvironments.kind })
     .from(appReleases)
     .innerJoin(apps, eq(apps.id, appReleases.appId))
     .innerJoin(appEnvironments, eq(appEnvironments.id, appReleases.environmentId))
     .where(and(eq(appReleases.workspaceId, workspaceId), eq(apps.workspaceId, workspaceId), eq(appReleases.taskId, taskId)))
     .orderBy(desc(appReleases.createdAt))
     .limit(RELEASES_SHOWN);
-  return rows.map(({ r, appName, domain }) => ({
+  return rows.map(({ r, appName, domain, kind }) => ({
     id: r.id,
     appId: r.appId,
     appName,
+    environmentKind: kind,
     status: r.status,
     step: r.step,
     commit: r.commit,
@@ -176,6 +178,11 @@ function environmentDTO(e: EnvRow, serverName: string, cur: { r: ReleaseRow; by:
     maintenance: e.maintenance,
     // the daily stamp, or any newer backup still on the server (manual, before a release or a restore)
     lastBackupAt: newest(e.lastBackupAt, lastBackup)?.toISOString() ?? null,
+    uptimeStatus: e.kind === "live" ? e.uptimeStatus : "unknown",
+    uptimeSince: e.kind === "live" ? (e.uptimeSince?.toISOString() ?? null) : null,
+    uptimeCheckedAt: e.kind === "live" ? (e.uptimeCheckedAt?.toISOString() ?? null) : null,
+    certExpiresAt: e.kind === "live" ? (e.certExpiresAt?.toISOString() ?? null) : null,
+    releaseWindow: e.kind === "live" ? (e.releaseWindow ?? null) : null,
   };
 }
 

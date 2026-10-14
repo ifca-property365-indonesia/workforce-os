@@ -1584,6 +1584,16 @@ export interface AppEnvironmentDTO {
   maintenance: boolean;
   /** the last database backup of this environment (daily, manual, before a release or a restore), null: none yet */
   lastBackupAt: string | null;
+  /** live (B3): up / down as the platform's uptime checks see it (previews always "unknown") */
+  uptimeStatus: UptimeStatus;
+  /** since when uptimeStatus holds (the last up↔down change), null: never changed */
+  uptimeSince: string | null;
+  /** the last uptime check */
+  uptimeCheckedAt: string | null;
+  /** live: when the served certificate expires (read during an uptime check), null: not read yet */
+  certExpiresAt: string | null;
+  /** live: when LIVE releases may start (null: any time; rollbacks always) */
+  releaseWindow: ReleaseWindow | null;
 }
 export interface AppDTO {
   id: string;

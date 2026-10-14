@@ -9,7 +9,7 @@ import { signVars } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { WarningChips } from "./releases";
-import { CommitChip, ReleaseStatusBadge, appColors, isActiveRelease, useApps } from "./shared";
+import { CommitChip, EnvPlate, ReleaseStatusBadge, appColors, isActiveRelease, useApps } from "./shared";
 
 /**
  * The previews a Developer published from this task, newest first: where each deploy is, the address once it is
@@ -49,6 +49,7 @@ export function TaskPreviews({ previews }: { previews: TaskPreview[] }) {
                 >
                   {p.appName}
                 </Link>
+                {p.environmentKind === "live" && <EnvPlate kind="live" status={p.status === "deployed" ? "running" : "stopped"} />}
                 <ReleaseStatusBadge status={p.status} />
                 {p.step && (active || p.status === "failed" || p.status === "rolled_back") && (
                   <span className="text-xs text-muted-foreground">{t("releases.atStep", { step: t(`releases.step.${p.step}`) })}</span>
@@ -71,7 +72,7 @@ export function TaskPreviews({ previews }: { previews: TaskPreview[] }) {
                 >
                   <span className="min-w-0 truncate">{p.url.replace(/^https:\/\//, "")}</span>
                   <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-                  <span className="sr-only">{t("detail.open")}</span>
+                  <span className="sr-only">{t(p.environmentKind === "live" ? "detail.openLive" : "detail.open")}</span>
                 </a>
               )}
               {active && <p className="text-xs text-muted-foreground">{t("taskPreviews.waiting")}</p>}

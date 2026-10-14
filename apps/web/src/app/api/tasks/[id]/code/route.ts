@@ -20,7 +20,7 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
   const pending = await db
     .select({ id: approvals.id, toolName: approvals.toolName, title: approvals.title, status: approvals.status, createdAt: approvals.createdAt })
     .from(approvals)
-    .where(and(eq(approvals.taskId, t.id), inArray(approvals.toolName, ["git_push", "create_pull_request", "request_preview", "bash"])))
+    .where(and(eq(approvals.taskId, t.id), inArray(approvals.toolName, ["git_push", "create_pull_request", "request_preview", "request_release", "bash"])))
     .orderBy(approvals.createdAt);
   return {
     task: { id: t.id, status: t.status, workspaceStatus: t.workspaceStatus, resumable: !!t.agentSessionId },

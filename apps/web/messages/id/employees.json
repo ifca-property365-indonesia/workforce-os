@@ -292,6 +292,10 @@
     "request_preview": {
       "label": "Terbitkan preview",
       "description": "Mode Workspace: menerbitkan branch yang sudah di-push sebagai preview aplikasi di alamatnya (platform yang menerbitkan setelah disetujui)"
+    },
+    "request_release": {
+      "label": "Usulkan rilis LIVE",
+      "description": "Mode Workspace: mengusulkan versi preview yang sudah berjalan untuk diterbitkan ke situs live aplikasi (hanya Owner yang bisa menyetujuinya)"
     }
   },
   "executionMode": {
@@ -363,7 +367,10 @@
       "list_apps": "Melihat daftar aplikasi workspace",
       "request_preview": "Meminta preview diterbitkan",
       "waiting_for_preview": "Menunggu platform menerbitkan preview yang sudah disetujui",
-      "preview_deployed": "Preview sudah jalan di {url}"
+      "preview_deployed": "Preview sudah jalan di {url}",
+      "request_release": "Mengusulkan penerbitan ke live",
+      "waiting_for_live": "Menunggu platform merilis versi yang disetujui ke LIVE",
+      "live_deployed": "LIVE sekarang menjalankan versi baru di {url}"
     }
   },
   "bot": {

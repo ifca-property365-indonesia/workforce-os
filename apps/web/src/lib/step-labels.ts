@@ -78,6 +78,7 @@ const RECEIPT_TOOLS = new Set([
   "create_pull_request",
   "list_apps",
   "request_preview",
+  "request_release",
   "post_webhook",
   "propose_routine",
 ]);
@@ -119,5 +120,7 @@ export function describeReceipt(s: { kind: string; name: string; input: unknown;
   // the platform's own preview steps (A3): waiting for a deploy, and the preview that went live
   if (s.name === "waiting_for_preview") return { key: "waiting_for_preview", values: {} };
   if (s.name === "preview_deployed") return { key: "preview_deployed", values: { url: isObj(s.output) && typeof s.output.url === "string" ? clip(s.output.url) : "" } };
+  if (s.name === "waiting_for_live") return { key: "waiting_for_live", values: {} };
+  if (s.name === "live_deployed") return { key: "live_deployed", values: { url: isObj(s.output) && typeof s.output.url === "string" ? clip(s.output.url) : "" } };
   return { key: "other", values: { name: clip(s.name) } };
 }

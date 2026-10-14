@@ -67,6 +67,7 @@ import { recordMemoryEvent } from "../lib/memory-journal";
 import { recallableMemory } from "../runner/prompt";
 import { exportAgentBranch, type RepoRef } from "../runner/workspace/git";
 import { buildPreviewRequest, listApps, previewRequestText } from "../deploy/preview";
+import { buildLiveReleaseRequest, liveReleaseRequestText } from "../deploy/live-request";
 import { msg } from "@wfos/shared/messages";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
@@ -1313,7 +1314,8 @@ export function buildTools(ctx: RunContext) {
       "list_apps",
       "The workspace's apps: id, name, preview URL, status, health, repository and branch, the version that runs now (currentRelease) and when it was last deployed. " +
         "linkedToYourRepository marks the apps built from the repository of this task: only those can be previewed with request_preview. " +
-        "live (url, status, version) is the client's LIVE environment, shown for information only: you cannot deploy to it, stop it or change it.",
+        "live (url, status, version, releaseWindow) is the client's LIVE environment: you cannot deploy to it, stop it or change it; " +
+        "when request_release is granted and the task asks for it, you may only PROPOSE releasing a preview version that deployed (an Owner approves).",
       {},
       wrap(ctx, "list_apps", async () => {
         const list = await listApps(ctx.workspaceId, ctx.workspace?.repository?.id ?? null);
@@ -1355,6 +1357,37 @@ export function buildTools(ctx: RunContext) {
           queuedNote:
             `Nothing is deployed yet: a person must approve it, then the platform builds and deploys ${p.url} and reports the result on this task. ` +
             "Never say the app is live or updated until then. End your run now; do not poll.",
+        });
+      }),
+    ),
+  );
+
+  // ---- Workspace mode: LIVE releases (Phase B3; only an Owner approves, the platform releases) ----
+  add(
+    "request_release",
+    tool(
+      "request_release",
+      "Workspace mode: propose releasing a preview version that already deployed to the app's LIVE site (the client's real users). " +
+        "Only when the task explicitly asks for a LIVE release. IRREVERSIBLE: only an Owner of the workspace can approve it, then the platform releases exactly that version. " +
+        "fromReleaseId: a preview release that deployed (default: the version the preview runs now, list_apps currentRelease.id). " +
+        "Nothing changes on LIVE until the platform reports the release as deployed; after calling this, end your run and wait.",
+      { appId: z.string().uuid(), fromReleaseId: z.string().uuid().optional(), summary: z.string().min(1).max(2000) },
+      wrap(ctx, "request_release", async (a: { appId: string; fromReleaseId?: string; summary: string }) => {
+        const repo = ctx.workspace?.repository;
+        if (!ctx.workspace || !repo || !ctx.taskId) return err("request_release works only in Workspace mode, on a task with a connected repository.");
+        const r = await buildLiveReleaseRequest({ workspaceId: ctx.workspaceId, repo, appId: a.appId, fromReleaseId: a.fromReleaseId ?? null, summary: a.summary });
+        if ("error" in r) return err(r.error);
+        const p = r.payload;
+        return irreversible(ctx, "request_release", p, {
+          title: `Release ${p.appName} to LIVE: ${p.commit.slice(0, 8)}`,
+          textForGuard: `${p.summary}\n${p.commitSubject ?? ""}\n${p.commits.map((c) => c.subject).join("\n")}`,
+          scope: {},
+          draftKind: "document",
+          draftContent: liveReleaseRequestText(p),
+          approvalOnly: "A LIVE release happens only after an Owner approves it.",
+          queuedNote:
+            `Nothing is released yet: an Owner of the workspace must approve it, then the platform releases it to ${p.url} and reports the result on this task. ` +
+            "Never say LIVE is updated until then. End your run now; do not poll.",
         });
       }),
     ),

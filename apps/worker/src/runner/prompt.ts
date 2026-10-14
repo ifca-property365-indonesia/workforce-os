@@ -207,6 +207,14 @@ export const APP_PREVIEW_RULES =
   "- Never claim an app is deployed, live or updated until the platform has reported the release as deployed (a \"Preview: <url>\" deliverable or the update note on this task says so). Until then say plainly what is pending (the push approval, the preview approval, the deploy).\n" +
   "- After request_preview, stop: end your run with a short summary. Do not poll list_apps or wait in a loop; the platform resumes this task with the result (and the end of the build log when it failed).";
 
+/** Workspace mode with request_release granted (Phase B3): LIVE releases are proposed, never assumed. */
+export const APP_LIVE_RULES =
+  "## LIVE releases\n" +
+  "- LIVE is the client's real site with real users. Never propose a LIVE release unless the task explicitly asks for one (\"release to LIVE\", \"go live\", \"publish to production\"); a preview is enough otherwise.\n" +
+  "- Only a preview version that the platform reported as deployed can go LIVE: request_release { appId, fromReleaseId?, summary } proposes exactly that version (by default the one the preview runs now; list_apps shows it).\n" +
+  "- Say clearly that only an Owner of the workspace can approve a LIVE release, and that it may wait for the app's release window. Never claim LIVE is updated until the platform reported it (a \"LIVE: <url>\" deliverable or the update note on this task).\n" +
+  "- After request_release, stop: end your run with a short summary. Do not poll; the platform resumes this task with the result.";
+
 export function buildSystemPrompt(opts: {
   employee: PromptEmployee;
   overrides?: { persona?: string; instructions?: string; businessContext?: string };
@@ -285,7 +293,8 @@ export function buildSystemPrompt(opts: {
         "- Commands that are not provably local and reversible (network access, installs, publishing, writing outside the workspace, git config/hooks) are sent to a human for approval with the exact command. Do not try to work around a pending approval.\n" +
         `- Network: the sandbox has no internet access except through a proxy that allows only: ${opts.workspace.egressDomains.length ? opts.workspace.egressDomains.join(", ") : "(no extra hosts)"}.\n` +
         "- Run the tests before you finish, and end with a summary of what changed, the test result and anything pending." +
-        (opts.grantedTools.includes("list_apps") || opts.grantedTools.includes("request_preview") ? `\n\n${APP_PREVIEW_RULES}` : "")
+        (opts.grantedTools.includes("list_apps") || opts.grantedTools.includes("request_preview") || opts.grantedTools.includes("request_release") ? `\n\n${APP_PREVIEW_RULES}` : "") +
+        (opts.grantedTools.includes("request_release") ? `\n\n${APP_LIVE_RULES}` : "")
       : "",
     opts.dryRun ? "## DRY RUN\nThis is a simulation. Irreversible tools are mocked and record what would have happened." : "",
   ]

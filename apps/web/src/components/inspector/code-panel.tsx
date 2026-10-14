@@ -37,7 +37,8 @@ export function CodePanel({ taskId }: { taskId: string }) {
   // push first, then the pull request
   const ordered = [...pendingDeliveries].sort((a, b) => (a.toolName === "git_push" ? -1 : 1) - (b.toolName === "git_push" ? -1 : 1));
   // a preview is its own decision (exact commit, app, warnings): reviewed on its card, never approved in bulk here
-  const pendingPreview = (data?.approvals ?? []).find((a) => a.status === "PENDING" && a.toolName === "request_preview");
+  const pendingPreview = (data?.approvals ?? []).find((a) => a.status === "PENDING" && (a.toolName === "request_preview" || a.toolName === "request_release"));
+  const pendingIsRelease = pendingPreview?.toolName === "request_release";
   const approve = useMutation({
     mutationFn: async () => {
       for (const a of ordered) await api.post(`/api/approvals/${a.id}/decide`, { decision: "approve" });
@@ -115,9 +116,9 @@ export function CodePanel({ taskId }: { taskId: string }) {
         {pendingPreview && (
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-approval/15 px-2 py-1.5 text-xs">
             <Rocket className="size-3.5 shrink-0" aria-hidden />
-            <span className="flex-1">{t("code.previewPending")}</span>
+            <span className="flex-1">{pendingIsRelease ? t("code.releasePending") : t("code.previewPending")}</span>
             <Link href={`/approvals?focus=${pendingPreview.id}`} className="font-semibold underline-offset-2 hover:underline">
-              {t("code.reviewPreview")}
+              {pendingIsRelease ? t("code.reviewRelease") : t("code.reviewPreview")}
             </Link>
           </p>
         )}

@@ -292,6 +292,10 @@
     "request_preview": {
       "label": "Publish preview",
       "description": "Workspace mode: publish the pushed branch as a preview of an app at its address (the platform deploys after approval)"
+    },
+    "request_release": {
+      "label": "Propose LIVE release",
+      "description": "Workspace mode: propose releasing a preview version that already ran to the app's live site (only the Owner can approve it)"
     }
   },
   "executionMode": {
@@ -363,7 +367,10 @@
       "list_apps": "Looked up the workspace's apps",
       "request_preview": "Asked to publish a preview",
       "waiting_for_preview": "Waiting for the platform to deploy the approved preview",
-      "preview_deployed": "Preview is live at {url}"
+      "preview_deployed": "Preview is live at {url}",
+      "request_release": "Proposed a release to live",
+      "waiting_for_live": "Waiting for the platform to release the approved version to LIVE",
+      "live_deployed": "LIVE now runs the new version at {url}"
     }
   },
   "bot": {

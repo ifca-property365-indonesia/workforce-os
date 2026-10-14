@@ -44,8 +44,9 @@ export const ROLE_TEMPLATES: RoleTemplate[] = [
       "- Prefer the smallest change that solves the problem; include a short test plan.",
       "- Use the knowledge base for internal conventions before inventing new ones.",
       "- Apps the platform previews follow the app-nextjs skill. After your push is approved, find the app with list_apps and call request_preview; it is live only once the platform reports the release as deployed.",
+      "- Propose a LIVE release (request_release) only when the task asks for one, and only of a preview version that deployed; only an Owner can approve it.",
     ].join("\n"),
-    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate", "git_push", "create_pull_request", "list_apps", "request_preview"]),
+    suggestedTools: base([...COMMON, "web_fetch", "draft_document", "message_teammate", "git_push", "create_pull_request", "list_apps", "request_preview", "request_release"]),
     autonomyLevel: "QUEUE",
     exampleTasks: [
       "Write a TypeScript function that validates Indonesian phone numbers, with unit tests.",

@@ -221,5 +221,11 @@ describe("the two tools in the tool picker and activity", () => {
     expect(describeReceipt({ kind: "tool", name: "simulated:request_preview", input: { appId: randomUUID() }, output: null })).toEqual({ key: "request_preview", values: {}, tool: "request_preview" });
     expect(en.activity.receipt.request_preview).toBeTruthy();
     expect(id.activity.receipt.list_apps).toBeTruthy();
+    // and for proposing a LIVE release (B3)
+    expect(describeReceipt({ kind: "tool", name: "request_release", input: { appId: randomUUID() }, output: null })).toEqual({ key: "request_release", values: {}, tool: "request_release" });
+    for (const cat of [en, id]) {
+      expect(cat.activity.receipt.request_release).toBeTruthy();
+      expect(cat.tools.request_release?.label).toBeTruthy();
+    }
   });
 });

@@ -561,7 +561,7 @@ describe("list_apps", () => {
       repositoryId: s.repo.id,
       branch: "main",
       linkedToYourRepository: true,
-      currentRelease: { commit: s.remote.first, subject: "First version", status: "deployed", at: expect.any(String) },
+      currentRelease: { id: cur!.id, commit: s.remote.first, subject: "First version", status: "deployed", at: expect.any(String) },
       lastDeployedAt: expect.any(String),
       live: null,
     });
@@ -587,7 +587,7 @@ describe("list_apps", () => {
       .returning();
     await db.update(appEnvironments).set({ currentReleaseId: lr!.id }).where(eq(appEnvironments.id, live.id));
     const out = JSON.parse(text(await s.call(s.ctx, "list_apps", {}))) as { apps: Record<string, unknown>[] };
-    expect(out.apps[0]).toMatchObject({ url: `https://${s.preview.domain}`, status: "new", currentRelease: null, live: { url: `https://${live.domain}`, status: "running", version: s.remote.first } });
+    expect(out.apps[0]).toMatchObject({ url: `https://${s.preview.domain}`, status: "new", currentRelease: null, live: { url: `https://${live.domain}`, status: "running", version: s.remote.first, releaseWindow: null } });
     const raw = JSON.stringify(out);
     for (const secret of [LIVE_ENV, "enc-live-password-blob", live.instanceName]) expect(raw).not.toContain(secret);
   });

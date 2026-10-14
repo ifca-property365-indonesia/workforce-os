@@ -1,4 +1,4 @@
-import type { AppManifest, ReleaseStatus, ReleaseStep, ReleaseWarning } from "@wfos/shared";
+import type { AppEnvironmentKind, AppManifest, ReleaseStatus, ReleaseStep, ReleaseWarning } from "@wfos/shared";
 
 /**
  * A preview a Developer published from a task (request_preview → approval → release), as the task page shows it.
@@ -9,6 +9,8 @@ export interface TaskPreview {
   id: string;
   appId: string;
   appName: string;
+  /** "live": a LIVE release the task proposed (request_release, B3) */
+  environmentKind: AppEnvironmentKind;
   status: ReleaseStatus;
   step: ReleaseStep | null;
   commit: string;

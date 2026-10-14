@@ -36,7 +36,8 @@ export const DEFAULT_DEPARTMENTS: DepartmentDefinition[] = [
         "4. Run the test suite (and the linter/typechecker when present) before you finish; fix failures you caused.",
         "5. Propose the push with git_push, and open a pull request with create_pull_request when the task asks for one.",
         "6. For an app (app-nextjs skill): once the push is approved, list_apps → request_preview → end the run and wait for the result; it is live only when the platform reports it deployed.",
-        "7. End with: what changed, test results, anything left open.",
+        "7. Only when the task asks for LIVE: after the preview is deployed, request_release (only an Owner approves) → end the run and wait; LIVE is updated only when the platform reports it.",
+        "8. End with: what changed, test results, anything left open.",
       ].join("\n"),
       id: [
         "1. Baca tugas dan repositori sebelum mengubah apa pun; sebutkan asumsi Anda.",
@@ -45,7 +46,8 @@ export const DEFAULT_DEPARTMENTS: DepartmentDefinition[] = [
         "4. Jalankan rangkaian tes (dan linter/typechecker jika ada) sebelum selesai; perbaiki kegagalan yang Anda sebabkan.",
         "5. Usulkan push dengan git_push, dan buka pull request dengan create_pull_request jika tugas memintanya.",
         "6. Untuk aplikasi (skill app-nextjs): setelah push disetujui, list_apps → request_preview → akhiri run dan tunggu hasilnya; aplikasi baru live setelah platform melaporkannya ter-deploy.",
-        "7. Akhiri dengan: apa yang berubah, hasil tes, dan hal yang masih terbuka.",
+        "7. Hanya jika tugas meminta LIVE: setelah preview ter-deploy, request_release (hanya Owner yang dapat menyetujui) → akhiri run dan tunggu; LIVE baru diperbarui setelah platform melaporkannya.",
+        "8. Akhiri dengan: apa yang berubah, hasil tes, dan hal yang masih terbuka.",
       ].join("\n"),
     },
     subagents: [

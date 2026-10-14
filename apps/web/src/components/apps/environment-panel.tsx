@@ -45,9 +45,9 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 
 /**
  * One environment of an app as a panel: its plate (PREVIEW blue / LIVE red, lit while it serves), status and health,
- * the address, the version that runs and where, and the actions this person may take on it.
+ * the address, the version that runs and where, live's uptime (`monitor`), and the actions this person may take on it.
  */
-export function EnvironmentPanel({ env, actions, note }: { env: AppEnvironmentDTO; actions?: ReactNode; note?: ReactNode }) {
+export function EnvironmentPanel({ env, actions, note, monitor }: { env: AppEnvironmentDTO; actions?: ReactNode; note?: ReactNode; monitor?: ReactNode }) {
   const t = useTranslations("apps");
   const f = useFormat();
   const statusMessage = useStatusMessage();
@@ -78,6 +78,7 @@ export function EnvironmentPanel({ env, actions, note }: { env: AppEnvironmentDT
           {t("detail.redirects", { names: env.extraDomains.join(", ") })}
         </p>
       )}
+      {monitor}
       <div className="space-y-1">
         <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{t(live ? "detail.liveVersion" : "detail.previewVersion")}</div>
         {cur ? (

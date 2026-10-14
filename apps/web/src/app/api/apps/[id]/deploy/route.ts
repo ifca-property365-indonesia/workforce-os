@@ -1,8 +1,9 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { appEnvironments, appReleases, audit, db } from "@wfos/db";
-import { appDeploySchema } from "@wfos/shared";
+import { appDeploySchema, isWithinReleaseWindow } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
+import { nextReleaseWindowOpening } from "@/lib/release-window";
 import {
   activeRelease,
   assertNoRestore,
@@ -26,7 +27,8 @@ const liveDeploySchema = z.object({ fromReleaseId: z.string() }).strict();
  * Manual deploy. `?env=preview` (default), Admin or Owner: a queued release of the given branch (its head when the
  * worker starts) or exact commit, else the app's branch. `?env=live`, Owner with a fresh step-up: `{ fromReleaseId }`
  * names a preview release that ran (deployed or superseded); its exact commit goes live, and only once the live
- * domain's DNS check is ok (the worker checks again before it publishes). One release per environment at a time.
+ * domain's DNS check is ok (the worker checks again before it publishes) and, with a release window, only inside it
+ * (409 live_outside_window with the next opening; rollbacks are never held back). One release per environment at a time.
  * The click itself is the human decision.
  */
 export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params }) => {
@@ -52,6 +54,12 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
       throw new HttpError(409, "Only a commit that ran in the preview can go live", { code: "live_needs_preview_release" });
     }
     if (env.dnsCheck?.status !== "ok") throw new HttpError(409, "The domain does not point at the server yet", { code: "live_dns_not_ok" });
+    // a release window: releases start only inside it (rollbacks always pass; the worker checks again in prepare)
+    const w = env.releaseWindow;
+    if (w && !isWithinReleaseWindow(w)) {
+      const opensAt = nextReleaseWindowOpening(w)?.toISOString() ?? "";
+      throw new HttpError(409, "Outside the release window", { code: "live_outside_window", start: w.start, end: w.end, timeZone: w.timeZone, days: w.days, opensAt });
+    }
     promotedFrom = src.id;
     values = { commit: src.commit, branch: src.branch, commitSubject: src.commitSubject, manifest: src.manifest, trigger: "manual", promotedFromReleaseId: src.id };
   } else {

@@ -124,7 +124,9 @@
     "requestChanges": "Request changes",
     "changesRequested": "Changes requested: the employee will continue",
     "previewPending": "A preview of this branch is waiting for approval.",
-    "reviewPreview": "Review the preview"
+    "reviewPreview": "Review the preview",
+    "releasePending": "A release of this work to live is waiting for the Owner's approval.",
+    "reviewRelease": "Review the LIVE release"
   },
   "gateRule": {
     "not_granted": "not granted",

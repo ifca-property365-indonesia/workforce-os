@@ -22,7 +22,8 @@
     "handoff_prd": "Serah terima PRD",
     "create_routine": "Buat rutinitas",
     "list_apps": "Lihat daftar aplikasi",
-    "request_preview": "Terbitkan preview"
+    "request_preview": "Terbitkan preview",
+    "request_release": "Usulkan rilis LIVE"
   },
   "email": {
     "to": "Kepada:",
@@ -75,7 +76,9 @@
     "showDetails": "Tampilkan detail",
     "hideDetails": "Sembunyikan detail",
     "openInInbox": "Buka di Persetujuan",
-    "stripPending": "Perlu persetujuan"
+    "stripPending": "Perlu persetujuan",
+    "waitingForOwner": "Hanya Owner yang bisa memutuskan rilis LIVE, dengan password dan kode autentikator.",
+    "approveRelease": "Setujui rilis LIVE"
   },
   "bash": {
     "runsWhere": "Menjalankan persis perintah ini di sandbox karyawan (workspace yang sama, tanpa akses ke host, jaringan hanya yang diizinkan, git hooks dinonaktifkan)."
@@ -143,5 +146,21 @@
     "liveAt": "Tayang di {url}",
     "followOnApp": "Pantau penerbitan di halaman aplikasi",
     "howItRuns": "Jika disetujui, tepat commit {commit} yang diterbitkan ke alamat ini. Platform lebih dulu memastikan branch masih menunjuk ke commit itu, lalu membangun, menjalankan migrasi, dan mengecek kesehatannya; kalau ada langkah yang gagal, versi yang berjalan sekarang tetap dipakai."
+  },
+  "release": {
+    "update": "Pembaruan situs live",
+    "firstRelease": "Rilis LIVE pertama",
+    "openLive": "Buka situs live",
+    "realSite": "Situs asli klien: pengunjungnya akan mendapat versi ini.",
+    "runsNow": "Live sekarang menjalankan",
+    "nothingLive": "Belum ada yang berjalan di live",
+    "ranInPreview": "Commit ini persis sudah berjalan di preview.",
+    "howTitle": "Cara versi ini sampai ke live",
+    "commitsSince": "{count} commit sejak versi yang live sekarang",
+    "waitForWindow": "Setujui setelah jendela rilis terbuka: di luar jendela, rilisnya akan ditolak.",
+    "ownerOnly": "Hanya Owner yang memutuskan, dengan password dan kode autentikator.",
+    "howItRuns": "Jika disetujui, tepat commit {commit} yang dibangun di server live, dimigrasi seperti di atas, lalu lalu lintas dialihkan setelah lolos pemeriksaan kesehatan; kalau ada langkah yang gagal, versi live yang sekarang tetap berjalan. Rollback tetap bisa dilakukan.",
+    "stale": "Live sudah berubah sejak permintaan ini: permintaan dibuat untuk versi live yang lain. Tolak dan minta Developer mengusulkan rilisnya lagi.",
+    "expired": "Permintaan ini sudah lebih dari 24 jam: tolak dan minta Developer mengusulkannya lagi."
   }
 }

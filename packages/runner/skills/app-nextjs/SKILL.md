@@ -1,6 +1,6 @@
 ---
 name: app-nextjs
-description: Build a web app that Workforce OS can publish as a preview (Next.js + PostgreSQL, wfos-app.json, health check, migrations). Use when a task asks for a new app, or changes an app that has a preview (list_apps).
+description: Build a web app that Workforce OS can publish as a preview and release to LIVE (Next.js + PostgreSQL, wfos-app.json, health check, migrations). Use when a task asks for a new app, or changes an app that has a preview (list_apps).
 ---
 
 # Apps for Workforce OS previews (Next.js)
@@ -100,3 +100,20 @@ Then change it into what the task asks for. Keep the structure below.
 3. `list_apps` → the app with `linkedToYourRepository: true` → `request_preview { appId, summary }`.
 4. End your run. The platform resumes the task with the result: a "Preview: <url>" deliverable when it is deployed,
    or the failed step with the end of the build log (fix, commit, push, request the preview again).
+
+## LIVE (the client's real site)
+
+An app can also have a LIVE environment: its own domain, database, environment variables and data, set up by an Owner.
+LIVE only ever runs a version that already ran in the preview.
+
+- Propose a LIVE release only when the task asks for one: `request_release { appId, fromReleaseId?, summary }`
+  (`fromReleaseId` defaults to the version the preview runs now; it must be a preview release that deployed).
+- Only an Owner of the workspace can approve it. The approver sees the commits and files since the version LIVE runs,
+  the warnings, the migration mode, the LIVE variables changed since then and the release window.
+- An app may have a release window (for example nights only): outside it a LIVE release is refused (rollbacks are
+  always allowed). Say so instead of asking again.
+- LIVE releases without downtime when `migrations` is `"expand"`; `"breaking"` shows the maintenance page while
+  migrating. The database is always backed up first.
+- LIVE is checked from the platform every few minutes (`health` path, over HTTPS): keep `/api/health` fast and honest.
+- End your run after `request_release`. The task resumes with a "LIVE: <url>" deliverable when the platform reports it
+  deployed, or with the failed step and the log tail. Never say LIVE is updated before that.

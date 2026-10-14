@@ -16,6 +16,8 @@ import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
 import { DnsPanel } from "@/components/apps/dns-panel";
 import { EnvEditor } from "@/components/apps/env-editor";
 import { EnvironmentPanel, LiveSlot } from "@/components/apps/environment-panel";
+import { ReleaseWindowNote, releaseWindowState, useNow } from "@/components/apps/release-window";
+import { UptimeBlock } from "@/components/apps/uptime";
 import { ConfirmLiveRemovalDialog, EditLiveDialog, ReleaseToLiveDialog, SetupLiveDialog } from "@/components/apps/live-dialogs";
 import { ReleasesTable } from "@/components/apps/releases";
 import { AppSign, EnvPlate, appColors, appSignStatus, appsQueryKey, envQuery, invalidateApp, isActiveRelease, useApp, useApps, useAppRights } from "@/components/apps/shared";
@@ -37,6 +39,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
   const { admin, owner, logs } = useAppRights();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<AppEnvironmentKind | null>(null);
+  const now = useNow();
 
   const onError = (e: unknown) => toast.error((e as Error).message);
   /** live start / rollback need the Owner's step-up; preview ones go straight through */
@@ -110,6 +113,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
   const isOn = (env: AppEnvironmentDTO) => env.status === "running" || env.status === "deploying" || env.status === "failed";
 
   const liveOn = !!live && (isOn(live) || liveBusy);
+  /** outside the live release window a release waits (rollbacks never do) */
+  const liveWindow = releaseWindowState(live?.releaseWindow ?? null, now);
   /** stop: Admins on the preview, the Owner on live; start: likewise, and live only once its DNS is ok */
   const stopStart = (env: AppEnvironmentDTO, mayStop: boolean, mayStart: boolean) =>
     isOn(env) ? (
@@ -182,14 +187,21 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
         {live ? (
           <EnvironmentPanel
             env={live}
-            note={live.dnsCheck?.status !== "ok" && <p className="text-xs text-muted-foreground">{t("live.dnsPending")}</p>}
+            monitor={(live.currentRelease || live.uptimeCheckedAt) && <UptimeBlock appId={app.id} env={live} />}
+            note={
+              <>
+                {live.dnsCheck?.status !== "ok" && <p className="text-xs text-muted-foreground">{t("live.dnsPending")}</p>}
+                <ReleaseWindowNote w={live.releaseWindow} now={now} />
+              </>
+            }
             actions={
               admin && (
                 <>
                   {owner && (
                     <Button
                       className="gap-1.5 bg-[var(--sign-merah)] text-white hover:bg-[color-mix(in_srgb,var(--sign-merah)_86%,black)]"
-                      disabled={liveBusy}
+                      disabled={liveBusy || !liveWindow.open}
+                      title={liveWindow.open ? undefined : t("window.releaseWaits")}
                       onClick={() => setDialog("releaseLive")}
                     >
                       <Radio className="size-4" aria-hidden /> {t("live.release")}

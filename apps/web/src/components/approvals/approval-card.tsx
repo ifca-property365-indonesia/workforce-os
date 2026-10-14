@@ -5,20 +5,25 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronDown, Clock, FlaskConical, History, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Check, ChevronDown, Clock, Crown, FlaskConical, History, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar } from "@/components/layout/common";
+import { useStepUp } from "@/components/account/step-up";
 import { api } from "@/lib/api";
+import { useMe } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { PayloadPreview } from "./payload-preview";
+import { useReleaseApprovalWindow } from "./release-approval";
 import { resultSummary, type Approval } from "./types";
 
 const DEMO_SUFFIX = " Demo: executes as a dry run.";
 /** approved for one exact commit: approve or reject, never Edit & approve (decideApproval refuses it too) */
-const NOT_EDITABLE: ReadonlySet<string> = new Set(["git_push", "request_preview"]);
+const NOT_EDITABLE: ReadonlySet<string> = new Set(["git_push", "request_preview", "request_release"]);
+/** decided by the Owner only, with a fresh step-up (a LIVE release): decideApproval refuses anyone else */
+const OWNER_ONLY: ReadonlySet<string> = new Set(["request_release"]);
 
 /**
  * The gate writes its reason in English (packages/shared decideGate/screen). The known reasons are shown in the
@@ -129,9 +134,19 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
     setEditing(false);
     setRejecting(false);
   }, [pending]);
+  const withStepUp = useStepUp();
+  const { data: me } = useMe();
+  const ownerOnly = OWNER_ONLY.has(a.toolName);
+  // a LIVE release outside its window, older than a day or made against another LIVE commit is refused: Approve waits (Reject never does)
+  const releaseWindow = useReleaseApprovalWindow(a);
   const decide = useMutation({
-    mutationFn: (body: Decision) => api.post(`/api/approvals/${a.id}/decide`, body),
-    onSuccess: (_r, v) => {
+    mutationFn: (body: Decision) => {
+      const send = () => api.post<{ ok: true }>(`/api/approvals/${a.id}/decide`, body);
+      return ownerOnly ? withStepUp(send) : send();
+    },
+    onSuccess: (r, v) => {
+      // the step-up was cancelled: nothing was decided
+      if (!r) return;
       toast.success(v.decision === "reject" ? t("card.rejected") : t("card.approved"));
       setEditing(false);
       setRejecting(false);
@@ -165,7 +180,13 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
   );
 
   let actions: ReactNode = null;
-  if (pending && readOnly) {
+  if (pending && ownerOnly && me && me.role !== "OWNER") {
+    actions = (
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <Crown className="size-3.5 shrink-0" aria-hidden /> {t("card.waitingForOwner")}
+      </p>
+    );
+  } else if (pending && readOnly) {
     actions = (
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Clock className="size-3.5" /> {t("card.waitingForAdmin")}
@@ -196,8 +217,13 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
       </div>
     ) : (
       <div className="flex flex-wrap gap-2">
-        <Button size={size} onClick={() => decide.mutate({ decision: "approve" })} disabled={decide.isPending} className="gap-1">
-          <ShieldCheck className="size-3.5" /> {t("card.approve")}
+        <Button
+          size={size}
+          onClick={() => decide.mutate({ decision: "approve" })}
+          disabled={decide.isPending || releaseWindow.blocked}
+          className={cn("gap-1", ownerOnly && "bg-[var(--sign-merah)] text-white hover:bg-[color-mix(in_srgb,var(--sign-merah)_86%,black)]")}
+        >
+          <ShieldCheck className="size-3.5" /> {ownerOnly ? t("card.approveRelease") : t("card.approve")}
         </Button>
         {!NOT_EDITABLE.has(a.toolName) && (
           <Button size={size} variant="outline" onClick={() => (setEditing(true), setOpen(true))} className="gap-1">

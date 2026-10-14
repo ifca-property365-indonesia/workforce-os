@@ -28,7 +28,7 @@ const READ_TOOLS = new Set([
   "Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "Skill",
   "kb_search", "memory_search", "list_clients", "get_client", "list_tasks", "web_fetch", "list_apps",
 ]);
-const TERMINAL_TOOLS = new Set(["Bash", "BashOutput", "KillShell", "KillBash", "git_push", "create_pull_request", "request_preview"]);
+const TERMINAL_TOOLS = new Set(["Bash", "BashOutput", "KillShell", "KillBash", "git_push", "create_pull_request", "request_preview", "request_release"]);
 
 /** Tool name → what the character does. MCP prefixes are ignored; unknown tools count as desk work. */
 export function toolActivity(name: string): Activity {

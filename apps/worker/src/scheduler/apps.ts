@@ -125,7 +125,8 @@ async function checkHealth(now: Date, skip: Set<string>): Promise<AppsTickOutcom
         const [row] = await db.update(appEnvironments).set({ healthy, lastHealthAt: now }).where(running).returning({ id: appEnvironments.id });
         if (!row) continue;
       }
-      if (wentDown) {
+      // a LIVE site the uptime check already reported down: its Owners heard it, no second alarm
+      if (wentDown && !(e.kind === "live" && e.uptimeStatus === "down")) {
         const name = envLabel({ name: appName }, e);
         await notifyApp({
           workspaceId: e.workspaceId,

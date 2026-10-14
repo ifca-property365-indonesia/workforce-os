@@ -5,6 +5,7 @@ import { enqueueTask, publish } from "../lib/redis";
 import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
 import { queuePreviewRelease } from "../deploy/preview";
+import { queueLiveRelease } from "../deploy/live-request";
 import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, webhookPayloadSchema, type OutboundEmailTrigger } from "@wfos/shared";
 import { decryptSecret, screenLeakage, withRetry } from "@wfos/shared/server";
 import { msg } from "@wfos/shared/messages";
@@ -383,6 +384,9 @@ export async function executeAction(
       return doCreatePullRequest(workspaceId, payload);
     case "request_preview":
       return queuePreviewRelease(workspaceId, payload, context);
+    case "request_release":
+      // only from an approval an Owner decided (checked inside), never an allow-list run
+      return queueLiveRelease(workspaceId, payload, context);
     case "send_email":
       return sendEmailPayload(workspaceId, emailPayloadSchema.parse(payload), send);
     case "send_invoice":

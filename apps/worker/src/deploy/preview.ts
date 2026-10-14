@@ -29,7 +29,7 @@ export async function agentHead(repoId: string, taskId: string): Promise<string 
   return SHA_RE.test(sha) ? sha : null;
 }
 
-async function commitExists(mirror: string, sha: string): Promise<boolean> {
+export async function commitExists(mirror: string, sha: string): Promise<boolean> {
   return SHA_RE.test(sha) && (await rootGit(["-C", mirror, "cat-file", "-e", `${sha}^{commit}`]).then(() => true, () => false));
 }
 
@@ -37,14 +37,14 @@ async function commitExists(mirror: string, sha: string): Promise<boolean> {
  * Where the payload's commits and files start: the commit that runs now (when it is still in the mirror), else the
  * merge base with the default branch (a first preview), else nothing (every commit of the branch).
  */
-async function rangeStart(mirror: string, head: string, current: string | null, defaultBranch: string): Promise<string | null> {
+export async function rangeStart(mirror: string, head: string, current: string | null, defaultBranch: string): Promise<string | null> {
   if (current && (await commitExists(mirror, current))) return current;
   if (!SAFE_REF.test(defaultBranch)) return null;
   const base = (await rootGit(["-C", mirror, "merge-base", `refs/heads/${defaultBranch}`, head]).catch(() => "")).trim();
   return SHA_RE.test(base) ? base : null;
 }
 
-async function changesSince(mirror: string, from: string | null, head: string) {
+export async function changesSince(mirror: string, from: string | null, head: string) {
   const range = from ? `${from}..${head}` : head;
   const commits = (await rootGit(["-C", mirror, "log", `--max-count=${MAX_COMMITS}`, "--format=%H%x09%s", range]))
     .trim()
@@ -65,7 +65,7 @@ async function changesSince(mirror: string, from: string | null, head: string) {
 }
 
 /** The validated, stored manifest of a release (null when it has none or it no longer parses). */
-function storedManifest(m: unknown): AppManifest | null {
+export function storedManifest(m: unknown): AppManifest | null {
   try {
     return m ? parseManifest(m) : null;
   } catch {
@@ -300,10 +300,11 @@ export async function listApps(workspaceId: string, yourRepositoryId: string | n
       repositoryId: a.repositoryId,
       branch: a.branch,
       linkedToYourRepository: !!yourRepositoryId && a.repositoryId === yourRepositoryId,
-      currentRelease: c ? { commit: c.commit, subject: c.subject, status: c.status, at: (c.finishedAt ?? c.createdAt).toISOString() } : null,
+      // id: what request_release's fromReleaseId names (the default when left out)
+      currentRelease: c ? { id: c.id, commit: c.commit, subject: c.subject, status: c.status, at: (c.finishedAt ?? c.createdAt).toISOString() } : null,
       lastDeployedAt: preview?.lastDeployedAt?.toISOString() ?? null,
-      // read-only: agents never deploy to, stop or change the live environment
-      live: live ? { url: appUrl(live), status: live.status, version: lc?.commit ?? null } : null,
+      // read-only: agents never deploy to, stop or change the live environment (request_release only proposes, an Owner decides)
+      live: live ? { url: appUrl(live), status: live.status, version: lc?.commit ?? null, releaseWindow: live.releaseWindow ?? null } : null,
     };
   });
 }

@@ -38,6 +38,12 @@ const MESSAGES = {
     "app.stateMaintenance": "Visitors see the maintenance page until it is fixed (deploy a fix or roll back).",
     "app.stateUnknown": "The site may not answer: check it now.",
     "app.idleStoppedText": "{name} had no new release for {days} days and was stopped to free the server. Start it again from the Apps window.",
+    "app.liveDown": "LIVE is down: {name}",
+    "app.liveDownText": "{url} did not answer the last two checks from the platform (3 tries each; last: {detail}). Visitors probably cannot reach it. Open the Apps window to look at it, roll back or deploy a fix.",
+    "app.liveUp": "LIVE is back: {name}",
+    "app.liveUpText": "{url} answers again ({detail}). It was down for about {duration}.",
+    "app.certExpiring": "Certificate expires soon: {name}",
+    "app.certExpiringText": "The HTTPS certificate of {domain} expires on {date} (in {days} days). It is renewed automatically; if it is still not renewed in the next days, check that {domain} points at the app server.",
   },
   id: {
     "app.deployed": "Preview diperbarui: {name}",
@@ -72,6 +78,12 @@ const MESSAGES = {
     "app.stateMaintenance": "Pengunjung melihat halaman pemeliharaan sampai ini diperbaiki (deploy perbaikan atau rollback).",
     "app.stateUnknown": "Situs mungkin tidak merespons: periksa sekarang.",
     "app.idleStoppedText": "{name} tidak punya rilis baru selama {days} hari dan dihentikan supaya server lega. Jalankan lagi dari jendela Aplikasi.",
+    "app.liveDown": "LIVE tidak bisa diakses: {name}",
+    "app.liveDownText": "{url} tidak merespons dua pemeriksaan terakhir dari platform (masing-masing 3 kali coba; terakhir: {detail}). Pengunjung kemungkinan tidak bisa membukanya. Buka jendela Aplikasi untuk memeriksanya, lakukan rollback, atau deploy perbaikan.",
+    "app.liveUp": "LIVE kembali normal: {name}",
+    "app.liveUpText": "{url} merespons lagi ({detail}). Situs tidak bisa diakses sekitar {duration}.",
+    "app.certExpiring": "Sertifikat segera kedaluwarsa: {name}",
+    "app.certExpiringText": "Sertifikat HTTPS {domain} kedaluwarsa pada {date} (dalam {days} hari). Sertifikat diperbarui otomatis; jika dalam beberapa hari ke depan belum diperbarui, pastikan {domain} masih mengarah ke server aplikasi.",
   },
 } satisfies Record<Locale, Record<string, string>>;
 

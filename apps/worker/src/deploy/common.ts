@@ -148,6 +148,8 @@ export type LiveCheckpoint = ReleaseCheckpoint & {
   graceUntil?: string | null;
   /** the grace unit was stopped (or found stopped / taken over) */
   graceDone?: boolean;
+  /** refused in prepare for a reason that is not the code (B3: the release window was closed): not a failed attempt */
+  refusal?: "release_window";
 };
 
 export const otherSlot = (s: AppSlot): AppSlot => (s === "blue" ? "green" : "blue");

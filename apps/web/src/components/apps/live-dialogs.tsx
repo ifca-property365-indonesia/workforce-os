@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Construction, DatabaseBackup, Globe, KeyRound, Plus, Radio, Repeat, Trash2, X, Zap } from "lucide-react";
-import { APP_LIVE_GRACE_SECONDS, customDomainSchema, type AppAccessMode, type AppDTO, type AppEnvironmentDTO, type ReleaseDTO } from "@wfos/shared";
+import { APP_LIVE_GRACE_SECONDS, customDomainSchema, type AppAccessMode, type AppDTO, type AppEnvironmentDTO, type ReleaseDTO, type ReleaseWindow } from "@wfos/shared";
 import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,9 +13,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import type { ReleaseDbPlan } from "@/lib/app-previews";
+import { sameReleaseWindow } from "@/lib/release-window";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { useServers } from "./new-app-dialog";
+import { ReleaseWindowFields, ReleaseWindowNote, releaseWindowState, useNow } from "./release-window";
 import { CommitChip, EnvPlate, invalidateApp, selectClass } from "./shared";
 
 /** at most this many names redirect to the live domain (the helper refuses more) */
@@ -211,12 +213,19 @@ export function SetupLiveDialog({ app, onClose, onCreated }: { app: AppDTO; onCl
   );
 }
 
-/** Domain, redirecting names and access of the live environment. Names change only while it is stopped. */
+/**
+ * Domain, redirecting names, access and release window of the live environment. Names change only while it is
+ * stopped; a new release window is confirmed with a step-up.
+ */
 export function EditLiveDialog({ app, env, onClose }: { app: AppDTO; env: AppEnvironmentDTO; onClose: () => void }) {
   const t = useTranslations("apps");
   const tc = useTranslations("common");
   const qc = useQueryClient();
   const uid = useId();
+  const withStepUp = useStepUp();
+  const [releaseWindow, setReleaseWindow] = useState<ReleaseWindow | null>(env.releaseWindow);
+  const windowChanged = !sameReleaseWindow(releaseWindow, env.releaseWindow);
+  const windowValid = !releaseWindow || (/^\d\d:\d\d$/.test(releaseWindow.start) && /^\d\d:\d\d$/.test(releaseWindow.end) && releaseWindow.days.length > 0);
   const servers = useServers();
   const previewBases = (servers.data ?? []).map((s) => s.baseDomain.toLowerCase());
   const [domain, setDomain] = useState(env.domain);
@@ -225,14 +234,21 @@ export function EditLiveDialog({ app, env, onClose }: { app: AppDTO; env: AppEnv
   const running = env.status === "running" || env.status === "deploying";
   const extra = aliases.map((a) => a.trim().toLowerCase()).filter(Boolean);
   const namesChanged = domain.trim().toLowerCase() !== env.domain || extra.join(",") !== env.extraDomains.join(",");
-  const valid = namesValid(domain, aliases, previewBases) && !(namesChanged && running);
+  const valid = namesValid(domain, aliases, previewBases) && !(namesChanged && running) && windowValid;
+  const changed = namesChanged || accessMode !== env.accessMode || windowChanged;
   const m = useMutation({
-    mutationFn: () =>
-      api.patch(`/api/apps/${app.id}/live`, {
-        ...(namesChanged && { domain: domain.trim().toLowerCase(), extraDomains: extra }),
-        ...(accessMode !== env.accessMode && { accessMode }),
-      }),
-    onSuccess: () => {
+    mutationFn: () => {
+      const send = () =>
+        api.patch<{ app: AppDTO }>(`/api/apps/${app.id}/live`, {
+          ...(namesChanged && { domain: domain.trim().toLowerCase(), extraDomains: extra }),
+          ...(accessMode !== env.accessMode && { accessMode }),
+          ...(windowChanged && { releaseWindow }),
+        });
+      // the release window guards the live site: the server asks for a fresh step-up
+      return windowChanged ? withStepUp(send) : send();
+    },
+    onSuccess: (r) => {
+      if (!r) return;
       invalidateApp(qc, app.id);
       toast.success(t("live.saved"));
       onClose();
@@ -284,13 +300,15 @@ export function EditLiveDialog({ app, env, onClose }: { app: AppDTO; env: AppEnv
               ))}
             </div>
           </fieldset>
+          <ReleaseWindowFields value={releaseWindow} onChange={setReleaseWindow} />
           {namesChanged && <p className="text-xs text-muted-foreground">{t("live.namesResetDns")}</p>}
+          {windowChanged && <p className="text-xs text-muted-foreground">{t("window.stepUp")}</p>}
         </form>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             {tc("cancel")}
           </Button>
-          <Button type="submit" form={`${uid}-form`} disabled={!valid || m.isPending || (!namesChanged && accessMode === env.accessMode)}>
+          <Button type="submit" form={`${uid}-form`} disabled={!valid || m.isPending || !changed}>
             {tc("save")}
           </Button>
         </DialogFooter>
@@ -392,6 +410,8 @@ export function ReleaseToLiveDialog({
   const [picked, setPicked] = useState(candidates[0]?.id ?? "");
   const liveCommit = live.currentRelease?.commit ?? null;
   const dnsOk = live.dnsCheck?.status === "ok";
+  const now = useNow();
+  const inWindow = releaseWindowState(live.releaseWindow, now).open;
   const m = useMutation({
     mutationFn: () => withStepUp(() => api.post<{ release: ReleaseDTO }>(`/api/apps/${app.id}/deploy?env=live`, { fromReleaseId: picked })),
     onSuccess: (r) => {
@@ -412,6 +432,7 @@ export function ReleaseToLiveDialog({
           <DialogDescription>{t("live.releaseDescription", { domain: live.domain })}</DialogDescription>
         </DialogHeader>
         {!dnsOk && <p className="rounded-md border border-warning/40 bg-warning/10 p-2.5 text-xs">{t("live.releaseDnsFirst")}</p>}
+        <ReleaseWindowNote w={live.releaseWindow} now={now} />
         {envChanged.length > 0 && (
           <div className="space-y-1.5 rounded-md border border-dashed p-2.5 text-xs">
             <p className="text-muted-foreground">{t("live.releaseEnvChanged", { count: envChanged.length })}</p>
@@ -431,7 +452,7 @@ export function ReleaseToLiveDialog({
             id={`${uid}-form`}
             onSubmit={(e) => {
               e.preventDefault();
-              if (picked && dnsOk) m.mutate();
+              if (picked && dnsOk && inWindow) m.mutate();
             }}
           >
             <fieldset>
@@ -481,7 +502,7 @@ export function ReleaseToLiveDialog({
             {tc("cancel")}
           </Button>
           {!!candidates.length && (
-            <Button type="submit" form={`${uid}-form`} className="gap-1.5" disabled={!picked || !dnsOk || m.isPending}>
+            <Button type="submit" form={`${uid}-form`} className="gap-1.5" disabled={!picked || !dnsOk || !inWindow || m.isPending}>
               <Radio className="size-4" aria-hidden /> {t("live.releaseConfirm")}
             </Button>
           )}

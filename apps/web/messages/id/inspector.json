@@ -124,7 +124,9 @@
     "requestChanges": "Minta perubahan",
     "changesRequested": "Perubahan diminta: karyawan akan melanjutkan",
     "previewPending": "Preview dari branch ini sedang menunggu persetujuan.",
-    "reviewPreview": "Tinjau preview"
+    "reviewPreview": "Tinjau preview",
+    "releasePending": "Penerbitan pekerjaan ini ke live menunggu persetujuan Owner.",
+    "reviewRelease": "Tinjau rilis LIVE"
   },
   "gateRule": {
     "not_granted": "tidak diizinkan",

@@ -5,7 +5,7 @@ import { approvals, audit, db, members, telegramCallbacks, telegramLinkCodes, us
 import { hasRole } from "@wfos/shared";
 import { hashLinkCode, telegramCall, verifyCallback } from "@wfos/shared/telegram";
 import { HttpError } from "@/lib/server/auth";
-import { decideApproval } from "@/lib/server/approvals";
+import { decideApproval, OWNER_ONLY_APPROVAL_TOOLS } from "@/lib/server/approvals";
 import { logger } from "@/lib/server/logger";
 
 interface Update {
@@ -82,12 +82,17 @@ async function onCallback(cb: NonNullable<Update["callback_query"]>) {
   if (!user?.telegramChatId || user.telegramChatId !== String(cb.from.id)) return answer("This button is not for you. · Tombol ini bukan untuk Anda.");
   const [m] = await db.select({ role: members.role }).from(members).where(and(eq(members.userId, user.id), eq(members.workspaceId, btn.workspaceId)));
   if (!m || !hasRole(m.role, "ADMIN")) return answer("Your role does not allow approvals. · Peran Anda tidak mengizinkan persetujuan.");
+  // a LIVE release is decided by the Owner on the web, with a fresh step-up: never from a button (decideApproval refuses it too)
+  const [target] = await db.select({ toolName: approvals.toolName }).from(approvals).where(and(eq(approvals.id, btn.approvalId), eq(approvals.workspaceId, btn.workspaceId)));
+  if (target && OWNER_ONLY_APPROVAL_TOOLS.has(target.toolName)) {
+    return answer("Approve this LIVE release on the web: only the Owner can, with password and authenticator code. · Setujui rilis LIVE ini di web: hanya Owner yang bisa, dengan password dan kode autentikator.");
+  }
   // single use: claim atomically (checked after the identity, so a stranger's press cannot burn a valid button)
   const claimed = await db.update(telegramCallbacks).set({ usedAt: new Date() }).where(live).returning({ id: telegramCallbacks.id });
   if (!claimed.length) return used();
   const [a] = await db.select({ title: approvals.title }).from(approvals).where(eq(approvals.id, btn.approvalId));
   try {
-    await decideApproval({ userId: user.id, email: user.email, workspaceId: btn.workspaceId, via: "telegram" }, btn.approvalId, { decision: btn.action });
+    await decideApproval({ userId: user.id, email: user.email, workspaceId: btn.workspaceId, via: "telegram", role: m.role }, btn.approvalId, { decision: btn.action });
   } catch (e) {
     return answer(e instanceof HttpError ? e.message : "Could not decide. · Gagal memutuskan.");
   }

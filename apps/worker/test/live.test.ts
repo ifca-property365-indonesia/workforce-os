@@ -291,6 +291,17 @@ describe("environment actions", () => {
     expect(notifications(ws.id)).toEqual([expect.objectContaining({ notificationKind: "incident", subject: `${app.name} (LIVE) is not answering` })]);
     expect(transport.published.map((p) => p.ev as RealtimeEvent)).toContainEqual({ type: "app.updated", appId: app.id, status: "running", environmentId: live.id });
   });
+
+  it("a LIVE site the uptime check already reported down gets no second (hourly) alarm", async () => {
+    const { app, ws, live } = await bothRunning();
+    await db.update(appEnvironments).set({ lastHealthAt: new Date(Date.now() - APP_HEALTH_EVERY_MS - 60_000) }).where(eq(appEnvironments.appId, app.id));
+    await db.update(appEnvironments).set({ uptimeStatus: "down" }).where(eq(appEnvironments.id, live.id));
+    srv.replies["health"] = (c) => (c.args[0] === live.instanceName ? { code: 1, stdout: '{"status":502}\n' } : undefined);
+    const out = await tickApps();
+    expect(out.health.find((h) => h.environmentId === live.id)).toMatchObject({ healthy: false, wentDown: true });
+    expect(await envRow(live.id)).toMatchObject({ healthy: false });
+    expect(notifications(ws.id)).toEqual([]);
+  });
 });
 
 describe("review fixes: live gates, rollback DNS, capacity, removal dump", () => {

@@ -65,12 +65,12 @@ describe("Telegram notifications", () => {
     expect(to(owner).body.reply_markup!.inline_keyboard[0]![0]!.text).toContain("Approve");
   });
 
-  it("create_skill and create_routine approvals get no quick buttons: the message sends them to the web app", async () => {
+  it("create_skill, create_routine and request_release approvals get no quick buttons: the message sends them to the web app", async () => {
     const ws = await makeWorkspace();
     const emp = await makeEmployee(ws.id);
     const owner = await member(ws.id, "OWNER", chat());
     const admin = await member(ws.id, "ADMIN", chat(), "id");
-    for (const toolName of ["create_skill", "create_routine"]) {
+    for (const toolName of ["create_skill", "create_routine", "request_release"]) {
       sent = [];
       const a = await makeApproval(ws.id, null, emp.id, { toolName, title: toolName, payload: {} });
       expect(await telegramNotify(ws.id, "Approval needed", "body", `/approvals?focus=${a.id}`, a.id)).toBe(2);
