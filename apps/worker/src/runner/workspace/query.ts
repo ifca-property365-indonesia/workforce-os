@@ -13,7 +13,7 @@ import { log } from "../../lib/logger";
 import { startControl } from "./control";
 import { startGateway, type GatewayEvent } from "./gateway";
 import { defaultSandboxHost, runLayout, SANDBOX, type RunLayout, type SandboxHost } from "./layout";
-import { DEFAULT_LIMITS, launchUnit, stopUnit, type UnitLimits } from "./unit";
+import { DEFAULT_LIMITS, launchUnit, stopUnit, unitEndResult, unitFailureError, type JournalReader, type UnitLimits } from "./unit";
 
 export interface WorkspaceRunConfig {
   workspaceId: string;
@@ -27,6 +27,8 @@ export interface WorkspaceRunConfig {
   upstream?: string;
   onGatewayEvent?: (e: GatewayEvent) => void;
   onLayout?: (l: RunLayout) => void;
+  /** tests: the journal of the unit (how it ended) */
+  readJournal?: JournalReader;
   /**
    * The employee's assigned, enabled TRUSTED skills (loadSkillFiles): sent in the run spec, and the runner (as the
    * sandbox user) writes them to ~/.claude/skills/wfos-<slug>/SKILL.md on every run, removing stale managed ones.
@@ -125,10 +127,11 @@ async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?:
   });
 
   let stderr = "";
+  const limits = cfg.limits ?? DEFAULT_LIMITS;
   const child = launchUnit({
     host,
     layout,
-    limits: cfg.limits ?? DEFAULT_LIMITS,
+    limits,
     env: { WFOS_RUN_TOKEN: runToken, HOME: layout.sandboxHomeDir, PATH: `${SANDBOX.nodeDir}/bin:/opt/wfos-tools/venv/bin:/usr/local/bin:/usr/bin:/bin` },
     command: [...SANDBOX.startCommand],
   });
@@ -146,8 +149,19 @@ async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?:
     for await (const m of control.messages) yield m;
     if (abort.signal.aborted) throw abort.signal.reason instanceof Error ? abort.signal.reason : new Error("aborted");
     const code = await Promise.race([exited, new Promise<null>((r) => setTimeout(() => r(null), 15_000))]);
+    const failed = code !== 0 && code !== null;
+    const tail = stderr.trim().slice(-800);
+    if (failed) {
+      // systemd-run --wait exits 1 for an OOM kill or a timeout too: the unit's journal says which (checked before a
+      // control-channel error, which is only the consequence of the runner being killed)
+      const clear = unitFailureError(await unitEndResult(layout.unitName, { read: cfg.readJournal }), limits, tail);
+      if (clear) {
+        log.warn({ unit: layout.unitName, taskId: cfg.taskId, err: clear.message }, "sandbox unit failed");
+        throw clear;
+      }
+    }
     if (control.messages.error) throw control.messages.error;
-    if (code !== 0 && code !== null) throw new Error(`sandbox exited with code ${code}: ${stderr.trim().slice(-800) || "no output"}`);
+    if (failed) throw new Error(`sandbox exited with code ${code}: ${tail || "no output"}`);
   } finally {
     abort.signal.removeEventListener("abort", onAbort);
     await stopUnit(layout.unitName);

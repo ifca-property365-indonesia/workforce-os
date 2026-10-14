@@ -170,7 +170,11 @@
       "live_deployed": "Rilis LIVE selesai",
       "team_review_accepted": "Review diterima",
       "team_review_failed": "Review: hasil tidak diterima",
-      "team_review_no_verdict": "Review berakhir tanpa keputusan"
+      "team_review_no_verdict": "Review berakhir tanpa keputusan",
+      "team_review_unresolved": "Review berakhir dengan subtugas gagal yang belum diputuskan",
+      "run_out_of_memory": "Dihentikan: sandbox kehabisan memori",
+      "run_tools_unavailable": "Dihentikan: tool platform tidak tersedia",
+      "tool_unavailable": "Tool tidak tersedia"
     },
     "leadReview": {
       "allow": "Disetujui oleh {reviewer} (AI)",
@@ -183,7 +187,8 @@
     "stalled": "macet",
     "loop": "berulang",
     "could_not_start": "tidak bisa dimulai",
-    "routine_failed": "rutinitas gagal"
+    "routine_failed": "rutinitas gagal",
+    "out_of_memory": "kehabisan memori"
   },
   "stoppedTitle": {
     "stalled": "Dihentikan: proses macet",

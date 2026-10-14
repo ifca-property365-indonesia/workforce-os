@@ -3,7 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { startGateway, type GatewayOptions } from "./gateway";
 import { defaultSandboxHost, runLayout, SANDBOX, type SandboxHost } from "./layout";
 import { prepareWorkspaceDirs } from "./query";
-import { DEFAULT_LIMITS, launchUnit, stopUnit, type ExtraBind } from "./unit";
+import { DEFAULT_LIMITS, launchUnit, stopUnit, unitEndResult, type ExtraBind, type JournalReader } from "./unit";
 
 export interface SandboxCommandResult {
   exitCode: number | null;
@@ -13,6 +13,8 @@ export interface SandboxCommandResult {
   stdout: Buffer;
   truncated: boolean;
   timedOut: boolean;
+  /** the unit was killed for exceeding its memory limit (a note is appended to `output`) */
+  oomKilled?: boolean;
 }
 export type ApprovedCommandResult = SandboxCommandResult;
 
@@ -29,6 +31,8 @@ export interface SandboxCommand {
   extraBinds?: ExtraBind[];
   /** keep stdout as bytes (e.g. a git bundle) instead of text */
   rawStdout?: boolean;
+  /** tests only: the unit's journal (how it ended) */
+  readJournal?: JournalReader;
   /** tests only */
   gateway?: Pick<GatewayOptions, "resolve" | "isBlocked" | "connectPort" | "onEvent">;
 }
@@ -90,7 +94,10 @@ export async function runInSandbox(o: SandboxCommand): Promise<SandboxCommandRes
     }, (timeout + 15) * 1000);
     const exitCode = await new Promise<number | null>((r) => child.on("exit", (c) => r(c)));
     clearTimeout(timer);
-    return { exitCode, output, stdout: Buffer.concat(raw), truncated, timedOut };
+    // systemd-run --wait exits 1 for an OOM kill too: the unit's journal says so
+    const oomKilled = exitCode !== 0 && exitCode !== null && !timedOut && (await unitEndResult(layout.unitName, { read: o.readJournal })) === "oom-kill";
+    if (oomKilled) output += `\n[sandbox ran out of memory (limit ${DEFAULT_LIMITS.memoryMaxMb} MB): the command was killed. Use lighter steps or ask for more memory.]`;
+    return { exitCode, output, stdout: Buffer.concat(raw), truncated, timedOut, ...(oomKilled ? { oomKilled } : {}) };
   } finally {
     await stopUnit(layout.unitName);
     await gateway.close();

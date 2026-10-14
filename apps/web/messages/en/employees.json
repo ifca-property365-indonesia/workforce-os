@@ -393,7 +393,11 @@
       "finish_review": "Finished the review",
       "team_review_accepted": "Accepted the work in review",
       "team_review_failed": "Did not accept the work: the task failed",
-      "team_review_no_verdict": "The review ended without a verdict"
+      "team_review_no_verdict": "The review ended without a verdict",
+      "team_review_unresolved": "The review ended while a subtask had failed and nothing was decided",
+      "run_out_of_memory": "The sandbox ran out of memory: the run was stopped",
+      "run_tools_unavailable": "Its platform tools were unavailable: the run was stopped",
+      "tool_unavailable": "Tried a tool that was not available: {tool}"
     },
     "asSubagent": "as subagent in {name}'s run"
   },

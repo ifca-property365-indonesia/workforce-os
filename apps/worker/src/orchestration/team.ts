@@ -104,7 +104,7 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
       else {
         lines.push(incidentBlock(inc, c.retryCount));
         if (inc.status === "handling" && retriesLeft(c) > 0) recoverable = true;
-        else lines.push("No retries remain for this subtask: explain the failure in your review.");
+        else lines.push('No retries remain for this subtask: explain the failure in your review and decide with finish_review ("accept" only if the work is usable without it, else "fail").');
       }
     }
     if (ds) lines.push(ds);
@@ -115,7 +115,7 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
     `If one is not acceptable, call request_revision with specific feedback (at most ${MAX_REVISIONS_PER_SUBTASK} revisions per subtask; the tool refuses when none is left).`,
     ...(recoverable
       ? [
-          `A subtask failed. While it has retries left (at most ${INCIDENT_RETRY_LIMIT} per subtask) you may call retry_subtask (same member, optionally with a revisedBrief) or reassign_subtask (another member of this team); otherwise explain the failure in your review.`,
+          `A subtask failed. While it has retries left (at most ${INCIDENT_RETRY_LIMIT} per subtask) you may call retry_subtask (same member, optionally with a revisedBrief) or reassign_subtask (another member of this team); otherwise explain the failure in your review and decide with finish_review. A review that leaves a failed subtask without a retry, a reassignment or a verdict is sent back to you, then fails.`,
         ]
       : []),
     ...(blocked.length
@@ -128,6 +128,26 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
     MEMBER_DATA_NOTE,
     blocks.join("\n\n"),
   ].join("\n\n");
+}
+
+/**
+ * Subtasks a review cannot finish around without a decision: FAILED ones (unless reassign_subtask replaced them with a
+ * new subtask) and QUEUED ones blocked by a failed dependency. Empty: nothing failed is left unresolved.
+ */
+export async function unresolvedSubtasks(parentTaskId: string): Promise<{ id: string; title: string; state: "FAILED" | "BLOCKED" }[]> {
+  const children = await db
+    .select({ id: tasks.id, title: tasks.title, status: tasks.status, dependsOn: tasks.dependsOn, originTaskId: tasks.originTaskId, source: tasks.source })
+    .from(tasks)
+    .where(eq(tasks.parentTaskId, parentTaskId))
+    .orderBy(tasks.createdAt);
+  const replaced = new Set(children.filter((c) => c.source === "team" && c.originTaskId).map((c) => c.originTaskId!));
+  const states = dependencyStates(children);
+  const out: { id: string; title: string; state: "FAILED" | "BLOCKED" }[] = [];
+  for (const c of children) {
+    if (c.status === "FAILED" && !replaced.has(c.id)) out.push({ id: c.id, title: c.title, state: "FAILED" });
+    else if (c.status === "QUEUED" && states.get(c.id) === "blocked") out.push({ id: c.id, title: c.title, state: "BLOCKED" });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

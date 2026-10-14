@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { claudeLimits, db, employees, members, setClaudeCredential, tasks, users, workspaces } from "@wfos/db";
 import { POST as login } from "@/app/api/auth/login/route";
 import { GET as limits } from "@/app/api/limits/route";
@@ -35,6 +35,22 @@ describe("subscription limit API", () => {
       ["seven_day", 0.3],
     ]);
     expect(typeof r.json.usdThisMonth).toBe("number");
+  });
+
+  it("a window whose reset passed shows as reset (no old numbers), per-model windows follow, with the last sync time", async () => {
+    const ws = await signedIn("MEMBER", "oauth");
+    // the production row: weekly 83 %, reset date in the past, never updated since
+    await db
+      .update(claudeLimits)
+      .set({ status: "allowed_warning", utilization: 0.83, resetsAt: new Date(Date.now() - 4 * 86_400_000), updatedAt: new Date(Date.now() - 6 * 86_400_000) })
+      .where(and(eq(claudeLimits.workspaceId, ws.id), eq(claudeLimits.rateLimitType, "seven_day")));
+    await db.insert(claudeLimits).values({ workspaceId: ws.id, credentialSource: "workspace", rateLimitType: "seven_day_model:Opus", status: "allowed", utilization: 0.2, resetsAt: new Date(Date.now() + 86_400_000) });
+    const r = await call(limits, "GET", "/api/limits");
+    const windows = r.json.windows as { type: string; status: string; utilization: number | null; resetsAt: string | null; expired: boolean }[];
+    expect(windows.map((w) => w.type)).toEqual(["five_hour", "seven_day", "seven_day_model:Opus"]);
+    expect(windows[1]).toMatchObject({ type: "seven_day", status: "allowed", utilization: null, expired: true });
+    expect(windows[0]).toMatchObject({ utilization: 0.8, expired: false });
+    expect(new Date(r.json.syncedAt as string).getTime()).toBeGreaterThan(Date.now() - 60_000);
   });
 
   it("hides the subscription meter for API-key workspaces", async () => {

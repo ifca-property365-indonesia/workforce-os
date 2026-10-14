@@ -122,7 +122,13 @@ export const NAMED_STEPS: ReadonlySet<string> = new Set([
   "team_review_accepted",
   "team_review_failed",
   "team_review_no_verdict",
+  "team_review_unresolved",
+  "run_out_of_memory",
+  "run_tools_unavailable",
+  "tool_unavailable",
 ]);
+/** run failures and refused tool calls with their own wording */
+const FAILURE_STEPS = new Set(["run_out_of_memory", "run_tools_unavailable", "tool_unavailable"]);
 /** recorded-but-not-run variants: "simulated:send_email", "draft:send_email" */
 const MODE_PREFIX = /^(simulated|simulate|draft|drafted):/;
 
@@ -168,12 +174,13 @@ export function describeReceipt(s: { kind: string; name: string; status?: string
     const tool = s.name.slice("approval_requested:".length);
     return { key: "approval", values: { tool }, tool };
   }
+  if (FAILURE_STEPS.has(s.name)) return { key: s.name, values: { tool: isObj(s.input) ? text(s.input.tool) || "—" : "—" } };
   if (s.kind === "tool") return toolReceipt(s.name.replace(MODE_PREFIX, ""), s.input);
   // division work: subagent runs, ordered subtasks, the division budget, a PRD waiting for the owner
   if (s.name === "subagent_started") return { key: "subagent_started", values: { task: isObj(s.input) ? text(s.input.description) || "—" : "—" } };
   if (s.name === "subagent_finished") return { key: s.status === "error" ? "subagent_failed" : "subagent_finished", values: {} };
   if (s.name === "dependencies_done" || s.name === "subtask_blocked" || s.name === "division_budget_cap" || s.name === "waiting_for_prd_decision") return { key: s.name, values: {} };
-  if (s.name === "team_review_accepted" || s.name === "team_review_failed" || s.name === "team_review_no_verdict") return { key: s.name, values: {} };
+  if (s.name === "team_review_accepted" || s.name === "team_review_failed" || s.name === "team_review_no_verdict" || s.name === "team_review_unresolved") return { key: s.name, values: {} };
   if (s.kind === "agent_message") return { key: "agent_message", values: { name: clip(s.name) } };
   if (s.kind === "guard") return { key: "guard", values: { name: clip(s.name) } };
   if (s.kind === "llm" || s.kind === "compaction" || s.kind === "budget" || s.kind === "error") return { key: s.kind, values: {} };

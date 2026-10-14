@@ -170,7 +170,11 @@
       "live_deployed": "Released to LIVE",
       "team_review_accepted": "Review accepted",
       "team_review_failed": "Review: work not accepted",
-      "team_review_no_verdict": "Review ended without a verdict"
+      "team_review_no_verdict": "Review ended without a verdict",
+      "team_review_unresolved": "Review ended with a failed subtask unresolved",
+      "run_out_of_memory": "Stopped: the sandbox ran out of memory",
+      "run_tools_unavailable": "Stopped: the platform tools were unavailable",
+      "tool_unavailable": "Tool not available"
     },
     "leadReview": {
       "allow": "Approved by {reviewer} (AI)",
@@ -183,7 +187,8 @@
     "stalled": "stalled",
     "loop": "loop",
     "could_not_start": "could not start",
-    "routine_failed": "routine failed"
+    "routine_failed": "routine failed",
+    "out_of_memory": "out of memory"
   },
   "stoppedTitle": {
     "stalled": "Stopped: the run stalled",

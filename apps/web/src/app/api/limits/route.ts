@@ -1,7 +1,7 @@
 import { and, eq, gte, sum } from "drizzle-orm";
 import { claudeCredentialStatus, claudeLimits, db, steps, workspaces } from "@wfos/db";
 import { CREDIT_USD } from "@wfos/shared";
-import { WINDOW_ORDER } from "@wfos/shared/limits";
+import { displayWindow, MODEL_WINDOW_PREFIX, WINDOW_ORDER } from "@wfos/shared/limits";
 import { route } from "@/lib/server/route";
 
 /**
@@ -14,9 +14,14 @@ export const GET = route("VIEWER", async ({ session }) => {
   const rows = subscription
     ? await db.select().from(claudeLimits).where(and(eq(claudeLimits.workspaceId, session.workspaceId), eq(claudeLimits.credentialSource, cred.effective!.source)))
     : [];
+  const now = new Date();
+  // a window whose reset time passed shows as reset (its stored numbers are from the previous window); per-model
+  // weekly windows (seven_day_model:<name>) after the known ones
+  const order = (t: string) => WINDOW_ORDER.indexOf(t) + 1 || (t.startsWith(MODEL_WINDOW_PREFIX) ? 50 : 99);
   const windows = rows
-    .map((r) => ({ type: r.rateLimitType, status: r.status, utilization: r.utilization, resetsAt: r.resetsAt?.toISOString() ?? null, updatedAt: r.updatedAt.toISOString() }))
-    .sort((a, b) => (WINDOW_ORDER.indexOf(a.type) + 1 || 99) - (WINDOW_ORDER.indexOf(b.type) + 1 || 99));
+    .map((r) => displayWindow({ type: r.rateLimitType, status: r.status as string, utilization: r.utilization, resetsAt: r.resetsAt?.toISOString() ?? null, updatedAt: r.updatedAt.toISOString() }, now))
+    .sort((a, b) => order(a.type) - order(b.type) || a.type.localeCompare(b.type));
+  const syncedAt = rows.length ? new Date(Math.max(...rows.map((r) => r.updatedAt.getTime()))).toISOString() : null;
   const [ws] = await db.select({ until: workspaces.quotaPausedUntil, reason: workspaces.quotaPauseReason }).from(workspaces).where(eq(workspaces.id, session.workspaceId));
   const month = new Date();
   month.setUTCDate(1);
@@ -27,6 +32,7 @@ export const GET = route("VIEWER", async ({ session }) => {
     subscription,
     source: cred.effective?.source ?? null,
     windows,
+    syncedAt,
     paused: paused ? { until: ws!.until!.toISOString(), reason: ws!.reason } : null,
     usdThisMonth: Number(spend?.s ?? 0) * CREDIT_USD,
   };

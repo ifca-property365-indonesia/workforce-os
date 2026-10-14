@@ -234,7 +234,10 @@ describe("incident resolution and escalation", () => {
   it("the parent's review completing resolves the incidents still handled as explained in review", async () => {
     const w = await teamWorld();
     const inc = await failChild(w);
-    setQueryImpl(mockRunner([{ result: "Research failed (quota); the rest is ready." }]).query);
+    // the head explains the failure and accepts the rest (a review that leaves the failure undecided goes back to it)
+    setQueryImpl(
+      mockRunner([{ tool: "mcp__wfos__finish_review", input: { outcome: "accept", notes: "Research failed (quota); the rest is usable." } }, { result: "Research failed (quota); the rest is ready." }]).query,
+    );
     await runTask(w.parent.id);
     expect((await row(w.parent.id)).status).toBe("DONE");
     const [i] = await db.select().from(incidents).where(eq(incidents.id, inc.id));
@@ -368,7 +371,7 @@ describe("recovery atomicity", () => {
     expect(enqueuedRuns(fresh[0]!.id)).toHaveLength(1);
   });
 
-  it("when nothing could be re-queued the parent finishes its review instead of waiting forever", async () => {
+  it("when nothing could be re-queued the parent's review goes back to the head instead of waiting forever", async () => {
     const w = await teamWorld();
     await failChild(w);
     transport.queued.length = 0;
@@ -378,7 +381,9 @@ describe("recovery atomicity", () => {
     setQueryImpl(mockRunner([{ tool: "mcp__wfos__retry_subtask", input: { taskId: w.child.id } }, { result: "Retrying." }]).query);
     await runTask(w.parent.id);
     expect((await row(w.child.id)).status).toBe("FAILED");
-    expect((await row(w.parent.id)).status).toBe("DONE");
+    // not stuck in "wait", and not DONE with the failure undecided: back to the head for a decision
+    expect(await row(w.parent.id)).toMatchObject({ status: "RUNNING", phase: "review" });
+    expect(transport.queued.some((q) => q.queue === "runs" && (q.data as { taskId: string }).taskId === w.parent.id)).toBe(true);
   });
 
   it("a subtask is reassigned once, even without an incident, and concurrent applies create one replacement", async () => {

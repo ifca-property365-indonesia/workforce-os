@@ -12,16 +12,20 @@ import { useRealtime } from "@/lib/events";
 import { useMe } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
+import { MODEL_WINDOW_PREFIX } from "@wfos/shared/limits";
 
 export interface Limits {
   subscription: boolean;
   source: "workspace" | "instance" | null;
-  windows: { type: string; status: string; utilization: number | null; resetsAt: string | null; updatedAt: string }[];
+  /** expired: the reset time has passed since the last data (the numbers are not shown) */
+  windows: { type: string; status: string; utilization: number | null; resetsAt: string | null; updatedAt: string; expired?: boolean }[];
+  /** when the newest window was last updated (a run's report or the 15-minute sync) */
+  syncedAt?: string | null;
   paused: { until: string; reason: string | null } | null;
   usdThisMonth: number;
 }
 
-const KNOWN = ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet"];
+const KNOWN = ["five_hour", "seven_day", "seven_day_oauth_apps", "seven_day_opus", "seven_day_sonnet"];
 
 export function useLimits() {
   const qc = useQueryClient();
@@ -37,6 +41,8 @@ export function LimitsCard() {
   const f = useFormat();
   const { data } = useLimits();
   if (!data?.subscription) return null;
+  const label = (type: string) =>
+    KNOWN.includes(type) ? t(`limits.window.${type}`) : type.startsWith(MODEL_WINDOW_PREFIX) ? t("limits.window.model", { name: type.slice(MODEL_WINDOW_PREFIX.length) }) : type;
   return (
     <Card>
       <CardHeader>
@@ -52,22 +58,30 @@ export function LimitsCard() {
           return (
             <div key={w.type} className="space-y-1">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">{KNOWN.includes(w.type) ? t(`limits.window.${w.type}`) : w.type}</span>
+                <span className="font-medium">{label(w.type)}</span>
                 <span className={cn("tabular-nums", pct >= 90 ? "text-destructive" : pct >= 70 ? "text-warning" : "text-muted-foreground")}>
                   {w.utilization === null ? "—" : t("limits.used", { pct })}
                 </span>
               </div>
               <Progress
                 value={pct}
-                aria-label={KNOWN.includes(w.type) ? t(`limits.window.${w.type}`) : w.type}
+                aria-label={label(w.type)}
                 className={cn("h-2", pct >= 90 && "[&>div]:bg-destructive", pct >= 70 && pct < 90 && "[&>div]:bg-warning")}
               />
               <div className="text-xs text-muted-foreground">
-                {w.status === "rejected" ? t("limits.rejected") : null} {w.resetsAt ? t("limits.resetsAt", { time: f.dateTime(w.resetsAt) }) : t("limits.resetUnknown")}
+                {w.expired ? (
+                  // the window reset since the last data: the old numbers and date are not shown
+                  t("limits.resetSince")
+                ) : (
+                  <>
+                    {w.status === "rejected" ? t("limits.rejected") : null} {w.resetsAt ? t("limits.resetsAt", { time: f.dateTime(w.resetsAt) }) : t("limits.resetUnknown")}
+                  </>
+                )}
               </div>
             </div>
           );
         })}
+        {data.syncedAt && <p className="text-xs text-muted-foreground">{t("limits.syncedAt", { time: f.dateTime(data.syncedAt) })}</p>}
         <p className="text-xs text-muted-foreground">{t("limits.usd", { usd: f.money(data.usdThisMonth, "USD") })}</p>
       </CardContent>
     </Card>

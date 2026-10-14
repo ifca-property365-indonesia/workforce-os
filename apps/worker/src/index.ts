@@ -24,6 +24,7 @@ import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
 import { recheckServers, SERVER_RECHECK_TICK_MS } from "./scheduler/servers";
 import { APPS_TICK_MS, tickApps } from "./scheduler/apps";
 import { tickUptime, UPTIME_TICK_MS } from "./scheduler/uptime";
+import { syncSubscriptionUsage, USAGE_SYNC_EVERY_MS } from "./scheduler/usage";
 import { activeDeployCount, drainDeploys, onDeployActivity, processDeployJob, recoverInterruptedReleases, recoverInterruptedRestores, sweepGraceStops } from "./deploy";
 import type { WorkerDeployJob } from "./deploy/jobs";
 import { collectWorkspaces } from "./runner/workspace/gc";
@@ -219,6 +220,20 @@ const uptimeTick = async () => {
   }
 };
 const uptimeTimer = setInterval(() => void uptimeTick(), UPTIME_TICK_MS);
+// Claude subscription usage (claude_limits) from Claude itself: every 15 min per subscription credential, no tokens spent
+let usageSyncing = false;
+const usageTick = async () => {
+  if (usageSyncing) return;
+  usageSyncing = true;
+  try {
+    const r = await syncSubscriptionUsage();
+    if (r.fetched) log.info(r, "subscription usage synced");
+  } finally {
+    usageSyncing = false;
+  }
+};
+const usageTimer = setInterval(() => void usageTick(), USAGE_SYNC_EVERY_MS);
+const usageFirst = setTimeout(() => void usageTick(), 60_000);
 void tickRoutines().catch((e) => log.error({ err: e }, "initial routine tick failed"));
 
 log.info(
@@ -235,6 +250,8 @@ async function shutdown(sig: string) {
   clearInterval(serversTimer);
   clearInterval(appsTimer);
   clearInterval(uptimeTimer);
+  clearInterval(usageTimer);
+  clearTimeout(usageFirst);
   clearInterval(gcTimer);
   clearInterval(summaryTimer);
   clearInterval(heartbeatTimer);

@@ -393,7 +393,11 @@
       "finish_review": "Menyelesaikan review",
       "team_review_accepted": "Menerima hasil kerja saat review",
       "team_review_failed": "Tidak menerima hasil kerja: tugas gagal",
-      "team_review_no_verdict": "Review berakhir tanpa keputusan"
+      "team_review_no_verdict": "Review berakhir tanpa keputusan",
+      "team_review_unresolved": "Review berakhir saat ada subtugas gagal dan belum ada keputusan",
+      "run_out_of_memory": "Sandbox kehabisan memori: proses dihentikan",
+      "run_tools_unavailable": "Tool platformnya tidak tersedia: proses dihentikan",
+      "tool_unavailable": "Mencoba tool yang tidak tersedia: {tool}"
     },
     "asSubagent": "sebagai subagent dalam sesi {name}"
   },

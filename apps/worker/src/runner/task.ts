@@ -15,7 +15,7 @@ import { checkBudget, checkDivisionBudget, msUntilNextBudgetDay, pauseForBudget,
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, inboxSection, memoryNotesBlock, recallMemories, recentWorkBrief, taintFromStoredInput, workspaceDirectory } from "./prompt";
 import { MissingCredentialError, WorkspaceBusyError, runAgent } from "./executor";
-import { dependencyContext, dependencyStateOf, onChildFinished, planPrompt, requestRevisions, resolveExecutor, reviewPrompt } from "../orchestration/team";
+import { dependencyContext, dependencyStateOf, onChildFinished, planPrompt, requestRevisions, resolveExecutor, reviewPrompt, unresolvedSubtasks } from "../orchestration/team";
 import { DEPENDENCY_PHASES, PHASE_AFTER, PHASE_BLOCKED } from "../orchestration/phases";
 import { runDivision } from "./division";
 import { failTask, setTaskStatus } from "./task-status";
@@ -385,8 +385,9 @@ async function runStarted(
     return;
   }
   if (out.stopped === "error") {
-    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "run_failed", status: "error", output: out.error });
-    await failTask(task, out.error ?? "Unknown error", { kind: "error", result: out.text || null });
+    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: out.errorKind ? `run_${out.errorKind}` : "run_failed", status: "error", output: out.error });
+    // out_of_memory: its own incident kind, so the head and the owner see that a retry needs more memory or lighter steps
+    await failTask(task, out.error ?? "Unknown error", { kind: out.errorKind === "out_of_memory" ? "out_of_memory" : "error", result: out.text || null });
     return;
   }
   if (out.stopped === "stalled" || out.stopped === "loop") {
@@ -447,14 +448,19 @@ async function runStarted(
   await setTaskStatus(running, "DONE", { result: out.text, phase: team ? "done" : task.phase });
 }
 
-/** A head's review that wanted changes but ended without a verdict is sent back to the head this many times, then fails. */
+/**
+ * A head's review that wanted changes, or that left a failed subtask unresolved, but ended without a verdict is sent
+ * back to the head this many times, then fails.
+ */
 export const REVIEW_NO_VERDICT_RETRIES = 1;
 
 /**
  * The end of a head's review run when nothing was sent back. finish_review "fail" fails the task with the head's notes
  * (an incident tells a person). A review that wanted changes (a refused request_revision, or a revision that could not
  * be applied) but gave no verdict must not finish as DONE: the head gets the review back once with its options, then
- * the task fails. Otherwise ("accept", or a plain review) the run finishes as usual below.
+ * the task fails. The same holds for a review that ends while a subtask is FAILED (or blocked by a failed one) and
+ * nothing was retried or reassigned: a failed build must never let the parent end DONE without the head's "accept".
+ * Otherwise ("accept", or a plain review of finished work) the run finishes as usual below.
  */
 async function reviewOutcome(
   running: Task,
@@ -474,7 +480,11 @@ async function reviewOutcome(
     await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_accepted", output: { notes: verdict.notes } });
     return "finish";
   }
-  if (!revisionsUnapplied && !(ctx.refusedRevisions ?? 0)) return "finish";
+  if (!revisionsUnapplied && !(ctx.refusedRevisions ?? 0)) {
+    const unresolved = await unresolvedSubtasks(running.id);
+    if (!unresolved.length) return "finish";
+    return unresolvedReview(running, workspaceId, employeeId, text, unresolved);
+  }
   const [{ n = 0 } = {}] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(steps)
@@ -499,6 +509,44 @@ async function reviewOutcome(
     `Your last review run ended without a verdict although you wanted changes: ${reason}. ` +
       'The work cannot be sent back again. Decide now with finish_review: outcome "accept" if the result is usable (notes: what is missing or should follow up), ' +
       'or outcome "fail" (notes: exactly what is missing against the acceptance criteria). Then end with your summary.',
+  );
+  return "handled";
+}
+
+/**
+ * A review ended without a verdict while subtasks are FAILED or blocked and nothing was retried or reassigned: back
+ * to the head once with its options, then the task fails (an incident tells a person). Never DONE.
+ */
+async function unresolvedReview(
+  running: Task,
+  workspaceId: string,
+  employeeId: string,
+  text: string,
+  unresolved: { id: string; title: string; state: "FAILED" | "BLOCKED" }[],
+): Promise<"handled"> {
+  const list = unresolved.map((u) => `"${u.title}" (${u.id}, ${u.state === "FAILED" ? "failed" : "blocked by a failed subtask"})`).join(", ");
+  const output = { subtasks: unresolved.map((u) => ({ id: u.id, title: u.title, state: u.state })) };
+  const [{ n = 0 } = {}] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(steps)
+    .where(and(eq(steps.taskId, running.id), eq(steps.name, "team_review_unresolved")));
+  if (Number(n) >= REVIEW_NO_VERDICT_RETRIES) {
+    await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_unresolved", status: "error", output: { ...output, final: true } });
+    await failTask(running, `The review ended without a verdict while subtasks had failed: ${list}. Nothing was retried or reassigned and the division head did not accept the work.`, {
+      kind: "error",
+      result: text || null,
+      onlyIfStatus: ["RUNNING"],
+    });
+    return "handled";
+  }
+  await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_unresolved", status: "flagged", output });
+  await db.update(tasks).set({ phase: "review", result: text || null }).where(and(eq(tasks.id, running.id), eq(tasks.status, "RUNNING")));
+  await enqueueTask(
+    running.id,
+    workspaceId,
+    `Your last review run ended without a decision although subtasks did not finish: ${list}. The task cannot end as done this way. ` +
+      "Decide now: retry_subtask or reassign_subtask while the failed subtask has retries left (blocked subtasks start once it is DONE); " +
+      'otherwise finish_review with outcome "accept" only if the work is usable without it (notes: what is missing), or outcome "fail" (notes: what failed and what is needed). Then end with your summary.',
   );
   return "handled";
 }

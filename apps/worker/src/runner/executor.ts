@@ -14,12 +14,13 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { agentQuery, workspaceQueryOverride } from "./sdk";
 import { createWorkspaceQuery, type WorkspaceRunConfig } from "./workspace/query";
+import { SandboxOutOfMemoryError } from "./workspace/unit";
 import { workspacePermissions } from "./workspace/permissions";
 import { LEAD_REVIEW_TIMEOUT_MS } from "./workspace/lead-review";
 import { defaultSandboxHost, runLayout } from "./workspace/layout";
 import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
 import { sandboxAvailable } from "./workspace/gc";
-import { recordRateLimit } from "../lib/limits";
+import { recordRateLimit, syncUsageFromQuery, usageSyncDue } from "../lib/limits";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, normalizeMcpName, roundCredits, type ToolClass, type ToolPermission } from "@wfos/shared";
 import { resolveClaudeCredential } from "@wfos/db";
 import { agentEnv, env } from "../lib/env";
@@ -31,7 +32,7 @@ import { guardOutput, guardToolResult } from "../guards/content";
 import { redactSecrets } from "@wfos/shared/server";
 import { registerRun, unregisterRun } from "../guards/killswitch";
 import { loadSkillFiles } from "./skills";
-import { buildToolServer, createApproval, grantedToolNames, pushAutoAction, WFOS_SERVER, type RunContext } from "../tools/registry";
+import { buildToolServer, createApproval, grantedToolNames, pushAutoAction, toolDefsOf, WFOS_SERVER, type RunContext } from "../tools/registry";
 
 export interface AgentRunInput {
   ctx: RunContext;
@@ -79,6 +80,11 @@ export interface AgentRunOutput {
   /** stalled = no SDK event for RUN_IDLE_TIMEOUT_MIN; loop = the same tool call repeated past the repeat limit */
   stopped: "completed" | "budget" | "aborted" | "error" | "max_turns" | "quota" | "stalled" | "loop";
   error?: string;
+  /**
+   * why an "error" run failed, when it is one the platform recognises: out_of_memory (the Workspace-mode sandbox was
+   * OOM-killed), tools_unavailable (the platform tools did not reach the model: see platformToolsProblem)
+   */
+  errorKind?: "out_of_memory" | "tools_unavailable";
   /** subscription limit hit: when it resets */
   quotaResetsAt?: Date | null;
 }
@@ -550,6 +556,40 @@ function redactInput(input: unknown): unknown {
  */
 export const PERMISSION_SETTLE_MS = LEAD_REVIEW_TIMEOUT_MS + 15_000;
 
+/** The SDK's system/init message, as far as the platform-tools check reads it. */
+export interface SdkInitInfo {
+  tools?: string[];
+  mcp_servers?: { name: string; status: string }[];
+}
+
+/**
+ * Whether the platform's own tools reached the model (null: they did), from the run's init message. The platform
+ * server must be "connected" and list at least one of the tools built for this run; a run without them would go on
+ * tool-less (the model calls tools it was told about and gets "No such tool available"), which must not happen.
+ */
+export function platformToolsProblem(init: SdkInitInfo, expected: string[], server = WFOS_SERVER): string | null {
+  if (!expected.length) return null;
+  const status = init.mcp_servers?.find((s) => s.name === server)?.status ?? "missing";
+  if (status !== "connected") return `The platform tools were not available to this run (tool server "${server}" status: ${status}).`;
+  if (Array.isArray(init.tools)) {
+    const listed = new Set(init.tools);
+    if (!expected.some((n) => listed.has(`mcp__${server}__${n}`))) return `The platform tools were not available to this run (tool server "${server}" connected but listed none of its ${expected.length} tools).`;
+  }
+  return null;
+}
+
+/** "No such tool available: <name>" tool results (Claude Code's answer for a tool it does not have): the names. */
+export function unavailableToolCalls(content: unknown): string[] {
+  if (!Array.isArray(content)) return [];
+  const out: string[] = [];
+  for (const b of content as { type: string; content?: unknown; is_error?: boolean }[]) {
+    if (b.type !== "tool_result") continue;
+    const m = /No such tool available:\s*([^\s<]+)/.exec(toolResultText(b.content));
+    if (m) out.push(m[1]!);
+  }
+  return out;
+}
+
 export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   const { ctx } = input;
   // only this workspace's credential, only for this run
@@ -570,16 +610,20 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   await mkdir(cwd, { recursive: true });
 
   // the platform server first: Workspace mode forwards only the first entry into the sandbox
+  const platformServer = buildToolServer(ctx);
   const mcpServers: Record<string, unknown> = {
-    [WFOS_SERVER]: buildToolServer(ctx),
+    [WFOS_SERVER]: platformServer,
     ...externalMcpConfig(await getExternalMcpServers(ctx.workspaceId), ctx.employee.toolPermissions),
   };
+  /** the platform tools built for this run (bare names) */
+  const platformTools = (toolDefsOf(platformServer) ?? []).map((d) => d.name);
 
   let credits = 0;
   let stopped: AgentRunOutput["stopped"] = "completed";
   let error: string | undefined;
   let finalText = "";
   let quotaResetsAt: Date | null | undefined;
+  let errorKind: AgentRunOutput["errorKind"];
   let lastAssistantText = "";
   const recordedMessageIds = new Set<string>();
   let turn: OpenTurn | null = null;
@@ -595,6 +639,14 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   // it is only set when nothing else aborted the run first, and never replaces a run that already succeeded.
   let safetyStop: "stalled" | "loop" | null = null;
   let safetyError = "";
+  /** the platform tools did not reach the model (init check, or a "No such tool available" for one): the run fails */
+  let toolsFailure: string | null = null;
+  const failToolless = (why: string) => {
+    if (toolsFailure || controller.signal.aborted) return;
+    toolsFailure = why;
+    log.error({ runId: ctx.runId, taskId: ctx.taskId, employeeId: ctx.employee.id, why }, "platform tools unavailable: run stopped");
+    controller.abort(new Error("tools_unavailable"));
+  };
   let succeeded = false;
   let lastEventAt = Date.now();
   const touch = () => {
@@ -902,6 +954,30 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           requestStartedAt = Date.now();
           if (!m.parent_tool_use_id) await settleAutoActions(ctx, m.message.content);
           if (ctx.workspace && !m.parent_tool_use_id) await recordBashOutputs(ctx, bashCalls, m.message.content);
+          for (const name of unavailableToolCalls(m.message.content)) {
+            // Claude Code refused a tool it does not have: never invisible again (an error step), and a platform tool
+            // (called with or without its mcp__wfos__ prefix) means the run cannot do its work: it stops as failed
+            const bare = name.startsWith(`mcp__${WFOS_SERVER}__`) ? name.slice(`mcp__${WFOS_SERVER}__`.length) : name;
+            await recordStep({
+              workspaceId: ctx.workspaceId,
+              taskId: ctx.taskId,
+              conversationId: ctx.conversationId,
+              employeeId: ctx.employee.id,
+              ...(m.parent_tool_use_id && subagents.actorOf(m.parent_tool_use_id) ? { actorEmployeeId: subagents.actorOf(m.parent_tool_use_id)! } : {}),
+              kind: "tool",
+              name: "tool_unavailable",
+              status: "error",
+              input: { tool: name },
+              output: `No such tool available: ${name}`,
+            }).catch((e: unknown) => log.warn({ err: e, runId: ctx.runId }, "tool_unavailable step not recorded"));
+            if (!m.parent_tool_use_id && platformTools.includes(bare)) {
+              failToolless(
+                name === bare
+                  ? `The run called the platform tool "${bare}" without its full name (mcp__${WFOS_SERVER}__${bare}) and Claude Code refused it ("No such tool available"); the run was stopped instead of going on without its tools.`
+                  : `The platform tool "${name}" was not available to the run ("No such tool available"); the run was stopped instead of going on without its tools.`,
+              );
+            }
+          }
           if (subagents.active) await subagents.onUser(m.parent_tool_use_id ?? null, m.message.content);
           break;
         }
@@ -919,7 +995,19 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
           break;
         }
         case "system": {
-          if (m.subtype === "init" && ctx.workspace?.onSession) await ctx.workspace.onSession(m.session_id);
+          if (m.subtype === "init") {
+            const init = m as unknown as SdkInitInfo;
+            const platformListed = (init.tools ?? []).filter((n) => n.startsWith(`mcp__${WFOS_SERVER}__`)).length;
+            log.info({ runId: ctx.runId, taskId: ctx.taskId, employeeId: ctx.employee.id, mcpServers: init.mcp_servers, platformTools: { listed: platformListed, expected: platformTools.length } }, "sdk init");
+            const problem = platformToolsProblem(init, platformTools);
+            if (problem) failToolless(problem);
+            // Tool mode: the plan's real usage, read on this run's own session (no extra process, no tokens), at most
+            // every few minutes per credential; never awaited, never throws (Workspace mode runs in the sandbox)
+            if (!problem && !ctx.workspace && credential.type === "oauth" && usageSyncDue(`${ctx.workspaceId}:${credential.source}`)) {
+              void syncUsageFromQuery(q, ctx.workspaceId, credential);
+            }
+            if (ctx.workspace?.onSession) await ctx.workspace.onSession(m.session_id);
+          }
           if (m.subtype === "compact_boundary") {
             await recordStep({
               workspaceId: ctx.workspaceId,
@@ -959,7 +1047,12 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   } catch (e) {
     await closeAllTurns().catch(() => {});
     const reason = controller.signal.reason as Error | undefined;
-    if (safetyStop && !succeeded) stopped = safetyStop;
+    if (e instanceof SandboxOutOfMemoryError) {
+      stopped = "error";
+      error = e.message;
+      errorKind = "out_of_memory";
+    } else if (toolsFailure) stopped = "error";
+    else if (safetyStop && !succeeded) stopped = safetyStop;
     else if (succeeded && stopped === "completed") {
       // the result was in: an abort after it (a late safety stop) does not undo the run
     } else if (stopped === "quota" || reason?.message === "quota") stopped = "quota";
@@ -1001,8 +1094,14 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     stopped = safetyStop;
     error = safetyError;
   }
+  // a run whose platform tools were unavailable failed, whatever it answered (it could not do its work)
+  if (toolsFailure) {
+    stopped = "error";
+    error = toolsFailure;
+    errorKind = "tools_unavailable";
+  }
   const raw = finalText || lastAssistantText;
   const { text } = await guardOutput(ctx.guard, "final answer", raw);
   if (error && stopped === "completed" && !raw) stopped = "error";
-  return { text, credits, stopped, error, quotaResetsAt };
+  return { text, credits, stopped, error, quotaResetsAt, ...(errorKind && stopped === "error" ? { errorKind } : {}) };
 }

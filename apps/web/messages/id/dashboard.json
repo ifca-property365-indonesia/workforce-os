@@ -17,19 +17,23 @@
   "noEmployees": "Belum ada karyawan. <link>Rekrut yang pertama</link>.",
   "limits": {
     "title": "Langganan Claude",
-    "description": "Pemakaian langganan Claude workspace ini. Diperbarui langsung setelah setiap permintaan.",
+    "description": "Pemakaian langganan Claude workspace ini. Diperbarui setelah permintaan dan setiap 15 menit.",
     "sharedFallback": "Pemakaian langganan Claude bersama milik server (workspace ini belum punya kredensial sendiri).",
     "noData": "Belum ada data pemakaian. Akan muncul setelah run pertama.",
     "used": "terpakai {pct}%",
     "rejected": "Batas tercapai.",
     "resetsAt": "Direset {time}",
     "resetUnknown": "Waktu reset tidak dilaporkan",
+    "resetSince": "Jendela ini sudah direset sejak laporan terakhir; pemakaian baru muncul pada sinkronisasi berikutnya.",
+    "syncedAt": "Terakhir diperbarui {time}",
     "usd": "Biaya setara API bulan ini: {usd}",
     "window": {
       "five_hour": "Jendela 5 jam",
       "seven_day": "Mingguan",
+      "seven_day_oauth_apps": "Mingguan · aplikasi",
       "seven_day_opus": "Mingguan · Opus",
-      "seven_day_sonnet": "Mingguan · Sonnet"
+      "seven_day_sonnet": "Mingguan · Sonnet",
+      "model": "Mingguan · {name}"
     }
   },
   "incidents": {
@@ -46,6 +50,7 @@
       "stalled": "Macet",
       "loop": "Berulang",
       "could_not_start": "Tidak bisa dimulai",
+      "out_of_memory": "Kehabisan memori",
       "routine_failed": "Rutinitas gagal"
     },
     "status": {

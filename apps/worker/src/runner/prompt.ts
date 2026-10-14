@@ -337,7 +337,8 @@ export function buildSystemPrompt(opts: {
     `## Autonomy\nYour autonomy level is ${e.autonomyLevel}: ${AUTONOMY_DESCRIPTIONS[e.autonomyLevel]}\n` +
       "Irreversible actions (send, publish, pay, delete, merge, deploy) are enforced by the platform: you cannot bypass approval. " +
       "When a tool says an action was queued for approval or saved as a draft, report that honestly; never claim something was sent when it was not.",
-    `## Your tools\n${tools || "(no tools granted)"}`,
+    // the model calls tools by the name the SDK gives them: a bare name is refused ("No such tool available")
+    `## Your tools\n${tools ? `Call each by its full name: mcp__wfos__<name> (e.g. mcp__wfos__${BUILTIN_TOOLS.find((t) => opts.grantedTools.includes(t.name))!.name}).\n${tools}` : "(no tools granted)"}`,
     // the read hint (and the untrusted entries) only while skill_read is granted
     skillsSection(opts.skills ?? [], { canRead: opts.grantedTools.includes("skill_read") }),
     memorySection(opts.memories ?? []),

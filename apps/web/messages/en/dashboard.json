@@ -17,19 +17,23 @@
   "noEmployees": "No employees yet. <link>Hire your first one</link>.",
   "limits": {
     "title": "Claude subscription",
-    "description": "Usage of this workspace's Claude subscription. Updated live after every request.",
+    "description": "Usage of this workspace's Claude subscription. Updated after requests and every 15 minutes.",
     "sharedFallback": "Usage of the server's shared Claude subscription (this workspace has no credential of its own).",
     "noData": "No usage reported yet. It appears after the first run.",
     "used": "{pct}% used",
     "rejected": "Limit reached.",
     "resetsAt": "Resets {time}",
     "resetUnknown": "Reset time not reported",
+    "resetSince": "This window has reset since the last report; new usage appears with the next sync.",
+    "syncedAt": "Last updated {time}",
     "usd": "API-equivalent cost this month: {usd}",
     "window": {
       "five_hour": "5-hour window",
       "seven_day": "Weekly",
+      "seven_day_oauth_apps": "Weekly · apps",
       "seven_day_opus": "Weekly · Opus",
-      "seven_day_sonnet": "Weekly · Sonnet"
+      "seven_day_sonnet": "Weekly · Sonnet",
+      "model": "Weekly · {name}"
     }
   },
   "incidents": {
@@ -46,6 +50,7 @@
       "stalled": "Stalled",
       "loop": "Loop",
       "could_not_start": "Could not start",
+      "out_of_memory": "Out of memory",
       "routine_failed": "Routine failed"
     },
     "status": {

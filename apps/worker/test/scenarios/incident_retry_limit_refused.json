@@ -71,6 +71,13 @@
         }
       },
       {
+        "tool": "mcp__wfos__finish_review",
+        "input": {
+          "outcome": "accept",
+          "notes": "Research failed after two retries (quota); the copy is usable and research follows separately."
+        }
+      },
+      {
         "result": "Research failed after two retries (quota); the copy is ready."
       }
     ]

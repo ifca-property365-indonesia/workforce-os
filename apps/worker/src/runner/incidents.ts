@@ -33,10 +33,10 @@ type Task = typeof tasks.$inferSelect;
 export type Incident = typeof incidents.$inferSelect;
 
 /** How failTask names the failure (see FailOptions.kind) → the incident kind. */
-export type FailureKind = "error" | "orphaned" | "could_not_start" | "approval_failed" | "stalled" | "loop";
+export type FailureKind = "error" | "orphaned" | "could_not_start" | "approval_failed" | "stalled" | "loop" | "out_of_memory";
 
 export function incidentKindOf(kind: FailureKind | undefined): IncidentKind {
-  if (kind === "stalled" || kind === "loop" || kind === "could_not_start") return kind;
+  if (kind === "stalled" || kind === "loop" || kind === "could_not_start" || kind === "out_of_memory") return kind;
   return "failed";
 }
 
@@ -137,6 +137,7 @@ const KIND_LABEL: Record<IncidentKind, MessageKey> = {
   loop: "incident.kind.loop",
   could_not_start: "incident.kind.could_not_start",
   routine_failed: "incident.kind.routine_failed",
+  out_of_memory: "incident.kind.out_of_memory",
 };
 
 async function notifyIncident(incident: Incident, title: string, muted: boolean): Promise<void> {
@@ -251,7 +252,7 @@ export interface RecoveryRequest {
   revisedBrief?: string;
 }
 
-const LIMIT_REACHED = "retry limit reached — explain the failure in your review";
+const LIMIT_REACHED = "retry limit reached — explain the failure in your review and decide with finish_review";
 
 /** The subtask that replaced `childId` through reassign_subtask (the durable mark of a reassignment). */
 async function replacementOf(q: Pick<Tx, "select">, childId: string, parentTaskId: string): Promise<string | null> {
@@ -279,8 +280,8 @@ export async function recoveryRefusal(input: { workspaceId: string; parentTaskId
   if (child.retryCount >= INCIDENT_RETRY_LIMIT) return `${LIMIT_REACHED} (${child.retryCount}/${INCIDENT_RETRY_LIMIT} used).`;
   if (await replacementOf(db, child.id, input.parentTaskId)) return "This subtask was already reassigned.";
   const inc = (await latestIncidents([child.id])).get(child.id);
-  if (inc?.status === "muted") return "Automatic recovery is paused (too many incidents this hour) — explain the failure in your review.";
-  if (inc?.status === "escalated") return "This failure was escalated to a person — explain the failure in your review.";
+  if (inc?.status === "muted") return "Automatic recovery is paused (too many incidents this hour) — explain the failure in your review and decide with finish_review.";
+  if (inc?.status === "escalated") return "This failure was escalated to a person — explain the failure in your review and decide with finish_review.";
   if (inc?.resolution === "reassigned") return "This subtask was already reassigned.";
   if (req.action === "reassign") {
     if (!req.employeeId || !input.memberIds.includes(req.employeeId)) return "That employee is not an active member of this team.";
