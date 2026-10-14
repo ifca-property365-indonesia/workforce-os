@@ -769,7 +769,10 @@ export type DeployJob =
   | { kind: "release"; releaseId: string; workspaceId: string }
   /** republish = write the nginx site again (new preview password / access mode) on a running app, no restart */
   /** environmentId: the environment to act on; remove without it removes the whole app (every environment) */
-  | { kind: "app_action"; appId: string; workspaceId: string; environmentId?: string; action: "stop" | "start" | "remove" | "republish"; userId: string | null; reason?: string };
+  | { kind: "app_action"; appId: string; workspaceId: string; environmentId?: string; action: "stop" | "start" | "remove" | "republish"; userId: string | null; reason?: string }
+  /** live/preview database: take a backup now (manual), or restore one (a pre_restore backup is taken first) */
+  | { kind: "db_backup"; appId: string; workspaceId: string; environmentId: string; userId: string | null; backupKind: "manual" | "daily" }
+  | { kind: "db_restore"; appId: string; workspaceId: string; environmentId: string; backupId: string; userId: string };
 export type IngestJob = { kind: "ingest"; documentId: string; workspaceId: string };
 export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
@@ -1265,6 +1268,30 @@ export const APP_IDLE_STOP_DAYS = 14;
 /** releases kept on the server per app (older release folders are removed) */
 export const APP_RELEASES_KEPT = 3;
 export const APP_DB_BACKUPS_KEPT = 7;
+/** live: daily database backups kept on the server (pre-migration backups are kept APP_DB_BACKUPS_KEPT) */
+export const APP_LIVE_DAILY_BACKUPS_KEPT = 14;
+/** live blue-green: the second slot listens on port + APP_ALT_PORT_OFFSET (4500..4899) */
+export const APP_ALT_PORT_OFFSET = 400;
+/** live blue-green: the old slot keeps running this long after the switch, for an instant rollback */
+export const APP_LIVE_GRACE_SECONDS = 120;
+export const APP_SLOTS = ["blue", "green"] as const;
+export type AppSlot = (typeof APP_SLOTS)[number];
+export const APP_BACKUP_KINDS = ["pre_migrate", "daily", "manual", "pre_restore"] as const;
+export type AppBackupKind = (typeof APP_BACKUP_KINDS)[number];
+export interface AppBackupDTO {
+  id: string;
+  environmentId: string;
+  name: string;
+  kind: AppBackupKind;
+  sizeBytes: number | null;
+  /** where it lives: "server" (on the app server only) or "offsite" (also copied out) */
+  offsite: boolean;
+  releaseId: string | null;
+  createdAt: string;
+  createdByName: string | null;
+}
+/** an Owner restores a live (or preview) database from one of its backups: the environment's name typed to confirm */
+export const appRestoreSchema = z.object({ backupId: z.uuid(), confirm: z.string().min(1).max(253) });
 
 /** subdomains an app may never take (also refused by the helper) */
 export const RESERVED_APP_SLUGS = ["www", "api", "app", "apps", "admin", "mail", "preview", "static", "assets", "cdn", "status"] as const;
@@ -1303,6 +1330,12 @@ export const appManifestSchema = z
     database: z.boolean().default(false),
     /** MB of memory for the running app (the build gets its own, larger limit) */
     memoryMb: z.number().int().min(256).max(1024).default(512),
+    /**
+     * expand = the migration only adds (tables, nullable columns, indexes): it runs while the old version keeps
+     * serving (live: no downtime). breaking (default) = live shows a maintenance page while it migrates.
+     * A release that claims "expand" but whose migration files drop/rename/narrow anything is refused.
+     */
+    migrations: z.enum(["expand", "breaking"]).default("breaking"),
   })
   .strict();
 export type AppManifest = z.infer<typeof appManifestSchema>;
@@ -1365,6 +1398,11 @@ export interface ReleaseCheckpoint {
   migrated?: boolean;
   /** live: the names this release published (domain + redirecting names), so a rollback can tell nothing moved */
   publishedNames?: string[];
+  /** live blue-green: the slot this release was started in, and the slot that served before it */
+  slot?: AppSlot;
+  previousSlot?: AppSlot | null;
+  /** live: the maintenance page was switched on for a breaking migration */
+  maintenance?: boolean;
 }
 
 /**

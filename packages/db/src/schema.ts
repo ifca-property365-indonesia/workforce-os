@@ -61,6 +61,8 @@ import type {
   ReleaseCheckpoint,
   AppEnvironmentKind,
   DomainCheck,
+  AppSlot,
+  AppBackupKind,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -1123,6 +1125,12 @@ export const appEnvironments = pgTable(
     healthy: boolean("healthy"),
     lastHealthAt: timestamp("last_health_at", { withTimezone: true }),
     lastDeployedAt: timestamp("last_deployed_at", { withTimezone: true }),
+    /** live blue-green (B2): the slot nginx sends traffic to (blue = port, green = port + APP_ALT_PORT_OFFSET) */
+    activeSlot: text("active_slot").$type<AppSlot>().notNull().default("blue"),
+    /** live: the maintenance page is shown instead of the app (a breaking migration, a restore) */
+    maintenance: boolean("maintenance").notNull().default(false),
+    /** live: last daily database backup */
+    lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1134,4 +1142,26 @@ export const appEnvironments = pgTable(
     uniqueIndex("app_env_domain").on(t.domain),
     index("app_env_ws").on(t.workspaceId),
   ],
+);
+
+/** Database backups of an app environment (B2): taken before a migration, daily (live), by hand, before a restore. */
+export const appBackups = pgTable(
+  "app_backups",
+  {
+    id: id(),
+    environmentId: uuid("environment_id").notNull().references(() => appEnvironments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** the helper's backup name (backups/<name>.dump on the server) */
+    name: text("name").notNull(),
+    kind: text("kind").$type<AppBackupKind>().notNull(),
+    sizeBytes: integer("size_bytes"),
+    /** copied off the server (B2: offsite storage is optional; false until it is configured) */
+    offsite: boolean("offsite").notNull().default(false),
+    /** pruned on the server (kept as a record) */
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    releaseId: uuid("release_id").references(() => appReleases.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("app_backups_env_name").on(t.environmentId, t.name), index("app_backups_env").on(t.environmentId, t.createdAt)],
 );
