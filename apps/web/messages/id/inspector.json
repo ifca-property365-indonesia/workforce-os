@@ -167,7 +167,15 @@
       "waiting_for_preview": "Menunggu preview diterbitkan",
       "preview_deployed": "Preview terbit",
       "waiting_for_live": "Menunggu rilis LIVE",
-      "live_deployed": "Rilis LIVE selesai"
+      "live_deployed": "Rilis LIVE selesai",
+      "team_review_accepted": "Review diterima",
+      "team_review_failed": "Review: hasil tidak diterima",
+      "team_review_no_verdict": "Review berakhir tanpa keputusan"
+    },
+    "leadReview": {
+      "allow": "Disetujui oleh {reviewer} (AI)",
+      "deny": "Ditolak oleh {reviewer} (AI)",
+      "escalate": "Diteruskan ke pemilik oleh {reviewer} (AI)"
     }
   },
   "incidentKind": {

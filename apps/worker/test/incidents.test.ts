@@ -140,8 +140,10 @@ describe("retry_subtask", () => {
     expect((await row(w.parent.id)).phase).toBe("review");
     expect(enqueuedRuns(w.parent.id)).toHaveLength(1);
 
-    // request_revision is unaffected: still once per subtask, also on a retried one
+    // request_revision is unaffected: still at most MAX_REVISIONS_PER_SUBTASK (2) per subtask, also on a retried one
     expect(await requestRevisions(w.ws.id, w.parent.id, w.lead.id, [{ taskId: w.child.id, feedback: "Add sources please" }])).toBe(1);
+    await db.update(tasks).set({ status: "DONE" }).where(eq(tasks.id, w.child.id));
+    expect(await requestRevisions(w.ws.id, w.parent.id, w.lead.id, [{ taskId: w.child.id, feedback: "Cite the census table" }])).toBe(1);
     await db.update(tasks).set({ status: "DONE" }).where(eq(tasks.id, w.child.id));
     expect(await requestRevisions(w.ws.id, w.parent.id, w.lead.id, [{ taskId: w.child.id, feedback: "Again please" }])).toBe(0);
   });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { approvals, audit, clients, db, employeeDivision, employees, projects, repositories, steps, tasks } from "@wfos/db";
 import { decryptSecret } from "@wfos/shared/server";
 import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
@@ -289,6 +289,8 @@ async function runStarted(
               await db.update(tasks).set({ agentSessionId: sessionId, workspaceStatus: "active" }).where(eq(tasks.id, task.id));
             },
             repository,
+            // approval tiers: the division's AI lead reviews a non-local command before the owner does
+            review: { own: division.reviewers?.own ?? null, subagents: division.reviewers?.subagents ?? null, task: { title: task.title, brief: task.brief } },
           },
         }
       : {}),
@@ -408,6 +410,7 @@ async function runStarted(
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "team_plan_delegated", output: { subtasks: ctx.delegatedTaskIds.length } });
     return; // stays RUNNING while members work
   }
+  let revisionsUnapplied = false;
   if (team?.role === "lead" && team.phase === "review" && (ctx.revisionRequests.length > 0 || (ctx.recoveryRequests?.length ?? 0) > 0)) {
     // wait first: a subtask re-queued below that finishes fast must find the parent waiting (onChildFinished)
     await db.update(tasks).set({ phase: "wait" }).where(eq(tasks.id, task.id));
@@ -421,7 +424,9 @@ async function runStarted(
       return; // stays RUNNING; the review runs again once these subtasks end
     }
     await db.update(tasks).set({ phase: "review" }).where(eq(tasks.id, task.id)); // nothing re-queued: finish below
+    revisionsUnapplied = ctx.revisionRequests.length > 0;
   }
+  if (team?.role === "lead" && team.phase === "review" && (await reviewOutcome(running, ws.id, emp.id, ctx, out.text, revisionsUnapplied)) === "handled") return;
 
   const pending = await db
     .select({ id: approvals.id })
@@ -440,6 +445,62 @@ async function runStarted(
 
   // DONE wakes the parent, settles the routine run, publishes and notifies (afterTerminal)
   await setTaskStatus(running, "DONE", { result: out.text, phase: team ? "done" : task.phase });
+}
+
+/** A head's review that wanted changes but ended without a verdict is sent back to the head this many times, then fails. */
+export const REVIEW_NO_VERDICT_RETRIES = 1;
+
+/**
+ * The end of a head's review run when nothing was sent back. finish_review "fail" fails the task with the head's notes
+ * (an incident tells a person). A review that wanted changes (a refused request_revision, or a revision that could not
+ * be applied) but gave no verdict must not finish as DONE: the head gets the review back once with its options, then
+ * the task fails. Otherwise ("accept", or a plain review) the run finishes as usual below.
+ */
+async function reviewOutcome(
+  running: Task,
+  workspaceId: string,
+  employeeId: string,
+  ctx: RunContext,
+  text: string,
+  revisionsUnapplied: boolean,
+): Promise<"handled" | "finish"> {
+  const verdict = ctx.reviewVerdict;
+  if (verdict?.outcome === "fail") {
+    await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_failed", status: "error", output: { notes: verdict.notes } });
+    await failTask(running, `The division head did not accept the work: ${verdict.notes}`, { kind: "error", result: text || verdict.notes, onlyIfStatus: ["RUNNING"] });
+    return "handled";
+  }
+  if (verdict?.outcome === "accept") {
+    await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_accepted", output: { notes: verdict.notes } });
+    return "finish";
+  }
+  if (!revisionsUnapplied && !(ctx.refusedRevisions ?? 0)) return "finish";
+  const [{ n = 0 } = {}] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(steps)
+    .where(and(eq(steps.taskId, running.id), eq(steps.name, "team_review_no_verdict")));
+  const reason = revisionsUnapplied
+    ? "a revision you requested could not be applied (the subtask had no revision left or was no longer DONE)"
+    : "request_revision was refused";
+  if (Number(n) >= REVIEW_NO_VERDICT_RETRIES) {
+    await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_no_verdict", status: "error", output: { reason, final: true } });
+    await failTask(running, `The review ended without a verdict: the division head wanted changes (${reason}) but neither accepted nor failed the work.`, {
+      kind: "error",
+      result: text || null,
+      onlyIfStatus: ["RUNNING"],
+    });
+    return "handled";
+  }
+  await recordStep({ workspaceId, taskId: running.id, employeeId, kind: "system", name: "team_review_no_verdict", status: "flagged", output: { reason } });
+  await db.update(tasks).set({ phase: "review", result: text || null }).where(and(eq(tasks.id, running.id), eq(tasks.status, "RUNNING")));
+  await enqueueTask(
+    running.id,
+    workspaceId,
+    `Your last review run ended without a verdict although you wanted changes: ${reason}. ` +
+      'The work cannot be sent back again. Decide now with finish_review: outcome "accept" if the result is usable (notes: what is missing or should follow up), ' +
+      'or outcome "fail" (notes: exactly what is missing against the acceptance criteria). Then end with your summary.',
+  );
+  return "handled";
 }
 
 /**

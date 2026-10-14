@@ -98,7 +98,7 @@ export function ActivityTab({ employeeId }: { employeeId: string }) {
                   <time dateTime={s.createdAt} title={f.dateTime(s.createdAt)}>
                     {f.ago(s.createdAt)}
                   </time>
-                  {s.asSubagentOf && (
+                  {s.asSubagentOf && s.name !== "lead_review" && (
                     <span className="rounded bg-secondary px-1.5 text-[11px] font-medium text-foreground">{t("activity.asSubagent", { name: s.asSubagentOf.name })}</span>
                   )}
                   {s.taskId && (

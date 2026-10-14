@@ -1,11 +1,12 @@
 import { db, tasks, teams, employees, agentMessages, teamMembers } from "@wfos/db";
-import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { INCIDENT_RETRY_LIMIT, TERMINAL_STATUSES, type TaskStatus } from "@wfos/shared";
 import { enqueueTask, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { teamMemberIds, type TeamContext } from "../tools/registry";
 import { dataBlock, escapeData, incidentBlock, latestIncidents, retriesLeft } from "../runner/incidents";
 import { DEPENDENCY_PHASES, PHASE_AFTER, PHASE_BLOCKED } from "./phases";
+import { MAX_REVISIONS_PER_SUBTASK, revisionsUsed } from "./revisions";
 
 /** A member's work quoted into the lead's prompt: escaped so it cannot open or close a tag, attributes without quotes. */
 export const memberData = (tag: string, text: string, attrs: Record<string, string> = {}) =>
@@ -77,6 +78,7 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
   const states = dependencyStates(children);
   const blocked = children.filter((c) => c.status === "QUEUED" && states.get(c.id) === "blocked");
   const incidents = await latestIncidents(failed.map((c) => c.id));
+  const revisions = new Map(await Promise.all(children.filter((c) => c.status === "DONE").map(async (c) => [c.id, await revisionsUsed(c.id)] as const)));
   let recoverable = false;
   const blocks = children.map((c) => {
     // always fenced: a member's run may have read a web page or tool output with an injection
@@ -91,6 +93,10 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
         ? `Result:\n${memberData("subtask_result", c.result)}`
         : `Result: ${shown ? "(failed: see the incident report)" : rawError ? "(failed: see the error report)" : "(none)"}`,
     ];
+    if (revisions.has(c.id)) {
+      const used = revisions.get(c.id)!;
+      lines.push(`Revisions used: ${used} of ${MAX_REVISIONS_PER_SUBTASK}${used >= MAX_REVISIONS_PER_SUBTASK ? " (none left: accept it with notes or fail the task)" : ""}`);
+    }
     if (rawError) lines.push(dataBlock("error", rawError.slice(0, 2000)));
     // a muted incident gives the lead no hints (automatic recovery is paused for the hour)
     if (shown) {
@@ -106,7 +112,7 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
   });
   return [
     "All subtasks have finished. Review each deliverable against its acceptance criteria.",
-    "If one is not acceptable, call request_revision with specific feedback (once per subtask).",
+    `If one is not acceptable, call request_revision with specific feedback (at most ${MAX_REVISIONS_PER_SUBTASK} revisions per subtask; the tool refuses when none is left).`,
     ...(recoverable
       ? [
           `A subtask failed. While it has retries left (at most ${INCIDENT_RETRY_LIMIT} per subtask) you may call retry_subtask (same member, optionally with a revisedBrief) or reassign_subtask (another member of this team); otherwise explain the failure in your review.`,
@@ -118,6 +124,7 @@ export async function reviewPrompt(task: typeof tasks.$inferSelect): Promise<str
         ]
       : []),
     "If everything is acceptable, assemble the final deliverable with draft_document (kind review) and finish with a summary for the human.",
+    'End every review that sends nothing back with finish_review: outcome "accept" (notes: what you checked, anything missing or to follow up), or outcome "fail" when the work does not meet the acceptance criteria and cannot be revised further (notes: exactly what is missing). Never end a review that wanted changes without one of these.',
     MEMBER_DATA_NOTE,
     blocks.join("\n\n"),
   ].join("\n\n");
@@ -261,11 +268,7 @@ export async function requestRevisions(
   for (const r of reqs) {
     const [child] = await db.select().from(tasks).where(and(eq(tasks.id, r.taskId), eq(tasks.parentTaskId, parentTaskId)));
     if (!child || child.status !== "DONE") continue;
-    const previous = await db
-      .select({ id: agentMessages.id })
-      .from(agentMessages)
-      .where(and(eq(agentMessages.taskId, child.id), eq(agentMessages.intent, "review"), isNotNull(agentMessages.fromEmployeeId)));
-    if (previous.length >= 1) continue; // max one revision per subtask
+    if ((await revisionsUsed(child.id)) >= MAX_REVISIONS_PER_SUBTASK) continue; // refused when the head asked (revisionRefusal)
     await db.insert(agentMessages).values({ workspaceId, taskId: child.id, fromEmployeeId: leadId, toEmployeeId: child.assigneeId, intent: "review", content: r.feedback, untrusted, clientId: child.clientId });
     await db
       .update(tasks)

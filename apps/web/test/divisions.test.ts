@@ -278,3 +278,33 @@ describe("receipts for division work", () => {
     expect(r("budget", "division_budget_cap").key).toBe("division_budget_cap");
   });
 });
+
+describe("approval tiers on the timeline", () => {
+  it("a lead_review step reads as approved / denied / passed on by the reviewer (AI), in English and Indonesian", async () => {
+    const { describeReceipt, describeStep } = await import("@/lib/step-labels");
+    const { readFileSync } = await import("node:fs");
+    const cat = (lang: string, ns: string) => JSON.parse(readFileSync(`messages/${lang}/${ns}.json`, "utf8"));
+    const fill = (tpl: string, v: Record<string, string>) => tpl.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? "");
+    const step = (decision: string) => ({
+      kind: "approval",
+      name: "lead_review",
+      status: decision === "allow" ? "ok" : decision === "deny" ? "denied" : "escalated",
+      input: { command: "pnpm add zod", by: "self" },
+      output: { decision, reason: "r", reviewerName: "Pratiwi", reviewerId: "x" },
+    });
+    expect(describeStep(step("allow"))).toEqual({ type: "lead_review", decision: "allow", reviewer: "Pratiwi", command: "pnpm add zod" });
+    expect(describeReceipt(step("deny"))).toEqual({ key: "lead_review_deny", values: { reviewer: "Pratiwi", command: "pnpm add zod" } });
+    const id = cat("id", "inspector").stepName.leadReview;
+    const en = cat("en", "inspector").stepName.leadReview;
+    expect(fill(id.allow, { reviewer: "Pratiwi" })).toBe("Disetujui oleh Pratiwi (AI)");
+    expect(fill(id.deny, { reviewer: "Pratiwi" })).toBe("Ditolak oleh Pratiwi (AI)");
+    expect(fill(en.allow, { reviewer: "Pratiwi" })).toBe("Approved by Pratiwi (AI)");
+    expect(fill(en.deny, { reviewer: "Pratiwi" })).toBe("Denied by Pratiwi (AI)");
+    for (const lang of ["en", "id"]) {
+      const receipts = cat(lang, "employees").activity.receipt;
+      for (const d of ["allow", "deny", "escalate"]) expect(receipts[`lead_review_${d}`]).toContain("{reviewer}");
+      for (const k of ["finish_review", "team_review_accepted", "team_review_failed", "team_review_no_verdict"]) expect(receipts[k]).toBeTruthy();
+    }
+  });
+});
+

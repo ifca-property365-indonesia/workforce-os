@@ -386,7 +386,14 @@
       "dependencies_done": "Subtugas yang ditunggu sudah selesai: mulai bekerja",
       "subtask_blocked": "Terhenti: subtugas yang ditunggu tidak selesai",
       "division_budget_cap": "Dijeda: anggaran harian divisi sudah habis",
-      "waiting_for_prd_decision": "Menunggu keputusan pemilik atas PRD"
+      "waiting_for_prd_decision": "Menunggu keputusan pemilik atas PRD",
+      "lead_review_allow": "Disetujui oleh {reviewer} (AI): {command}",
+      "lead_review_deny": "Ditolak oleh {reviewer} (AI): {command}",
+      "lead_review_escalate": "Diteruskan ke pemilik oleh {reviewer} (AI): {command}",
+      "finish_review": "Menyelesaikan review",
+      "team_review_accepted": "Menerima hasil kerja saat review",
+      "team_review_failed": "Tidak menerima hasil kerja: tugas gagal",
+      "team_review_no_verdict": "Review berakhir tanpa keputusan"
     },
     "asSubagent": "sebagai subagent dalam sesi {name}"
   },

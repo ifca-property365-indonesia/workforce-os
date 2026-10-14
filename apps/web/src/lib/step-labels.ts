@@ -9,7 +9,12 @@ export type StepInfo =
   | { type: "incident"; action: string; kind: IncidentKind | null }
   | { type: "repeat" }
   | { type: "stopped"; reason: StopReason }
+  /** approval tiers: a division lead's AI review of a sandbox command (employeeId = the run, actor = the reviewer) */
+  | { type: "lead_review"; decision: LeadReviewDecision; reviewer: string | null; command: string }
   | { type: "plain" };
+
+export type LeadReviewDecision = "allow" | "deny" | "escalate";
+const LEAD_REVIEW_DECISIONS: readonly string[] = ["allow", "deny", "escalate"];
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -36,6 +41,11 @@ export function describeStep(s: { kind: string; name: string; input: unknown; ou
     return { type: "incident", action: head!.slice("incident_".length), kind: k };
   }
   if (s.name === "repeat_detected") return { type: "repeat" };
+  if (s.name === "lead_review") {
+    const o = isObj(s.output) ? s.output : {};
+    const decision = typeof o.decision === "string" && LEAD_REVIEW_DECISIONS.includes(o.decision) ? (o.decision as LeadReviewDecision) : "escalate";
+    return { type: "lead_review", decision, reviewer: typeof o.reviewerName === "string" ? o.reviewerName : null, command: isObj(s.input) ? text(s.input.command) : "" };
+  }
   if (s.kind === "error" || s.kind === "system" || s.kind === "incident") {
     const r = stopReason(s.name, s.output);
     if (r) return { type: "stopped", reason: r };
@@ -82,6 +92,7 @@ const RECEIPT_TOOLS = new Set([
   "post_webhook",
   "propose_routine",
   "handoff_to_division",
+  "finish_review",
 ]);
 
 /** Claude Code's own tools, as a subagent uses them inside the code lead's sandbox */
@@ -108,6 +119,9 @@ export const NAMED_STEPS: ReadonlySet<string> = new Set([
   "preview_deployed",
   "waiting_for_live",
   "live_deployed",
+  "team_review_accepted",
+  "team_review_failed",
+  "team_review_no_verdict",
 ]);
 /** recorded-but-not-run variants: "simulated:send_email", "draft:send_email" */
 const MODE_PREFIX = /^(simulated|simulate|draft|drafted):/;
@@ -149,6 +163,7 @@ export function describeReceipt(s: { kind: string; name: string; status?: string
   if (info.type === "incident") return { key: "incident", values: {} };
   if (info.type === "repeat") return { key: "repeat", values: {} };
   if (info.type === "stopped") return { key: `stopped_${info.reason}`, values: {} };
+  if (info.type === "lead_review") return { key: `lead_review_${info.decision}`, values: { reviewer: info.reviewer ?? "—", command: info.command || "—" } };
   if (s.kind === "approval" && s.name.startsWith("approval_requested:")) {
     const tool = s.name.slice("approval_requested:".length);
     return { key: "approval", values: { tool }, tool };
@@ -158,6 +173,7 @@ export function describeReceipt(s: { kind: string; name: string; status?: string
   if (s.name === "subagent_started") return { key: "subagent_started", values: { task: isObj(s.input) ? text(s.input.description) || "—" : "—" } };
   if (s.name === "subagent_finished") return { key: s.status === "error" ? "subagent_failed" : "subagent_finished", values: {} };
   if (s.name === "dependencies_done" || s.name === "subtask_blocked" || s.name === "division_budget_cap" || s.name === "waiting_for_prd_decision") return { key: s.name, values: {} };
+  if (s.name === "team_review_accepted" || s.name === "team_review_failed" || s.name === "team_review_no_verdict") return { key: s.name, values: {} };
   if (s.kind === "agent_message") return { key: "agent_message", values: { name: clip(s.name) } };
   if (s.kind === "guard") return { key: "guard", values: { name: clip(s.name) } };
   if (s.kind === "llm" || s.kind === "compaction" || s.kind === "budget" || s.kind === "error") return { key: s.kind, values: {} };

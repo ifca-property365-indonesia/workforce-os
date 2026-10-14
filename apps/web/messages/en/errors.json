@@ -198,5 +198,6 @@
   "division_key_taken": "Another division already uses the key {key}.",
   "project_client_mismatch": "This project belongs to another client.",
   "invalid_dependency": "A subtask can only wait for other subtasks of the same parent task.",
-  "client_code_taken": "Another client already uses the code {clientCode}."
+  "client_code_taken": "Another client already uses the code {clientCode}.",
+  "approval_task_running": "The employee is still working on this task. Decide once its run has ended: the task then waits for your approval."
 }

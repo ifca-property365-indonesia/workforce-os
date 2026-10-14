@@ -52,3 +52,30 @@ describe("PRD handoff decision", () => {
     expect(after!.editedPayload).not.toHaveProperty("developerId");
   });
 });
+
+describe("an approval of a task that is still working", () => {
+  it("stays PENDING (409 approval_task_running) while the task runs or is queued, and expires only once the task ended", async () => {
+    const { tasks } = await import("@wfos/db");
+    const email = `d-${randomUUID().slice(0, 8)}@test.local`;
+    const [u] = await db.insert(users).values({ email, name: "T", passwordHash: await bcrypt.hash("pw-123456", 4) }).returning();
+    const [ws] = await db.insert(workspaces).values({ name: "WS", slug: `ws-${randomUUID().slice(0, 8)}`, require2faAdmins: false }).returning();
+    await db.insert(members).values({ workspaceId: ws!.id, userId: u!.id, role: "ADMIN" });
+    const [arif] = await db.insert(employees).values({ workspaceId: ws!.id, name: "Arif", role: "Tech Lead", model: "m" }).returning();
+    const [t] = await db.insert(tasks).values({ workspaceId: ws!.id, assigneeId: arif!.id, title: "Build", brief: "b", status: "RUNNING" }).returning();
+    const [a] = await db.insert(approvals).values({ workspaceId: ws!.id, taskId: t!.id, employeeId: arif!.id, toolName: "bash", title: "$ pnpm add zod", payload: { command: "pnpm add zod" } }).returning();
+    await call(login, "POST", "/api/auth/login", { email, password: "pw-123456" });
+    const decideIt = () => callWithParams(decide, "POST", `/api/approvals/${a!.id}/decide`, { decision: "approve" }, { id: a!.id });
+
+    for (const status of ["RUNNING", "QUEUED"] as const) {
+      await db.update(tasks).set({ status }).where(eq(tasks.id, t!.id));
+      const r = await decideIt();
+      expect(r.status).toBe(409);
+      expect(r.json.code).toBe("approval_task_running");
+      expect((await db.select().from(approvals).where(eq(approvals.id, a!.id)))[0]!.status).toBe("PENDING");
+    }
+    await db.update(tasks).set({ status: "DONE" }).where(eq(tasks.id, t!.id));
+    const done = await decideIt();
+    expect(done.json.code).toBe("approval_task_closed");
+    expect((await db.select().from(approvals).where(eq(approvals.id, a!.id)))[0]!.status).toBe("EXPIRED");
+  });
+});

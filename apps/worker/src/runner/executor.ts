@@ -15,6 +15,7 @@ import type {
 import { agentQuery, workspaceQueryOverride } from "./sdk";
 import { createWorkspaceQuery, type WorkspaceRunConfig } from "./workspace/query";
 import { workspacePermissions } from "./workspace/permissions";
+import { LEAD_REVIEW_TIMEOUT_MS } from "./workspace/lead-review";
 import { defaultSandboxHost, runLayout } from "./workspace/layout";
 import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
 import { sandboxAvailable } from "./workspace/gc";
@@ -402,7 +403,7 @@ async function recordBashOutputs(ctx: RunContext, calls: Map<string, string>, co
   for (const b of content as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[]) {
     if (b.type !== "tool_result" || !b.tool_use_id || !calls.has(b.tool_use_id)) continue;
     const text = typeof b.content === "string" ? b.content : Array.isArray(b.content) ? (b.content as { text?: string }[]).map((x) => x.text ?? "").join("") : "";
-    if (/^Queued for human approval|^DRY RUN:/.test(text)) continue;
+    if (/^Queued for human approval|^DRY RUN:|^Denied by .+ \(AI review\):/.test(text)) continue;
     await recordStep({
       workspaceId: ctx.workspaceId,
       taskId: ctx.taskId,
@@ -541,6 +542,13 @@ function redactInput(input: unknown): unknown {
     Object.entries(input as Record<string, unknown>).map(([k, v]) => [k, typeof v === "string" ? redactSecrets(v).slice(0, 4000) : v]),
   );
 }
+
+/**
+ * How long a finished run waits for permission checks still in flight (a subagent's command under AI review, an
+ * approval being written) before its outcome is decided: an approval raised by them must exist before the task's
+ * status is (AWAITING_APPROVAL vs DONE). The AI review itself is bounded by LEAD_REVIEW_TIMEOUT_MS.
+ */
+export const PERMISSION_SETTLE_MS = LEAD_REVIEW_TIMEOUT_MS + 15_000;
 
 export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   const { ctx } = input;
@@ -700,6 +708,17 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     });
   }
 
+  // permission checks in flight: the run's outcome waits for them (see PERMISSION_SETTLE_MS)
+  const inflightPermissions = new Set<Promise<unknown>>();
+  const trackPermission = <T,>(p: Promise<T>): Promise<T> => {
+    inflightPermissions.add(p);
+    void p.then(
+      () => inflightPermissions.delete(p),
+      () => inflightPermissions.delete(p),
+    );
+    return p;
+  };
+
   const guardedCanUseTool = withRepeatGuard(
     ctx,
     (toolName, toolInput, opts) => canUseTool(toolName, toolInput, opts),
@@ -710,6 +729,25 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
       controller.abort(new Error("loop"));
     },
   );
+
+  const decidePermission: CanUseTool = async (toolName, toolInput, opts) => {
+    touch();
+    let r: Awaited<ReturnType<CanUseTool>>;
+    try {
+      // a subagent works with files and the shell only: platform and external MCP tools stay with the code lead
+      r =
+        (opts as { agentID?: string } | undefined)?.agentID && toolName.startsWith("mcp__")
+          ? { behavior: "deny", message: "Subagents cannot use platform or MCP tools: report back to the code lead, who pushes, previews and releases." }
+          : await guardedCanUseTool(toolName, toolInput, opts);
+    } catch (e) {
+      // fail closed: a DB or gate error never throws into the SDK, and never runs the tool
+      log.error({ err: e, runId: ctx.runId, toolName }, "permission check failed");
+      r = { behavior: "deny", message: "The permission check failed; the call was not executed. Try again later or continue without it." };
+    }
+    if (r?.behavior === "allow") toolStarted(opts?.toolUseID);
+    touch();
+    return r;
+  };
 
   // started right before the try so the finally always clears it
   lastEventAt = Date.now();
@@ -747,24 +785,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         includePartialMessages: true,
         maxTurns: input.maxTurns ?? 30,
         maxBudgetUsd: Math.max(0.01, input.creditBudget * CREDIT_USD),
-        canUseTool: async (toolName, toolInput, opts) => {
-          touch();
-          let r: Awaited<ReturnType<CanUseTool>>;
-          try {
-            // a subagent works with files and the shell only: platform and external MCP tools stay with the code lead
-            r =
-              (opts as { agentID?: string } | undefined)?.agentID && toolName.startsWith("mcp__")
-                ? { behavior: "deny", message: "Subagents cannot use platform or MCP tools: report back to the code lead, who pushes, previews and releases." }
-                : await guardedCanUseTool(toolName, toolInput, opts);
-          } catch (e) {
-            // fail closed: a DB or gate error never throws into the SDK, and never runs the tool
-            log.error({ err: e, runId: ctx.runId, toolName }, "permission check failed");
-            r = { behavior: "deny", message: "The permission check failed; the call was not executed. Try again later or continue without it." };
-          }
-          if (r?.behavior === "allow") toolStarted(opts?.toolUseID);
-          touch();
-          return r;
-        },
+        canUseTool: (toolName, toolInput, opts) => trackPermission(decidePermission(toolName, toolInput, opts)),
         // no matcher: the hooks filter by name themselves (external MCP servers only, never the platform's own);
         // toolDoneHook ends the in-flight tracking for every tool
         hooks: {
@@ -957,6 +978,22 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     unregisterRun(ctx.runId);
     if (ctx.workspace) await releaseWorkspaceSlot(ctx.runId);
     await rm(cwd, { recursive: true, force: true }).catch(() => {});
+  }
+
+  // a permission check still in flight (a subagent's command under AI review when the main turn ended) may yet raise
+  // an approval: the caller decides the task's status from the approvals, so they must be written first
+  if (inflightPermissions.size) {
+    let settleTimer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled([...inflightPermissions]),
+      new Promise<void>((r) => {
+        settleTimer = setTimeout(() => {
+          log.warn({ runId: ctx.runId, pending: inflightPermissions.size }, "permission checks still running after the run ended");
+          r();
+        }, PERMISSION_SETTLE_MS);
+      }),
+    ]);
+    clearTimeout(settleTimer);
   }
 
   // a safety stop decides the outcome unless the run already produced its successful result

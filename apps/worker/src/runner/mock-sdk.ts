@@ -22,7 +22,11 @@ export type MockStep =
    * `parentToolUseId`: the call is made by the subagent started by that Task tool_use (canUseTool gets `agentID`, the
    * assistant tool_use and its result carry parent_tool_use_id); `toolUseId`: a fixed id for the call
    */
-  | { tool: string; input: Record<string, unknown>; error?: boolean; output?: string; durationMs?: number; parentToolUseId?: string; toolUseId?: string }
+  /**
+   * `background`: the permission is asked but not awaited and no result follows (a subagent in the background whose
+   * request is still being decided when the main turn ends); the call is added to `calls` once decided
+   */
+  | { tool: string; input: Record<string, unknown>; error?: boolean; output?: string; durationMs?: number; parentToolUseId?: string; toolUseId?: string; background?: boolean }
   | { wait: number }
   | { result: string }
   /** emit a raw SDK message (e.g. a recorded rate_limit_event) */
@@ -177,6 +181,13 @@ export function mockRunner(script: MockStep[]): MockRunner {
               session_id: "mock-session",
               message: { id: `msg_mock_${n}`, model: "claude-sonnet-5-5", role: "assistant", type: "message", content: [{ type: "tool_use", id: toolUseId, name: step.tool, input: step.input }], stop_reason: null, usage: { input_tokens: 0, output_tokens: 0 } },
             } as unknown as SDKMessage;
+          }
+          if (step.background) {
+            const asked = canUseTool
+              ? canUseTool(step.tool, step.input, { signal: signal ?? new AbortController().signal, toolUseID: toolUseId, ...(parent ? { agentID: `agent-${parent}` } : {}) } as never)
+              : Promise.resolve({ behavior: "deny", message: "no permission decision" } as PermissionResult);
+            void asked.then((permission) => runner.calls.push({ name: step.tool, input: step.input, permission: permission ?? { behavior: "deny", message: "no permission decision" } }));
+            continue;
           }
           const permission: PermissionResult = (canUseTool
             ? await canUseTool(step.tool, step.input, { signal: signal ?? new AbortController().signal, toolUseID: toolUseId, ...(parent ? { agentID: `agent-${parent}` } : {}) } as never)

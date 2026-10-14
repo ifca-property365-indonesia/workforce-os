@@ -386,7 +386,14 @@
       "dependencies_done": "The subtasks it waited for are done: starting",
       "subtask_blocked": "Blocked: a subtask it waits for did not finish",
       "division_budget_cap": "Paused: the division's daily budget is used up",
-      "waiting_for_prd_decision": "Waiting for the owner to decide on the PRD"
+      "waiting_for_prd_decision": "Waiting for the owner to decide on the PRD",
+      "lead_review_allow": "Approved by {reviewer} (AI): {command}",
+      "lead_review_deny": "Denied by {reviewer} (AI): {command}",
+      "lead_review_escalate": "Passed to the owner by {reviewer} (AI): {command}",
+      "finish_review": "Finished the review",
+      "team_review_accepted": "Accepted the work in review",
+      "team_review_failed": "Did not accept the work: the task failed",
+      "team_review_no_verdict": "The review ended without a verdict"
     },
     "asSubagent": "as subagent in {name}'s run"
   },

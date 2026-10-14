@@ -117,6 +117,11 @@ export async function decideApproval(actor: DecisionActor, approvalId: string, i
   // the task may have been cancelled or finished since the approval was requested
   if (a.taskId) {
     const [t] = await db.select({ status: tasks.status }).from(tasks).where(eq(tasks.id, a.taskId));
+    // still working (a run in flight, or queued for the next one): the approval stays PENDING; when the run ends the
+    // task waits for it (AWAITING_APPROVAL) and it can be decided then. Expiring it here lost the action for good.
+    if (t && (t.status === "RUNNING" || t.status === "QUEUED")) {
+      throw new HttpError(409, "The employee is still working on this task; decide once the run has ended", { code: "approval_task_running", status: t.status });
+    }
     if (t && t.status !== "AWAITING_APPROVAL") {
       await db
         .update(approvals)

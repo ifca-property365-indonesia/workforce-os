@@ -264,13 +264,33 @@ export interface DivisionPrompt {
   otherDivisions?: { key: string; name: string; head: string | null }[];
 }
 
+/** Who a subagent is by its role label: the work a code lead gives to it. */
+function subagentDuty(label: string): string | null {
+  if (/\bQA\b|test/i.test(label)) return "reviews the diff against the acceptance criteria and runs the tests";
+  if (/back[- ]?end/i.test(label)) return "backend work: APIs, data access, migrations, server-side tests";
+  if (/front[- ]?end|\bUI\b/i.test(label)) return "UI work: components, pages, styles, UI tests";
+  return null;
+}
+
+/** The code lead's subagents: who they are, and the firm rule that they (not the code lead) implement. */
+function subagentsSection(subagents: NonNullable<DivisionPrompt["subagents"]>): string {
+  return [
+    "### Your subagents",
+    "You are the code lead: you plan, delegate, integrate and review; your subagents implement. Delegate with the Task tool (subagent_type = the key):",
+    subagents.map((a) => `- ${a.key}: ${a.label}${subagentDuty(a.label) ? ` → ${subagentDuty(a.label)}` : ""}`).join("\n"),
+    "Rules:",
+    "- Implementation goes to the subagents: backend work to the backend member, UI work to the frontend member, then the QA member reviews the diff and runs the tests. Send defects back to the member who owns that part.",
+    "- Do not implement features yourself. Your own edits are small glue only: wiring the parts together, a config line, a fix of a few lines found in review.",
+    "- Each brief is self-contained (the files, the acceptance criteria, the tests to run). Run subagents in the foreground and wait for each report (never run_in_background); review the combined diff before you commit.",
+    "- They work in your workspace on your branch; only you commit for the task, push, preview and release. Their shell commands that are not provably local are reviewed by you (an AI review) before a human sees them.",
+  ].join("\n");
+}
+
 function divisionSection(d: DivisionPrompt): string {
   return [
     `## Your division: ${d.name}\nYour role: ${DIVISION_ROLE_LABEL[d.role]}.`,
     d.sop.trim() ? `### ${d.name} SOP\n${d.sop.trim()}` : "",
-    d.subagents?.length
-      ? `### Your subagents\nDelegate with the Task tool (subagent_type = the key). They are your division's members and work in your workspace on your branch; only you push, preview and release.\n${d.subagents.map((a) => `- ${a.key}: ${a.label}`).join("\n")}`
-      : "",
+    d.subagents?.length ? subagentsSection(d.subagents) : "",
     d.otherDivisions?.length
       ? `### Other divisions (handoff_to_division)\n${d.otherDivisions.map((x) => `- ${x.key}: ${x.name}${x.head ? ` (head: ${x.head})` : " (no head)"}`).join("\n")}`
       : "",
@@ -347,7 +367,7 @@ export function buildSystemPrompt(opts: {
         "You work in an isolated sandbox with Claude Code tools (Bash, Read, Write, Edit, Grep, Glob, subagents). Your working directory is your task workspace" +
         (opts.workspace.hasRepository ? `, a git checkout on your own branch` : "") +
         ".\n- Commit locally with git when a piece of work is done. Never push: use the git_push and create_pull_request tools; the platform pushes after a human approves.\n" +
-        "- Commands that are not provably local and reversible (network access, installs, publishing, writing outside the workspace, git config/hooks) are sent to a human for approval with the exact command. Do not try to work around a pending approval.\n" +
+        "- Commands that are not provably local and reversible (network access, new dependencies, publishing, writing outside the workspace, git config/hooks) need approval: when your division has a lead above you, that lead reviews the exact command first (an AI review), and a human decides what it escalates. Installing exactly what the lockfile pins (pnpm install --frozen-lockfile, npm ci) runs without approval. Do not try to work around a denied or pending command.\n" +
         `- Network: the sandbox has no internet access except through a proxy that allows only: ${opts.workspace.egressDomains.length ? opts.workspace.egressDomains.join(", ") : "(no extra hosts)"}.\n` +
         "- Run the tests before you finish, and end with a summary of what changed, the test result and anything pending." +
         (opts.grantedTools.includes("list_apps") || opts.grantedTools.includes("request_preview") || opts.grantedTools.includes("request_release") ? `\n\n${APP_PREVIEW_RULES}` : "") +

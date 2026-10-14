@@ -1,5 +1,6 @@
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, divisionSubagents, employeeDivision, employees, workspaceDivisions } from "@wfos/db";
+import type { LeadReviewer } from "./workspace/lead-review";
 import { employeeOutputLocale, type Locale } from "@wfos/shared";
 import type { DivisionContext } from "../tools/registry";
 import { languageRule, type DivisionPrompt } from "./prompt";
@@ -36,6 +37,12 @@ export interface RunDivision {
   agents?: Record<string, SubagentDefinition>;
   /** agents key → the employee behind it (attribution of subagent activity) */
   agentEmployees?: Record<string, { id: string; name: string }>;
+  /**
+   * Workspace mode, approval tiers: who reviews a sandbox command before the owner. own: the employee's own commands
+   * (the division head, when the employee is not the head and the head is active); subagents: the subagents'
+   * commands (the code lead itself). null: no AI reviewer (no division, or a head with nobody above).
+   */
+  reviewers?: { own: LeadReviewer | null; subagents: LeadReviewer | null };
 }
 
 /**
@@ -44,7 +51,7 @@ export interface RunDivision {
  * "subagent" (their own persona, instructions, language and model). Nobody else gets subagents.
  */
 export async function runDivision(
-  emp: { id: string; name: string },
+  emp: { id: string; name: string; model: string },
   ws: { id: string; name: string; defaultLocale: Locale | null },
   lang: Locale,
   opts: { workspaceMode: boolean },
@@ -61,6 +68,18 @@ export async function runDivision(
     const headIds = others.map((x) => x.leadId).filter((x): x is string => !!x);
     const heads = headIds.length ? await db.select({ id: employees.id, name: employees.name }).from(employees).where(inArray(employees.id, headIds)) : [];
     prompt.otherDivisions = others.map((x) => ({ key: x.key!, name: x.name, head: heads.find((h) => h.id === x.leadId)?.name ?? null }));
+  }
+
+  if (opts.workspaceMode) {
+    let own: LeadReviewer | null = null;
+    if (role !== "head" && division.leadId && division.leadId !== emp.id) {
+      const [head] = await db
+        .select({ id: employees.id, name: employees.name, model: employees.model })
+        .from(employees)
+        .where(and(eq(employees.id, division.leadId), eq(employees.status, "ACTIVE")));
+      if (head) own = { ...head, as: "head" };
+    }
+    out.reviewers = { own, subagents: role === "code_lead" ? { id: emp.id, name: emp.name, model: emp.model, as: "code_lead" } : null };
   }
 
   if (role === "code_lead" && opts.workspaceMode) {

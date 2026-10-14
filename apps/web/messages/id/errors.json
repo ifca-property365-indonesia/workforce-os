@@ -198,5 +198,6 @@
   "division_key_taken": "Kunci {key} sudah dipakai divisi lain.",
   "project_client_mismatch": "Proyek ini milik klien lain.",
   "invalid_dependency": "Subtugas hanya bisa menunggu subtugas lain dari tugas induk yang sama.",
-  "client_code_taken": "Kode {clientCode} sudah dipakai klien lain."
+  "client_code_taken": "Kode {clientCode} sudah dipakai klien lain.",
+  "approval_task_running": "Karyawan masih mengerjakan tugas ini. Putuskan setelah run-nya selesai: tugas lalu menunggu persetujuan Anda."
 }

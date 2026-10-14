@@ -164,6 +164,9 @@ async function main(): Promise<void> {
     DISABLE_TELEMETRY: "1",
     DISABLE_ERROR_REPORTING: "1",
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+    // subagents and shell commands run in the foreground: the run ends only after every subagent reported back. In the
+    // background (the CLI's default) the code lead's turn ended at once and the sandbox stopped under its subagents.
+    CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1",
     CLAUDE_AGENT_SDK_CLIENT_APP: "workforce-os-runner/0.1.0",
     GIT_AUTHOR_NAME: s.gitIdentity.name,
     GIT_AUTHOR_EMAIL: s.gitIdentity.email,

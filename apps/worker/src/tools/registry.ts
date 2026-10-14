@@ -1,3 +1,4 @@
+import type { LeadReviewer } from "../runner/workspace/lead-review";
 import { ancestorIds } from "../runner/chat-turns";
 import { randomUUID } from "node:crypto";
 import { createSdkMcpServer, tool, type SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
@@ -73,6 +74,7 @@ import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
 import { recoveryRefusal, type RecoveryRequest } from "../runner/incidents";
 import { PHASE_AFTER } from "../orchestration/phases";
+import { MAX_REVISIONS_PER_SUBTASK, revisionRefusal } from "../orchestration/revisions";
 import { clientRecipientsFor, invoiceNumberRefusal, invoiceRecipients, listInvoices, nextInvoiceNumber, upsertDraftInvoice, workspaceClient } from "../lib/invoices";
 import { formatMoney } from "@wfos/shared/invoice";
 import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadText, SKILL_SLUG_MAX, type AssignedSkill } from "../runner/skills";
@@ -149,6 +151,10 @@ export interface RunContext {
   revisionRequests: { taskId: string; feedback: string }[];
   /** team lead in review: retry_subtask / reassign_subtask requests, applied after the run (applyRecoveries) */
   recoveryRequests?: RecoveryRequest[];
+  /** team lead in review: request_revision calls refused in this run (no revision left, not DONE, …) */
+  refusedRevisions?: number;
+  /** team lead in review: the verdict given with finish_review (applied after the run) */
+  reviewVerdict?: { outcome: "accept" | "fail"; notes: string };
   team?: TeamContext;
   /** the employee's division and role in it (null/absent: in none) */
   division?: DivisionContext | null;
@@ -170,6 +176,11 @@ export interface RunContext {
     onSession?: (sessionId: string) => Promise<void> | void;
     /** repository checked out in the workspace (git_push / create_pull_request) */
     repository?: RepoRef & { name: string };
+    /**
+     * Approval tiers: who reviews a sandbox command before the owner (lead-review.ts). own: the run's employee's own
+     * commands (the division head); subagents: its subagents' commands (the code lead itself). null: the owner decides.
+     */
+    review?: { own: LeadReviewer | null; subagents: LeadReviewer | null; task: { title: string; brief: string } };
   };
   /**
    * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the
@@ -198,7 +209,7 @@ function toolCredits(name: string): number {
 function effectivePermissions(ctx: RunContext): ToolPermission[] {
   const perms = [...ctx.employee.toolPermissions];
   if (ctx.team?.role === "lead") {
-    for (const t of ["delegate_subtask", "request_revision", "retry_subtask", "reassign_subtask", "message_teammate", "list_tasks"]) {
+    for (const t of ["delegate_subtask", "request_revision", "retry_subtask", "reassign_subtask", "finish_review", "message_teammate", "list_tasks"]) {
       if (!perms.some((p) => p.tool === t)) perms.push({ tool: t, enabled: true });
     }
   }
@@ -1279,12 +1290,35 @@ export function buildTools(ctx: RunContext) {
     "request_revision",
     tool(
       "request_revision",
-      "Team lead only, during review: send a subtask back to its assignee with specific feedback (max once per subtask).",
+      `Team lead only, during review: send a DONE subtask back to its assignee with specific feedback (at most ${MAX_REVISIONS_PER_SUBTASK} revisions per subtask; refused when none is left).`,
       { subtaskId: z.string().uuid(), feedback: z.string().min(5) },
       wrap(ctx, "request_revision", async (a: { subtaskId: string; feedback: string }) => {
-        if (!ctx.team || ctx.team.role !== "lead" || ctx.team.phase !== "review") return err("request_revision is only available to a team lead during review.");
+        if (!ctx.team || ctx.team.role !== "lead" || ctx.team.phase !== "review" || !ctx.taskId) return err("request_revision is only available to a team lead during review.");
+        if (ctx.reviewVerdict) return err("You already finished this review with finish_review; a revision can no longer be requested in this run.");
+        const refusal = await revisionRefusal({ parentTaskId: ctx.taskId, subtaskId: a.subtaskId, pending: ctx.revisionRequests });
+        if (refusal) {
+          ctx.refusedRevisions = (ctx.refusedRevisions ?? 0) + 1;
+          return err(refusal);
+        }
         ctx.revisionRequests.push({ taskId: a.subtaskId, feedback: a.feedback });
         return ok("Revision requested. The parent task will wait for the revised deliverable, then you review again.");
+      }),
+    ),
+  );
+
+  add(
+    "finish_review",
+    tool(
+      "finish_review",
+      "Division head only, during review: end the review with a verdict. accept: the work is done (notes: what was checked, anything missing or to follow up). fail: the work does not meet the acceptance criteria and cannot be revised further (notes: exactly what is missing). Call it last.",
+      { outcome: z.enum(["accept", "fail"]), notes: z.string().min(5).max(4000) },
+      wrap(ctx, "finish_review", async (a: { outcome: "accept" | "fail"; notes: string }) => {
+        if (!ctx.team || ctx.team.role !== "lead" || ctx.team.phase !== "review") return err("finish_review is only available to a division head during review.");
+        if (ctx.revisionRequests.length || ctx.recoveryRequests?.length) {
+          return err("You already sent work back in this review (request_revision / retry_subtask / reassign_subtask): end your run now; you review again once that work is done.");
+        }
+        ctx.reviewVerdict = { outcome: a.outcome, notes: a.notes };
+        return ok(a.outcome === "accept" ? "Review accepted. Finish with your summary for the human." : "Review failed: the task will end as FAILED with your notes, and a person is told. End your run now.");
       }),
     ),
   );

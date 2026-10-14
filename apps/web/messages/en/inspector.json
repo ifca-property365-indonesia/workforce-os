@@ -167,7 +167,15 @@
       "waiting_for_preview": "Waiting for the preview deploy",
       "preview_deployed": "Preview deployed",
       "waiting_for_live": "Waiting for the LIVE release",
-      "live_deployed": "Released to LIVE"
+      "live_deployed": "Released to LIVE",
+      "team_review_accepted": "Review accepted",
+      "team_review_failed": "Review: work not accepted",
+      "team_review_no_verdict": "Review ended without a verdict"
+    },
+    "leadReview": {
+      "allow": "Approved by {reviewer} (AI)",
+      "deny": "Denied by {reviewer} (AI)",
+      "escalate": "Passed to the owner by {reviewer} (AI)"
     }
   },
   "incidentKind": {

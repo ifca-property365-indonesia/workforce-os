@@ -150,7 +150,7 @@ function Json({ value }: { value: unknown }) {
 }
 
 /** A step's name, translated where the worker records a known shape (gate decisions, incidents, guards). */
-function StepName({ step }: { step: Step }) {
+function StepName({ step, employees }: { step: Step; employees?: Map<string, { name: string; avatar: string }> }) {
   const t = useTranslations("inspector");
   const info = describeStep(step);
   if (info.type === "gate") return <span className="font-medium">{t("stepName.gate", { target: info.target })}</span>;
@@ -161,6 +161,10 @@ function StepName({ step }: { step: Step }) {
     return <span className="font-medium">{known ? t(`stepName.incident.${info.action}`, { kind }) : step.name}</span>;
   }
   if (info.type === "stopped") return <span className="font-medium">{t(`stoppedTitle.${info.reason}`)}</span>;
+  if (info.type === "lead_review") {
+    const reviewer = info.reviewer ?? (step.actorEmployeeId ? employees?.get(step.actorEmployeeId)?.name : undefined) ?? "—";
+    return <span className="font-medium">{t(`stepName.leadReview.${info.decision}`, { reviewer })}</span>;
+  }
   if (NAMED_STEPS.has(step.name) && t.has(`stepName.named.${step.name}`)) return <span className="font-medium">{t(`stepName.named.${step.name}`)}</span>;
   return <span className="font-medium">{step.name}</span>;
 }
@@ -216,8 +220,8 @@ export function StepTimeline({ steps, employees }: { steps: Step[]; employees: M
               >
                 <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} />
                 {emp && <span title={emp.name}>{emp.avatar}</span>}
-                <StepName step={s} />
-                {s.actorEmployeeId && s.actorEmployeeId !== s.employeeId && (
+                <StepName step={s} employees={employees} />
+                {s.actorEmployeeId && s.actorEmployeeId !== s.employeeId && info.type !== "lead_review" && (
                   <span className="rounded bg-secondary px-1.5 text-[11px] font-medium">{t("stepActor", { name: employees.get(s.actorEmployeeId)?.name ?? "—" })}</span>
                 )}
                 <span className="rounded bg-muted px-1.5 text-[11px] uppercase text-muted-foreground">{t.has(`stepKind.${s.kind}`) ? t(`stepKind.${s.kind}`) : s.kind}</span>

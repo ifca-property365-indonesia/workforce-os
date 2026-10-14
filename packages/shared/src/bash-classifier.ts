@@ -50,6 +50,28 @@ export interface BashClassification {
 export interface BashContext {
   /** the run has read untrusted content: only read-only commands may run without approval */
   tainted?: boolean;
+  /**
+   * The run's workspace as the sandbox sees it (e.g. /var/lib/wfos/ws/<ws>/<task>/repo; the DynamicUser form
+   * /var/lib/private/wfos/ws/… is the same directory): absolute paths inside it are local like relative ones.
+   */
+  workspaceDir?: string;
+  /**
+   * The command runs in an egress-restricted sandbox (only the employee's allow-listed registries are reachable):
+   * installing the dependencies a lockfile pins (pnpm install --frozen-lockfile, npm ci, …) is local work there.
+   */
+  egressRestricted?: boolean;
+}
+
+/**
+ * Both spellings of a sandbox state directory: systemd's DynamicUser keeps StateDirectory= under <base>/private, so
+ * /var/lib/wfos/ws/… and /var/lib/private/wfos/ws/… name the same workspace. Used for Bash paths and file writes.
+ */
+export function workspaceRootVariants(dir: string): string[] {
+  const n = path.posix.normalize(dir).replace(/\/+$/, "");
+  if (!path.posix.isAbsolute(n) || n === "/") return [];
+  const priv = n.replace(/^(\/[^/]+\/[^/]+)\/(?!private\/)/, "$1/private/");
+  const pub = n.replace(/^(\/[^/]+\/[^/]+)\/private\//, "$1/");
+  return [...new Set([n, priv, pub])];
 }
 
 const SEVERITY: Record<BashCategory, number> = {
@@ -136,14 +158,14 @@ function hasGlob(w: Node): boolean {
 
 const WS = "/__workspace__";
 
-/** Inside the workspace (or the run's private /tmp) after normalising `..`. */
-function insideWorkspace(p: string): boolean {
+/** Inside the workspace (or the run's private /tmp) after normalising `..`; absolute paths may name the workspace too. */
+function insideWorkspace(ctx: Pick<Ctx, "roots">, p: string): boolean {
   if (p === DYN) return false;
   if (p === "/dev/null" || p === "/dev/stdout" || p === "/dev/stderr") return true;
   if (p.startsWith("~")) return false;
   const abs = path.posix.isAbsolute(p) ? path.posix.normalize(p) : path.posix.normalize(path.posix.join(WS, p));
   if (abs === "/tmp" || abs.startsWith("/tmp/")) return true; // private per run (PrivateTmp)
-  return abs === WS || abs.startsWith(`${WS}/`);
+  return [WS, ...ctx.roots].some((r) => abs === r || abs.startsWith(`${r}/`));
 }
 
 function protectedRepoPath(p: string): boolean {
@@ -191,6 +213,9 @@ const PROCESS = new Set([
 const SHELLS = new Set(["bash", "sh", "dash", "zsh", "ksh", "fish", "busybox"]);
 const INTERPRETERS = new Set(["python", "python3", "python2", "node", "nodejs", "perl", "ruby", "php", "lua", "Rscript", "osascript", "pwsh", "powershell", "tclsh", "groovy", "julia"]);
 
+/** `python3 --version`, `node -v`: prints the version, runs nothing. */
+const VERSION_FLAGS = new Set(["--version", "-v", "-V", "--help", "-h"]);
+
 /** Commands that run another command: classify what they run. */
 const WRAPPERS = new Set(["env", "nice", "time", "timeout", "stdbuf", "ionice", "command", "builtin", "exec", "xvfb-run", "unbuffer"]);
 
@@ -221,6 +246,9 @@ const PKG_LOCAL = new Set(["test", "t", "run", "run-script", "lint", "build", "t
 
 interface Ctx {
   tainted: boolean;
+  /** absolute spellings of the workspace (BashContext.workspaceDir) */
+  roots: string[];
+  egressRestricted: boolean;
   out: BashCommandInfo[];
   depth: number;
 }
@@ -267,7 +295,7 @@ function checkWritePaths(ctx: Ctx, name: string, args: string[], words: Node[], 
       add(ctx, name, args, "config", `${name} touches git hooks or config (${v})`);
       return false;
     }
-    if (!insideWorkspace(v)) {
+    if (!insideWorkspace(ctx, v)) {
       add(ctx, name, args, "escape", `${name} writes outside the workspace (${v})`);
       return false;
     }
@@ -284,13 +312,13 @@ function classifyGit(ctx: Ctx, args: string[]): void {
     }
     if (a === "-C" || a === "--git-dir" || a === "--work-tree") {
       const target = args[i + 1] ?? "";
-      if (!insideWorkspace(target)) return add(ctx, "git", args, "escape", `git operates on a repository outside the workspace (${target === DYN ? "computed" : target})`);
+      if (!insideWorkspace(ctx, target)) return add(ctx, "git", args, "escape", `git operates on a repository outside the workspace (${target === DYN ? "computed" : target})`);
       i += 2;
       continue;
     }
     if (a.startsWith("--git-dir=") || a.startsWith("--work-tree=")) {
       const target = a.split("=")[1] ?? "";
-      if (!insideWorkspace(target)) return add(ctx, "git", args, "escape", `git operates on a repository outside the workspace (${target})`);
+      if (!insideWorkspace(ctx, target)) return add(ctx, "git", args, "escape", `git operates on a repository outside the workspace (${target})`);
     }
     i++;
   }
@@ -318,19 +346,37 @@ function classifyGit(ctx: Ctx, args: string[]): void {
   add(ctx, "git", args, "unknown", `unknown git subcommand ${sub || "(none)"}`);
 }
 
+/** Options that change where packages come from or that the lockfile may be rewritten: never a locked install. */
+const UNLOCKING_OPTS = /^(--registry|--config|-c|--userconfig|--globalconfig|--global|-g|--location|--no-frozen-lockfile|--fix-lockfile|--lockfile-only|--force|-f|--no-lockfile|--update-checksums|--mode|--refresh-lockfile|--package-lock-only|--no-package-lock|--save|-S|--save-dev|-D|--save-exact|-E)(=|$)/;
+
+/**
+ * Installing exactly the dependency versions the lockfile pins: `pnpm install|i --frozen-lockfile`, `npm ci`,
+ * `yarn install --frozen-lockfile|--immutable`. No package names (new dependencies are not locked) and no option
+ * that changes the registry or lets the lockfile change. Directory options were checked by classifyPkg already.
+ */
+function lockedInstall(name: string, ops: string[], args: string[]): boolean {
+  if (args.some((a) => a === DYN || UNLOCKING_OPTS.test(a))) return false;
+  if (ops.length !== 1) return false; // the subcommand only: `pnpm add x`, `npm ci x` are not locked installs
+  const sub = ops[0];
+  if (name === "npm") return sub === "ci" || sub === "clean-install";
+  if (name === "pnpm") return (sub === "install" || sub === "i") && args.includes("--frozen-lockfile");
+  if (name === "yarn") return sub === "install" && (args.includes("--frozen-lockfile") || args.includes("--immutable"));
+  return false;
+}
+
 function classifyPkg(ctx: Ctx, name: string, args: string[]): void {
   if (["npx", "pnpx", "bunx"].includes(name)) return add(ctx, name, args, "network", `${name} may download and run a package`);
   const ops: string[] = [];
   for (let i = 1; i < args.length; i++) {
     const a = args[i]!;
     if (PKG_VALUE_OPTS.has(a)) {
-      if (["-C", "--dir", "--cwd", "--prefix"].includes(a) && !insideWorkspace(args[i + 1] ?? "")) {
+      if (["-C", "--dir", "--cwd", "--prefix"].includes(a) && !insideWorkspace(ctx, args[i + 1] ?? "")) {
         return add(ctx, name, args, "escape", `${name} ${a} points outside the workspace`);
       }
       i++;
       continue;
     }
-    if (/^--(dir|cwd|prefix)=/.test(a) && !insideWorkspace(a.split("=")[1] ?? "")) return add(ctx, name, args, "escape", `${name} ${a} points outside the workspace`);
+    if (/^--(dir|cwd|prefix)=/.test(a) && !insideWorkspace(ctx, a.split("=")[1] ?? "")) return add(ctx, name, args, "escape", `${name} ${a} points outside the workspace`);
     if (!a.startsWith("-")) ops.push(a);
   }
   const sub = ops[0] ?? "";
@@ -341,6 +387,8 @@ function classifyPkg(ctx: Ctx, name: string, args: string[]): void {
   }
   if (PKG_PUBLISH.has(sub) || (name === "cargo" && sub === "publish")) return add(ctx, name, args, "publish", `${name} ${sub} publishes or changes registry state`);
   if (name === "go" && (sub === "get" || sub === "install")) return add(ctx, name, args, "network", `go ${sub} downloads modules`);
+  // egress-restricted sandbox: installing exactly what the lockfile pins (from the allow-listed registries only) is local
+  if (ctx.egressRestricted && lockedInstall(name, ops, args)) return runsCode(ctx, name, args, `${name} ${sub} installs the locked dependencies`);
   if (PKG_INSTALL.has(sub)) return add(ctx, name, args, "network", `${name} ${sub} downloads or changes dependencies`);
   if (name === "yarn" && ops.length === 0) return add(ctx, name, args, "network", "yarn without arguments installs dependencies");
   if (sub === "config") {
@@ -379,7 +427,7 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
     if (WRITE_REDIRS.has(r.Op)) {
       if (target === null) add(ctx, ">", ["$(…)"], "unknown", "redirects output to a path computed at run time");
       else if (protectedRepoPath(target)) add(ctx, ">", [target], "config", `writes git hooks or config (${target})`);
-      else if (!insideWorkspace(target)) add(ctx, ">", [target], "escape", `writes outside the workspace (${target})`);
+      else if (!insideWorkspace(ctx, target)) add(ctx, ">", [target], "escape", `writes outside the workspace (${target})`);
     } else if (target && sensitive(target)) {
       add(ctx, "<", [target], "sensitive", `reads ${target}`);
     }
@@ -395,9 +443,11 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
     if (a !== DYN && sensitive(a.replace(/^[^=/]+=/, ""))) return add(ctx, name, args, "sensitive", `reads ${a}`);
   }
 
-  // workspace scripts (`./build.sh`, `scripts/x`, `node_modules/.bin/vitest`): write-then-run, contained by the sandbox
-  if (first.includes("/") && !path.posix.isAbsolute(first)) {
-    if (!insideWorkspace(first)) return add(ctx, name, args, "escape", `runs ${first} outside the workspace`);
+  // workspace scripts (`./build.sh`, `scripts/x`, `node_modules/.bin/vitest`, or by their absolute workspace path):
+  // write-then-run, contained by the sandbox
+  const inRoot = path.posix.isAbsolute(first) && ctx.roots.some((r) => path.posix.normalize(first).startsWith(`${r}/`));
+  if (first.includes("/") && (!path.posix.isAbsolute(first) || inRoot)) {
+    if (!insideWorkspace(ctx, first)) return add(ctx, name, args, "escape", `runs ${first} outside the workspace`);
     return runsCode(ctx, name, args, "runs a workspace script");
   }
 
@@ -418,7 +468,7 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
         i += ["-u", "-C", "-S", "-n", "-k", "-s", "--signal", "--kill-after", "--chdir"].includes(a) ? 2 : 1;
         if (a === "-C" || a === "--chdir") {
           const d = args[i - 1] ?? "";
-          if (!insideWorkspace(d)) return add(ctx, name, args, "escape", `changes directory outside the workspace (${d})`);
+          if (!insideWorkspace(ctx, d)) return add(ctx, name, args, "escape", `changes directory outside the workspace (${d})`);
         }
       } else if ((name === "timeout" || name === "nice") && /^[+-]?\d+(\.\d+)?[smhd]?$/.test(a)) {
         i++;
@@ -435,7 +485,7 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
   }
   if (name === "source" || name === ".") {
     const f = args[1] ?? "";
-    if (!insideWorkspace(f)) return add(ctx, name, args, "escape", `sources ${f === DYN ? "a computed path" : f || "a file"} outside the workspace`);
+    if (!insideWorkspace(ctx, f)) return add(ctx, name, args, "escape", `sources ${f === DYN ? "a computed path" : f || "a file"} outside the workspace`);
     return runsCode(ctx, name, args, "sources a workspace script");
   }
   if (name === "xargs") {
@@ -454,7 +504,7 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
   if (name === "cd" || name === "pushd") {
     const t = args[1];
     if (t === undefined) return add(ctx, name, args, "escape", "cd to the home directory");
-    if (!insideWorkspace(t)) return add(ctx, name, args, "escape", `changes directory outside the workspace (${t === DYN ? "computed" : t})`);
+    if (!insideWorkspace(ctx, t)) return add(ctx, name, args, "escape", `changes directory outside the workspace (${t === DYN ? "computed" : t})`);
     return add(ctx, name, args, "read");
   }
   if (["export", "declare", "local", "readonly", "typeset"].includes(name)) {
@@ -475,7 +525,7 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
     if (inline !== null) return classifyScript(ctx, inline, name);
     const file = args.slice(1).find((a) => !a.startsWith("-"));
     if (!file) return add(ctx, name, args, "interpreter", `${name} reads its script from standard input (pipe or heredoc)`);
-    if (!insideWorkspace(file)) return add(ctx, name, args, "escape", `${name} runs ${file === DYN ? "a computed path" : file} outside the workspace`);
+    if (!insideWorkspace(ctx, file)) return add(ctx, name, args, "escape", `${name} runs ${file === DYN ? "a computed path" : file} outside the workspace`);
     return runsCode(ctx, name, args, "runs a workspace script");
   }
 
@@ -489,10 +539,17 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
       return add(ctx, name, args, "unknown", `python -m ${mod}`);
     }
     if (interpreterInline(args) !== null) return add(ctx, name, args, "interpreter", `${name} runs inline code that cannot be inspected`);
+    if (args.length > 1 && args.slice(1).every((a) => VERSION_FLAGS.has(a))) return add(ctx, name, args, "read");
+    // node's built-in test runner runs the workspace's test files (`node --test`, `node --test test/a.test.mjs`)
+    if ((name === "node" || name === "nodejs") && args.slice(1).some((a) => a === "--test" || a.startsWith("--test-"))) {
+      const outside = args.slice(1).filter((a) => !a.startsWith("-")).find((a) => !insideWorkspace(ctx, a));
+      if (outside !== undefined) return add(ctx, name, args, "escape", `${name} runs ${outside === DYN ? "a computed path" : outside} outside the workspace`);
+      return runsCode(ctx, name, args, "runs the workspace's tests");
+    }
     const file = args.slice(1).find((a) => !a.startsWith("-"));
     if (!file) return add(ctx, name, args, "interpreter", `${name} reads code from standard input`);
     if (/^https?:/.test(file)) return add(ctx, name, args, "network", `${name} runs a remote script`);
-    if (!insideWorkspace(file)) return add(ctx, name, args, "escape", `${name} runs ${file === DYN ? "a computed path" : file} outside the workspace`);
+    if (!insideWorkspace(ctx, file)) return add(ctx, name, args, "escape", `${name} runs ${file === DYN ? "a computed path" : file} outside the workspace`);
     return runsCode(ctx, name, args, "runs a workspace script");
   }
 
@@ -535,7 +592,7 @@ function classifySimple(ctx: Ctx, words: Node[], assigns: Node[], redirs: Node[]
   if (name === "ln") {
     for (const i of operands(args)) {
       const v = args[i]!;
-      if (!insideWorkspace(v) || protectedRepoPath(v)) {
+      if (!insideWorkspace(ctx, v) || protectedRepoPath(v)) {
         return add(ctx, name, args, "escape", `link points to or is created outside the workspace (${v === DYN ? "computed" : v})`);
       }
     }
@@ -598,11 +655,33 @@ function walkWord(ctx: Ctx, w: Node): void {
   }
 }
 
+/** `<<'EOF'`, `<<"EOF"`, `<<\EOF`: a quoted delimiter makes the body plain text (no expansion at all). */
+function heredocQuoted(delimiter: Node): boolean {
+  return (delimiter?.Parts ?? []).some((p: Node) => {
+    const t = nodeType(p);
+    return t === "SglQuoted" || t === "DblQuoted" || (t === "Lit" && String(p.Value).includes("\\"));
+  });
+}
+
+/**
+ * A heredoc body is data: the text a command reads on stdin (`cat > file <<'EOF'` writes it, `python3 - <<'EOF'` runs
+ * it, and THAT command decides the category). Only an UNQUOTED delimiter lets the shell expand `$(…)` and backticks in
+ * the body, which do run: those are classified like any command, with a hint to quote the delimiter.
+ */
+function walkHeredoc(ctx: Ctx, r: Node): void {
+  if (heredocQuoted(r.Word)) return;
+  const from = ctx.out.length;
+  walkWord(ctx, r.Hdoc);
+  for (const c of ctx.out.slice(from)) {
+    c.reason = `${c.reason ?? `${c.name} runs`} (inside an unquoted heredoc, where $(…) and backticks run; quote the delimiter, <<'EOF', to write the text as is)`;
+  }
+}
+
 function walkStmt(ctx: Ctx, s: Node): void {
   if (!s) return;
   for (const r of s.Redirs ?? []) {
     walkWord(ctx, r.Word);
-    if (r.Hdoc) walkWord(ctx, r.Hdoc);
+    if (r.Hdoc) walkHeredoc(ctx, r);
   }
   if (s.Coprocess) add(ctx, "coproc", [], "process", "starts a coprocess");
   if (s.Background) add(ctx, "&", [], "unknown", "runs a command in the background (it would outlive the review)");
@@ -673,13 +752,22 @@ function walkStmt(ctx: Ctx, s: Node): void {
   }
 }
 
+/** mvdan-sh throws plain objects (Go errors); String() of those is "[object Object]". */
+function parseErrorText(e: unknown): string {
+  const x = e as { message?: unknown; Error?: () => string; Text?: unknown } | null;
+  if (x && typeof x.Error === "function") return String(x.Error());
+  if (x && typeof x.Text === "string") return x.Text;
+  if (x && typeof x.message === "string") return x.message;
+  return typeof e === "string" ? e : "syntax error";
+}
+
 function classifyScript(ctx: Ctx, src: string, origin: string): void {
   if (ctx.depth > 4) return add(ctx, origin, [], "unknown", "nested too deeply");
   let file: Node;
   try {
     file = syntax.NewParser().Parse(src, "cmd");
   } catch (e) {
-    return add(ctx, origin, [], "unknown", `could not parse the command: ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+    return add(ctx, origin, [], "unknown", `could not parse the command: ${parseErrorText(e).slice(0, 120)}`);
   }
   ctx.depth++;
   try {
@@ -703,7 +791,13 @@ export function classifyBash(command: string, context: BashContext = {}): BashCl
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f‪-‮⁦-⁩]/.test(command)) {
     return result("approval", "unknown", ["contains control or bidirectional-override characters"]);
   }
-  const ctx: Ctx = { tainted: !!context.tainted, out: [], depth: 0 };
+  const ctx: Ctx = {
+    tainted: !!context.tainted,
+    roots: context.workspaceDir ? workspaceRootVariants(context.workspaceDir) : [],
+    egressRestricted: !!context.egressRestricted,
+    out: [],
+    depth: 0,
+  };
   try {
     classifyScript(ctx, command, "bash");
   } catch (e) {
