@@ -2,16 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { appEnvironments, appReleases, auditLog, db, servers, workspaces } from "@wfos/db";
-import type { NotifyJob, RealtimeEvent } from "@wfos/shared";
+import { WFOS_HELPER_VERSION, type NotifyJob, type RealtimeEvent } from "@wfos/shared";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
+import * as ssh from "@wfos/shared/ssh";
 import { deployControl, runRelease } from "../src/deploy/pipeline";
-import { makeApp, makeOtherEnv, makeRemote, FakeServer, fastDeploys, queueRelease, SECRET_ENV, tarNames, MANIFEST } from "./deploy-fixtures";
+import { makeApp, makeOtherEnv, makeRemote, FakeServer, fastDeploys, queueRelease, SECRET_ENV, serverInfo, tarNames, MANIFEST } from "./deploy-fixtures";
 import { resetTransport, transport } from "./transport";
 
 // SSH is never real: sshExec / sftpPut answer like helper v2 (FakeServer); the repository is a real local git repo.
 vi.mock("@wfos/shared/ssh", async (importOriginal) => {
   const real = await importOriginal<typeof import("@wfos/shared/ssh")>();
-  return { ...real, sshExec: vi.fn(), sftpPut: vi.fn() };
+  return { ...real, sshExec: vi.fn(), sftpPut: vi.fn(), probeServer: vi.fn() };
 });
 
 let srv: FakeServer;
@@ -239,13 +240,28 @@ describe("release pipeline", () => {
     expect(events(ws.id)).not.toContainEqual(expect.objectContaining({ type: "app.updated", status: "deploying" }));
   });
 
-  it("refused when the server's helper is older than WFOS_HELPER_VERSION", async () => {
+  it("refused when the server's helper is older than WFOS_HELPER_VERSION (asked again first)", async () => {
     const repo = makeRemote();
     const { ws, app, server } = await makeApp({ remote: repo.remote });
     await db.update(servers).set({ info: { ...server.info!, helperVersion: 1 } }).where(eq(servers.id, server.id));
+    vi.mocked(ssh.probeServer).mockRejectedValueOnce(new ssh.HelperOutdatedError(serverInfo({ helperVersion: 1, baseDomain: server.baseDomain })));
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     expect((await releaseRow(rel.id)).error).toMatch(/version 1, version 3 is needed: run the new prepare\.sh/);
+    expect(vi.mocked(ssh.probeServer)).toHaveBeenCalledTimes(1);
+    expect(srv.calls).toEqual([]);
+  });
+
+  it("a stored check older than a prepare.sh re-run does not block: the server is asked again and the deploy goes on", async () => {
+    const repo = makeRemote();
+    const { ws, app, server } = await makeApp({ remote: repo.remote });
+    await db.update(servers).set({ info: { ...server.info!, helperVersion: 2 } }).where(eq(servers.id, server.id));
+    vi.mocked(ssh.probeServer).mockResolvedValueOnce(serverInfo({ baseDomain: server.baseDomain }));
+    const rel = await queueRelease(app);
+    expect(await runRelease(rel.id, ws.id)).toBe("deployed");
+    expect(vi.mocked(ssh.probeServer)).toHaveBeenCalledTimes(1);
+    const [row] = await db.select().from(servers).where(eq(servers.id, server.id));
+    expect(row!.info!.helperVersion).toBe(WFOS_HELPER_VERSION);
   });
 
   it("refused when the server already runs maxRunningApps other apps; an app that already runs may still deploy", async () => {

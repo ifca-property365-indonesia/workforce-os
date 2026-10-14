@@ -8,6 +8,7 @@ import { errorMessage } from "../lib/errors";
 import { log } from "../lib/logger";
 import { publish } from "../lib/redis";
 import { mirrorPath, rootGitSpawn, SAFE_REF, syncMirror, type RepoRef } from "../runner/workspace/git";
+import { recheckServer } from "../scheduler/servers";
 import {
   appEnvFile,
   appUrl,
@@ -223,6 +224,14 @@ async function prepare(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): 
     if (refusal) throw new Refusal(refusal);
   }
   if (server.status !== "ready") throw new Refusal(`Server ${server.name} is not ready (${server.status}); check it in Settings → Servers`);
+  if ((server.info?.helperVersion ?? 0) < WFOS_HELPER_VERSION) {
+    // the stored check may predate a prepare.sh re-run: ask the server itself before refusing
+    await recheckServer(server).catch((e: unknown) => log.warn({ err: e, serverId: server.id }, "server re-check before a deploy failed"));
+    const [fresh] = await db.select().from(servers).where(eq(servers.id, server.id));
+    if (fresh) Object.assign(server, fresh);
+    // an outdated helper is reported below with its version; anything else that failed the check is "not ready"
+    if (server.status !== "ready" && server.statusMessage !== "helper_outdated") throw new Refusal(`Server ${server.name} is not ready (${server.status}); check it in Settings → Servers`);
+  }
   const hv = server.info?.helperVersion ?? 0;
   if (hv < WFOS_HELPER_VERSION) throw new Refusal(`wfos-app-helper on ${server.name} is version ${hv}, version ${WFOS_HELPER_VERSION} is needed: run the new prepare.sh on the server`);
   // live environments are never held back by previews filling the server's slots
