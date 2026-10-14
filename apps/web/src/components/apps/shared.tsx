@@ -4,7 +4,7 @@ import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { APP_IDLE_STOP_DAYS, hasRole, type AppDTO, type AppEnvironmentDTO, type AppEnvironmentKind, type AppStatus, type ReleaseDTO, type ReleaseStatus } from "@wfos/shared";
 import { api } from "@/lib/api";
-import type { ReleaseOrigin } from "@/lib/app-previews";
+import type { ReleaseDbPlan, ReleaseOrigin } from "@/lib/app-previews";
 import { useMe } from "@/lib/hooks";
 import { signColors, signVars, type SignColor, type SignState } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
@@ -22,6 +22,8 @@ export interface AppDetail {
   origins: Record<string, ReleaseOrigin>;
   /** live env names changed since the release live now (names only) */
   liveEnvChanged: string[];
+  /** with a live environment: what each preview release's manifest says about its database (Release to LIVE) */
+  dbPlans: Record<string, ReleaseDbPlan>;
 }
 
 export const ACTIVE_RELEASE: readonly ReleaseStatus[] = ["queued", "deploying"];
@@ -33,10 +35,11 @@ export function useApp(id: string) {
   return useQuery({
     queryKey: appQueryKey(id),
     queryFn: () => api.get<AppDetail>(`/api/apps/${id}`),
-    // the live stream refreshes it; while a release runs, also poll (a dropped stream must not freeze the page)
+    // the live stream refreshes it; while a release or a restore runs, also poll (a dropped stream must not freeze the page)
     refetchInterval: (q) => {
       const d = q.state.data;
-      return d?.releases.some(isActiveRelease) || d?.app.preview.status === "deploying" || d?.app.live?.status === "deploying" ? 5000 : false;
+      const busy = d?.releases.some(isActiveRelease) || d?.app.preview.status === "deploying" || d?.app.live?.status === "deploying";
+      return busy || d?.app.live?.maintenance || d?.app.preview.maintenance ? 5000 : false;
     },
   });
 }

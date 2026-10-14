@@ -14,7 +14,8 @@ import { deployDeps, deployTiming } from "../src/deploy/common";
 import { makeWorkspace } from "./fixtures";
 
 // The test files vi.mock("@wfos/shared/ssh") with sshExec / sftpPut as vi.fn(); FakeServer answers them like the
-// helper v3 of contract B1 would, and records every call (command, arguments, stdin).
+// helper v4 of contract B2 would (v3 of B1 for the calls without --slot), and records every call (command, arguments,
+// stdin).
 
 export const HOST_KEY = Buffer.concat([Buffer.from([0, 0, 0, 11]), Buffer.from("ssh-ed25519"), Buffer.from([0, 0, 0, 32]), Buffer.alloc(32, 7)]).toString("base64");
 
@@ -40,6 +41,20 @@ export class FakeServer {
   env = "";
   /** sha → answers health 2xx */
   healthy: (sha: string | null) => boolean = () => true;
+  // ---- helper v4: live blue-green slots (calls with --slot), the maintenance page, backups ----
+  /** `<instance>:<slot>` → the sha its current-<slot> link points at */
+  slotLinks = new Map<string, string>();
+  /** `<instance>:<slot>` → the slot's unit: state, port (unit-install), the sha it runs (set when it starts) */
+  slotUnits = new Map<string, { state: "active" | "inactive" | "failed"; port: number | null; sha: string | null }>();
+  /** the single unit's port per instance (unit-install without --slot) and its state (`unit` = the last one touched) */
+  singlePort = new Map<string, number>();
+  singleState = new Map<string, "active" | "inactive" | "failed">();
+  /** instance → what nginx serves: a port or the maintenance page */
+  site = new Map<string, { port: number; maintenance: boolean }>();
+  /** a db-restore ran while a unit of that instance was running (must never happen) */
+  restoredUnderRunningApp: string[] = [];
+  /** backup name → size (db-dump prints it) */
+  backupBytes = 4321;
   /** override a reply: key "cmd" or "build-run:<step>" */
   replies: Record<string, Reply | ((c: HelperCall) => Reply | undefined)> = {};
   /** printed by build-run (to check the log redaction) */
@@ -64,13 +79,113 @@ export class FakeServer {
     });
   }
 
+  /** the --slot of a call (null: none) */
+  static slotOf(c: HelperCall): string | null {
+    const i = c.args.indexOf("--slot");
+    return i >= 0 ? (c.args[i + 1] ?? null) : null;
+  }
+
+  /** a sha one of the instance's slots (or its single `current`) points at */
+  private activeAnywhere(inst: string, sha: string): boolean {
+    if (this.currentOf.get(inst) === sha) return true;
+    for (const [k, v] of this.slotLinks) if (k.startsWith(`${inst}:`) && v === sha) return true;
+    return false;
+  }
+
+  /** whether any unit of the instance runs (the single one, or a slot) */
+  anyRunning(inst: string): boolean {
+    if (this.singleOf(inst) === "active" && this.singlePort.has(inst)) return true;
+    for (const [k, u] of this.slotUnits) if (k.startsWith(`${inst}:`) && u.state === "active") return true;
+    return false;
+  }
+
+  /** the single unit's state: per instance for a live one (previews keep the one shared `unit` of the A2 tests) */
+  singleOf(inst: string): "active" | "inactive" | "failed" {
+    return inst.endsWith("-live") ? (this.singleState.get(inst) ?? this.unit) : this.unit;
+  }
+
+  slotUnit(inst: string, slot: string) {
+    return this.slotUnits.get(`${inst}:${slot}`);
+  }
+
+  private slotReply(c: HelperCall, slot: string): Reply | null {
+    const inst = c.args[0]!;
+    const key = `${inst}:${slot}`;
+    const unit = () => this.slotUnits.get(key) ?? this.slotUnits.set(key, { state: "inactive", port: null, sha: null }).get(key)!;
+    switch (c.cmd) {
+      case "release-activate": {
+        if (!this.releases.has(c.args[1]!)) return { code: 3, stderr: `wfos-app-helper: release_missing: releases/${c.args[1]} is not on this server\n` };
+        if (slot === "blue" && this.singlePort.has(inst)) {
+          // helper v4 retires the v3 single unit (it shares blue's port): refused while it runs
+          if (this.singleOf(inst) === "active") return { code: 3, stderr: `wfos-app-helper: legacy_active: wfos-app-${inst} still runs on the blue slot's port\n` };
+          this.singlePort.delete(inst);
+          this.currentOf.delete(inst);
+        }
+        const prev = this.slotLinks.get(key) ?? "none";
+        this.slotLinks.set(key, c.args[1]!);
+        return { code: 0, stdout: `current-${slot} -> releases/${c.args[1]}\n${prev}\n` };
+      }
+      case "unit-install":
+        unit().port = Number(c.args[1]);
+        return { code: 0, stdout: `unit wfos-app-${inst}-${slot} installed\n` };
+      case "unit-start":
+      case "unit-restart": {
+        const u = unit();
+        u.state = "active";
+        u.sha = this.slotLinks.get(key) ?? null;
+        return { code: 0 };
+      }
+      case "unit-stop":
+        unit().state = "inactive";
+        return { code: 0 };
+      case "unit-status":
+        return { code: 0, stdout: `${this.slotUnits.get(key)?.state ?? "inactive"}\n` };
+      default:
+        return null;
+    }
+  }
+
   private reply(c: HelperCall): Reply {
     const custom = this.replies[c.cmd === "build-run" ? `build-run:${c.args[2]}` : c.cmd] ?? this.replies[c.cmd];
     const r = typeof custom === "function" ? custom(c) : custom;
     if (r) return r;
+    const slot = FakeServer.slotOf(c);
+    if (slot) {
+      const sr = this.slotReply(c, slot);
+      if (sr) return sr;
+    }
     switch (c.cmd) {
+      case "publish": {
+        this.site.set(c.args[0]!, { port: Number(c.args[1]), maintenance: c.args.includes("--maintenance") });
+        return { code: 0, stdout: "publish ok\n" };
+      }
+      case "unpublish":
+        this.site.delete(c.args[0]!);
+        return { code: 0, stdout: "unpublish ok\n" };
+      case "unit-install":
+        this.singlePort.set(c.args[0]!, Number(c.args[1]));
+        return { code: 0, stdout: "unit-install ok\n" };
+      case "slots": {
+        const inst = c.args[0]!;
+        const view = (slot: "blue" | "green") => {
+          const u = this.slotUnits.get(`${inst}:${slot}`);
+          return { unit: !!u, state: u?.state ?? "inactive", sha: this.slotLinks.get(`${inst}:${slot}`) ?? null };
+        };
+        const site = this.site.get(inst);
+        return {
+          code: 0,
+          stdout: `${JSON.stringify({
+            legacy: { unit: this.singlePort.has(inst), state: this.singlePort.has(inst) ? this.singleOf(inst) : "inactive", sha: this.currentOf.get(inst) ?? null },
+            blue: view("blue"),
+            green: view("green"),
+            site: site ? { port: site.maintenance ? null : site.port, maintenance: site.maintenance } : null,
+          })}\n`,
+        };
+      }
+      case "db-backups":
+        return { code: 0, stdout: `${JSON.stringify([...this.backups].map((name) => ({ name, bytes: this.backupBytes, mtime: "2026-10-14T03:30:00Z" })))}\n` };
       case "release-unpack":
-        if (c.args[1] === this.currentOf.get(c.args[0]!)) return { code: 3, stderr: `wfos-app-helper: release_active: releases/${c.args[1]} is the running release\n` };
+        if (this.activeAnywhere(c.args[0]!, c.args[1]!)) return { code: 3, stderr: `wfos-app-helper: release_active: releases/${c.args[1]} is the running release\n` };
         if (!this.uploads.some((u) => u.path.endsWith(`/${c.args[0]}-${c.args[1]}.tar.gz`))) return { code: 1, stderr: "no tarball" };
         this.releases.add(c.args[1]!);
         return { code: 0, stdout: `unpacked ${c.args[1]}\n` };
@@ -78,6 +193,7 @@ export class FakeServer {
         this.env = c.stdin ?? "";
         return { code: 0 };
       case "build-run":
+        for (const [k, v] of this.slotLinks) if (k.startsWith(`${c.args[0]}:`) && v === c.args[1]) return { code: 3, stderr: `wfos-app-helper: release_active: releases/${c.args[1]} is active in a slot\n` };
         return { code: 0, data: this.buildOutput };
       case "release-activate": {
         if (!this.releases.has(c.args[1]!)) return { code: 3, stderr: `wfos-app-helper: release_missing: releases/${c.args[1]} is not on this server\n` };
@@ -89,24 +205,47 @@ export class FakeServer {
       case "unit-restart":
       case "unit-start":
         this.unit = "active";
+        this.singleState.set(c.args[0]!, "active");
         return { code: 0 };
       case "unit-stop":
         this.unit = "inactive";
+        this.singleState.set(c.args[0]!, "inactive");
         return { code: 0 };
-      case "db-dump":
+      case "db-dump": {
         this.backups.add(c.args[1]!);
-        return { code: 0, stdout: `backup ${c.args[1]} written\n` };
+        const k = c.args.indexOf("--keep-kind");
+        if (k >= 0) {
+          // helper v4: prune that kind beyond n (oldest first)
+          const prefix = c.args[k + 1]!;
+          const n = Number(c.args[k + 2]);
+          const ofKind = [...this.backups].filter((b) => b.startsWith(prefix));
+          for (const b of ofKind.slice(0, Math.max(0, ofKind.length - n))) this.backups.delete(b);
+        }
+        return { code: 0, stdout: `backup ${c.args[1]} written\n${JSON.stringify({ name: c.args[1], bytes: this.backupBytes })}\n` };
+      }
       case "db-restore":
         if (!this.backups.has(c.args[1]!)) return { code: 1, stderr: `wfos-app-helper: backup_missing: no backup ${c.args[1]} for ${c.args[0]}\n` };
+        if (this.anyRunning(c.args[0]!)) this.restoredUnderRunningApp.push(c.args[1]!);
         return { code: 0, stdout: "restored\n" };
       case "app-remove":
         // helper v3: a live environment's database is dumped before it is dropped; the path is the last line
         if (c.args.includes("--keep-db-dump")) return { code: 0, stdout: `removed ${c.args[0]}\n/var/lib/wfos-apps/removed/${c.args[0]}-20261014T033000Z.dump\n` };
         return { code: 0, stdout: `removed ${c.args[0]}\n` };
       case "unit-status":
-        return { code: 0, stdout: `${this.unit}\n` };
+        return { code: 0, stdout: `${this.singleOf(c.args[0]!)}\n` };
       case "health": {
-        const ok = this.unit === "active" && this.healthy(this.current);
+        // a slot unit listening on that port answers with the release it runs
+        const port = Number(c.args[1]);
+        for (const [k, u] of this.slotUnits) {
+          if (k.startsWith(`${c.args[0]}:`) && u.port === port && u.state === "active") {
+            const okSlot = this.healthy(u.sha);
+            return { code: okSlot ? 0 : 1, stdout: `{"status":${okSlot ? 200 : 502}}\n` };
+          }
+        }
+        const sp = this.singlePort.get(c.args[0]!);
+        if (sp !== undefined && sp !== port) return { code: 1, stdout: '{"status":0}\n' };
+        const live = c.args[0]!.endsWith("-live");
+        const ok = this.singleOf(c.args[0]!) === "active" && this.healthy(live ? (this.currentOf.get(c.args[0]!) ?? this.current) : this.current);
         return { code: ok ? 0 : 1, stdout: `{"status":${ok ? 200 : 502}}\n` };
       }
       default:

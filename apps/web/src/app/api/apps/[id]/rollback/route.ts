@@ -4,6 +4,7 @@ import { appEnvironments, appReleases, audit, db } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import {
   activeRelease,
+  assertNoRestore,
   assertDeploysAllowed,
   assertNotRemoving,
   assertServerReady,
@@ -45,6 +46,8 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
   const release = await db.transaction(async (tx) => {
     await tx.select({ id: appEnvironments.id }).from(appEnvironments).where(eq(appEnvironments.id, env.id)).for("update");
     if (await activeRelease(env.id, tx)) throw new HttpError(409, "A deploy of this app is already running", { code: "app_deploy_running" });
+    // a database restore of this environment waits or runs: the release waits for it
+    await assertNoRestore(env.id);
     const [r] = await tx
       .insert(appReleases)
       .values({

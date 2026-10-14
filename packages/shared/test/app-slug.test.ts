@@ -5,6 +5,8 @@ describe("app slugs and instance names", () => {
   it("refuses slugs that could collide with another app's live instance", () => {
     expect(appSlugSchema.safeParse("shop").success).toBe(true);
     expect(appSlugSchema.safeParse("shop-live").success).toBe(false);
+    expect(appSlugSchema.safeParse("shop-live-blue").success).toBe(false);
+    expect(appSlugSchema.safeParse("shop-live-green").success).toBe(false);
     expect(appSlugSchema.safeParse("livestream").success).toBe(true);
     expect(appSlugSchema.safeParse("www").success).toBe(false);
   });

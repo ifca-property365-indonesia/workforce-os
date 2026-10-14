@@ -1201,7 +1201,7 @@ export const SERVER_STATUSES = ["pending", "ready", "error"] as const;
 export type ServerStatus = (typeof SERVER_STATUSES)[number];
 
 /** The helper version this platform needs on a server; an older one asks the Owner to re-run prepare.sh. */
-export const WFOS_HELPER_VERSION = 3;
+export const WFOS_HELPER_VERSION = 4;
 
 /** What `wfos-app-helper info` reports (JSON on stdout). */
 export const serverInfoSchema = z.object({
@@ -1290,7 +1290,7 @@ export interface AppBackupDTO {
   createdAt: string;
   createdByName: string | null;
 }
-/** an Owner restores a live (or preview) database from one of its backups: the environment's name typed to confirm */
+/** an Owner restores a live (or preview) database from one of its backups: the environment's domain typed to confirm */
 export const appRestoreSchema = z.object({ backupId: z.uuid(), confirm: z.string().min(1).max(253) });
 
 /** subdomains an app may never take (also refused by the helper) */
@@ -1301,7 +1301,7 @@ export const appSlugSchema = z
   .regex(APP_SLUG_RE, "Use 2–30 lowercase letters, digits and dashes, starting with a letter")
   .refine((s) => !s.includes("--") && !(RESERVED_APP_SLUGS as readonly string[]).includes(s), "This name is reserved")
   // <slug>-live is the live environment's instance name on a server (appInstanceName)
-  .refine((s) => !s.endsWith("-live"), "Names ending in -live are reserved for live environments");
+  .refine((s) => !s.endsWith("-live") && !/-live-(blue|green)$/.test(s), "Names ending in -live (or -live-blue / -live-green) are reserved for live environments");
 
 /** a single shell command line from the manifest (run as the app's own user inside its sandbox) */
 const manifestCommand = z
@@ -1403,6 +1403,11 @@ export interface ReleaseCheckpoint {
   previousSlot?: AppSlot | null;
   /** live: the maintenance page was switched on for a breaking migration */
   maintenance?: boolean;
+  /** live: the slot (or the B1 single unit) that keeps running after the switch, until graceUntil, for an instant rollback */
+  graceSlot?: AppSlot | "legacy" | null;
+  graceReleaseId?: string | null;
+  graceUntil?: string | null;
+  graceDone?: boolean;
 }
 
 /**
@@ -1503,6 +1508,12 @@ export interface AppEnvironmentDTO {
   currentRelease: ReleaseDTO | null;
   /** live: the last DNS check of domain + extraDomains (null: not checked since the names were set) */
   dnsCheck: DomainCheck | null;
+  /** live blue-green (B2): the slot nginx sends traffic to (previews always "blue") */
+  activeSlot: AppSlot;
+  /** the maintenance page is shown instead of the app (a breaking migration, a restore) */
+  maintenance: boolean;
+  /** the last database backup of this environment (daily, manual, before a release or a restore), null: none yet */
+  lastBackupAt: string | null;
 }
 export interface AppDTO {
   id: string;

@@ -28,7 +28,9 @@
     "firewall_off": "The apps firewall is not running on the server, so nothing was started. Re-run prepare.sh or check wfos-apps-firewall.service there.",
     "no_database_cluster": "The server has no apps database yet. Re-run prepare.sh on it.",
     "restart_failed": "The new version failed, and the previous one did not start again. Start it again or deploy a fix.",
-    "env_forbidden": "Not started: some of the app's environment variables are set by the platform. Remove them in the app's settings."
+    "env_forbidden": "Not started: some of the app's environment variables are set by the platform. Remove them in the app's settings.",
+    "restore_failed": "Restoring the database failed and the app did not come back healthy, so the maintenance page stays on. See the log, then restore again or deploy a fix.",
+    "restoring": "Restoring the database from a backup; the maintenance page is shown meanwhile."
   },
   "health": {
     "healthy": "Answering its health check",
@@ -125,7 +127,16 @@
     "deployingLiveNote": "A release to live is running. You can follow it in the log below.",
     "dangerHelpLive": "Deleting removes the app from its servers, the preview and the live site, with their files and databases, then from Workforce OS. Only the Owner can: with the live site stopped, its domain typed, and password and authenticator code.",
     "deleteConfirmLive": "Delete {name} with its live site at {domain}? Both environments are removed from their servers with their files and databases. This cannot be undone.",
-    "deleteNeedsOwner": "This app has a live site, so only the Owner can delete it."
+    "deleteNeedsOwner": "This app has a live site, so only the Owner can delete it.",
+    "maintenance": "Maintenance page",
+    "slotHelp": "Live runs in one of two slots: a new version starts in the other one, then traffic switches over without cutting connections.",
+    "slot": {
+      "blue": "blue slot",
+      "green": "green slot"
+    },
+    "lastBackup": "Database backed up {ago}",
+    "noBackup": "No database backup yet",
+    "backupStale": "Over a day without a backup"
   },
   "actions": {
     "deploy": "Deploy",
@@ -334,7 +345,21 @@
     "removeDump": "A final dump of the live database is kept on the server for 30 days.",
     "removeType": "Type <b>{domain}</b> to confirm",
     "removeFinal": "Remove for good",
-    "stopFirst": "Stop the live site first."
+    "stopFirst": "Stop the live site first.",
+    "planTitle": "What happens",
+    "planBackup": "Backup first",
+    "planBackupHelp": "The live database is backed up before anything changes. If the backup fails, the release stops and nothing changes.",
+    "planNoDowntime": "No downtime",
+    "planNoDatabase": "No database: the new version starts in its own slot and traffic switches over once it answers.",
+    "planExpand": "The migration only adds (expand): it runs while the version live now keeps serving. A release that says expand but drops, renames or narrows anything is refused before it changes anything.",
+    "planMaintenance": "Maintenance page during the migration",
+    "planBreaking": "The migration may change existing data (breaking): visitors see a short maintenance page while the database migrates, then the new version takes over.",
+    "planUnknown": "Migration mode decided at build",
+    "planUnknownHelp": "This version's wfos.json is read when it builds: expand runs without downtime, breaking (the default) shows a maintenance page while it migrates.",
+    "planGrace": "Instant way back",
+    "planGraceHelp": "{minutes, plural, one {The version live now keeps running for a minute after the switch, so a rollback in that time is immediate.} other {The version live now keeps running for # minutes after the switch, so a rollback in that time is immediate.}}",
+    "markExpand": "no downtime",
+    "markBreaking": "maintenance page while migrating"
   },
   "dns": {
     "title": "Domain and DNS",
@@ -370,5 +395,37 @@
     "noServerAddress": "The server's own address could not be found in public DNS. Check the server's host in Settings → Servers, then check again.",
     "certificate": "At the first release to live, Let's Encrypt issues the certificate for {domain}. It needs DNS to be ok.",
     "certificateWithAliases": "At the first release to live, Let's Encrypt issues one certificate for {domain} and {aliases}; those names redirect to {domain}. It needs DNS to be ok."
+  },
+  "backups": {
+    "title": "Database backups",
+    "liveHelp": "Taken before every release to live, once a day, before a restore and whenever you ask. The newest are kept on the server; older daily ones are pruned.",
+    "previewHelp": "Taken before a release that migrates, before a restore and whenever you ask. The preview has its own database, separate from live.",
+    "now": "Back up now",
+    "running": "Backing up…",
+    "queued": "Backup queued. It shows up here when it is done.",
+    "loading": "Loading backups…",
+    "empty": "No backups yet. The first one is taken before the next release with a database, or now.",
+    "stale": "The last backup is from {ago}: the daily backup did not run. Back up now and check the server.",
+    "staleNever": "This live site has no backup yet. Back up now.",
+    "bySchedule": "daily schedule",
+    "restore": "Restore…",
+    "restoreOwnerOnly": "Only the Owner restores a database.",
+    "serverOnly": "Backups are kept on the app server only: no offsite copy is configured. If the server is lost, its backups are lost with it.",
+    "kind": {
+      "pre_migrate": "before release",
+      "daily": "daily",
+      "manual": "manual",
+      "pre_restore": "before restore"
+    },
+    "restoreTitle": "Restore the database",
+    "restoreDescription": "Put the database of {domain} back to this backup.",
+    "restoreLoss": "Everything written to the database since {time} is lost.",
+    "restoreSafety": "The current database is backed up first (before restore), so this can be undone with that backup.",
+    "restoreMaintenance": "Visitors see the maintenance page while it restores; the site comes back on its own once it answers again.",
+    "restoreDowntime": "The preview stops while it restores and starts again on its own.",
+    "restoreType": "Type <b>{domain}</b> to confirm",
+    "restoreAudited": "You confirm with your password and authenticator code. The restore is recorded in the audit log.",
+    "restoreConfirm": "Restore database",
+    "restoreQueued": "Restore queued. The site shows the maintenance page until it is done."
   }
 }

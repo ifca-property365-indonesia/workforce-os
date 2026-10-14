@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { appEnvironments, appReleases, apps, auditLog, clients, db, members, projects, repositories, servers, users, workspaces } from "@wfos/db";
+import { appBackups, appEnvironments, appReleases, apps, auditLog, clients, db, members, projects, repositories, servers, users, workspaces } from "@wfos/db";
 import { APP_PORT_MAX, APP_PORT_MIN, WFOS_HELPER_VERSION, type AppEnvironmentKind, type DomainCheck, type ServerInfo } from "@wfos/shared";
 import { checkDomains } from "@wfos/shared/dns";
 import { totp } from "@wfos/shared/totp";
@@ -24,6 +24,8 @@ import { GET as getRelease } from "@/app/api/releases/[id]/route";
 import { DELETE as deleteServer, PATCH as patchServer } from "@/app/api/servers/[id]/route";
 import { DELETE as deleteLive, PATCH as patchLive, POST as createLive } from "@/app/api/apps/[id]/live/route";
 import { POST as dnsCheckLive } from "@/app/api/apps/[id]/live/dns-check/route";
+import { GET as listBackups, POST as backupNow } from "@/app/api/apps/[id]/backups/route";
+import { POST as restoreBackup } from "@/app/api/apps/[id]/restore/route";
 import { call, callWithParams, jar, queueModule, resetBrowser } from "./browser";
 
 const PASSWORD = "pw-123456-apps";
@@ -58,10 +60,13 @@ const dnsAnswer = (status: DomainCheck["status"], names: string[], expected = ["
 });
 
 const deploy = vi.mocked(queueModule.q.deploy);
+const pendingDbJobs = vi.mocked(queueModule.pendingDbJobs);
 
 beforeEach(() => {
   resetBrowser();
   deploy.mockReset();
+  pendingDbJobs.mockReset();
+  pendingDbJobs.mockResolvedValue([]);
   vi.mocked(queueModule.publish).mockClear();
   dns.mockReset();
   dns.mockImplementation(async (names) => dnsAnswer("missing", names));
@@ -513,7 +518,7 @@ describe("apps: deploy, rollback, stop, start, delete", () => {
     const { insertApp } = await fixture(o.wsId);
     const a = await insertApp({ status: "running" });
     const other = await insertApp();
-    const old = await addRelease(a.id, o.wsId, { status: "superseded", commitSubject: "First version", manifest: { type: "nextjs", install: "pnpm i", build: "pnpm build", start: "pnpm start", health: "/api/health", database: false, memoryMb: 512 } });
+    const old = await addRelease(a.id, o.wsId, { status: "superseded", commitSubject: "First version", manifest: { type: "nextjs", install: "pnpm i", build: "pnpm build", start: "pnpm start", health: "/api/health", database: false, memoryMb: 512, migrations: "breaking" } });
     const failed = await addRelease(a.id, o.wsId, { status: "failed", commit: SHA2 });
     const cur = await addRelease(a.id, o.wsId, { commit: SHA2 });
     const foreign = await addRelease(other.id, o.wsId);
@@ -604,7 +609,7 @@ describe("apps: detail and servers", () => {
     const { insertApp } = await fixture(o.wsId);
     const a = await insertApp({ status: "running", healthy: true, envEnc: null });
     const old = await addRelease(a.id, o.wsId, { status: "superseded", createdAt: new Date(Date.now() - 60_000) });
-    const cur = await addRelease(a.id, o.wsId, { commit: SHA2, warnings: ["first_publish"], manifest: { type: "nextjs", install: "i", build: "b", start: "s", health: "/", database: true, memoryMb: 512 } });
+    const cur = await addRelease(a.id, o.wsId, { commit: SHA2, warnings: ["first_publish"], manifest: { type: "nextjs", install: "i", build: "b", start: "s", health: "/", database: true, memoryMb: 512, migrations: "breaking" } });
     await setEnv(a.id, { currentReleaseId: cur.id });
     const r = await callWithParams(getApp, "GET", "/x", undefined, p(a.id));
     expect(r.status).toBe(200);
@@ -864,7 +869,7 @@ describe("apps: the live environment", () => {
     const a = await insertApp({ status: "running" });
     const other = await insertApp();
     const env = await addLive(a.id, ws.id, server.id);
-    const ran = await addRelease(a.id, ws.id, { status: "superseded", commit: SHA, commitSubject: "Guestbook v1", manifest: { type: "nextjs", install: "i", build: "b", start: "s", health: "/", database: true, memoryMb: 512 } });
+    const ran = await addRelease(a.id, ws.id, { status: "superseded", commit: SHA, commitSubject: "Guestbook v1", manifest: { type: "nextjs", install: "i", build: "b", start: "s", health: "/", database: true, memoryMb: 512, migrations: "breaking" } });
     const failed = await addRelease(a.id, ws.id, { status: "failed", commit: SHA2 });
     const foreign = await addRelease(other.id, ws.id);
     const liveRel = await addRelease(a.id, ws.id, { environmentId: env.id, status: "failed" });
@@ -1117,5 +1122,220 @@ describe("apps: the live environment", () => {
     expect(r.json).toMatchObject({ code: "server_has_apps", count: 1 });
     expect((await callWithParams(patchServer, "PATCH", "/x", { host: "45.77.10.99" }, p(liveServer.id))).json.code).toBe("server_has_apps");
     expect(devServer.id).not.toBe(liveServer.id);
+  });
+});
+
+describe("apps: database backups and restore (B2)", () => {
+  /** an app with a preview and a live environment, both with a database, live DNS ok and running */
+  async function withDatabases(wsId: string) {
+    const { server, insertApp } = await fixture(wsId);
+    const a = await insertApp({ status: "running", dbPasswordEnc: "enc-preview" });
+    const live = await addLive(a.id, wsId, server.id, { status: "running", dbPasswordEnc: "enc-live", dnsCheck: dnsAnswer("ok", ["x"]) });
+    return { server, a, live, insertApp };
+  }
+  const addBackup = async (env: { id: string; workspaceId: string }, over: Partial<typeof appBackups.$inferInsert> = {}) =>
+    (
+      await db
+        .insert(appBackups)
+        .values({ environmentId: env.id, workspaceId: env.workspaceId, name: `manual-${randomUUID().slice(0, 8)}`, kind: "manual", sizeBytes: 2048, ...over })
+        .returning()
+    )[0]!;
+  const ago = (h: number) => new Date(Date.now() - h * 3600_000);
+
+  it("Admins list an environment's backups still on the server, newest first, with who took them; the detail shows the last one", async () => {
+    const ws = await workspace();
+    const { a, live } = await withDatabases(ws.id);
+    const admin = await signIn("ADMIN", ws.id);
+    const daily = await addBackup(live, { name: "daily-20261012T020000Z", kind: "daily", createdAt: ago(30) });
+    const rel = await addRelease(a.id, ws.id, { environmentId: live.id });
+    const pre = await addBackup(live, { name: "pre_migrate-20261013T020000Z", kind: "pre_migrate", releaseId: rel.id, createdBy: admin.userId, createdAt: ago(5), sizeBytes: null });
+    // pruned on the server: a record only, never listed nor counted as the last backup
+    await addBackup(live, { name: "daily-old", kind: "daily", deletedAt: new Date(), createdAt: ago(1) });
+    const prevB = await addBackup(a.env, { createdBy: admin.userId, createdAt: ago(2) });
+
+    const r = await callWithParams(listBackups, "GET", "/x?env=live", undefined, p(a.id));
+    expect(r.status).toBe(200);
+    const list = r.json.backups as Record<string, unknown>[];
+    expect(list.map((b) => b.id)).toEqual([pre.id, daily.id]);
+    expect(list[0]).toEqual({
+      id: pre.id,
+      environmentId: live.id,
+      name: "pre_migrate-20261013T020000Z",
+      kind: "pre_migrate",
+      sizeBytes: null,
+      offsite: false,
+      releaseId: rel.id,
+      createdAt: pre.createdAt.toISOString(),
+      createdByName: "ADMIN person",
+    });
+    expect(list[1]).toMatchObject({ kind: "daily", createdByName: null, sizeBytes: 2048 });
+    const prev = await callWithParams(listBackups, "GET", "/x", undefined, p(a.id));
+    expect((prev.json.backups as { id: string }[]).map((b) => b.id)).toEqual([prevB.id]);
+
+    // the detail: slot, maintenance and the newest backup still on the server (or the daily stamp when newer)
+    await setEnv(a.id, { activeSlot: "green", maintenance: true, lastBackupAt: ago(10) }, "live");
+    const d = await callWithParams(getApp, "GET", "/x", undefined, p(a.id));
+    expect(d.json.app).toMatchObject({
+      preview: { activeSlot: "blue", maintenance: false, lastBackupAt: prevB.createdAt.toISOString() },
+      live: { activeSlot: "green", maintenance: true, lastBackupAt: pre.createdAt.toISOString(), hasDatabase: true },
+    });
+    const stamp = ago(0.5);
+    await setEnv(a.id, { lastBackupAt: stamp }, "live");
+    expect(((await callWithParams(getApp, "GET", "/x", undefined, p(a.id))).json.app as { live: { lastBackupAt: string } }).live.lastBackupAt).toBe(stamp.toISOString());
+
+    // Members do not see backups; another workspace's app is not found
+    await signIn("MEMBER", ws.id);
+    const member = await callWithParams(listBackups, "GET", "/x?env=live", undefined, p(a.id));
+    expect(member.status).toBe(403);
+    expect(member.json.code).toBe("role_required");
+    await signIn("ADMIN");
+    expect((await callWithParams(listBackups, "GET", "/x?env=live", undefined, p(a.id))).json.code).toBe("app_not_found");
+  });
+
+  it("back up now: Admins on the preview, the Owner on live (no step-up); only with a database, one at a time, never during a release or restore", async () => {
+    const ws = await workspace();
+    const { a, live, insertApp } = await withDatabases(ws.id);
+    const admin = await signIn("ADMIN", ws.id);
+    const r = await callWithParams(backupNow, "POST", "/x", undefined, p(a.id));
+    expect(r.status).toBe(200);
+    expect(deploy).toHaveBeenLastCalledWith({ kind: "db_backup", appId: a.id, workspaceId: ws.id, environmentId: a.env.id, userId: admin.userId, backupKind: "manual" });
+    const [audit] = await auditOf(a.id, "app.backup_requested");
+    expect(audit!.details).toMatchObject({ environment: "preview", environmentId: a.env.id });
+    const adminLive = await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id));
+    expect(adminLive.status).toBe(403);
+    expect(adminLive.json).toMatchObject({ code: "role_required", role: "OWNER" });
+
+    const owner = await signIn("OWNER", ws.id);
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).status).toBe(200);
+    expect(deploy).toHaveBeenLastCalledWith({ kind: "db_backup", appId: a.id, workspaceId: ws.id, environmentId: live.id, userId: owner.userId, backupKind: "manual" });
+    deploy.mockClear();
+
+    // nothing to back up yet
+    const bare = await insertApp();
+    expect((await callWithParams(backupNow, "POST", "/x", undefined, p(bare.id))).json.code).toBe("app_no_database");
+    // one backup at a time, none during a restore or a release of that environment
+    pendingDbJobs.mockResolvedValueOnce(["db_backup"]);
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).json.code).toBe("app_backup_running");
+    pendingDbJobs.mockResolvedValueOnce(["db_restore"]);
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).json.code).toBe("app_restore_running");
+    const rel = await addRelease(a.id, ws.id, { environmentId: live.id, status: "deploying" });
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).json.code).toBe("app_deploy_running");
+    expect(deploy).not.toHaveBeenCalled();
+    // the preview's own backup is not held back by a live release
+    expect((await callWithParams(backupNow, "POST", "/x", undefined, p(a.id))).status).toBe(200);
+    await db.update(appReleases).set({ status: "deployed" }).where(eq(appReleases.id, rel.id));
+    // demo mode refuses; the kill switch does not (a backup only protects)
+    await db.update(workspaces).set({ demoMode: true }).where(eq(workspaces.id, ws.id));
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).json.code).toBe("apps_demo_mode");
+    await db.update(workspaces).set({ demoMode: false, killSwitch: true }).where(eq(workspaces.id, ws.id));
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).status).toBe(200);
+    // a server that is not ready
+    await db.update(servers).set({ status: "error" }).where(eq(servers.id, live.serverId));
+    expect((await callWithParams(backupNow, "POST", "/x?env=live", undefined, p(a.id))).json.code).toBe("server_not_ready");
+  });
+
+  it("restore: the Owner with a step-up and the domain typed; the backup must be this environment's and still on the server", async () => {
+    const ws = await workspace();
+    const { a, live } = await withDatabases(ws.id);
+    const b = await addBackup(live, { name: "daily-20261013T020000Z", kind: "daily" });
+    const previewBackup = await addBackup(a.env);
+    const pruned = await addBackup(live, { deletedAt: new Date() });
+    const restore = (body: unknown, env = "live") => callWithParams(restoreBackup, "POST", `/x?env=${env}`, body, p(a.id));
+
+    await signIn("ADMIN", ws.id);
+    for (const env of ["live", "preview"]) {
+      const r = await restore({ backupId: b.id, confirm: live.domain }, env);
+      expect(r.status).toBe(403);
+      expect(r.json).toMatchObject({ code: "role_required", role: "OWNER" });
+    }
+    const o = await withTwoFactor("OWNER", ws.id);
+    expect((await restore({ backupId: b.id, confirm: live.domain })).json.code).toBe("step_up_required");
+    await o.stepUp();
+    expect((await restore({ backupId: "nope", confirm: live.domain })).status).toBe(400);
+    expect((await restore({ backupId: b.id, confirm: "wrong.example" })).json.code).toBe("restore_confirm_mismatch");
+    // the preview's domain does not confirm a live restore
+    expect((await restore({ backupId: b.id, confirm: a.env.domain })).json.code).toBe("restore_confirm_mismatch");
+    expect((await restore({ backupId: previewBackup.id, confirm: live.domain })).json.code).toBe("backup_not_found");
+    expect((await restore({ backupId: randomUUID(), confirm: live.domain })).json.code).toBe("backup_not_found");
+    expect((await restore({ backupId: pruned.id, confirm: live.domain })).json.code).toBe("backup_pruned");
+    // a restore, a backup or a release of that environment under way
+    pendingDbJobs.mockResolvedValueOnce(["db_restore"]);
+    expect((await restore({ backupId: b.id, confirm: live.domain })).json.code).toBe("app_restore_running");
+    pendingDbJobs.mockResolvedValueOnce(["db_backup"]);
+    expect((await restore({ backupId: b.id, confirm: live.domain })).json.code).toBe("app_backup_running");
+    const rel = await addRelease(a.id, ws.id, { environmentId: live.id, status: "queued" });
+    expect((await restore({ backupId: b.id, confirm: live.domain })).json.code).toBe("app_deploy_running");
+    await db.update(appReleases).set({ status: "failed" }).where(eq(appReleases.id, rel.id));
+    expect(deploy).not.toHaveBeenCalled();
+
+    const ok = await restore({ backupId: b.id, confirm: ` ${live.domain.toUpperCase()} ` });
+    expect(ok.status).toBe(200);
+    expect(deploy).toHaveBeenCalledWith({ kind: "db_restore", appId: a.id, workspaceId: ws.id, environmentId: live.id, backupId: b.id, userId: o.userId });
+    const [audit] = await auditOf(a.id, "app.restore_requested");
+    expect(audit!.details).toMatchObject({ environment: "live", environmentId: live.id, domain: live.domain, backupId: b.id, backup: b.name, backupKind: "daily" });
+    // the preview's own backups restore the preview, confirmed with its domain
+    expect((await restore({ backupId: previewBackup.id, confirm: a.env.domain }, "preview")).status).toBe(200);
+    expect(deploy).toHaveBeenLastCalledWith({ kind: "db_restore", appId: a.id, workspaceId: ws.id, environmentId: a.env.id, backupId: previewBackup.id, userId: o.userId });
+
+    // like a deploy: the kill switch and demo mode refuse
+    await db.update(workspaces).set({ killSwitch: true }).where(eq(workspaces.id, ws.id));
+    expect((await restore({ backupId: b.id, confirm: live.domain })).json.code).toBe("apps_kill_switch");
+    await db.update(workspaces).set({ killSwitch: false, demoMode: true }).where(eq(workspaces.id, ws.id));
+    expect((await restore({ backupId: b.id, confirm: live.domain })).json.code).toBe("apps_demo_mode");
+    // another workspace's backup id is not found
+    await db.update(workspaces).set({ demoMode: false }).where(eq(workspaces.id, ws.id));
+    const other = await workspace();
+    const theirs = await withDatabases(other.id);
+    const theirBackup = await addBackup(theirs.live);
+    expect((await restore({ backupId: theirBackup.id, confirm: live.domain })).json.code).toBe("backup_not_found");
+  });
+
+  it("a restore under way holds back releases, rollbacks and starts of that environment, not the other one's", async () => {
+    const ws = await workspace();
+    const { a, live } = await withDatabases(ws.id);
+    const ran = await addRelease(a.id, ws.id, { status: "superseded" });
+    const old = await addRelease(a.id, ws.id, { environmentId: live.id, status: "superseded" });
+    const cur = await addRelease(a.id, ws.id, { environmentId: live.id, commit: SHA2 });
+    await setEnv(a.id, { currentReleaseId: cur.id, status: "stopped" }, "live");
+    pendingDbJobs.mockImplementation(async (envId) => (envId === live.id ? ["db_restore"] : []));
+    const o = await withTwoFactor("OWNER", ws.id);
+    await o.stepUp();
+    expect((await callWithParams(deployApp, "POST", "/x?env=live", { fromReleaseId: ran.id }, p(a.id))).json.code).toBe("app_restore_running");
+    expect((await callWithParams(rollbackApp, "POST", "/x?env=live", { releaseId: old.id }, p(a.id))).json.code).toBe("app_restore_running");
+    expect((await callWithParams(startApp, "POST", "/x?env=live", {}, p(a.id))).json.code).toBe("app_restore_running");
+    expect(deploy).not.toHaveBeenCalled();
+    expect(await db.select().from(appReleases).where(eq(appReleases.environmentId, live.id))).toHaveLength(2);
+    // the preview goes on
+    expect((await callWithParams(deployApp, "POST", "/x", {}, p(a.id))).status).toBe(200);
+    // stopping is never held back
+    await setEnv(a.id, { status: "running" }, "live");
+    expect((await callWithParams(stopApp, "POST", "/x?env=live", {}, p(a.id))).status).toBe(200);
+  });
+
+  it("the detail tells the Release to LIVE dialog how each preview release's database migrates", async () => {
+    const ws = await workspace();
+    const { server, insertApp } = await fixture(ws.id);
+    const a = await insertApp();
+    const base = { type: "nextjs" as const, install: "i", build: "b", start: "s", health: "/", memoryMb: 512 };
+    const expand = await addRelease(a.id, ws.id, { status: "superseded", manifest: { ...base, database: true, migrations: "expand" } });
+    const breaking = await addRelease(a.id, ws.id, { status: "superseded", manifest: { ...base, database: true, migrations: "breaking" } });
+    // built before B2: no migrations field yet (the default, breaking)
+    const older = await addRelease(a.id, ws.id, { status: "superseded", manifest: { ...base, database: true } as never });
+    const noDb = await addRelease(a.id, ws.id, { status: "deployed", manifest: { ...base, database: false, migrations: "breaking" } });
+    const bare = await addRelease(a.id, ws.id, { status: "failed" });
+    await signIn("VIEWER", ws.id);
+    // no live environment: nothing to tell
+    expect((await callWithParams(getApp, "GET", "/x", undefined, p(a.id))).json.dbPlans).toEqual({});
+    await addLive(a.id, ws.id, server.id);
+    const r = await callWithParams(getApp, "GET", "/x", undefined, p(a.id));
+    expect(r.json.dbPlans).toEqual({
+      [expand.id]: { database: true, migrations: "expand" },
+      [breaking.id]: { database: true, migrations: "breaking" },
+      [older.id]: { database: true, migrations: "breaking" },
+      [noDb.id]: { database: false, migrations: "breaking" },
+    });
+    expect(r.json.dbPlans).not.toHaveProperty(bare.id);
+    // still no manifest on the releases themselves
+    expect((r.json.releases as Record<string, unknown>[])[0]).not.toHaveProperty("manifest");
   });
 });

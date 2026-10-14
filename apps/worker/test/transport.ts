@@ -5,7 +5,7 @@ import type { OutgoingMail, SmtpConfig } from "@wfos/shared/mail";
 export const transport = {
   mails: [] as { cfg: SmtpConfig; mail: OutgoingMail }[],
   published: [] as { workspaceId: string; ev: unknown }[],
-  queued: [] as { queue: string; name: string; data: unknown }[],
+  queued: [] as { queue: string; name: string; data: unknown; opts?: { delay?: number; jobId?: string } }[],
   blockedFetches: [] as string[],
 };
 
@@ -19,7 +19,10 @@ export function resetTransport() {
 }
 
 function fakeQueue(queue: string) {
-  return { add: vi.fn(async (name: string, data: unknown) => void transport.queued.push({ queue, name, data })) };
+  // getJobs on the prototype: a test may set its own and `delete` it again, the default (nothing queued) comes back
+  const q = Object.create({ getJobs: async () => [] as unknown[] }) as { add: unknown };
+  q.add = vi.fn(async (name: string, data: unknown, opts?: { delay?: number; jobId?: string }) => void transport.queued.push({ queue, name, data, ...(opts ? { opts } : {}) }));
+  return q as { add: ReturnType<typeof vi.fn>; getJobs: () => Promise<unknown[]> };
 }
 
 /** In-memory sorted sets: enough Redis for the lease/slot code (zadd, zrem, zcard, zremrangebyscore, multi). */

@@ -221,7 +221,7 @@ describe("request_preview (approved)", () => {
     const [rel] = await releasesOf(s.task.id);
     expect(rel).toMatchObject({ appId: s.app.id, commit: sha, branch: `agent/${s.task.id}`, status: "queued", trigger: "approval", approvalId: a.id, taskId: s.task.id, createdBy: s.user.id });
     expect((after!.executionResult as { summary: string }).summary).toBe(`Preview queued: release ${rel!.id}`);
-    expect(transport.queued.filter((q) => q.queue === "deploys")).toEqual([{ queue: "deploys", name: "release", data: { kind: "release", releaseId: rel!.id, workspaceId: s.ws.id } }]);
+    expect(transport.queued.filter((q) => q.queue === "deploys")).toEqual([{ queue: "deploys", name: "release", data: { kind: "release", releaseId: rel!.id, workspaceId: s.ws.id }, opts: expect.anything() }]);
     // the task is not DONE: it waits on the platform, and its last step says so (once)
     expect((await taskRow(s.task.id)).status).toBe("AWAITING_APPROVAL");
     await afterApprovalResolved(s.task.id);

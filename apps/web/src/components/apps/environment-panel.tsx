@@ -2,12 +2,13 @@
 
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { ArrowUpRight, ExternalLink, Radio } from "lucide-react";
-import type { AppEnvironmentDTO, AppEnvironmentKind } from "@wfos/shared";
+import { ArrowUpRight, Construction, DatabaseBackup, ExternalLink, Radio } from "lucide-react";
+import { APP_ALT_PORT_OFFSET, type AppEnvironmentDTO, type AppEnvironmentKind } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { useFormat } from "@/lib/use-format";
 import { signVars } from "@/lib/sign";
 import { cn } from "@/lib/utils";
+import { backupStale } from "./backups-panel";
 import { DnsStatusChip } from "./dns-panel";
 import { WarningChips } from "./releases";
 import { AppStatusBadge, CommitChip, EnvPlate, HealthDot, useStatusMessage } from "./shared";
@@ -63,6 +64,11 @@ export function EnvironmentPanel({ env, actions, note }: { env: AppEnvironmentDT
         <EnvPlate kind={env.kind} status={env.status} />
         <AppStatusBadge status={env.status} />
         <HealthDot app={env} withLabel />
+        {env.maintenance && (
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-warning">
+            <Construction className="size-3" aria-hidden /> {t("detail.maintenance")}
+          </span>
+        )}
         {live && <DnsStatusChip status={env.dnsCheck?.status ?? null} className="ml-auto" />}
       </div>
       <UrlPlate url={env.url} kind={env.kind} />
@@ -91,16 +97,39 @@ export function EnvironmentPanel({ env, actions, note }: { env: AppEnvironmentDT
       </div>
       <dl className="grid grid-cols-2 gap-3 border-t pt-3 sm:grid-cols-3">
         <Fact label={t("detail.tiles.server")}>{env.serverName}</Fact>
-        <Fact label={t("detail.tiles.port")}>{env.port}</Fact>
+        <Fact label={t("detail.tiles.port")}>
+          {/* live serves from one of two slots (blue = port, green = port + offset); a quiet note of which */}
+          {live && env.activeSlot === "green" ? env.port + APP_ALT_PORT_OFFSET : env.port}
+          {live && (
+            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground" title={t("detail.slotHelp")}>
+              {t(`detail.slot.${env.activeSlot}`)}
+            </span>
+          )}
+        </Fact>
         <Fact label={t("detail.tiles.memory")}>
           {t("detail.memoryValue", { mb: env.memoryMb })}
           {env.hasDatabase && <span className="text-muted-foreground"> · {t("detail.db")}</span>}
         </Fact>
       </dl>
+      {live && env.hasDatabase && <LastBackup env={env} />}
       {message && <p className="text-sm text-warning">{message}</p>}
       {note}
       {actions && <div className="mt-auto flex flex-wrap gap-2 pt-1">{actions}</div>}
     </section>
+  );
+}
+
+/** live: when the database was last backed up, amber once that is over a day ago on a running site */
+function LastBackup({ env }: { env: AppEnvironmentDTO }) {
+  const t = useTranslations("apps");
+  const f = useFormat();
+  const stale = backupStale(env);
+  return (
+    <p className={cn("flex items-center gap-1.5 text-xs", stale ? "font-medium text-warning" : "text-muted-foreground")} title={env.lastBackupAt ? f.dateTime(env.lastBackupAt) : undefined}>
+      <DatabaseBackup className="size-3.5 shrink-0" aria-hidden />
+      {env.lastBackupAt ? t("detail.lastBackup", { ago: f.ago(env.lastBackupAt) }) : t("detail.noBackup")}
+      {stale && <span className="sr-only">{t("detail.backupStale")}</span>}
+    </p>
   );
 }
 

@@ -247,7 +247,7 @@ describe("release pipeline", () => {
     vi.mocked(ssh.probeServer).mockRejectedValueOnce(new ssh.HelperOutdatedError(serverInfo({ helperVersion: 1, baseDomain: server.baseDomain })));
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
-    expect((await releaseRow(rel.id)).error).toMatch(/version 1, version 3 is needed: run the new prepare\.sh/);
+    expect((await releaseRow(rel.id)).error).toMatch(new RegExp(`version 1, version ${WFOS_HELPER_VERSION} is needed: run the new prepare\\.sh`));
     expect(vi.mocked(ssh.probeServer)).toHaveBeenCalledTimes(1);
     expect(srv.calls).toEqual([]);
   });

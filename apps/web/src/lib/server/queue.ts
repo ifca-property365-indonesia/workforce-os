@@ -58,10 +58,32 @@ export const q = {
   action: (job: ActionJob) => queues().actions.add(job.kind, job, { jobId: `${job.kind}-${job.approvalId}` }),
   ingest: (documentId: string, workspaceId: string) => queues().ingest.add("ingest", { kind: "ingest", documentId, workspaceId }),
   misc: (job: MiscJob) => queues().misc.add(job.kind, job),
-  /** a release runs as job <releaseId>; an app action as app-<id>-<action>-<ts> */
-  deploy: (job: DeployJob) =>
-    queues().deploys.add(job.kind, job, { jobId: job.kind === "release" ? job.releaseId : `app-${job.appId}-${job.action}-${Date.now()}` }),
+  /** a release runs as job <releaseId>; an app action as app-<id>-<action>-<ts>; a backup / restore as <kind>-<env>-<ts> */
+  deploy: (job: DeployJob) => queues().deploys.add(job.kind, job, { jobId: deployJobId(job) }),
 };
+
+function deployJobId(job: DeployJob): string {
+  if (job.kind === "release") return job.releaseId;
+  if (job.kind === "app_action") return `app-${job.appId}-${job.action}-${Date.now()}`;
+  return `${job.kind}-${job.environmentId}-${Date.now()}`;
+}
+
+/** deploy jobs that wait or run (a delayed one included) */
+const PENDING_STATES = ["waiting", "active", "delayed", "prioritized"] as const;
+
+/**
+ * The kinds of the database jobs (db_backup / db_restore) that still wait or run for this environment: a restore
+ * has no row of its own, its queued job is what says one is under way.
+ */
+export async function pendingDbJobs(environmentId: string): Promise<("db_backup" | "db_restore")[]> {
+  const jobs = await queues().deploys.getJobs([...PENDING_STATES]);
+  const out: ("db_backup" | "db_restore")[] = [];
+  for (const j of jobs) {
+    const d = j?.data;
+    if ((d?.kind === "db_backup" || d?.kind === "db_restore") && d.environmentId === environmentId) out.push(d.kind);
+  }
+  return out;
+}
 
 export async function publish(workspaceId: string, ev: RealtimeEvent) {
   await redis().publish(channelFor(workspaceId, serverEnv.namespace), JSON.stringify(ev));

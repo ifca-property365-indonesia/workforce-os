@@ -172,5 +172,11 @@
   "live_dns_not_ok": "The domain does not point at the server yet. Check DNS first.",
   "domain_reserved": "{domain} belongs to the platform or one of its servers. Choose a domain of the client's own.",
   "confirm_mismatch": "Type the live domain exactly to confirm.",
-  "live_running": "Stop the live site first."
+  "live_running": "Stop the live site first.",
+  "app_no_database": "This environment has no database yet: it gets one at the first release that asks for it.",
+  "app_restore_running": "A database restore of this environment is under way. Wait for it to finish.",
+  "app_backup_running": "A backup of this environment is already queued or running. Wait for it to finish.",
+  "restore_confirm_mismatch": "Type the environment's domain exactly to confirm.",
+  "backup_not_found": "Backup not found.",
+  "backup_pruned": "This backup was pruned from the server and can no longer be restored."
 }

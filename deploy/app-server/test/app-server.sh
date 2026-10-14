@@ -34,7 +34,7 @@ PG_PORT=5433
 PG_VERSION=18
 APPS_ROOT=$ROOT
 PORT_MIN=4100
-PORT_MAX=4499
+PORT_MAX=4899
 EOF
 SHA=0123456789abcdef0123456789abcdef01234567
 SHA2=89abcdef0123456789abcdef0123456789abcdef
@@ -111,18 +111,18 @@ upload() {
 # --- version / info --------------------------------------------------------
 helper version
 code 0 "version"
-[[ "$(cat "$WORK/out")" == 3 ]] || fail "version prints 3"
-pass "version prints 3"
+[[ "$(cat "$WORK/out")" == 4 ]] || fail "version prints 4"
+pass "version prints 4"
 
 helper info
 code 0 "info"
 json="$(tail -1 "$WORK/out")"
 if command -v node > /dev/null; then
-  node -e 'const j = JSON.parse(process.argv[1]); const ok = j.helperVersion === 3 && j.baseDomain === "preview.example.com" && typeof j.nginx === "boolean" && typeof j.certbot === "boolean" && typeof j.diskFreeMb === "number" && typeof j.memTotalMb === "number" && typeof j.memAvailableMb === "number" && typeof j.os === "string" && typeof j.node === "string" && typeof j.pnpm === "string" && ("postgresPort" in j) && typeof j.systemd === "number" && j.firewall === false && typeof j.appsRoot === "string"; if (!ok) process.exit(1)' "$json" || fail "info JSON shape: $json"
+  node -e 'const j = JSON.parse(process.argv[1]); const ok = j.helperVersion === 4 && j.portMin === 4100 && j.portMax === 4899 && j.baseDomain === "preview.example.com" && typeof j.nginx === "boolean" && typeof j.certbot === "boolean" && typeof j.diskFreeMb === "number" && typeof j.memTotalMb === "number" && typeof j.memAvailableMb === "number" && typeof j.os === "string" && typeof j.node === "string" && typeof j.pnpm === "string" && ("postgresPort" in j) && typeof j.systemd === "number" && j.firewall === false && typeof j.appsRoot === "string"; if (!ok) process.exit(1)' "$json" || fail "info JSON shape: $json"
 elif command -v jq > /dev/null; then
-  jq -e '.helperVersion == 3 and .baseDomain == "preview.example.com" and (.nginx | type == "boolean") and (.systemd | type == "number") and .firewall == false' <<< "$json" > /dev/null || fail "info JSON shape: $json"
+  jq -e '.helperVersion == 4 and .portMax == 4899 and .baseDomain == "preview.example.com" and (.nginx | type == "boolean") and (.systemd | type == "number") and .firewall == false' <<< "$json" > /dev/null || fail "info JSON shape: $json"
 fi
-pass "info prints one JSON line (helperVersion 3, the A1 fields, systemd, firewall)"
+pass "info prints one JSON line (helperVersion 4, the A1 fields, systemd, firewall, port range)"
 
 # --- bad arguments: exit 2, one line, nothing to run ------------------------
 fresh_app shop
@@ -141,20 +141,21 @@ rejected "the A1 draft's unit-remove is gone"
 pass "unknown commands and wrong argument counts exit 2"
 
 LONG36="$(printf 'a%.0s' {1..36})"
-for s in Shop a -ab ab- "a--b" "shop--live" "shop-live-" www api preview status "$LONG36" "a b" "a;b" "a/b" "../x" "" 1ab "shop_1" "Shop-live" "shop.live"; do
+for s in Shop a -ab ab- "a--b" "shop--live" "shop-live-" www api preview status "$LONG36" "a b" "a;b" "a/b" "../x" "" 1ab "shop_1" "Shop-live" "shop.live" \
+  shop-live-blue shop-live-green x-live-blue; do
   for c in app-init unit-status release-prune unpublish; do
     helper "$c" "$s"
     rejected "$c with instance name ${s@Q}"
   done
 done
-pass "invalid and reserved instance names exit 2 (2 to 35 characters, no --)"
+pass "invalid and reserved instance names exit 2 (2 to 35 characters, no --, never <x>-live-blue / -green)"
 
 for args in \
   "release-unpack shop 0123" "release-unpack shop ${SHA^^}" "release-unpack shop ${SHA}0" "release-unpack shop" \
   "release-activate shop xyz" "build-run shop $SHA test 900 1536" "build-run shop $SHA install 9 1536" \
   "build-run shop $SHA install 3601 1536" "build-run shop $SHA install 900 255" "build-run shop $SHA install 900 4097" \
   "build-run shop $SHA install 900 4001" "build-run shop $SHA install 900" "build-run shop $SHA install 0900 1536" \
-  "unit-install shop 4099 512" "unit-install shop 4500 512" "unit-install shop abc 512" "unit-install shop 4100 512 --db" \
+  "unit-install shop 4099 512" "unit-install shop 4900 512" "unit-install shop abc 512" "unit-install shop 4100 512 --db" \
   "unit-install shop 4100 100" "health shop 4100 api" "health shop 4100 /a?b" "health shop 80 /" \
   "publish shop 4100 --noauth" "publish shop 4100 --auth extra" "db-create shop --force" "db-dump shop a/b" \
   "db-dump shop $(printf 'x%.0s' {1..65})" "db-restore shop a.b" "app-remove shop --drop" "unit-status shop extra"; do
@@ -491,14 +492,17 @@ helper db-dump shop rel-123
 code 0 "db-dump"
 has "runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_dump -h /run/wfos-apps-pg -p 5433 -U app_shop -Fc -d app_shop > $ROOT/shop/backups/rel-123.dump" "db-dump as the app role"
 has "[dry-run] rm -f -- $ROOT/shop/backups/b1.dump" "db-dump prunes the oldest"
-hasnt "b2.dump" "db-dump keeps 7"
+has "[dry-run] rm -f -- $ROOT/shop/backups/b2.dump" "db-dump keeps 7 counting the new one"
+hasnt "b3.dump" "db-dump keeps 7"
+last_line '{"name":"rel-123","bytes":0,"pruned":["b2","b1"]}' "db-dump: the last line is JSON"
 helper db-restore shop b5
 code 0 "db-restore"
-has "pg_restore -h /run/wfos-apps-pg -p 5433 -U app_shop -d app_shop --clean --if-exists --no-owner --no-privileges --single-transaction < $ROOT/shop/backups/b5.dump" "db-restore as the app role"
+has "CREATE SCHEMA public AUTHORIZATION app_shop;'; runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction -f - < $ROOT/shop/backups/b5.dump" "db-restore of the dump"
+has "psql -X -q -v ON_ERROR_STOP=1 -h /run/wfos-apps-pg -p 5433 -U app_shop -d app_shop" "db-restore as the app role"
 hasnt "--role" "db-restore never switches roles from a superuser session"
 helper db-restore shop nope
 code 1 "db-restore of a missing backup"
-pass "db-dump / db-restore log in as the app role (peer map), never as a superuser; 7 backups kept"
+pass "db-dump / db-restore log in as the app role (peer map), never as a superuser; 7 backups kept (with the new one)"
 
 # --- release-activate / release-prune ---------------------------------------------------
 fresh_app shop
@@ -1179,6 +1183,534 @@ clean_nginx
 rm -rf "$DOMAINS"
 pass "app-remove deletes the instance's certificates (preview and live; best effort, never another's); a replaced live domain too"
 
+# --- v4: blue-green slots of a live instance ------------------------------------------------
+UNITS="$PFX/etc/systemd/system"
+rm -f "$UNITS"/*.service
+fresh_app shop-live
+mkdir -p "$ROOT/shop-live/releases/$SHA" "$ROOT/shop-live/releases/$SHA2"
+for args in \
+  "release-activate shop-live $SHA --slot" "release-activate shop-live $SHA --slot red" "release-activate shop-live $SHA --slot Blue" \
+  "release-activate shop-live $SHA --slot=blue" "release-activate shop-live $SHA blue" "release-activate shop $SHA --slot blue" \
+  "release-activate shop-live $SHA --slot blue --slot green" "release-activate shop-live $SHA --slot blue extra" \
+  "unit-start shop-live --slot" "unit-start shop-live --slot purple" "unit-stop shop --slot blue" "unit-status shop-live blue" \
+  "unit-restart shop-live --slot blue extra" "unit-status shop-live --slot green --slot blue" "unit-status shop --slot green" \
+  "unit-install shop-live 4101 512 --slot" "unit-install shop-live 4101 512 --slot red" "unit-install shop 4100 512 --slot blue" \
+  "unit-install shop-live 4101 512 --slot blue --slot green" "unit-install shop-live 4101 512 --database --database" \
+  "unit-install shop-live 4101 512 --slot blue extra" "unit-install shop-live 4900 512 --slot green" \
+  "slots" "slots shop-live extra" "slots shop-live-blue" "slots Shop-live"; do
+  # shellcheck disable=SC2086 # word splitting builds the argument list on purpose
+  helper_in "pnpm start" $args
+  rejected "$args"
+done
+pass "--slot takes blue or green, once, for live instances (<slug>-live) only; bad slot arguments exit 2"
+
+helper release-activate shop-live "$SHA" --slot green
+code 0 "release-activate --slot green"
+has "[dry-run] ln -sfn releases/$SHA $ROOT/shop-live/.current-green.wfos-tmp" "release-activate --slot green"
+has "[dry-run] mv -fT -- $ROOT/shop-live/.current-green.wfos-tmp $ROOT/shop-live/current-green" "release-activate --slot green"
+has "[dry-run] rm -rf --one-file-system -- $ROOT/shop-live/next-cache-green" "a slot's Next.js cache is emptied for a new version"
+has "[dry-run] install -d -m 0700 -o wa-shop-live -g wa-shop-live $ROOT/shop-live/next-cache-green" "a slot has its own Next.js cache"
+hasline "current-green -> releases/$SHA" "release-activate --slot green"
+last_line none "release-activate --slot green (first)"
+hasnt "$ROOT/shop-live/current " "release-activate --slot never touches current"
+hasntline "[dry-run] rm -rf --one-file-system -- $ROOT/shop-live/next-cache" "release-activate --slot keeps the v3 cache"
+hasnt "next-cache-blue" "release-activate --slot green keeps the blue cache"
+ln -sfn "releases/$SHA2" "$ROOT/shop-live/current-green"
+ln -sfn "releases/$SHA" "$ROOT/shop-live/current-blue"
+helper release-activate shop-live "$SHA" --slot green
+last_line "$SHA2" "release-activate --slot prints the slot's previous sha"
+has "rm -rf --one-file-system -- $ROOT/shop-live/next-cache-green" "a new version in the slot empties its cache"
+hasnt "next-cache-blue" "the other slot's cache stays"
+helper release-activate shop-live "$SHA" --slot blue
+code 0 "release-activate --slot blue of its own version"
+last_line "$SHA" "release-activate --slot blue of its own version"
+hasnt "next-cache-blue" "the same version keeps the slot's cache"
+helper release-activate shop-live "$SHA2" --slot blue
+code 0 "both slots may hold the same release"
+rm -rf "$ROOT/shop-live/releases/$SHA2"
+helper release-activate shop-live "$SHA2" --slot green
+guarded release_missing "release-activate --slot of a pruned release"
+hasnt "ln -sfn" "release-activate --slot of a pruned release"
+mkdir -p "$ROOT/shop-live/releases/$SHA2"
+rm -f "$ROOT/shop-live/current-green"
+mkdir "$ROOT/shop-live/current-green"
+helper release-activate shop-live "$SHA2" --slot green
+code 1 "release-activate --slot over a real folder"
+hasnt "ln -sfn" "release-activate --slot over a real folder"
+rmdir "$ROOT/shop-live/current-green"
+ln -s "$WORK/outside" "$ROOT/shop-live/next-cache-green"
+helper release-activate shop-live "$SHA2" --slot green
+code 1 "release-activate --slot with a symlinked next-cache-<slot>"
+has "is a symlink" "release-activate --slot with a symlinked next-cache-<slot>"
+rm -f "$ROOT/shop-live/next-cache-green"
+pass "release-activate --slot: current-<slot> swapped atomically, own Next.js cache, previous sha of that slot (or none)"
+
+# a release a slot holds is never unpacked over or built in again
+fresh_app shop-live
+mkdir -p "$ROOT/shop-live/releases/$SHA" "$ROOT/shop-live/releases/$SHA2"
+tar -czf "$PFX/home/wfos-apps/incoming/shop-live-$SHA.tar.gz" -C "$WORK/tlive" .
+for s in blue green; do
+  rm -f "$ROOT/shop-live"/current*
+  ln -sfn "releases/$SHA" "$ROOT/shop-live/current-$s"
+  helper release-unpack shop-live "$SHA"
+  guarded release_active "release-unpack of the $s slot's release"
+  has "is the release of current-$s" "release-unpack names the slot"
+  hasnt "rm -rf" "release-unpack of the $s slot's release"
+  helper_in "pnpm build" build-run shop-live "$SHA" build 1200 1536
+  guarded release_active "build-run in the $s slot's release"
+  hasnt "systemd-run" "build-run in the $s slot's release"
+done
+helper_in "pnpm build" build-run shop-live "$SHA2" build 1200 1536
+code 0 "build-run of a release no slot holds"
+rm -f "$ROOT/shop-live"/current* "$PFX/home/wfos-apps/incoming"/*.tar.gz
+pass "release-unpack and build-run refuse a release that current, current-blue or current-green points at (exit 3)"
+
+# release-prune keeps every slot's release
+fresh_app shop-live
+i=0
+for s in 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 \
+  3333333333333333333333333333333333333333 4444444444444444444444444444444444444444 5555555555555555555555555555555555555555; do
+  i=$((i + 1))
+  mkdir -p "$ROOT/shop-live/releases/$s"
+  touch -d "2026-01-0$i" "$ROOT/shop-live/releases/$s"
+done
+ln -sfn releases/1111111111111111111111111111111111111111 "$ROOT/shop-live/current-blue"
+ln -sfn releases/2222222222222222222222222222222222222222 "$ROOT/shop-live/current-green"
+helper release-prune shop-live
+code 0 "release-prune with slots"
+hasnt "releases/1111111111111111111111111111111111111111" "release-prune keeps the blue slot's release"
+hasnt "releases/2222222222222222222222222222222222222222" "release-prune keeps the green slot's release"
+hasnt "releases/5555555555555555555555555555555555555555" "release-prune keeps the newest other"
+has "rm -rf --one-file-system -- $ROOT/shop-live/releases/4444444444444444444444444444444444444444" "release-prune with slots"
+has "rm -rf --one-file-system -- $ROOT/shop-live/releases/3333333333333333333333333333333333333333" "release-prune with slots"
+last_line "releases of shop-live pruned (kept 3)" "release-prune counts the slots' releases"
+ln -sfn releases/3333333333333333333333333333333333333333 "$ROOT/shop-live/current"
+helper release-prune shop-live
+hasnt "releases/3333333333333333333333333333333333333333" "release-prune keeps the v3 unit's release"
+has "rm -rf --one-file-system -- $ROOT/shop-live/releases/5555555555555555555555555555555555555555" "three links: only their releases stay"
+pass "release-prune always keeps the releases of current, current-blue and current-green (3 in all)"
+
+# unit-install --slot: its own unit, start script, working directory, Next.js cache and port; the same sandbox
+fresh_app shop-live
+mkdir -p "$ROOT/shop-live/releases/$SHA/.next"
+ln -sfn "releases/$SHA" "$ROOT/shop-live/current-blue"
+ln -sfn "releases/$SHA" "$ROOT/shop-live/current"
+helper_in 'pnpm start -p $PORT' unit-install shop-live 4101 512 --slot blue --database
+code 0 "unit-install --slot blue"
+for line in \
+  "[dry-run] write $PFX/etc/wfos-apps/start/shop-live-blue.sh (mode 0644, owner root:root)" \
+  '  | pnpm start -p $PORT' \
+  "[dry-run] write $UNITS/wfos-app-shop-live-blue.service (mode 0644, owner root:root)" \
+  "  | Description=Workforce OS app shop-live, blue slot (port 4101)" \
+  "  | WorkingDirectory=$ROOT/shop-live/current-blue" \
+  "  | ExecStart=/usr/bin/env PORT=4101 /bin/sh $PFX/etc/wfos-apps/start/shop-live-blue.sh" \
+  "  | BindReadOnlyPaths=$PFX/etc/wfos-apps/start/shop-live-blue.sh" \
+  "  | EnvironmentFile=$PFX/etc/wfos-apps/env/shop-live.env" \
+  "  | BindPaths=$ROOT/shop-live/data $ROOT/shop-live/cache" \
+  "  | BindPaths=$ROOT/shop-live/next-cache-blue:$ROOT/shop-live/releases/$SHA/.next/cache" \
+  "  | BindReadOnlyPaths=/run/wfos-apps-pg" "  | User=wa-shop-live" "  | Group=wfos-app-run" \
+  "  | SocketBindAllow=tcp:4101" "  | SocketBindDeny=any" "  | Environment=HOST=127.0.0.1 PORT=4101 NODE_ENV=production" \
+  "[dry-run] systemctl daemon-reload" "[dry-run] systemctl enable wfos-app-shop-live-blue.service" \
+  "unit wfos-app-shop-live-blue.service installed"; do
+  hasline "$line" "unit-install --slot blue"
+done
+has "[dry-run] install -d -m 0700 -o wa-shop-live -g wa-shop-live $ROOT/shop-live/next-cache-blue" "unit-install --slot creates the slot's cache"
+hasnt "start/shop-live.sh" "unit-install --slot leaves the v3 start script alone"
+hasntline "  | WorkingDirectory=$ROOT/shop-live/current" "unit-install --slot runs current-<slot>"
+written "$UNITS/wfos-app-shop-live-blue.service" | sed -e 's/current-blue/current/; s/shop-live-blue\.sh/shop-live.sh/g; s/next-cache-blue/next-cache/; s/, blue slot//; s|^ExecStart=/usr/bin/env PORT=4101 |ExecStart=|' > "$WORK/slot.unit"
+helper_in 'pnpm start -p $PORT' unit-install shop-live 4101 512 --database
+code 0 "unit-install shop-live without a slot (v3)"
+hasline "[dry-run] write $UNITS/wfos-app-shop-live.service (mode 0644, owner root:root)" "unit-install without a slot"
+written "$UNITS/wfos-app-shop-live.service" > "$WORK/legacy.unit"
+diff "$WORK/legacy.unit" "$WORK/slot.unit" > /dev/null || fail "a slot's unit has exactly the v3 sandbox and limits (only names differ): $(diff "$WORK/legacy.unit" "$WORK/slot.unit" | head -5)"
+[[ "$(wc -l < "$WORK/slot.unit")" -gt 60 ]] || fail "test setup: the unit was captured"
+mkdir -p "$ROOT/shop-live/releases/$SHA2"
+ln -sfn "releases/$SHA2" "$ROOT/shop-live/current-green"
+helper_in 'pnpm start' unit-install shop-live 4501 512 --slot green
+code 0 "unit-install --slot green on the second port"
+hasline "  | SocketBindAllow=tcp:4501" "unit-install --slot green"
+hasline "  | ExecStart=/usr/bin/env PORT=4501 /bin/sh $PFX/etc/wfos-apps/start/shop-live-green.sh" "the slot's port wins over a PORT in the shared env file"
+hasline "  | Environment=HOST=127.0.0.1 PORT=4501 NODE_ENV=production" "unit-install --slot green"
+hasline "  | WorkingDirectory=$ROOT/shop-live/current-green" "unit-install --slot green"
+hasnt "next-cache" "a slot release without .next binds no cache"
+hasntline "  | BindReadOnlyPaths=/run/wfos-apps-pg" "unit-install --slot without --database"
+rm -rf "$ROOT/shop-live/releases/$SHA2"
+mkdir -p "$ROOT/shop-live/releases/$SHA2/.next"
+ln -s "$WORK/outside" "$ROOT/shop-live/releases/$SHA2/.next/cache"
+helper_in 'pnpm start' unit-install shop-live 4501 512 --slot green
+code 1 "unit-install --slot with a symlinked .next/cache"
+hasnt "[dry-run] write" "unit-install --slot with a symlinked .next/cache"
+rm -rf "$ROOT/shop-live/releases/$SHA2"
+pass "unit-install --slot: wfos-app-<name>-<slot>.service with its own start script, current-<slot>, next-cache-<slot>, port"
+pass "unit-install --slot: the same sandbox, limits and shared data/cache/env/database as the v3 unit"
+
+# unit actions on a slot
+fresh_app shop-live
+mkdir -p "$ROOT/shop-live/releases/$SHA/.next/cache" "$ROOT/shop-live/releases/$SHA2"
+ln -sfn "releases/$SHA" "$ROOT/shop-live/current-blue"
+ln -sfn "releases/$SHA2" "$ROOT/shop-live/current-green"
+printf '[Service]\nSocketBindAllow=tcp:4101\nBindPaths=%s\n' "$ROOT/shop-live/next-cache-blue:$ROOT/shop-live/releases/$SHA/.next/cache" > "$UNITS/wfos-app-shop-live-blue.service"
+printf '[Service]\nSocketBindAllow=tcp:4501\n' > "$UNITS/wfos-app-shop-live-green.service"
+helper unit-start shop-live --slot blue
+code 0 "unit-start --slot blue"
+hasline "[dry-run] systemctl enable --now wfos-app-shop-live-blue.service" "unit-start --slot blue"
+helper unit-restart shop-live --slot green
+hasline "[dry-run] systemctl restart wfos-app-shop-live-green.service" "unit-restart --slot green"
+helper unit-stop shop-live --slot green
+hasline "[dry-run] systemctl disable --now wfos-app-shop-live-green.service" "unit-stop --slot green"
+hasnt "flock" "unit-stop --slot never waits for a lock"
+helper unit-status shop-live --slot green
+has "[dry-run] systemctl show wfos-app-shop-live-green.service -p ActiveState -p SubState" "unit-status --slot green"
+last_line inactive "unit-status --slot prints one word"
+helper unit-stop shop-live
+hasline "[dry-run] systemctl disable --now wfos-app-shop-live.service" "unit-stop without a slot is the v3 unit"
+printf '[Service]\nSocketBindAllow=tcp:4101\nBindPaths=%s\n' "$ROOT/shop-live/next-cache:$ROOT/shop-live/releases/$SHA/.next/cache" > "$UNITS/wfos-app-shop-live-blue.service"
+helper unit-start shop-live --slot blue
+code 1 "unit-start --slot with another link's cache bind"
+has "run unit-install first" "unit-start --slot checks its own cache bind"
+printf '[Service]\nSocketBindAllow=tcp:4101\nBindPaths=%s\n' "$ROOT/shop-live/next-cache-blue:$ROOT/shop-live/releases/$SHA/.next/cache" > "$UNITS/wfos-app-shop-live-blue.service"
+WFOS_HELPER_TEST_FIREWALL=0 helper unit-start shop-live --slot blue
+guarded firewall_off "unit-start --slot without the app firewall"
+DISK=100 helper unit-start shop-live --slot blue
+guarded disk_low "unit-start --slot with low disk"
+pass "unit-start/stop/restart/status --slot act on wfos-app-<name>-<slot>.service (cache bind, firewall, disk checked)"
+
+# running apps: both slots (and the v3 unit) of one live instance count as one app
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-a.service wfos-app-b.service wfos-app-shop-live-green.service wfos-app-shop-live.service" helper unit-start shop-live --slot blue
+code 0 "the other slot and the v3 unit of the same instance do not count"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-a.service wfos-app-b-live-blue.service wfos-app-b-live-green.service" helper unit-start shop-live --slot blue
+code 0 "another live instance's two slots count once"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-a.service wfos-app-b-live-blue.service wfos-app-c.service" helper unit-start shop-live --slot blue
+guarded server_full "three other apps run"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-a.service wfos-app-b-live-green.service wfos-app-shop-live-blue.service" helper unit-start shop
+guarded server_full "a preview start counts the live instances' slots"
+pass "at most MAX_RUNNING apps: the slots of one live instance count once, its own never"
+
+# port guard: a port another running unit owns (the v3 unit sits on the blue slot's port)
+printf '[Service]\nWorkingDirectory=%s\nSocketBindAllow=tcp:4101\n' "$ROOT/shop-live/current" > "$UNITS/wfos-app-shop-live.service"
+for a in unit-start unit-restart; do
+  WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live.service" helper "$a" shop-live --slot blue
+  guarded port_busy "$a --slot blue while the v3 unit runs on its port"
+  has "port 4101 is in use by wfos-app-shop-live.service" "$a --slot blue: the refusal names the unit"
+  hasnt "[dry-run] systemctl" "$a --slot blue while the v3 unit runs"
+done
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live.service" helper unit-start shop-live --slot green
+code 0 "the green slot runs next to the v3 unit"
+helper unit-start shop-live --slot blue
+code 0 "the blue slot starts once the v3 unit stopped"
+printf '[Service]\nSocketBindAllow=tcp:4501\n' > "$UNITS/wfos-app-other.service"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-other.service" helper unit-start shop-live --slot green
+guarded port_busy "another instance's unit on the same port"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live-blue.service" helper unit-restart shop-live --slot blue
+code 0 "a unit never blocks itself"
+rm -f "$UNITS/wfos-app-other.service"
+pass "unit-start/restart refuse a port another running app unit owns (exit 3 port_busy)"
+
+# B1 -> B2: a live instance of helper v3 (one unit on the blue slot's port, running current) keeps working; its first
+# slotted release goes to green next to it, and activating blue later retires it
+fresh_app shop-live
+rm -f "$UNITS"/*.service
+mkdir -p "$ROOT/shop-live/releases/$SHA" "$ROOT/shop-live/releases/$SHA2"
+ln -sfn "releases/$SHA" "$ROOT/shop-live/current"
+printf '[Service]\nWorkingDirectory=%s\nSocketBindAllow=tcp:4101\n' "$ROOT/shop-live/current" > "$UNITS/wfos-app-shop-live.service"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live.service" helper slots shop-live
+code 0 "slots of a v3 live instance"
+[[ "$(wc -l < "$WORK/out")" == 1 ]] || fail "slots prints one line"
+last_line "{\"legacy\":{\"unit\":true,\"state\":\"active\",\"sha\":\"$SHA\"},\"blue\":{\"unit\":false,\"state\":\"inactive\",\"sha\":null},\"green\":{\"unit\":false,\"state\":\"inactive\",\"sha\":null},\"site\":null}" "slots of a v3 live instance"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live.service" helper release-activate shop-live "$SHA2" --slot green
+code 0 "the first slotted release goes to green next to the running v3 unit"
+hasnt "retiring" "activating green never retires the v3 unit"
+hasnt "$UNITS/wfos-app-shop-live.service" "activating green never touches the v3 unit"
+hasnt "rm -f -- $ROOT/shop-live/current" "activating green keeps current"
+ln -sfn "releases/$SHA2" "$ROOT/shop-live/current-green"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live.service wfos-app-shop-live-green.service" helper release-activate shop-live "$SHA" --slot blue
+guarded legacy_active "activating blue while the v3 unit runs on its port"
+hasnt "ln -sfn" "a refused blue activation changes nothing"
+hasnt "rm -f" "a refused blue activation removes nothing"
+hasnt "[dry-run] systemctl" "a refused blue activation stops nothing"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live-green.service" helper release-activate shop-live "$SHA" --slot blue
+code 0 "activating blue after the v3 unit stopped"
+for line in \
+  "retiring wfos-app-shop-live.service (helper v3): the blue slot takes over its port" \
+  "[dry-run] systemctl disable --now wfos-app-shop-live.service" \
+  "[dry-run] rm -f -- $UNITS/wfos-app-shop-live.service" \
+  "[dry-run] systemctl daemon-reload" \
+  "[dry-run] rm -f -- $PFX/etc/wfos-apps/start/shop-live.sh" \
+  "[dry-run] rm -f -- $ROOT/shop-live/current" \
+  "[dry-run] mv -fT -- $ROOT/shop-live/.current-blue.wfos-tmp $ROOT/shop-live/current-blue"; do
+  hasline "$line" "activating blue retires the v3 unit"
+done
+[[ "$(grep -n 'retiring' "$WORK/out" | cut -d: -f1)" -lt "$(grep -n 'ln -sfn' "$WORK/out" | cut -d: -f1)" ]] || fail "the v3 unit is retired before blue is activated"
+hasnt "rm -rf --one-file-system -- $ROOT/shop-live/releases" "the v3 unit's release stays (rollback)"
+last_line none "the blue slot's first release"
+rm -f "$UNITS/wfos-app-shop-live.service" "$ROOT/shop-live/current"
+helper release-activate shop-live "$SHA" --slot blue
+code 0 "activating blue without a v3 unit"
+hasnt "retiring" "nothing to retire"
+helper release-activate shop-live "$SHA2"
+code 0 "release-activate without a slot (a preview's flow) still works"
+hasnt "retiring" "release-activate without a slot never retires"
+rm -f "$ROOT/shop-live"/current*
+mkdir "$ROOT/shop-live/current"
+printf '[Service]\n' > "$UNITS/wfos-app-shop-live.service"
+helper release-activate shop-live "$SHA" --slot blue
+code 1 "a v3 current that is a real folder"
+has "current is not a symlink" "a v3 current that is a real folder"
+hasnt "ln -sfn" "a v3 current that is a real folder"
+hasnt "systemctl" "a v3 current that is a real folder"
+rmdir "$ROOT/shop-live/current"
+rm -f "$UNITS"/*.service
+pass "B1 -> B2: a v3 live unit keeps running next to the green slot; activating blue retires it (exit 3 legacy_active while it runs)"
+
+# slots: what runs where, and what nginx serves
+fresh_app shop-live
+mkdir -p "$ROOT/shop-live/releases/$SHA" "$ROOT/shop-live/releases/$SHA2" "$PFX/etc/nginx/sites-available"
+ln -sfn "releases/$SHA" "$ROOT/shop-live/current-blue"
+ln -sfn "releases/$SHA2" "$ROOT/shop-live/current-green"
+printf '[Service]\n' > "$UNITS/wfos-app-shop-live-blue.service"
+printf '[Service]\n' > "$UNITS/wfos-app-shop-live-green.service"
+printf 'server {\n    location / {\n        proxy_pass http://127.0.0.1:4501;\n    }\n}\n' > "$SITE_LIVE"
+WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-shop-live-green.service wfos-app-shop-live-blue.service" helper slots shop-live
+code 0 "slots"
+last_line "{\"legacy\":{\"unit\":false,\"state\":\"inactive\",\"sha\":null},\"blue\":{\"unit\":true,\"state\":\"active\",\"sha\":\"$SHA\"},\"green\":{\"unit\":true,\"state\":\"active\",\"sha\":\"$SHA2\"},\"site\":{\"port\":4501,\"maintenance\":false}}" "slots: both slots, the proxied port"
+hasnt "[dry-run]" "slots is read-only"
+helper publish shop-live 4501 --domain shop.example.org --maintenance
+written "$SITE_LIVE" > "$WORK/maint.site"
+cp "$WORK/maint.site" "$SITE_LIVE"
+helper slots shop-live
+last_line "{\"legacy\":{\"unit\":false,\"state\":\"inactive\",\"sha\":null},\"blue\":{\"unit\":true,\"state\":\"inactive\",\"sha\":\"$SHA\"},\"green\":{\"unit\":true,\"state\":\"inactive\",\"sha\":\"$SHA2\"},\"site\":{\"port\":null,\"maintenance\":true}}" "slots: the maintenance page"
+rm -rf "${ROOT:?}/shop-live" "$SITE_LIVE" "$UNITS"/*.service
+helper slots shop-live
+code 0 "slots of an instance that does not exist (yet)"
+last_line '{"legacy":{"unit":false,"state":"inactive","sha":null},"blue":{"unit":false,"state":"inactive","sha":null},"green":{"unit":false,"state":"inactive","sha":null},"site":null}' "slots of a missing instance"
+ln -s "$WORK/outside" "$ROOT/shop-live"
+helper slots shop-live
+code 1 "slots of a symlinked instance folder"
+rm -f "$ROOT/shop-live"
+pass "slots prints one JSON line: the v3 unit and both slots (unit, state, sha), the site's port and maintenance"
+
+# --- v4: the maintenance page ---------------------------------------------------------------
+clean_nginx
+helper publish shop-live 4501 --domain shop.example.org --alias www.shop.example.org --index --maintenance
+code 0 "publish --maintenance"
+has "[dry-run] certbot certonly --nginx --cert-name shop.example.org -d shop.example.org -d www.shop.example.org --keep-until-expiring" "publish --maintenance: certificates as always"
+site_blocks "$SITE_LIVE"
+[[ -f "$WORK/blk.3" && ! -f "$WORK/blk.4" ]] || fail "maintenance site: http, the domain, the aliases"
+for l in \
+  "        return 503;" "    error_page 503 /.wfos-maintenance.html;" "    add_header Retry-After 60 always;" \
+  '    add_header Cache-Control "no-store" always;' "    location = /.wfos-maintenance.html {" "        internal;" \
+  "        auth_basic off;" "        alias /etc/wfos-apps/maintenance.html;" \
+  "    # wfos-maintenance: the maintenance page is shown instead of the app" \
+  "    ssl_certificate /etc/letsencrypt/live/shop.example.org/fullchain.pem;" \
+  '    add_header Strict-Transport-Security "max-age=31536000" always;' "    server_name shop.example.org;"; do
+  grep -qxF -- "$l" "$WORK/blk.2" || fail "maintenance site: expected the line: $l"
+done
+! grep -qF "proxy_pass" "$WORK/blk.2" || fail "maintenance site: the app is not proxied"
+grep -qF 'return 301 https://shop.example.org$request_uri;' "$WORK/blk.1" || fail "maintenance site: http still redirects"
+grep -qF 'return 301 https://shop.example.org$request_uri;' "$WORK/blk.3" || fail "maintenance site: aliases still redirect"
+! grep -qF "503" "$WORK/blk.3" || fail "maintenance site: aliases redirect, they do not answer 503"
+hasnt "X-Robots-Tag" "--index with --maintenance"
+has "maintenance page on (503, Retry-After 60)" "publish --maintenance says so"
+last_line "published https://shop.example.org" "publish --maintenance"
+clean_nginx
+helper_in "$BCRYPT" publish shop-live 4501 --maintenance --auth --domain shop.example.org
+code 0 "publish --maintenance --auth"
+site_blocks "$SITE_LIVE"
+grep -qF 'auth_basic "Private";' "$WORK/blk.2" || fail "maintenance site keeps basic auth"
+grep -qF "auth_basic off;" "$WORK/blk.2" || fail "the maintenance page itself needs no password"
+has "[dry-run] write $PFX/etc/wfos-apps/htpasswd/shop-live" "publish --maintenance --auth writes the htpasswd"
+helper publish shop-live 4101 --domain shop.example.org
+code 0 "publish without --maintenance switches back"
+site_blocks "$SITE_LIVE"
+grep -qF "proxy_pass http://127.0.0.1:4101;" "$WORK/blk.2" || fail "switching back proxies the app again"
+! grep -qE "Retry-After|return 503|wfos-maintenance" "$WORK/blk.2" || fail "switching back drops the maintenance page"
+clean_nginx
+helper publish shop 4100 --maintenance
+code 0 "publish --maintenance of a preview"
+has 'add_header X-Robots-Tag "noindex, nofollow" always;' "a preview's maintenance page stays noindex"
+has "        return 503;" "publish --maintenance of a preview"
+for args in "--maintenance --maintenance" "--maintenance=1" "--domain shop.example.org --maintenance extra"; do
+  # shellcheck disable=SC2086 # word splitting builds the argument list on purpose
+  helper publish shop-live 4501 $args
+  rejected "publish $args"
+done
+clean_nginx
+pass "publish --maintenance: 503 + Retry-After 60 with the static page (no proxy), certificates/aliases/auth as always"
+
+# --- v4: database backups by kind ---------------------------------------------------------------
+fresh_app shop-live
+B="$ROOT/shop-live/backups"
+for i in 1 2 3 4 5 6 7 8 9; do touch -d "2026-01-0$i" "$B/daily-2026010${i}T0300Z.dump"; done
+for i in 1 2 3; do touch -d "2026-01-0$i" "$B/pre_migrate-2026010${i}T0300Z.dump" "$B/manual-2026010${i}T0300Z.dump"; done
+touch -d "2026-01-01" "$B/2ec0e26e-b603-42b1-8436-e50979b2518b.dump"
+ln -s "$WORK/outside" "$B/daily-20250101T0300Z.dump"
+mkdir "$B/daily-20250102T0300Z.dump"
+helper db-dump shop-live daily-20261014T0300Z --keep-kind daily- 5
+code 0 "db-dump --keep-kind"
+for i in 1 2 3 4 5; do has "[dry-run] rm -f -- $B/daily-2026010${i}T0300Z.dump" "--keep-kind prunes the oldest of the kind"; done
+for i in 6 7 8 9; do hasnt "daily-2026010${i}T0300Z.dump" "--keep-kind keeps the newest of the kind"; done
+hasnt "rm -f -- $B/daily-20261014T0300Z.dump" "the new backup is never pruned"
+hasnt "pre_migrate-" "--keep-kind never prunes another kind"
+hasnt "manual-" "--keep-kind never prunes another kind"
+hasnt "2ec0e26e" "--keep-kind never prunes another kind"
+hasnt "daily-2025010" "only regular dump files are pruned (no links, no folders)"
+has "pruned backup daily-20260101T0300Z" "db-dump names what it pruned"
+last_line '{"name":"daily-20261014T0300Z","bytes":0,"pruned":["daily-20260105T0300Z","daily-20260104T0300Z","daily-20260103T0300Z","daily-20260102T0300Z","daily-20260101T0300Z"]}' "db-dump --keep-kind: the last line is JSON"
+helper db-dump shop-live pre_migrate-20261014T0300Z
+code 0 "db-dump of a kind without --keep-kind"
+hasnt "rm -f" "3 + 1 pre_migrate backups stay (7 per kind)"
+for i in 4 5 6 7 8; do touch -d "2026-01-0$i" "$B/pre_migrate-2026010${i}T0300Z.dump"; done
+helper db-dump shop-live pre_migrate-20261014T0300Z
+has "[dry-run] rm -f -- $B/pre_migrate-20260101T0300Z.dump" "the 7 newest of its kind stay (with the new one)"
+has "[dry-run] rm -f -- $B/pre_migrate-20260102T0300Z.dump" "the 7 newest of its kind stay (with the new one)"
+hasnt "pre_migrate-20260103T0300Z" "the 7 newest of its kind stay"
+hasnt "daily-" "a pre_migrate backup never prunes daily ones"
+hasnt "2ec0e26e" "a pre_migrate backup never prunes v3 names"
+touch -d "2030-01-01" "$B/daily-20300101T0300Z.dump"
+touch -d "2020-01-01" "$B/daily-20261015T0300Z.dump"
+helper db-dump shop-live daily-20261015T0300Z --keep-kind daily- 1
+has "[dry-run] rm -f -- $B/daily-20300101T0300Z.dump" "--keep-kind 1 keeps only the new one"
+hasnt "rm -f -- $B/daily-20261015T0300Z.dump" "the new backup is never pruned (a name dumped again), whatever the times say"
+fresh_app shop-live
+for i in 1 2 3 4 5 6 7 8; do touch -d "2026-01-0$i" "$B/0000000$i-b603-42b1-8436-e50979b2518b.dump"; done
+touch -d "2025-01-01" "$B/daily-20250101T0300Z.dump"
+helper db-dump shop-live 99999999-b603-42b1-8436-e50979b2518b
+has "[dry-run] rm -f -- $B/00000001-b603-42b1-8436-e50979b2518b.dump" "v3 names (release ids) are pruned among themselves"
+has "[dry-run] rm -f -- $B/00000002-b603-42b1-8436-e50979b2518b.dump" "v3 names (release ids) are pruned among themselves"
+hasnt "00000003-" "v3 names: 7 kept"
+hasnt "daily-" "a v3 name never prunes a backup of a kind"
+fresh_app shop-live
+for i in 1 2 3 4 5 6 7 8; do touch -d "2026-01-0$i" "$B/pre-migrate-2026010${i}T0300Z.dump" "$B/pre-restore-2026010${i}T0300Z.dump"; done
+helper db-dump shop-live pre-migrate-20261014T0300Z
+has "[dry-run] rm -f -- $B/pre-migrate-20260102T0300Z.dump" "a kind spelled with - is pruned among its own"
+hasnt "pre-migrate-20260103T0300Z" "a kind spelled with -: 7 kept"
+hasnt "pre-restore-" "pre-migrate never prunes pre-restore"
+for args in \
+  "db-dump shop-live daily-x --keep-kind" "db-dump shop-live daily-x --keep-kind daily-" "db-dump shop-live daily-x --keep-kind daily- 0" \
+  "db-dump shop-live daily-x --keep-kind daily- abc" "db-dump shop-live daily-x --keep-kind daily- 366" "db-dump shop-live daily-x --keep-kind daily- 05" \
+  "db-dump shop-live daily-x --keep-kind manual- 5" "db-dump shop-live daily-x --keep-kind da* 5" "db-dump shop-live daily-x --keep-kind daily- 5 extra" \
+  "db-dump shop-live daily-x --keep daily- 5" "db-dump shop-live daily-x 5 --keep-kind daily-" "db-dump shop-live daily.x" "db-dump shop-live daily-x extra" \
+  "db-backups" "db-backups shop-live extra" "db-backups Shop-live" "db-backups shop-live-green"; do
+  # shellcheck disable=SC2086 # word splitting builds the argument list on purpose
+  helper $args
+  rejected "$args"
+done
+helper db-restore shop-live pre_restore-20261014T0300Z
+code 1 "db-restore takes names with _ (kinds); a missing one fails"
+has "backup_missing" "db-restore of a missing pre_restore backup"
+pass "db-dump --keep-kind <prefix> <n> prunes only that kind beyond n; without it 7 per kind (or of the v3 names); JSON last line"
+
+fresh_app shop-live
+TZ=UTC touch -d "2026-01-02 03:04:05" "$B/manual-20260102T0304Z.dump"
+printf 'abcde' > "$B/daily-20260103T0000Z.dump"
+TZ=UTC touch -d "2026-01-03 00:00:00" "$B/daily-20260103T0000Z.dump"
+printf 'x' > "$WORK/outside/f.dump"
+ln -s "$WORK/outside/f.dump" "$B/link.dump"
+mkdir "$B/dir.dump"
+touch "$B/bad.name.dump" "$B/notes.txt" "$B/.wfos-tmp.abc123"
+helper db-backups shop-live
+code 0 "db-backups"
+[[ "$(wc -l < "$WORK/out")" == 1 ]] || fail "db-backups prints one line"
+last_line '[{"name":"daily-20260103T0000Z","bytes":5,"mtime":"2026-01-03T00:00:00Z"},{"name":"manual-20260102T0304Z","bytes":0,"mtime":"2026-01-02T03:04:05Z"}]' "db-backups: newest first, regular dumps only"
+rm -rf "$B"
+helper db-backups shop-live
+code 0 "db-backups without a backups folder"
+last_line '[]' "db-backups without a backups folder"
+fresh_app shop-live
+helper db-backups shop-live
+last_line '[]' "db-backups without backups"
+pass "db-backups prints [{name,bytes,mtime}] (newest first; links, folders and other files skipped)"
+
+# --- v4 review fixes: restore into a clean schema, disk guard before a dump, B1-era dumps pruned ----------
+fresh_app shop-live
+B="$ROOT/shop-live/backups"
+touch "$B/pre-restore-20261014T0300Z.dump"
+helper db-restore shop-live pre-restore-20261014T0300Z
+code 0 "db-restore into a clean schema"
+has "[dry-run] { echo 'BEGIN; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION app_shop_live;'; runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction -f - < $B/pre-restore-20261014T0300Z.dump (… COMMIT;) }" "db-restore: one transaction, clean schema first, then the dump"
+has "| runuser -u postgres -- /usr/lib/postgresql/18/bin/psql -X -q -v ON_ERROR_STOP=1 -h /run/wfos-apps-pg -p 5433 -U app_shop_live -d app_shop_live" "db-restore runs as the app role in its own database"
+hasnt "-d postgres" "db-restore never opens a superuser session"
+hasnt "--role" "db-restore never switches roles"
+last_line "database app_shop_live restored from pre-restore-20261014T0300Z (into a clean schema public)" "db-restore"
+pass "db-restore: BEGIN; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION <role>; the dump; COMMIT (as the app role)"
+
+# disk guard: 1.5 x the newest dump (or the database's size) must fit above 2048 MB free
+fresh_app shop-live
+truncate -s 1G "$B/manual-20260101T0000Z.dump"
+touch -d "2026-01-01" "$B/manual-20260101T0000Z.dump"
+truncate -s 100M "$B/daily-20260102T0300Z.dump"
+touch -d "2026-01-02" "$B/daily-20260102T0300Z.dump"
+DISK=2197 helper db-dump shop-live daily-20261014T0300Z --keep-kind daily- 14
+guarded disk_low "db-dump that would leave less than 2048 MB free"
+has "the dump needs about 150 MB" "the estimate is 1.5 x the newest dump"
+hasnt "pg_dump" "a refused dump runs nothing"
+hasnt "rm -f" "a refused dump prunes nothing"
+DISK=2198 helper db-dump shop-live daily-20261014T0300Z --keep-kind daily- 14
+code 0 "db-dump with just enough room"
+fresh_app shop-live
+DISK=2347 WFOS_HELPER_TEST_DB_SIZE_MB=200 helper db-dump shop-live daily-20261014T0300Z --keep-kind daily- 14
+guarded disk_low "without a dump the database's size counts"
+has "the dump needs about 300 MB" "the estimate is 1.5 x the database's size"
+DISK=2348 WFOS_HELPER_TEST_DB_SIZE_MB=200 helper db-dump shop-live daily-20261014T0300Z --keep-kind daily- 14
+code 0 "db-dump of a database that fits"
+DISK=2047 helper db-dump shop-live 0123abcd-b603-42b1-8436-e50979b2518b
+guarded disk_low "db-dump below 2048 MB free (v3 names too)"
+pass "db-dump refuses (exit 3 disk_low) when free space minus 1.5 x the newest dump (or the database) is under 2048 MB"
+
+# B1-era dumps (release ids, no kind) are their own group: the newest 7 stay, whatever kind is dumped
+fresh_app shop-live
+for i in 1 2 3 4 5 6 7 8 9; do touch -d "2026-01-0$i" "$B/0000000$i-b603-42b1-8436-e50979b2518b.dump"; done
+touch -d "2025-12-01" "$B/daily-20251201T0300Z.dump"
+helper db-dump shop-live daily-20261014T0300Z --keep-kind daily- 14
+code 0 "db-dump --keep-kind with B1-era dumps"
+has "[dry-run] rm -f -- $B/00000001-b603-42b1-8436-e50979b2518b.dump" "B1-era dumps beyond 7 go"
+has "[dry-run] rm -f -- $B/00000002-b603-42b1-8436-e50979b2518b.dump" "B1-era dumps beyond 7 go"
+hasnt "00000003-" "the newest 7 B1-era dumps stay (the new one is not one of them)"
+hasnt "rm -f -- $B/daily-" "the kind's own dumps are within its count"
+last_line '{"name":"daily-20261014T0300Z","bytes":0,"pruned":["00000002-b603-42b1-8436-e50979b2518b","00000001-b603-42b1-8436-e50979b2518b"]}' "B1-era dumps are listed in pruned"
+helper db-dump shop-live pre-migrate-20261014T0300Z
+code 0 "db-dump of a kind without --keep-kind, with B1-era dumps"
+has "[dry-run] rm -f -- $B/00000002-b603-42b1-8436-e50979b2518b.dump" "a kind's dump keeps the B1-era group at 7 too"
+hasnt "00000003-" "a kind's dump keeps the B1-era group at 7 too"
+helper db-dump shop-live 99999999-b603-42b1-8436-e50979b2518b
+has "[dry-run] rm -f -- $B/00000003-b603-42b1-8436-e50979b2518b.dump" "a B1-era name counts itself: the new one + 6 stay"
+hasnt "00000004-" "a B1-era name counts itself"
+helper db-dump shop-live 0000000a-b603-42b1-8436-e50979b2518b --keep-kind 0000 3
+code 0 "a --keep-kind prefix over B1-era names"
+has "[dry-run] rm -f -- $B/00000007-b603-42b1-8436-e50979b2518b.dump" "the prefix group keeps 3"
+[[ "$(grep -c 'rm -f -- .*00000001-' "$WORK/out")" == 1 ]] || fail "a dump in both groups is pruned once"
+[[ "$(tail -1 "$WORK/out" | grep -o '00000001-' | wc -l)" == 1 ]] || fail "a dump in both groups is listed once"
+pass "B1-era dumps (no kind) stay at the newest 7 on every db-dump and are listed in pruned"
+
+# --- v4: app-remove and stop-all cover the slots ---------------------------------------------------
+fresh_app shop-live
+touch "$UNITS/wfos-app-shop-live-blue.service" "$UNITS/wfos-app-shop-live-green.service" "$UNITS/wfos-app-shop-blue.service"
+helper app-remove shop-live --drop-db
+code 0 "app-remove of a slotted live instance"
+for line in \
+  "[dry-run] systemctl disable --now wfos-app-shop-live.service" \
+  "[dry-run] systemctl disable --now wfos-app-shop-live-blue.service" "[dry-run] rm -f -- $UNITS/wfos-app-shop-live-blue.service" \
+  "[dry-run] systemctl disable --now wfos-app-shop-live-green.service" "[dry-run] rm -f -- $UNITS/wfos-app-shop-live-green.service" \
+  "[dry-run] rm -f -- $PFX/etc/wfos-apps/env/shop-live.env $PFX/etc/wfos-apps/start/shop-live.sh $PFX/etc/wfos-apps/htpasswd/shop-live $PFX/etc/wfos-apps/start/shop-live-blue.sh $PFX/etc/wfos-apps/start/shop-live-green.sh"; do
+  hasline "$line" "app-remove removes both slots"
+done
+[[ "$(grep -n 'wfos-app-shop-live-green.service' "$WORK/out" | tail -1 | cut -d: -f1)" -lt "$(grep -n "rm -rf --one-file-system -- $ROOT/shop-live" "$WORK/out" | cut -d: -f1)" ]] || fail "the slot units go before the folder"
+hasnt "wfos-app-shop-blue.service" "app-remove never touches another instance's unit"
+fresh_app shop
+helper app-remove shop
+code 0 "app-remove of a preview"
+hasnt "wfos-app-shop-blue.service" "a preview's app-remove looks at no slot units"
+hasnt "start/shop-blue.sh" "a preview's app-remove looks at no slot start scripts"
+touch "$UNITS/wfos-app-$NAME35-green.service"
+helper stop-all
+code 0 "stop-all with slots"
+has "wfos-app-$NAME35-green.service" "stop-all includes a slot of a 35-character instance"
+has "wfos-app-shop-live-blue.service" "stop-all includes the slots"
+has "wfos-app-shop-live-green.service" "stop-all includes the slots"
+rm -f "$UNITS"/*.service
+rm -rf "${ROOT:?}/shop-live" "${ROOT:?}/shop"
+pass "app-remove removes the v3 unit and both slots (and their start scripts); stop-all stops the slots too"
+
 # --- prepare.sh --------------------------------------------------------------
 KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXcRLnEUF79Xv5t7O1ZIxo7NbQ5VM/aN67ad/RUhWRA wfos-acme"
 prepare() {
@@ -1198,7 +1730,7 @@ for line in \
   "wfos-apps ALL=(root) NOPASSWD: /usr/local/sbin/wfos-app-helper" \
   "visudo -cf /etc/sudoers.d/wfos-app-helper" \
   "install -o root -g root -m 0755 $HELPER /usr/local/sbin/wfos-app-helper" \
-  "BASE_DOMAIN=preview.example.com" "PG_PORT=5433" "PORT_MIN=4100" "PORT_MAX=4499" "PG_VERSION=" \
+  "BASE_DOMAIN=preview.example.com" "PG_PORT=5433" "PORT_MIN=4100" "PORT_MAX=4899" "PG_VERSION=" \
   "MAX_RUNNING=3" "MAX_APPS=20" \
   "log_statement = 'none'" "log_min_error_statement = panic" \
   "[dry-run] write /etc/systemd/system/wfos-apps.slice" "  | MemoryMax=40%" "  | MemoryHigh=35%" "  | CPUQuota=200%" "  | TasksMax=2048" "  | IOWeight=50" \
@@ -1230,7 +1762,7 @@ for line in \
   "127.0.0.53" \
   "0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 168.63.129.16/32, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.168.0.0/16, 198.18.0.0/15, 224.0.0.0/3" \
   "::/128, ::1/128, 64:ff9b::/96, fc00::/7, fe80::/10, ff00::/8" \
-  'iifname != "lo" tcp dport 4100-4499 drop' \
+  'iifname != "lo" tcp dport 4100-4899 drop' \
   "[dry-run] write /etc/systemd/system/wfos-apps-firewall.service" \
   "  | ExecStart=/usr/sbin/nft -f /etc/wfos-apps/nftables.conf" \
   "  | WantedBy=sysinit.target" \
@@ -1240,6 +1772,13 @@ for line in \
   has "$line" "prepare --dry-run"
 done
 hasnt "WFOS_SERVER_READY" "prepare --dry-run"
+has "PORT_MAX moves from 4499 to 4899" "prepare widens the port range of an earlier install"
+has "[dry-run] write /etc/wfos-apps/maintenance.html (mode 0644, owner root:root)" "prepare installs the maintenance page"
+written /etc/wfos-apps/maintenance.html > "$WORK/maint.html"
+grep -qF '<meta name="robots" content="noindex">' "$WORK/maint.html" || fail "the maintenance page is noindex"
+grep -qF 'Situs ini sedang diperbarui' "$WORK/maint.html" || fail "the maintenance page speaks Indonesian too"
+grep -qF '</html>' "$WORK/maint.html" || fail "the maintenance page is complete"
+! grep -qiE 'workforce|<script|https?://|src=' "$WORK/maint.html" || fail "the maintenance page is neutral and self-contained (no product name, scripts or external resources)"
 hasnt "flush ruleset" "prepare never flushes other tables"
 hasnt "listen_addresses=localhost" "prepare: no TCP for the apps cluster"
 hasnt "@own4" "prepare: no static own-address list (fib covers it)"
@@ -1253,6 +1792,16 @@ pass "prepare.sh --dry-run: user, key, sudo rule, config (APPS_ROOT migration), 
 prepare --dry-run --public-key "$KEY" --domain preview.example.com
 code 0 "prepare without an earlier install"
 hasnt "APPS_ROOT moves" "prepare without an earlier install"
+hasnt "PORT_MAX moves" "prepare without an earlier install"
+printf '0.0.0.0:22\n0.0.0.0:4600\n127.0.0.1:4101\n[::1]:4502\n[::]:4700\n*:4899\n0.0.0.0:4900\n[::]:80\n127.0.0.53%%lo:53\n' > "$WORK/listen"
+WFOS_PREPARE_TEST_LISTEN="$WORK/listen" prepare --dry-run --public-key "$KEY" --domain preview.example.com
+code 0 "prepare with listeners in the app port range"
+for a in "0.0.0.0:4600" "[::]:4700" "*:4899"; do
+  has "warning: $a listens on a port of the app range 4100-4899" "prepare warns about a public listener in the app range"
+done
+for a in "127.0.0.1:4101" "[::1]:4502" "0.0.0.0:4900" "0.0.0.0:22" "[::]:80"; do
+  hasnt "$a listens" "prepare: loopback and other ports are fine"
+done
 pass "prepare.sh without an earlier config does not migrate anything"
 
 prepare --dry-run --public-key "$KEY" --domain apps.example.org --user appsbot --pg-port 5544 --pnpm-version 10.12.1 --max-running 5 --max-apps 40 --node-major 22

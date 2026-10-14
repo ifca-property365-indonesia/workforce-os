@@ -11,7 +11,7 @@ export const HELPER_EXIT_FAILED = 1;
 export const HELPER_EXIT_BAD_ARGS = 2;
 export const HELPER_EXIT_GUARD = 3;
 /** codes the helper prints as `wfos-app-helper: <code>: <detail>` (exit 3, backup_missing with exit 1) */
-const CODES = ["disk_low", "release_missing", "release_active", "bad_archive", "server_name_taken", "cert_limit", "firewall_off", "server_full", "backup_missing"] as const;
+const CODES = ["disk_low", "release_missing", "release_active", "bad_archive", "server_name_taken", "cert_limit", "firewall_off", "server_full", "backup_missing", "port_busy", "legacy_active"] as const;
 export type HelperGuard = (typeof CODES)[number];
 const CODE_TEXT: Record<HelperGuard, string> = {
   disk_low: "the server has too little free disk space",
@@ -23,6 +23,8 @@ const CODE_TEXT: Record<HelperGuard, string> = {
   firewall_off: "the app firewall is not loaded on the server; the Owner should start wfos-apps-firewall.service or re-run prepare.sh",
   server_full: "the server already runs (or holds) as many apps as it allows",
   backup_missing: "the database backup is not on the server",
+  port_busy: "another running unit of the server uses that port",
+  legacy_active: "the live environment's single (helper v3) unit still runs on the blue slot's port",
 };
 
 /** Arguments are slugs, shas, numbers, paths and flags: anything else is a bug here, never sent. */

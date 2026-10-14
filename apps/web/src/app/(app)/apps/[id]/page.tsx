@@ -11,6 +11,7 @@ import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/common";
 import { AccessCard } from "@/components/apps/access-card";
+import { BackupsPanel } from "@/components/apps/backups-panel";
 import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
 import { DnsPanel } from "@/components/apps/dns-panel";
 import { EnvEditor } from "@/components/apps/env-editor";
@@ -241,6 +242,17 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
             <AccessCard key={`access-${shownEnv.id}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
             <EnvEditor key={`${shownEnv.id}-${shownEnv.envKeys.join(",")}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
           </div>
+          {/* the database's backups: Admins see them; backing up live and every restore are the Owner's */}
+          {admin && shownEnv.hasDatabase && (
+            <BackupsPanel
+              key={`backups-${shownEnv.id}`}
+              app={app}
+              env={shownEnv}
+              canBackup={shownEnv.kind === "live" ? owner : admin}
+              canRestore={owner}
+              busy={shownEnv.kind === "live" ? liveBusy : previewBusy}
+            />
+          )}
         </div>
       </section>
 
@@ -298,7 +310,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
       {dialog === "edit" && <EditAppDialog app={app} onClose={() => setDialog(null)} />}
       {dialog === "setupLive" && <SetupLiveDialog app={app} onClose={() => setDialog(null)} onCreated={() => setTab("live")} />}
       {dialog === "editLive" && live && <EditLiveDialog app={app} env={live} onClose={() => setDialog(null)} />}
-      {dialog === "releaseLive" && live && <ReleaseToLiveDialog app={app} live={live} releases={releases} envChanged={data.liveEnvChanged ?? []} onClose={() => setDialog(null)} />}
+      {dialog === "releaseLive" && live && <ReleaseToLiveDialog app={app} live={live} releases={releases} envChanged={data.liveEnvChanged ?? []} dbPlans={data.dbPlans ?? {}} onClose={() => setDialog(null)} />}
       {dialog === "removeLive" && live && (
         <ConfirmLiveRemovalDialog
           title={t("live.remove")}

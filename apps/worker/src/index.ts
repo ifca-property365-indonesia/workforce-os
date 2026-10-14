@@ -2,7 +2,7 @@ import "./lib/env";
 import { DelayedError, Worker, type Job } from "bullmq";
 import { eq } from "drizzle-orm";
 import { conversations, db, getSql, tasks, teams } from "@wfos/db";
-import { QUEUE_ACTIONS, QUEUE_DEPLOYS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type DeployJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
+import { QUEUE_ACTIONS, QUEUE_DEPLOYS, QUEUE_INGEST, QUEUE_MISC, QUEUE_RUNS, type ActionJob, type IngestJob, type MiscJob, type RunJob } from "@wfos/shared";
 import { env, instanceCredentialSummary } from "./lib/env";
 import { log } from "./lib/logger";
 import { errorMessage } from "./lib/errors";
@@ -24,7 +24,8 @@ import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
 import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
 import { recheckServers, SERVER_RECHECK_TICK_MS } from "./scheduler/servers";
 import { APPS_TICK_MS, tickApps } from "./scheduler/apps";
-import { activeDeployCount, drainDeploys, onDeployActivity, processDeployJob, recoverInterruptedReleases } from "./deploy";
+import { activeDeployCount, drainDeploys, onDeployActivity, processDeployJob, recoverInterruptedReleases, recoverInterruptedRestores, sweepGraceStops } from "./deploy";
+import type { WorkerDeployJob } from "./deploy/jobs";
 import { collectWorkspaces } from "./runner/workspace/gc";
 import { telegramDailySummary } from "./lib/telegram";
 import { writeHeartbeat } from "./lib/heartbeat";
@@ -103,7 +104,7 @@ const workers = [
 
 // App deploys and start/stop/remove: one job at a time (one build per server). Not started until releases a dead
 // process left behind are settled (recoverInterruptedReleases), so a job taken now is never mistaken for one.
-const deployWorker = new Worker<DeployJob>(QUEUE_DEPLOYS, processDeployJob, {
+const deployWorker = new Worker<WorkerDeployJob>(QUEUE_DEPLOYS, processDeployJob, {
   connection,
   prefix,
   concurrency: 1,
@@ -111,8 +112,14 @@ const deployWorker = new Worker<DeployJob>(QUEUE_DEPLOYS, processDeployJob, {
   maxStalledCount: 0,
   autorun: false,
 });
+// then a database restore cut off by the stop (the app started again or the maintenance page left on, Owners told),
+// and live grace stops whose job was lost (the old slot of a release would otherwise keep running)
 void recoverInterruptedReleases()
   .catch((e) => log.error({ err: e }, "recovering interrupted releases failed"))
+  .then(() => recoverInterruptedRestores())
+  .catch((e) => log.error({ err: e }, "recovering interrupted restores failed"))
+  .then(() => sweepGraceStops())
+  .catch((e) => log.error({ err: e }, "sweeping live grace stops failed"))
   .finally(() => void deployWorker.run().catch((e: unknown) => log.error({ err: e }, "deploy worker stopped")));
 
 for (const w of [...workers, deployWorker]) {

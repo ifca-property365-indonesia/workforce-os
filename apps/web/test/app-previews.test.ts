@@ -64,7 +64,7 @@ async function previewFixture(wsId: string, userId: string) {
     files: [{ path: "app/page.tsx", added: 40, removed: 3 }],
     filesTruncated: false,
     warnings: ["new_database"],
-    manifest: { type: "nextjs", install: "pnpm install --frozen-lockfile", build: "pnpm build", start: "pnpm start -H 127.0.0.1 -p $PORT", health: "/api/health", database: true, memoryMb: 512, migrate: "pnpm migrate" },
+    manifest: { type: "nextjs", install: "pnpm install --frozen-lockfile", build: "pnpm build", start: "pnpm start -H 127.0.0.1 -p $PORT", health: "/api/health", database: true, memoryMb: 512, migrations: "breaking", migrate: "pnpm migrate" },
     summary: "Guests can sign the book.",
   };
   expect(requestPreviewPayloadSchema.safeParse(payload).success).toBe(true);

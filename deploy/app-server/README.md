@@ -8,7 +8,7 @@ employees build are previewed (`https://<app>.<your domain>`) and, once released
   domain, or to upgrade an earlier install in place).
 - `wfos-app-helper` — installed by `prepare.sh` as `/usr/local/sbin/wfos-app-helper`. It is the only thing
   Workforce OS may run as root. It checks every argument and every stdin payload (instance name, commit, port,
-  memory, domain names, env lines, password hash) before doing anything. This is helper version 3 (`version`,
+  memory, domain names, env lines, password hash) before doing anything. This is helper version 4 (`version`,
   `info.helperVersion`); Workforce OS shows a server with an older helper as outdated until you re-run `prepare.sh`.
 
 Workforce OS never sees a root password. It logs in as an ordinary user (`wfos-apps`) with the workspace's own SSH
@@ -25,7 +25,8 @@ key, and only after you confirmed the server's host key fingerprint.
 - the user `wfos-apps` (no sudo group) with `~/incoming` (uploads) and the workspace public key in
   `~/.ssh/authorized_keys` (forwarding and pty disabled). Files in that home are written as the user, never by root
 - folders: `/srv/wfos-apps` (the apps), `/etc/wfos-apps/{env,start,htpasswd}` (app config, root-owned),
-  `/var/lib/wfos-apps` (certificate counter)
+  `/var/lib/wfos-apps` (certificate counter), and `/etc/wfos-apps/maintenance.html`: the neutral page (English and
+  Indonesian, no product name, no scripts or external files) a live site shows while a release migrates its database
 - a separate PostgreSQL cluster `apps` on port 5433 for the apps' databases. It has **no TCP at all**: its only
   socket is `/run/wfos-apps-pg/.s.PGSQL.5433` (folder `postgres:wfos-app-run 0750`, recreated at boot by
   `/etc/tmpfiles.d/wfos-apps-pg.conf`), set in `/etc/postgresql/<v>/apps/conf.d/90-wfos-apps.conf`. Its
@@ -44,7 +45,9 @@ key, and only after you confirmed the server's host key fingerprint.
     private networks (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (incl. cloud metadata), CGNAT
     (100.64/10), multicast/broadcast, 168.63.129.16, 192.0.0.0/24, 198.18.0.0/15 or NAT64 (64:ff9b::/96). So an app
     cannot reach your production database, Redis, the Workforce OS web app or another app's port
-  - ports 4100–4499 (the apps) answer loopback only, so the outside world reaches an app through nginx only
+  - ports 4100–4899 (the apps; 4500 and up are the second port of each live app, see below) answer loopback only,
+    so the outside world reaches an app through nginx only. `prepare.sh` warns when something else listens on a
+    public address in that range (the firewall would drop its traffic)
 - `wfos-apps.slice`: every app and every build runs in it, so together they never use more than 40 % of the
   memory (throttled from 35 %), two CPUs and 2048 tasks, and they yield disk I/O. The helper also starts at most
   `--max-running` apps at once (default 3) and creates at most `--max-apps` apps (default 20)
@@ -55,6 +58,10 @@ key, and only after you confirmed the server's host key fingerprint.
   host name) and the catch-all site `wfos-apps-catchall` (names under the preview domain that no app owns: 404 over
   http, TLS handshake refused over https; it never covers live domains), then reloads nginx; ufw: allows 80 and 443
   when it is active
+
+Re-running `prepare.sh` over a helper v3 install widens the port range in place (`PORT_MAX` 4499 → 4899 in
+`/etc/wfos-app-helper.conf` and in the firewall's input rule) and adds the maintenance page; running apps are not
+touched.
 
 An earlier install (Phase A1) kept apps in `~wfos-apps/apps`. `prepare.sh` moves `APPS_ROOT` to `/srv/wfos-apps`,
 turns the A1 `apps` cluster into a socket-only one (it restarts it once, only when the settings change), and
@@ -88,6 +95,63 @@ Removing an instance (`app-remove <name> [--drop-db] [--keep-db-dump]`) also del
 instance records or another nginx site still serves is kept. Publishing a live environment under a new domain
 deletes the old domain's certificate the same way, once the new site is in place.
 
+## Live releases without downtime (helper v4)
+
+A live instance (`<slug>-live`) runs in one of two **slots**, `blue` and `green`, side by side. A release builds in
+its own `releases/<commit>` folder while the running slot keeps serving, starts the other slot, checks its health on
+that slot's own port, and only then points nginx at it (`publish … --index`, a graceful reload that cuts no
+connection). The previous slot keeps running for a grace time (instant rollback = publish its port again) and is
+then stopped; its release folder stays.
+
+- `--slot blue|green` on `release-activate`, `unit-install`, `unit-start`, `unit-stop`, `unit-restart` and
+  `unit-status` (live instances only). Each slot has its own unit `wfos-app-<name>-<slot>.service`, its own link
+  `current-<slot>`, start script `/etc/wfos-apps/start/<name>-<slot>.sh`, Next.js cache `next-cache-<slot>/` and
+  port (Workforce OS uses the environment's port for blue and port + 400 for green). Both slots share `data/`,
+  `cache/`, the env file and the database, and run with exactly the same sandbox as any app. Without `--slot` the
+  commands work as before (previews, and the single unit of a live instance installed by helper v3).
+- Two slots of one live instance count as one app for `--max-running`. `unit-start` / `unit-restart` refuse (exit 3
+  `port_busy`) while another running app unit owns the same port.
+- `release-unpack` and `build-run` refuse (exit 3 `release_active`) a release that any link (`current`,
+  `current-blue`, `current-green`) points at, running or not: it is never unpacked over or built in again.
+  `release-prune` always keeps those releases.
+- A live instance from helper v3 (one unit `wfos-app-<name>.service` on blue's port, running `current`) keeps
+  working: its first release under v4 goes to green next to it. The first `release-activate <name> <sha> --slot blue`
+  retires the old unit (disable, remove its unit file, start script and `current` link; its release folder stays);
+  it is refused (exit 3 `legacy_active`) while that unit still runs.
+- `slots <name>` prints one JSON line: `{"legacy":{…},"blue":{…},"green":{…},"site":…}`, each unit as
+  `{"unit":<file present>,"state":"active|inactive|failed","sha":<release of its link or null>}`, and `site` as
+  `{"port":<proxied port or null>,"maintenance":<bool>}` (null without a site).
+
+### Maintenance page
+
+`publish <name> <port> … --maintenance` (with the same `--domain`, `--alias`, `--auth`, `--index` as always) writes
+the site so that every request gets **HTTP 503** with `Retry-After: 60`, `Cache-Control: no-store` and the static page
+`/etc/wfos-apps/maintenance.html` instead of the app (used while a release that cannot run beside the old version
+migrates the database). Certificates and alias redirects work as before; the page is shown without the site's
+password (it says nothing about the app). A later `publish` without `--maintenance` proxies to the app again.
+
+### Database backups
+
+`db-dump <name> <backup> [--keep-kind <prefix> <n>]` writes `backups/<backup>.dump` (root 0600, `pg_dump -Fc` as the
+app's own role) and prints `{"name":…,"bytes":…,"pruned":[…]}` as its last line. Backup names are 1 to 64 of
+`0-9 A-Z a-z _ -`; Workforce OS names them `<kind>-<UTC time>` (daily, manual, pre-migrate, pre-restore). With
+`--keep-kind` (the name must start with the prefix) only the dumps whose name starts with the prefix are pruned, down
+to the newest `<n>` (1–365) including the new one; without it the newest 7 of the backup's own kind are kept. Names
+of no kind (the release ids that helper v2/v3 dumps were named by) are their own group: every `db-dump` keeps the
+newest 7 of them and lists the removed ones in `pruned` too. Before dumping, `db-dump` estimates the dump at 1.5 × the
+newest dump of that instance (without one: 1.5 × `pg_database_size`) and refuses with exit 3 `disk_low` when less
+than 2048 MB would stay free under the backups folder.
+
+`db-restore <name> <backup>` restores into a **clean schema**, in one transaction, logged in as the app's own role
+(never a superuser session on the app's data): `BEGIN; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION
+app_<name>;` then the dump (converted by `pg_restore --clean --if-exists --no-owner --no-privileges -f -`, which also
+recreates the dump's extensions and other schemas) and `COMMIT`. Tables, columns, types and so on that are newer than
+the dump do not survive, so the next release's migration does not fail with "already exists". When any step fails
+(an unreadable dump, a failing statement), the transaction rolls back and the database is unchanged. Objects the app
+put in a schema other than `public` after the dump make the restore fail (and roll back) rather than being dropped. `db-backups <name>` prints one JSON line,
+newest first: `[{"name":…,"bytes":…,"mtime":"2026-10-14T03:00:00Z"}]`. Backups live on the app server only (no
+offsite copy).
+
 ### Database dumps kept on removal
 
 `app-remove <name> --drop-db --keep-db-dump` first dumps the instance's database (`pg_dump -Fc` as its own role) to
@@ -120,10 +184,13 @@ that lacks either). Its folder:
   data/                        wa-<app>  (persistent files, $APP_DATA_DIR)
   cache/                       wa-<app>  (pnpm store, caches; also $HOME)
   next-cache/                  wa-<app>  (Next.js runtime cache, emptied when a new version is activated)
-  backups/                     root      (database dumps, the newest 7)
+  backups/                     root      (database dumps: the newest 7 of each kind, or as db-dump --keep-kind says)
+  current-blue, current-green  (live instances: each slot's link, swapped by root like current)
+  next-cache-blue/, next-cache-green/   wa-<app>  (live instances: each slot's own Next.js cache)
 ```
 
-The app runs as the systemd unit `wfos-app-<app>.service`; installs, builds and migrations run the same way as a
+The app runs as the systemd unit `wfos-app-<app>.service` (a live instance's slots: `wfos-app-<app>-blue.service`,
+`wfos-app-<app>-green.service`; instance names never end in `-live-blue` or `-live-green`, so these never collide); installs, builds and migrations run the same way as a
 transient unit (`systemd-run`, as the app's user). Both get the same sandbox:
 
 - the user `wa-<app>` with primary group `wfos-app-run`, no capabilities, `NoNewPrivileges`, `@system-service`
@@ -195,7 +262,7 @@ Re-run `prepare.sh` when the server's DNS resolvers change (the firewall lists t
 
 ```bash
 sudo rm -f /etc/sudoers.d/wfos-app-helper /usr/local/sbin/wfos-app-helper   # Workforce OS loses root at once
-sudo systemctl disable --now 'wfos-app-*'                                    # stop the apps
+sudo systemctl disable --now 'wfos-app-*'                                    # stop the apps (slots too)
 sudo systemctl disable --now wfos-apps-firewall.service                      # removes the nft table
 sudo deluser --remove-home wfos-apps                                         # and remove the login
 ```
@@ -204,7 +271,7 @@ Then, if you want: delete the app users (`getent passwd | grep '^wa-.*:Workforce
 `groupdel` each) and
 the group `wfos-app-run`; `pg_dropcluster --stop <version> apps`; remove `/srv/wfos-apps`, `/etc/wfos-apps`,
 `/var/lib/wfos-apps` (also the kept database dumps in `removed/`), `/opt/wfos-apps`, `/etc/tmpfiles.d/wfos-apps-pg.conf`,
-`/etc/systemd/system/wfos-app-*.service`, `/etc/systemd/system/wfos-apps-firewall.service`,
+`/etc/systemd/system/wfos-app-*.service` (slot units included), `/etc/systemd/system/wfos-apps-firewall.service`,
 `/etc/systemd/system/wfos-apps.slice`, `/etc/apt/sources.list.d/nodesource.list`,
 `/etc/nginx/sites-*/wfos-app-*`, `/etc/nginx/sites-*/wfos-apps-catchall`, `/etc/nginx/conf.d/wfos-apps.conf` (and the
 A1 folder `/etc/nginx/wfos-apps`) and `/etc/wfos-app-helper.conf`. Certificates stay in `/etc/letsencrypt`

@@ -2,15 +2,19 @@ import { stat } from "node:fs/promises";
 import { DelayedError, type Job } from "bullmq";
 import { and, eq, inArray } from "drizzle-orm";
 import { appReleases, audit, db } from "@wfos/db";
-import type { DeployJob } from "@wfos/shared";
 import { env } from "../lib/env";
 import { log } from "../lib/logger";
 import { deploysQueue } from "../lib/redis";
 import { runAppAction } from "./actions";
+import { runDbJob } from "./backups";
+import type { WorkerDeployJob } from "./jobs";
+import { runSlotStop } from "./slots";
 import { publishRelease } from "./common";
 import { deployControl, handBack, runRelease, settleInterrupted } from "./pipeline";
 
 export { deployControl } from "./pipeline";
+export { recoverInterruptedRestores, queueDailyBackups } from "./backups";
+export { sweepGraceStops } from "./slots";
 
 let active = 0;
 /** Deploy-queue jobs running in this process now (0/1): the heartbeat reports it, upgrade.sh waits for 0. */
@@ -48,7 +52,7 @@ export async function deploysHeld(now = Date.now()): Promise<boolean> {
  * The deploys queue's processor (concurrency 1: one build at a time on this worker, so per server). While an upgrade
  * holds deploys, the job is put back (delayed) without running.
  */
-export async function processDeployJob(job: Job<DeployJob>, token?: string): Promise<void> {
+export async function processDeployJob(job: Job<WorkerDeployJob>, token?: string): Promise<void> {
   // counted (and the heartbeat written) BEFORE the hold is looked at: a job that sees no hold file is already
   // visible as activeDeploys 1, so upgrade.sh, which creates the file and then reads the health, cannot miss it
   active++;
@@ -63,7 +67,9 @@ export async function processDeployJob(job: Job<DeployJob>, token?: string): Pro
   try {
     const d = job.data;
     if (d.kind === "release") await runRelease(d.releaseId, d.workspaceId);
-    else await runAppAction(d);
+    else if (d.kind === "app_action") await runAppAction(d);
+    else if (d.kind === "db_backup" || d.kind === "db_restore") await runDbJob(d);
+    else if (d.kind === "slot_stop") await runSlotStop(d);
   } finally {
     active--;
     await signal();

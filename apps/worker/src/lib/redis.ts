@@ -9,7 +9,6 @@ import {
   QUEUE_MISC,
   QUEUE_RUNS,
   type ActionJob,
-  type DeployJob,
   type IngestJob,
   type MiscJob,
   type RealtimeEvent,
@@ -17,6 +16,7 @@ import {
 } from "@wfos/shared";
 import { queuePrefix } from "@wfos/shared/runtime";
 import { env } from "./env";
+import type { WorkerDeployJob } from "../deploy/jobs";
 
 export function newRedis(): Redis {
   return new Redis(env.redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: true });
@@ -34,7 +34,7 @@ export const actionsQueue = new Queue<ActionJob>(QUEUE_ACTIONS, { connection, pr
 export const ingestQueue = new Queue<IngestJob>(QUEUE_INGEST, { connection, prefix, defaultJobOptions });
 export const miscQueue = new Queue<MiscJob>(QUEUE_MISC, { connection, prefix, defaultJobOptions });
 /** never retried by the queue: a half-run deploy is settled by the worker itself (failed / rolled back) */
-export const deploysQueue = new Queue<DeployJob>(QUEUE_DEPLOYS, { connection, prefix, defaultJobOptions: { attempts: 1, removeOnComplete: 500, removeOnFail: 1000 } });
+export const deploysQueue = new Queue<WorkerDeployJob>(QUEUE_DEPLOYS, { connection, prefix, defaultJobOptions: { attempts: 1, removeOnComplete: 500, removeOnFail: 1000 } });
 
 export async function publish(workspaceId: string, ev: RealtimeEvent): Promise<void> {
   await redis.publish(channelFor(workspaceId, env.namespace), JSON.stringify(ev));

@@ -1,6 +1,6 @@
 import { audit } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
-import { assertDeploysAllowed, assertNotRemoving, loadAppEnv, requireLiveOwner } from "@/lib/server/apps";
+import { assertDeploysAllowed, assertNoRestore, assertNotRemoving, loadAppEnv, requireLiveOwner } from "@/lib/server/apps";
 import { q } from "@/lib/server/queue";
 import { route } from "@/lib/server/route";
 
@@ -16,6 +16,8 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
   if (!env.currentReleaseId) throw new HttpError(409, "Deploy the app first", { code: "app_never_deployed" });
   if (env.status === "running" || env.status === "deploying") throw new HttpError(409, "The app is already running", { code: "app_already_running" });
   if (env.kind === "live" && env.dnsCheck?.status !== "ok") throw new HttpError(409, "The domain does not point at the server yet", { code: "live_dns_not_ok" });
+  // a restore starts the app itself once the database is back
+  await assertNoRestore(env.id);
   await q.deploy({ kind: "app_action", appId: a.id, workspaceId: session.workspaceId, environmentId: env.id, action: "start", userId: session.userId });
   await audit({
     workspaceId: session.workspaceId,

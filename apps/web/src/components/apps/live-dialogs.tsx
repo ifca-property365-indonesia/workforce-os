@@ -1,17 +1,18 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Globe, KeyRound, Plus, Radio, Trash2, X } from "lucide-react";
-import { customDomainSchema, type AppAccessMode, type AppDTO, type AppEnvironmentDTO, type ReleaseDTO } from "@wfos/shared";
+import { Construction, DatabaseBackup, Globe, KeyRound, Plus, Radio, Repeat, Trash2, X, Zap } from "lucide-react";
+import { APP_LIVE_GRACE_SECONDS, customDomainSchema, type AppAccessMode, type AppDTO, type AppEnvironmentDTO, type ReleaseDTO } from "@wfos/shared";
 import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import type { ReleaseDbPlan } from "@/lib/app-previews";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { useServers } from "./new-app-dialog";
@@ -298,6 +299,66 @@ export function EditLiveDialog({ app, env, onClose }: { app: AppDTO; env: AppEnv
   );
 }
 
+function PlanRow({ icon: Icon, tone, title, children }: { icon: typeof Zap; tone?: string; title: string; children: ReactNode }) {
+  return (
+    <li className="flex gap-2.5">
+      <Icon className={cn("mt-0.5 size-4 shrink-0", tone ?? "text-muted-foreground")} aria-hidden />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold">{title}</span>
+        <span className="block text-xs text-muted-foreground">{children}</span>
+      </span>
+    </li>
+  );
+}
+
+/**
+ * How the picked version reaches live: a backup of the live database first (when it has one), then its migrations
+ * while the old version serves ("expand", no downtime) or behind the maintenance page ("breaking"); the old version
+ * keeps running for a short grace after the switch, for an instant rollback.
+ */
+function LiveReleasePlan({ plan, hasDatabase, replacing }: { plan: ReleaseDbPlan | undefined; hasDatabase: boolean; replacing: boolean }) {
+  const t = useTranslations("apps");
+  const db = plan ? plan.database || hasDatabase : hasDatabase;
+  return (
+    <ul className="space-y-2.5 rounded-lg border border-dashed p-3" aria-label={t("live.planTitle")}>
+      {db && (
+        <PlanRow icon={DatabaseBackup} title={t("live.planBackup")}>
+          {t("live.planBackupHelp")}
+        </PlanRow>
+      )}
+      {!db ? (
+        <PlanRow icon={Zap} tone="text-success" title={t("live.planNoDowntime")}>
+          {t("live.planNoDatabase")}
+        </PlanRow>
+      ) : plan?.migrations === "expand" ? (
+        <PlanRow icon={Zap} tone="text-success" title={t("live.planNoDowntime")}>
+          {t("live.planExpand")}
+        </PlanRow>
+      ) : plan?.migrations === "breaking" ? (
+        <PlanRow icon={Construction} tone="text-warning" title={t("live.planMaintenance")}>
+          {t("live.planBreaking")}
+        </PlanRow>
+      ) : (
+        <PlanRow icon={Construction} tone="text-warning" title={t("live.planUnknown")}>
+          {t("live.planUnknownHelp")}
+        </PlanRow>
+      )}
+      {replacing && (
+        <PlanRow icon={Repeat} title={t("live.planGrace")}>
+          {t("live.planGraceHelp", { minutes: Math.round(APP_LIVE_GRACE_SECONDS / 60) })}
+        </PlanRow>
+      )}
+    </ul>
+  );
+}
+
+/** a small mark per version in the list: how its migrations reach live */
+function MigrationMark({ plan, hasDatabase }: { plan: ReleaseDbPlan | undefined; hasDatabase: boolean }) {
+  const t = useTranslations("apps");
+  if (!plan || !(plan.database || hasDatabase)) return null;
+  return plan.migrations === "expand" ? <span className="text-success">{t("live.markExpand")}</span> : <span className="text-warning">{t("live.markBreaking")}</span>;
+}
+
 /**
  * "Release to LIVE": one of the versions that ran in the preview (newest first, the one running there now marked),
  * its exact commit then goes live. The Owner, with a step-up; refused until the DNS check is ok.
@@ -307,11 +368,14 @@ export function ReleaseToLiveDialog({
   live,
   releases,
   envChanged,
+  dbPlans,
   onClose,
 }: {
   app: AppDTO;
   live: AppEnvironmentDTO;
   releases: ReleaseDTO[];
+  /** what each preview release's manifest says about its database (none for a release without a manifest) */
+  dbPlans: Record<string, ReleaseDbPlan>;
   /** live env names changed since the release live now */
   envChanged: string[];
   onClose: () => void;
@@ -396,6 +460,7 @@ export function ReleaseToLiveDialog({
                         <span className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
                           {r.id === app.preview.currentRelease?.id && <span className="text-success">{t("live.releaseInPreview")}</span>}
                           {r.commit === liveCommit && <span className="text-[var(--sign-merah)]">{t("live.releaseIsLive")}</span>}
+                          <MigrationMark plan={dbPlans[r.id]} hasDatabase={live.hasDatabase} />
                         </span>
                       </span>
                     </label>
@@ -403,6 +468,11 @@ export function ReleaseToLiveDialog({
                 ))}
               </ul>
             </fieldset>
+            {picked && (
+              <div className="mt-3">
+                <LiveReleasePlan plan={dbPlans[picked]} hasDatabase={live.hasDatabase} replacing={!!live.currentRelease && live.status === "running"} />
+              </div>
+            )}
             <p className="mt-3 text-xs text-muted-foreground">{t("live.releaseAudited")}</p>
           </form>
         )}

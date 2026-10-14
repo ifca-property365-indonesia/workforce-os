@@ -1,16 +1,30 @@
-import { and, eq } from "drizzle-orm";
-import { appEnvironments, apps, audit, db } from "@wfos/db";
+import { and, eq, inArray } from "drizzle-orm";
+import { appEnvironments, appReleases, apps, audit, db } from "@wfos/db";
 import { appRemoveLockKey, appUpdateSchema } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { serverEnv } from "@/lib/server/env";
-import { appDTO, appDuplicate, appReleasesShown, assertLiveRemovable, liveEnvChanges, loadApp, loadEnv, releaseOrigins, requireOwner, resolveClientProject } from "@/lib/server/apps";
+import {
+  appDTO,
+  appDuplicate,
+  appReleasesShown,
+  assertLiveRemovable,
+  liveEnvChanges,
+  loadApp,
+  loadEnv,
+  releaseDbPlans,
+  releaseOrigins,
+  requireOwner,
+  resolveClientProject,
+} from "@/lib/server/apps";
 import { publish, q, redis } from "@/lib/server/queue";
 import { patchBody, route } from "@/lib/server/route";
 import { requireStepUp } from "@/lib/server/twofactor";
 
 /**
  * One app, its environments and the latest releases of each (no logs: GET /api/releases/[id] has them, for Members
- * and up), with the tasks behind them. Each release names its environment (environmentKind).
+ * and up), with the tasks behind them. Each release names its environment (environmentKind). With a live
+ * environment, `dbPlans` tells the Release to LIVE dialog what each preview release's manifest says about its
+ * database (has one; migrations "expand" = no downtime, "breaking" = maintenance page while it migrates).
  */
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
   const a = await loadApp(session.workspaceId, params.id);
@@ -19,9 +33,17 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
     .select()
     .from(appEnvironments)
     .where(and(eq(appEnvironments.appId, a.id), eq(appEnvironments.workspaceId, session.workspaceId), eq(appEnvironments.kind, "live")));
+  const previewIds = live ? releases.filter((r) => r.environmentKind === "preview").map((r) => r.id) : [];
+  const manifests = previewIds.length
+    ? await db
+        .select({ id: appReleases.id, manifest: appReleases.manifest })
+        .from(appReleases)
+        .where(and(eq(appReleases.workspaceId, session.workspaceId), eq(appReleases.appId, a.id), inArray(appReleases.id, previewIds)))
+    : [];
   return {
     app: await appDTO(session.workspaceId, a.id),
     releases,
+    dbPlans: releaseDbPlans(manifests),
     origins: await releaseOrigins(session.workspaceId, releases),
     // names only: the live env variables changed since the release live now (they apply at the next release to live)
     liveEnvChanged: await liveEnvChanges(session.workspaceId, a.id, live),

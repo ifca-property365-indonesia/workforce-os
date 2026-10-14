@@ -12,7 +12,13 @@ import {
   envLabel,
   isOwner,
   liveNames,
+  mergeCheckpoint,
+  pendingGrace,
   recordPublishedNames,
+  servingUnit,
+  slotFlags,
+  slotPort,
+  type SlotUnit,
   extraEnv,
   forbiddenEnvKeys,
   forbiddenEnvMessage,
@@ -212,13 +218,28 @@ async function environmentAction(a: ActionCtx, e: Environment): Promise<AppActio
   };
   const redactor = new Redactor();
   seedRedactor(e, redactor);
+  const [cur] = e.currentReleaseId ? await db.select().from(appReleases).where(and(eq(appReleases.id, e.currentReleaseId), eq(appReleases.environmentId, e.id))) : [];
+  // live (B2): the unit of the current release (a slot, or the B1 single unit) on its own port; a preview: its unit
+  const unit: SlotUnit | null = live ? servingUnit(e, cur) : null;
+  const port = unit ? slotPort(e, unit) : e.port;
+  const flags = slotFlags(unit);
   let started = false;
   let healthFailed = false;
   try {
     if (job.action === "stop") {
-      await helper(target, "unit-stop", [e.instanceName]);
+      await helper(target, "unit-stop", [e.instanceName, ...flags]);
+      const grace = live ? pendingGrace(cur) : null;
+      if (grace && cur) {
+        // the release before still runs its grace time: it stops too
+        // settled only once it stopped (otherwise the grace job / sweep tries again)
+        const stopped = await helper(target, "unit-stop", [e.instanceName, ...slotFlags(grace.slot)]).then(
+          () => true,
+          (err: unknown) => (log.warn({ err: errorMessage(err), environmentId: e.id }, "stopping the grace unit failed"), false),
+        );
+        if (stopped) await mergeCheckpoint(cur.id, { graceDone: true });
+      }
       await helper(target, "unpublish", [e.instanceName]);
-      await updateEnvironment(e, { status: "stopped", statusMessage: job.reason === "idle" ? "idle" : null, healthy: null });
+      await updateEnvironment(e, { status: "stopped", statusMessage: job.reason === "idle" ? "idle" : null, healthy: null, maintenance: false });
       await record(a, e, "app.stopped");
       if (job.reason === "idle") {
         await notifyApp({
@@ -236,8 +257,9 @@ async function environmentAction(a: ActionCtx, e: Environment): Promise<AppActio
     if (job.action === "republish") {
       const dns = await liveDnsRefused();
       if (dns) return dns;
-      // the access mode and password as stored now (publishSite reads them again); no restart
-      await publishSite(target, e, redactor);
+      // the access mode and password as stored now (publishSite reads them again); no restart. A maintenance page
+      // that is on (a failed restore) stays on.
+      await publishSite(target, e, redactor, { port, maintenance: e.maintenance });
       await publishedLive();
       await updateEnvironment(e, {});
       await record(a, e, "app.republished", { accessMode: e.accessMode });
@@ -246,7 +268,6 @@ async function environmentAction(a: ActionCtx, e: Environment): Promise<AppActio
 
     // start
     if (a.killSwitch) return refuse("kill_switch", "The kill switch is engaged");
-    const [cur] = e.currentReleaseId ? await db.select().from(appReleases).where(and(eq(appReleases.id, e.currentReleaseId), eq(appReleases.environmentId, e.id))) : [];
     if (!cur?.manifest) return refuse("no_release", "The environment has no deployed version to start");
     if (e.status === "running") return "done";
     // live environments are never held back by previews filling the server's slots
@@ -261,18 +282,18 @@ async function environmentAction(a: ActionCtx, e: Environment): Promise<AppActio
     // the env as it is now (edits since the last deploy apply), the unit written again for the current release
     // (the helper refuses to start a unit whose binds belong to another release), then start
     await helper(target, "env-install", [e.instanceName], { stdin: await appEnvFile(e, cur.commit, m, redactor, server.info?.postgresPort ?? null) });
-    await helper(target, "unit-install", [e.instanceName, e.port, m.memoryMb, ...(m.database ? ["--database"] : [])], { stdin: `${m.start}\n` });
+    await helper(target, "unit-install", [e.instanceName, port, m.memoryMb, ...(m.database ? ["--database"] : []), ...flags], { stdin: `${m.start}\n` });
     started = true;
-    await helper(target, "unit-start", [e.instanceName]);
-    const h = await waitHealthy(target, e, m.health, () => {});
+    await helper(target, "unit-start", [e.instanceName, ...flags]);
+    const h = await waitHealthy(target, e, m.health, () => {}, port);
     if (!h.ok) {
       healthFailed = true;
-      throw new Error(`no 2xx on ${m.health} (last: ${h.last}; unit ${await unitStatus(target, e.instanceName)})`);
+      throw new Error(`no 2xx on ${m.health} (last: ${h.last}; unit ${await unitStatus(target, e.instanceName, flags)})`);
     }
-    // access mode changes take effect here
-    await publishSite(target, e, redactor);
+    // access mode changes take effect here (and a maintenance page left by a failed restore goes away)
+    await publishSite(target, e, redactor, { port });
     await publishedLive();
-    await updateEnvironment(e, { status: "running", healthy: true, lastHealthAt: new Date(), statusMessage: null });
+    await updateEnvironment(e, { status: "running", healthy: true, lastHealthAt: new Date(), statusMessage: null, maintenance: false });
     await record(a, e, "app.started", { releaseId: cur.id, commit: cur.commit });
     return "done";
   } catch (err) {
@@ -281,7 +302,7 @@ async function environmentAction(a: ActionCtx, e: Environment): Promise<AppActio
     const code = statusCodeOf(err);
     if (job.action === "start" && started) {
       // a start that did not finish leaves nothing running (best effort)
-      await helper(target, "unit-stop", [e.instanceName]).catch(() => null);
+      await helper(target, "unit-stop", [e.instanceName, ...flags]).catch(() => null);
       await updateEnvironment(e, { status: "failed", healthy: false, statusMessage: code ?? (healthFailed ? "health_failed" : "start_failed") }).catch(() => null);
     } else {
       await updateEnvironment(e, { statusMessage: code ?? `${job.action}_failed` }).catch(() => null);

@@ -2,15 +2,26 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { and, desc, eq, gt, inArray, ne, or, sql, type SQL } from "drizzle-orm";
-import { appEnvironments, appReleases, apps, auditLog, clients, db, employees, projects, repositories, servers, tasks, users, workspaces } from "@wfos/db";
-import { APP_PORT_MAX, APP_PORT_MIN, appRemoveLockKey, type AppDTO, type AppEnv, type AppEnvironmentDTO, type AppEnvironmentKind, type ReleaseDTO } from "@wfos/shared";
+import { and, desc, eq, gt, inArray, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
+import { appBackups, appEnvironments, appReleases, apps, auditLog, clients, db, employees, projects, repositories, servers, tasks, users, workspaces } from "@wfos/db";
+import {
+  APP_PORT_MAX,
+  APP_PORT_MIN,
+  appRemoveLockKey,
+  type AppBackupDTO,
+  type AppDTO,
+  type AppEnv,
+  type AppEnvironmentDTO,
+  type AppEnvironmentKind,
+  type AppManifest,
+  type ReleaseDTO,
+} from "@wfos/shared";
 import { decryptSecret } from "@wfos/shared/server";
 import { HttpError, type Session } from "./auth";
 import { serverEnv } from "./env";
-import { redis } from "./queue";
+import { pendingDbJobs, redis } from "./queue";
 import { requireStepUp } from "./twofactor";
-import type { ReleaseOrigin, TaskPreview } from "@/lib/app-previews";
+import type { ReleaseDbPlan, ReleaseOrigin, TaskPreview } from "@/lib/app-previews";
 import { notFound } from "./route";
 
 export type AppRow = typeof apps.$inferSelect;
@@ -133,7 +144,14 @@ export async function releaseOrigins(workspaceId: string, releases: Pick<Release
   return Object.fromEntries(rows.map((t) => [t.id, { taskId: t.id, taskTitle: t.title, employeeId: t.employeeId, employeeName: t.employeeName }]));
 }
 
-function environmentDTO(e: EnvRow, serverName: string, cur: { r: ReleaseRow; by: string | null } | undefined): AppEnvironmentDTO {
+/** the newer of two ISO-able dates, null when neither */
+function newest(a: Date | null | undefined, b: Date | null | undefined): Date | null {
+  if (!a) return b ?? null;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+function environmentDTO(e: EnvRow, serverName: string, cur: { r: ReleaseRow; by: string | null } | undefined, lastBackup: Date | null): AppEnvironmentDTO {
   return {
     id: e.id,
     kind: e.kind,
@@ -154,6 +172,10 @@ function environmentDTO(e: EnvRow, serverName: string, cur: { r: ReleaseRow; by:
     lastDeployedAt: e.lastDeployedAt?.toISOString() ?? null,
     currentRelease: cur ? releaseDTO(cur.r, cur.by, e.kind) : null,
     dnsCheck: e.dnsCheck ?? null,
+    activeSlot: e.kind === "live" ? e.activeSlot : "blue",
+    maintenance: e.maintenance,
+    // the daily stamp, or any newer backup still on the server (manual, before a release or a restore)
+    lastBackupAt: newest(e.lastBackupAt, lastBackup)?.toISOString() ?? null,
   };
 }
 
@@ -185,9 +207,17 @@ export async function appDTOs(workspaceId: string, ids?: string[]): Promise<AppD
         .where(and(eq(appReleases.workspaceId, workspaceId), inArray(appReleases.id, currentIds)))
     : [];
   const byId = new Map(current.map((x) => [x.r.id, x]));
+  const backups = envs.length
+    ? await db
+        .select({ environmentId: appBackups.environmentId, at: max(appBackups.createdAt) })
+        .from(appBackups)
+        .where(and(eq(appBackups.workspaceId, workspaceId), inArray(appBackups.environmentId, envs.map((x) => x.e.id)), isNull(appBackups.deletedAt)))
+        .groupBy(appBackups.environmentId)
+    : [];
+  const lastBackup = new Map(backups.map((b) => [b.environmentId, b.at]));
   const envOf = (appId: string, kind: AppEnvironmentKind) => {
     const x = envs.find((y) => y.e.appId === appId && y.e.kind === kind);
-    return x ? environmentDTO(x.e, x.serverName, x.e.currentReleaseId ? byId.get(x.e.currentReleaseId) : undefined) : null;
+    return x ? environmentDTO(x.e, x.serverName, x.e.currentReleaseId ? byId.get(x.e.currentReleaseId) : undefined, lastBackup.get(x.e.id) ?? null) : null;
   };
   const out: AppDTO[] = [];
   for (const { a, repositoryName } of rows) {
@@ -484,4 +514,49 @@ export async function resolveClientProject(workspaceId: string, clientId: string
     if (!c) throw new HttpError(400, "Unknown client", { code: "unknown_client" });
   }
   return { clientId: client, projectId: projectId ?? null };
+}
+
+/** how many backups the Backups section lists per environment (newest first) */
+export const BACKUPS_SHOWN = 50;
+
+/** The backups of an environment still on its server (pruned ones are kept as records, not listed), newest first. */
+export async function backupDTOs(workspaceId: string, environmentId: string): Promise<AppBackupDTO[]> {
+  const rows = await db
+    .select({ b: appBackups, by: users.name })
+    .from(appBackups)
+    .leftJoin(users, eq(users.id, appBackups.createdBy))
+    .where(and(eq(appBackups.workspaceId, workspaceId), eq(appBackups.environmentId, environmentId), isNull(appBackups.deletedAt)))
+    .orderBy(desc(appBackups.createdAt))
+    .limit(BACKUPS_SHOWN);
+  return rows.map(({ b, by }) => ({
+    id: b.id,
+    environmentId: b.environmentId,
+    name: b.name,
+    kind: b.kind,
+    sizeBytes: b.sizeBytes,
+    offsite: b.offsite,
+    releaseId: b.releaseId,
+    createdAt: b.createdAt.toISOString(),
+    createdByName: by ?? null,
+  }));
+}
+
+/**
+ * A database restore of the environment waits or runs (its queued db_restore job): releases, rollbacks, starts,
+ * backups and another restore wait for it.
+ */
+export async function assertNoRestore(environmentId: string) {
+  if ((await pendingDbJobs(environmentId)).includes("db_restore")) {
+    throw new HttpError(409, "A database restore of this environment is under way", { code: "app_restore_running" });
+  }
+}
+
+/** The database plan of each release that has a manifest (one built before B2 has no mode: "breaking", the default). */
+export function releaseDbPlans(rows: { id: string; manifest: AppManifest | null }[]): Record<string, ReleaseDbPlan> {
+  const out: Record<string, ReleaseDbPlan> = {};
+  for (const r of rows) {
+    if (!r.manifest) continue;
+    out[r.id] = { database: !!r.manifest.database, migrations: r.manifest.migrations === "expand" ? "expand" : "breaking" };
+  }
+  return out;
 }

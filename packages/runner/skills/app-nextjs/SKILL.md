@@ -38,7 +38,15 @@ Then change it into what the task asks for. Keep the structure below.
 - `install`, `build`: run on the server in a sandbox, in that order (install up to 15 min, build up to 20 min, 1.5 GB).
 - `start`: must listen on `127.0.0.1` and `$PORT` (set by the platform). Keep `next start -H 127.0.0.1 -p $PORT`.
 - `migrate` (optional): runs after the build and before the new version starts; the platform backs the database up
-  first and restores it if the deploy fails. Leave it out when the app has no database changes.
+  first. Leave it out when the app has no database changes.
+- `migrations` (optional, `"breaking"` by default): how LIVE runs the migration. `"breaking"`: LIVE shows a
+  maintenance page, stops the old version, migrates, and a failed release restores the database from the backup.
+  `"expand"`: the migration runs while the old version keeps serving (no downtime) and is never undone, so it may only
+  add (new tables, nullable columns or columns with a default, plain indexes). A release that claims `"expand"` is
+  refused when its changed migration files drop, rename, change a type, add NOT NULL / constraints / unique indexes,
+  update or delete rows, replace functions/views/triggers, or are not plain `.sql` (a changed `scripts/migrate.mjs`
+  or a JS migration cannot be checked). This check is a best-effort lint of the files, not a proof: keep expand
+  migrations as plain SQL files that only add, and mark anything else `"breaking"`.
 - `health`: a GET path that answers 2xx when the app is ready. The deploy fails (and rolls back) when it does not.
 - `database`: `true` = the platform creates a PostgreSQL database for the app and sets `DATABASE_URL`.
 - `memoryMb`: memory of the running app, 256 to 1024.
@@ -66,7 +74,8 @@ Then change it into what the task asks for. Keep the structure below.
   to the driver); a plain TCP connection to localhost does not work.
 - There is no database during `pnpm build`. Every page or route that touches the database must be dynamic
   (`export const dynamic = "force-dynamic"`), and nothing may query it at import time.
-- Migrations live in `pnpm migrate` (`scripts/migrate.mjs`) and must be idempotent: they run on every deploy
+- Migrations live in `pnpm migrate` (`scripts/migrate.mjs`, which can run the `.sql` files of `migrations/`) and must
+  be idempotent: they run on every deploy, also when a release reuses a build already on the server
   (`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, …). Avoid destructive statements (DROP TABLE,
   DROP COLUMN, TRUNCATE, DELETE FROM): the approver sees them as a warning and data cannot come back after a
   successful deploy.

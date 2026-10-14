@@ -5,38 +5,55 @@
 # run exactly this file with `sudo -n`, nothing else. Every argument (and every stdin payload) is validated before
 # anything runs. Exit codes: 0 ok · 1 failed · 2 bad arguments (nothing was done) · 3 refused by a guard (the reason
 # is the first word after "wfos-app-helper: " on stderr: disk_low, release_missing, release_active, bad_archive,
-# server_name_taken, cert_limit, firewall_off, server_full). Settings come from /etc/wfos-app-helper.conf (written by prepare.sh, never sourced:
-# only known KEY=value lines are read and validated).
+# server_name_taken, cert_limit, firewall_off, server_full, port_busy, legacy_active). Settings come from
+# /etc/wfos-app-helper.conf (written by prepare.sh, never sourced: only known KEY=value lines are read and validated).
 #
 #   version                                         helper version (one number)
-#   info                                            one JSON line: versions, disk, memory, base domain, firewall
+#   info                                            one JSON line: versions, disk, memory, base domain, firewall, ports
 #   app-init <name>                                 user/group wa-<name> and the app's folders (idempotent)
 #   release-unpack <name> <sha>                     ~<user>/incoming/<name>-<sha>.tar.gz → <root>/<name>/releases/<sha>
 #   env-install <name>                              stdin: KEY=VALUE lines → /etc/wfos-apps/env/<name>.env (0600)
 #   build-run <name> <sha> <step> <timeoutSec> <memMB>
 #                                                   stdin: one command line; runs it sandboxed in releases/<sha>
 #   db-create <name> [--reset-password]             stdin: password; role + database app_<name> (apps cluster)
-#   db-dump <name> <backup> / db-restore <name> <backup>
-#                                                   <root>/<name>/backups/<backup>.dump (pg_dump -Fc / pg_restore)
-#   release-activate <name> <sha>                   current → releases/<sha>; last stdout line = previous sha or none
-#   unit-install <name> <port> <memMB> [--database] stdin: the start command; writes the sandboxed systemd unit
-#   unit-start|unit-stop|unit-restart <name>        start (+enable) / stop (+disable) / restart
-#   unit-status <name>                              one word: active, inactive or failed
+#   db-dump <name> <backup> [--keep-kind <prefix> <n>]
+#                                                   <root>/<name>/backups/<backup>.dump (pg_dump -Fc); prunes older
+#                                                   dumps of its kind; last line {"name":…,"bytes":…,"pruned":[…]}
+#   db-restore <name> <backup>                      that dump into a clean schema public, one transaction (rolls back
+#                                                   on any error)
+#   db-backups <name>                               one JSON line: [{"name":…,"bytes":…,"mtime":"…Z"}], newest first
+#   release-activate <name> <sha> [--slot <slot>]   current (or current-<slot>) → releases/<sha>; last stdout line =
+#                                                   the previous sha of that link or none
+#   unit-install <name> <port> <memMB> [--database] [--slot <slot>]
+#                                                   stdin: the start command; writes the sandboxed systemd unit
+#                                                   wfos-app-<name>.service (or wfos-app-<name>-<slot>.service)
+#   unit-start|unit-stop|unit-restart <name> [--slot <slot>]
+#                                                   start (+enable) / stop (+disable) / restart
+#   unit-status <name> [--slot <slot>]              one word: active, inactive or failed
+#   slots <name>                                    one JSON line: the v3 unit and both slots (unit, state, sha) and
+#                                                   what the nginx site serves (port, maintenance)
 #   health <name> <port> <path>                     {"status":<http code>}; exit 0 on 2xx, else 1
-#   publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]
+#   publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index] [--maintenance]
 #                                                   nginx site + certificate; --auth reads `preview:<bcrypt>` on stdin.
 #                                                   Without --domain: <name>.<BASE_DOMAIN> (a preview). With --domain:
 #                                                   that name (never under BASE_DOMAIN), up to 3 aliases that redirect
-#                                                   (301) to it, one certificate for all. noindex unless --index
+#                                                   (301) to it, one certificate for all. noindex unless --index.
+#                                                   --maintenance: the maintenance page (503) instead of the app
 #   unpublish <name>                                removes the nginx site (the certificate stays)
-#   release-prune <name>                            keeps the newest 3 releases (always the current one)
-#   app-remove <name> [--drop-db] [--keep-db-dump]  removes everything of the instance, its certificates (best
-#                                                   effort) and with --drop-db its database; --keep-db-dump first
-#                                                   dumps it to /var/lib/wfos-apps/removed/ (last line: the path)
-#   stop-all                                        stops (and disables) every wfos-app-* unit
+#   release-prune <name>                            keeps the newest 3 releases (always every current link's release)
+#   app-remove <name> [--drop-db] [--keep-db-dump]  removes everything of the instance (both slots too), its
+#                                                   certificates (best effort) and with --drop-db its database;
+#                                                   --keep-db-dump first dumps it to /var/lib/wfos-apps/removed/
+#   stop-all                                        stops (and disables) every wfos-app-* unit (slots included)
+#
+# <slot> is blue or green, for live instances only (<slug>-live): two units side by side, each with its own current
+# link, start script, Next.js cache and port, sharing the instance's data, env file and database (releases without
+# downtime). A live instance installed by helper v3 has one unit without a slot (wfos-app-<name>.service on the blue
+# slot's port, `current`): it keeps working, and the first `release-activate … --slot blue` retires it.
 #
 # <name> is an instance name: an app slug for its preview, <slug>-live for its live environment (2 to 35 of a-z,
-# 0-9, -; starts with a letter, ends with a letter or digit, no --, not a reserved name).
+# 0-9, -; starts with a letter, ends with a letter or digit, no --, not a reserved name, not ending in -live-blue or
+# -live-green: those are the unit names of a live instance's slots).
 #
 # Security model (A2 review C1/H2/H3/M1/M4):
 #   - root never opens a path a user controls: uploads are read by the SSH user (`runuser … cat`) and unpacked by the
@@ -60,7 +77,7 @@ export LC_ALL=C
 cd /
 
 # keep in step with WFOS_HELPER_VERSION in packages/shared
-HELPER_VERSION=3
+HELPER_VERSION=4
 # same list as RESERVED_APP_SLUGS in packages/shared (refused as instance names too)
 RESERVED_SLUGS=" www api app apps admin mail preview static assets cdn status "
 RUN_GROUP=wfos-app-run
@@ -75,7 +92,11 @@ APP_ID_MAX=460999
 APP_GECOS_PREFIX="Workforce OS app "
 DISK_MIN_MB=2048
 RELEASES_KEPT=3     # APP_RELEASES_KEPT
-BACKUPS_KEPT=7      # APP_DB_BACKUPS_KEPT
+BACKUPS_KEPT=7      # APP_DB_BACKUPS_KEPT (per kind of backup)
+# APP_BACKUP_KINDS (also with - for _): a backup named <kind>-… belongs to that kind (pruned among its own); other
+# names (v3: release ids) form one more group
+BACKUP_KINDS="pre_migrate pre-migrate daily manual pre_restore pre-restore"
+KEEP_KIND_MAX=365
 CERTS_PER_DAY=10
 ARCHIVE_MAX_MB=1024    # unpacked size of one release upload
 UPLOAD_MAX_MB=400      # the upload itself (Workforce OS caps it at 200 MB)
@@ -274,14 +295,54 @@ active_app_units() {
   fi
 }
 
-# at most MAX_RUNNING apps at once (the slice caps their sum too); SLUG itself does not count
-running_guard() {
-  local own n=0 u
-  own="$(unit_name "$1")"
+# unit_active UNIT: that unit runs now (active or starting)
+unit_active() {
+  local u
   while IFS= read -r u; do
-    [[ -n "$u" && "$u" != "$own" && "$u" =~ ^wfos-app-[a-z0-9-]+\.service$ ]] && n=$((n + 1))
+    if [[ "$u" == "$1" ]]; then return 0; fi
+  done < <(active_app_units)
+  return 1
+}
+
+# the instance a unit belongs to: wfos-app-<name>.service or, for a slot of a live instance,
+# wfos-app-<slug>-live-<slot>.service (instance names never end in -live-blue / -live-green)
+unit_instance() {
+  local n="${1#wfos-app-}"
+  n="${n%.service}"
+  if [[ "$n" =~ ^(.+-live)-(blue|green)$ ]]; then n="${BASH_REMATCH[1]}"; fi
+  echo "$n"
+}
+
+# at most MAX_RUNNING apps (instances) at once (the slice caps their sum too); NAME itself does not count, and both
+# slots of one live instance (a release switching over) count as one app
+running_guard() {
+  local own="$1" n=0 u inst seen=" "
+  while IFS= read -r u; do
+    [[ -n "$u" && "$u" =~ ^wfos-app-[a-z0-9-]+\.service$ ]] || continue
+    inst="$(unit_instance "$u")"
+    [[ "$inst" != "$own" && "$seen" != *" $inst "* ]] || continue
+    seen+="$inst "
+    n=$((n + 1))
   done < <(active_app_units)
   ((n < C_MAX_RUNNING)) || refuse server_full "$n apps already run on this server (at most $C_MAX_RUNNING)"
+}
+
+# unit_port FILE: the one port a unit of ours may bind (its SocketBindAllow=tcp:<port> line), empty when none
+unit_port() {
+  if [[ -f "$1" && ! -L "$1" ]]; then sed -nE 's/^SocketBindAllow=tcp:([0-9]{1,5})$/\1/p' -- "$1" | head -1; fi
+}
+
+# port_guard NAME SLOT: no other running app unit may own the port of this one (the v3 unit of a live instance and
+# its blue slot share a port; a port given twice would make the second app fail to bind)
+port_guard() {
+  local own port u
+  own="$(unit_name "$1" "$2")"
+  port="$(unit_port "$(unit_path "$1" "$2")")"
+  [[ -n "$port" ]] || return 0
+  while IFS= read -r u; do
+    [[ -n "$u" && "$u" != "$own" && "$u" =~ ^wfos-app-[a-z0-9-]+\.service$ ]] || continue
+    if [[ "$(unit_port "$UNIT_DIR/$u")" == "$port" ]]; then refuse port_busy "port $port is in use by $u (stop it first)"; fi
+  done < <(active_app_units)
 }
 
 SD_VERSION=""
@@ -308,7 +369,11 @@ check_name() {
   local s="${1:-}"
   [[ "$s" =~ ^[a-z][a-z0-9-]{0,33}[a-z0-9]$ && "$s" != *--* ]] || usage "invalid instance name ${s@Q} (2 to 35 of a-z, 0-9, -; starts with a letter, no --)"
   [[ "$RESERVED_SLUGS" != *" $s "* ]] || usage "instance name ${s@Q} is reserved"
+  [[ ! "$s" =~ -live-(blue|green)$ ]] || usage "instance name ${s@Q} is reserved (the unit of a live instance's slot is named like that)"
 }
+check_slot() { [[ "${1:-}" == blue || "${1:-}" == green ]] || usage "invalid slot ${1@Q} (blue or green)"; }
+# slots are for live instances (<slug>-live); a preview has one unit
+check_slot_name() { [[ "$1" == *-live ]] || usage "--slot is for live instances (<slug>-live) only, not ${1@Q}"; }
 check_sha() { [[ "${1:-}" =~ ^[0-9a-f]{40}$ ]] || usage "invalid commit ${1@Q} (40 lowercase hex characters)"; }
 check_port() {
   local p="${1:-}"
@@ -326,7 +391,15 @@ check_timeout() {
   is_uint "$t" && ((t >= 10 && t <= 3600)) || usage "invalid timeout ${t@Q} s (allowed 10..3600)"
 }
 check_step() { [[ "${1:-}" == install || "${1:-}" == build || "${1:-}" == migrate ]] || usage "invalid step ${1@Q} (install, build or migrate)"; }
-check_backup_name() { [[ "${1:-}" =~ ^[0-9A-Za-z-]{1,64}$ ]] || usage "invalid backup name ${1@Q} (1 to 64 of 0-9, A-Z, a-z, -)"; }
+BACKUP_RE='^[0-9A-Za-z_-]{1,64}$'
+check_backup_name() { [[ "${1:-}" =~ $BACKUP_RE ]] || usage "invalid backup name ${1@Q} (1 to 64 of 0-9, A-Z, a-z, _, -)"; }
+# --keep-kind <prefix> <n>: the backup's own name starts with the prefix; 1..KEEP_KIND_MAX dumps of it are kept
+check_keep_kind() {
+  local name="$1" prefix="$2" n="$3"
+  [[ "$prefix" =~ $BACKUP_RE ]] || usage "db-dump: invalid --keep-kind prefix ${prefix@Q} (1 to 64 of 0-9, A-Z, a-z, _, -)"
+  [[ "$name" == "$prefix"* ]] || usage "db-dump: the backup name $name does not start with the --keep-kind prefix $prefix"
+  is_uint "$n" && ((n <= KEEP_KIND_MAX)) || usage "db-dump: invalid --keep-kind count ${n@Q} (1..$KEEP_KIND_MAX)"
+}
 check_health_path() { [[ "${1:-}" =~ ^/[A-Za-z0-9._~/-]{0,200}$ ]] || usage "invalid health path ${1@Q}"; }
 # a live domain or alias (customDomainSchema in packages/shared): a lower-case host name of at least two labels, the
 # last one starting with a letter (no IP literal, no wildcard), and never the preview domain or a name under it
@@ -375,12 +448,16 @@ app_user() {
   fi
 }
 app_dir() { echo "$C_APPS_ROOT/$1"; }
-unit_name() { echo "wfos-app-$1.service"; }
-unit_path() { echo "$UNIT_DIR/wfos-app-$1.service"; }
+# NAME [SLOT]: without a slot the instance's one unit (previews; a live instance of helper v3)
+unit_name() { echo "wfos-app-$1${2:+-$2}.service"; }
+unit_path() { echo "$UNIT_DIR/$(unit_name "$1" "${2:-}")"; }
+start_file() { echo "$START_DIR/$1${2:+-$2}.sh"; }
+# [SLOT]: the link to the release a unit runs (current / current-<slot>) and its Next.js cache folder
+cur_link() { echo "current${1:+-$1}"; }
+nc_name() { echo "next-cache${1:+-$1}"; }
 build_unit() { echo "wfos-build-$1.service"; }
 db_name() { echo "app_${1//-/_}"; }
 env_file() { echo "$ENV_DIR/$1.env"; }
-start_file() { echo "$START_DIR/$1.sh"; }
 pg_hba() { echo "$PG_ETC/$C_PG_VERSION/apps/pg_hba.conf"; }
 pg_ident() { echo "$PG_ETC/$C_PG_VERSION/apps/pg_ident.conf"; }
 pg_bin() { echo "/usr/lib/postgresql/$C_PG_VERSION/bin/$1"; }
@@ -431,11 +508,26 @@ require_user() {
   [[ "$DRY" == 1 ]] || id -u "$1" > /dev/null 2>&1 || fail "user $1 does not exist (run app-init first)"
 }
 
-# the sha `current` points at (empty when there is none or it is not one of ours)
+# current_sha NAME [SLOT]: the sha `current` (or current-<slot>) points at (empty when there is none or it is not one
+# of ours)
 current_sha() {
   local l
-  l="$(readlink -- "$(app_dir "$1")/current" 2> /dev/null || true)"
+  l="$(readlink -- "$(app_dir "$1")/$(cur_link "${2:-}")" 2> /dev/null || true)"
   if [[ "$l" =~ ^releases/([0-9a-f]{40})$ ]]; then echo "${BASH_REMATCH[1]}"; fi
+}
+
+# active_link NAME SHA: prints the link (current, current-blue, current-green) that points at releases/SHA and returns
+# 0; returns 1 when no link does. Such a release runs (or a stopped slot keeps it for an instant switch back), so it
+# is never unpacked over or built in again.
+active_link() {
+  local s
+  for s in "" blue green; do
+    if [[ "$(current_sha "$1" "$s")" == "$2" ]]; then
+      cur_link "$s"
+      return 0
+    fi
+  done
+  return 1
 }
 
 disk_guard() {
@@ -491,9 +583,10 @@ cmd_info() {
   if [[ "$DRY" == 0 ]] && command -v nft > /dev/null && nft list table inet wfos_apps > /dev/null 2>&1; then
     firewall=true
   fi
-  printf '{"helperVersion":%d,"os":%s,"node":%s,"pnpm":%s,"nginx":%s,"certbot":%s,"postgresPort":%s,"diskFreeMb":%d,"memTotalMb":%d,"memAvailableMb":%d,"baseDomain":%s,"systemd":%d,"firewall":%s,"appsRoot":%s}\n' \
+  printf '{"helperVersion":%d,"os":%s,"node":%s,"pnpm":%s,"nginx":%s,"certbot":%s,"postgresPort":%s,"diskFreeMb":%d,"memTotalMb":%d,"memAvailableMb":%d,"baseDomain":%s,"systemd":%d,"firewall":%s,"appsRoot":%s,"portMin":%d,"portMax":%d}\n' \
     "$HELPER_VERSION" "$(json_str "$os")" "$(json_str "$node")" "$(json_str "$pnpm")" "$nginx" "$certbot" "$pg" \
-    "${disk:-0}" "${mem_total:-0}" "${mem_avail:-0}" "$(json_str "$C_BASE_DOMAIN")" "$sd" "$firewall" "$(json_str "$C_APPS_ROOT")"
+    "${disk:-0}" "${mem_total:-0}" "${mem_avail:-0}" "$(json_str "$C_BASE_DOMAIN")" "$sd" "$firewall" "$(json_str "$C_APPS_ROOT")" \
+    "$C_PORT_MIN" "$C_PORT_MAX"
 }
 
 # ---------------------------------------------------------------------------
@@ -543,7 +636,7 @@ cmd_app_init() {
   user="$(app_user "$slug")"
   dir="$(app_dir "$slug")"
   check_apps_root
-  for p in "$dir" "$dir/releases" "$dir/data" "$dir/cache" "$dir/next-cache" "$dir/backups"; do safe_dir "$p" 1; done
+  for p in "$dir" "$dir/releases" "$dir/data" "$dir/cache" "$dir/next-cache" "$dir/next-cache-blue" "$dir/next-cache-green" "$dir/backups"; do safe_dir "$p" 1; done
   lock
   # at most MAX_APPS apps on this server (each one has its own user, folder and releases)
   if [[ ! -e "$dir" ]]; then
@@ -698,7 +791,7 @@ upload_cleanup() {
 }
 
 cmd_release_unpack() {
-  local slug="$1" sha="$2" user dir rel tarball file size
+  local slug="$1" sha="$2" user dir rel tarball file size link
   user="$(app_user "$slug")"
   dir="$(app_dir "$slug")"
   rel="$dir/releases/$sha"
@@ -709,7 +802,7 @@ cmd_release_unpack() {
   build_lock
   lock
   disk_guard
-  [[ "$(current_sha "$slug")" != "$sha" ]] || refuse release_active "releases/$sha is the running release; it is never unpacked over"
+  if link="$(active_link "$slug" "$sha")"; then refuse release_active "releases/$sha is the release of $link; it is never unpacked over"; fi
   if [[ "$DRY" == 1 && -n "$P" ]]; then
     [[ -f "$tarball" ]] || fail "no upload at $tarball"
   else
@@ -812,14 +905,16 @@ cmd_env_install() {
 # the sandbox (one list for units and builds)
 # ---------------------------------------------------------------------------
 
-# sandbox_props SLUG KIND(unit|build) DB(0|1) [SHA]: one Key=Value per line. The unit file gets these lines as they
+# sandbox_props SLUG KIND(unit|build) DB(0|1) [SHA] [START]: one Key=Value per line (START: the unit's start script,
+# default start/<slug>.sh). The unit file gets these lines as they
 # are and systemd-run gets each one as -p, so both always carry the same sandbox. The app sees an empty APPS_ROOT
 # (tmpfs) with only its own folder in it (read-only), its data/ and cache/ writable (a build also its release), and
 # an empty /etc/wfos-apps with only its own start script in it (unit). Bind sources come from the host's tree, so
 # binding below a TemporaryFileSystem works (the documented systemd pattern). No DynamicUser: files keep their owner.
 sandbox_props() {
-  local slug="$1" kind="$2" db="$3" sha="${4:-}" dir
+  local slug="$1" kind="$2" db="$3" sha="${4:-}" start="${5:-}" dir
   dir="$(app_dir "$slug")"
+  [[ -n "$start" ]] || start="$(start_file "$slug")"
   cat << EOF
 UMask=0077
 NoNewPrivileges=yes
@@ -856,7 +951,7 @@ EOF
   echo "BindPaths=$dir/data $dir/cache"
   if [[ "$kind" == build ]]; then echo "BindPaths=$dir/releases/$sha"; fi
   echo "TemporaryFileSystem=$ETC_APPS:ro"
-  if [[ "$kind" == unit ]]; then echo "BindReadOnlyPaths=$(start_file "$slug")"; fi
+  if [[ "$kind" == unit ]]; then echo "BindReadOnlyPaths=$start"; fi
   # /run is an empty tmpfs (no sockets of PostgreSQL, Redis, Docker, D-Bus, …) with only the DNS stub resolver
   # (/etc/resolv.conf points there; "-": hosts without systemd-resolved) and, for an app or a migrate step that has
   # a database, the apps cluster's socket
@@ -885,7 +980,7 @@ dns_servers() {
 }
 
 cmd_build_run() {
-  local slug="$1" sha="$2" step="$3" timeout="$4" mem="$5" cmd user dir rel unit db=0 rc line
+  local slug="$1" sha="$2" step="$3" timeout="$4" mem="$5" cmd user dir rel unit db=0 rc line link
   local -a props=() wrap=() opts=()
   stdin_line 500 "build-run"
   cmd="$LINE"
@@ -904,8 +999,8 @@ cmd_build_run() {
   lock
   firewall_guard
   disk_guard
-  # the running release is never built in again (it is mounted read-only into the running app)
-  [[ "$(current_sha "$slug")" != "$sha" ]] || refuse release_active "releases/$sha is the running release"
+  # a running release (current, or either slot's) is never built in again (it is mounted read-only into the app)
+  if link="$(active_link "$slug" "$sha")"; then refuse release_active "releases/$sha is the release of $link"; fi
   [[ ! -L "$rel" ]] || fail "$rel is a symlink: refusing to build in it"
   [[ -d "$rel" ]] || refuse release_missing "releases/$sha is not on this server (release-unpack first)"
   [[ "$(realpath -e -- "$rel")" == "$rel" ]] || fail "$rel resolves elsewhere: refusing to build in it"
@@ -1044,17 +1139,77 @@ EOF
   echo "database $name ready"
 }
 
-# keep the newest BACKUPS_KEPT dumps (by modification time)
+# backup_kind NAME: the kind prefix (<kind>-) of a backup name, empty for a name of no kind (v3: a release id)
+backup_kind() {
+  local k
+  for k in $BACKUP_KINDS; do
+    if [[ "$1" == "$k-"* ]]; then
+      echo "$k-"
+      return 0
+    fi
+  done
+}
+
+# prune_backups DIR NEW KEEP PREFIX [COUNTED]: among the dumps of one group (names starting with PREFIX, or with PREFIX empty
+# the names of no kind) keep the newest KEEP (by modification time) counting NEW, which was just written and is never
+# removed; the removed names go to PRUNED. Only regular files named <backup name>.dump are ever looked at.
+# COUNTED=0: NEW is not one of the group (it is never removed either way).
+PRUNED=()
 prune_backups() {
-  local dir="$1" n=0 line
+  local dir="$1" new="$2" keep="$3" prefix="$4" kept="${5:-1}" line f b
   while IFS= read -r line; do
-    n=$((n + 1))
-    if ((n > BACKUPS_KEPT)); then run rm -f -- "$dir/${line#* }"; fi
+    f="${line#* }"
+    b="${f%.dump}"
+    [[ "$b" =~ $BACKUP_RE && "$b" != "$new" && " ${PRUNED[*]} " != *" $b "* ]] || continue
+    if [[ -n "$prefix" ]]; then
+      [[ "$b" == "$prefix"* ]] || continue
+    else
+      [[ -z "$(backup_kind "$b")" ]] || continue
+    fi
+    if ((kept < keep)); then
+      kept=$((kept + 1))
+      continue
+    fi
+    run rm -f -- "$dir/$f"
+    PRUNED+=("$b")
   done < <(find "$dir" -maxdepth 1 -type f -name '*.dump' -printf '%T@ %f\n' 2> /dev/null | sort -rn)
 }
 
+# the size of database NAME in bytes (pg_database_size, asked as postgres in the postgres database: the app's data is
+# never touched); 0 when it cannot be read. Dry-run: WFOS_HELPER_TEST_DB_SIZE_MB.
+db_size_bytes() {
+  local v
+  if [[ "$DRY" == 1 ]]; then
+    v="${WFOS_HELPER_TEST_DB_SIZE_MB:-0}"
+    [[ "$v" =~ ^[0-9]{1,7}$ ]] || v=0
+    echo "$((10#$v * 1024 * 1024))"
+    return 0
+  fi
+  v="$(runuser -u postgres -- "$(pg_bin psql)" -X -tA -h "$PG_SOCK" -p "$C_PG_PORT" -d postgres -c "SELECT pg_database_size('$1')" 2> /dev/null || true)"
+  [[ "$v" =~ ^[0-9]{1,15}$ ]] || v=0
+  echo "$v"
+}
+
+# dump_disk_guard DIR NAME: a dump needs about 1.5 × the newest dump already in DIR (or, without one, 1.5 × the
+# database's size); exit 3 disk_low when less than DISK_MIN_MB would stay free under DIR after it
+dump_disk_guard() {
+  local dir="$1" name="$2" line base=0 free est
+  line="$(find "$dir" -maxdepth 1 -type f -name '*.dump' -printf '%T@ %s\n' 2> /dev/null | sort -rn | head -1)"
+  if [[ -n "$line" ]]; then base="${line#* }"; fi
+  [[ "$base" =~ ^[0-9]{1,15}$ && "$base" != 0 ]] || base="$(db_size_bytes "$name")"
+  est=$(((base * 3 / 2 + 1048575) / 1048576))
+  free="$(disk_free_mb "$dir")"
+  free="${free:-0}"
+  ((free - est >= DISK_MIN_MB)) || refuse disk_low "$free MB free under $dir; the dump needs about $est MB and $DISK_MIN_MB MB must stay free"
+}
+
+# cmd_db_dump NAME BACKUP [PREFIX COUNT]: with --keep-kind the newest COUNT dumps whose name starts with PREFIX stay
+# (and the no-kind group, below); without it the newest BACKUPS_KEPT of the backup's own kind (or, for a name of no
+# kind, of the names of no kind: v3's release ids). Every dump also keeps the no-kind group (B1-era release-id
+# names) at the newest BACKUPS_KEPT. Refused (disk_low) when the dump would leave less than DISK_MIN_MB free. Last
+# line: {"name":…,"bytes":…,"pruned":[…]}, pruned listing every removed name of either group.
 cmd_db_dump() {
-  local slug="$1" bname="$2" name dir file tmp
+  local slug="$1" bname="$2" kprefix="${3:-}" keep="${4:-}" name dir file tmp bytes=0 list="" b
   require_pg
   name="$(db_name "$slug")"
   dir="$(app_dir "$slug")/backups"
@@ -1063,9 +1218,11 @@ cmd_db_dump() {
   safe_dir "$dir"
   lock
   db_exists "$name" || fail "database $name does not exist"
+  dump_disk_guard "$dir" "$name"
   if [[ "$DRY" == 1 ]]; then
     echo "[dry-run] runuser -u postgres -- $(pg_bin pg_dump) -h $PG_SOCK -p $C_PG_PORT -U $name -Fc -d $name > $file (root-owned, mode 0600, via a temp file)"
   else
+    [[ ! -L "$file" ]] || fail "$file is a symlink: refusing to write through it"
     tmp="$(mktemp "$dir/.wfos-tmp.XXXXXX")"
     # as the app role (peer map), so nothing in the app's database ever runs with superuser rights
     if ! runuser -u postgres -- "$(pg_bin pg_dump)" -h "$PG_SOCK" -p "$C_PG_PORT" -U "$name" -Fc -d "$name" > "$tmp"; then
@@ -1074,13 +1231,50 @@ cmd_db_dump() {
     fi
     chmod 0600 "$tmp"
     mv -fT -- "$tmp" "$file"
+    bytes="$(stat -c %s -- "$file")"
   fi
-  prune_backups "$dir"
+  if [[ -n "$kprefix" ]]; then
+    prune_backups "$dir" "$bname" "$keep" "$kprefix"
+  else
+    prune_backups "$dir" "$bname" "$BACKUPS_KEPT" "$(backup_kind "$bname")"
+  fi
+  # the dumps of no kind (B1-era names: release ids) are their own group: the newest BACKUPS_KEPT stay, whatever
+  # kind this backup is (the new one counts only when it is of no kind itself)
+  if [[ -n "$kprefix" || -n "$(backup_kind "$bname")" ]]; then
+    if [[ -z "$(backup_kind "$bname")" ]]; then
+      prune_backups "$dir" "$bname" "$BACKUPS_KEPT" "" 1
+    else
+      prune_backups "$dir" "$bname" "$BACKUPS_KEPT" "" 0
+    fi
+  fi
+  for b in "${PRUNED[@]}"; do
+    echo "pruned backup $b"
+    list+="${list:+,}\"$b\""
+  done
   echo "backup $bname of $name written"
+  printf '{"name":"%s","bytes":%d,"pruned":[%s]}\n' "$bname" "${bytes:-0}" "$list"
+}
+
+# the dumps of an instance, newest first: [{"name":…,"bytes":…,"mtime":"<UTC ISO 8601>"}] (no folder yet: [])
+cmd_db_backups() {
+  local slug="$1" dir line sec size f b out=""
+  dir="$(app_dir "$slug")/backups"
+  check_app_dirs "$slug"
+  safe_dir "$dir" 1
+  if [[ -d "$dir" ]]; then
+    while IFS= read -r line; do
+      read -r sec size f <<< "$line"
+      b="${f%.dump}"
+      sec="${sec%%.*}"
+      [[ "$f" == "$b.dump" && "$b" =~ $BACKUP_RE && "$sec" =~ ^[0-9]{1,12}$ && "$size" =~ ^[0-9]{1,15}$ ]] || continue
+      out+="${out:+,}{\"name\":\"$b\",\"bytes\":$size,\"mtime\":\"$(date -u -d "@$sec" +%Y-%m-%dT%H:%M:%SZ)\"}"
+    done < <(find "$dir" -maxdepth 1 -type f -name '*.dump' -printf '%T@ %s %f\n' 2> /dev/null | sort -rn)
+  fi
+  printf '[%s]\n' "$out"
 }
 
 cmd_db_restore() {
-  local slug="$1" bname="$2" name file
+  local slug="$1" bname="$2" name file head
   require_pg
   name="$(db_name "$slug")"
   file="$(app_dir "$slug")/backups/$bname.dump"
@@ -1089,26 +1283,67 @@ cmd_db_restore() {
   lock
   [[ -f "$file" && ! -L "$file" ]] || fail "backup_missing: no backup $bname for $slug"
   db_exists "$name" || fail "database $name does not exist"
-  # root opens the root-owned dump; pg_restore reads it on stdin, all or nothing, logged in as the app role itself
-  # (peer map; no superuser session, no SET ROLE that the app's own code could RESET)
+  # Into a clean schema, all in ONE transaction, logged in as the app role itself (peer map; no superuser session on
+  # the app's data, no SET ROLE that the app's own code could RESET): BEGIN; DROP SCHEMA public CASCADE (also what is
+  # newer than the dump, which would make the next migration fail with "already exists"); CREATE SCHEMA public
+  # AUTHORIZATION <role>; then the dump as SQL (pg_restore -f -, which needs no connection; --clean --if-exists for
+  # the dump's other schemas; extensions are created again from the dump) and its COMMIT. pg_restore writes that
+  # COMMIT only at the very end: when converting fails, psql reaches the end of its input inside the transaction and
+  # it rolls back; a failing statement stops psql (ON_ERROR_STOP) with the same result. The database is then as it
+  # was. Root opens the root-owned dump; pg_restore reads it on stdin.
+  head="BEGIN; DROP SCHEMA public CASCADE; CREATE SCHEMA public AUTHORIZATION $name;"
   if [[ "$DRY" == 1 ]]; then
-    echo "[dry-run] runuser -u postgres -- $(pg_bin pg_restore) -h $PG_SOCK -p $C_PG_PORT -U $name -d $name --clean --if-exists --no-owner --no-privileges --single-transaction < $file"
+    echo "[dry-run] { echo '$head'; runuser -u postgres -- $(pg_bin pg_restore) --clean --if-exists --no-owner --no-privileges --single-transaction -f - < $file (… COMMIT;) } | runuser -u postgres -- $(pg_bin psql) -X -q -v ON_ERROR_STOP=1 -h $PG_SOCK -p $C_PG_PORT -U $name -d $name"
   else
-    runuser -u postgres -- "$(pg_bin pg_restore)" -h "$PG_SOCK" -p "$C_PG_PORT" -U "$name" -d "$name" --clean --if-exists --no-owner --no-privileges --single-transaction < "$file" || fail "pg_restore of $bname into $name failed"
+    if ! {
+      printf '%s\n' "$head"
+      runuser -u postgres -- "$(pg_bin pg_restore)" --clean --if-exists --no-owner --no-privileges --single-transaction -f - < "$file"
+    } | runuser -u postgres -- "$(pg_bin psql)" -X -q -v ON_ERROR_STOP=1 -h "$PG_SOCK" -p "$C_PG_PORT" -U "$name" -d "$name" > /dev/null; then
+      fail "restoring $bname into $name failed: the transaction was rolled back, the database is unchanged"
+    fi
   fi
-  echo "database $name restored from $bname"
+  echo "database $name restored from $bname (into a clean schema public)"
 }
 
 # ---------------------------------------------------------------------------
 # releases: activate, prune
 # ---------------------------------------------------------------------------
 
+# retire_legacy NAME: before the blue slot of a live instance is activated, the instance's one unit of helper v3
+# (wfos-app-<name>.service on the blue slot's port, running `current`) goes: refused (legacy_active) while it runs,
+# else disabled and removed with its start script and its `current` link. Its release folder stays (a later
+# release-activate --slot can bring it back); nothing is done when there is no such unit or link.
+retire_legacy() {
+  local slug="$1" dir legacy f
+  dir="$(app_dir "$slug")"
+  legacy="$(unit_name "$slug")"
+  f="$(unit_path "$slug")"
+  [[ -e "$f" || -L "$f" || -L "$dir/current" ]] || return 0
+  if [[ -e "$dir/current" && ! -L "$dir/current" ]]; then fail "$dir/current is not a symlink"; fi
+  if unit_active "$legacy"; then
+    refuse legacy_active "$legacy (the unit of $slug from helper v3) still runs on the blue slot's port: stop it (unit-stop $slug) before activating the blue slot"
+  fi
+  echo "retiring $legacy (helper v3): the blue slot takes over its port"
+  if [[ -e "$f" || -L "$f" ]]; then
+    run systemctl disable --now "$legacy"
+    run rm -f -- "$f"
+    run systemctl daemon-reload
+    [[ "$DRY" == 1 ]] || systemctl reset-failed "$legacy" 2> /dev/null || true
+  fi
+  run rm -f -- "$(start_file "$slug")"
+  if [[ -L "$dir/current" ]]; then run rm -f -- "$dir/current"; fi
+}
+
+# cmd_release_activate NAME SHA [SLOT]: current (or current-<slot>) → releases/<sha>; the last line is the sha that
+# link pointed at before, or none
 cmd_release_activate() {
-  local slug="$1" sha="$2" user dir rel prev tmp
+  local slug="$1" sha="$2" slot="${3:-}" user dir rel prev tmp link nc
   user="$(app_user "$slug")"
   dir="$(app_dir "$slug")"
   rel="$dir/releases/$sha"
-  tmp="$dir/.current.wfos-tmp"
+  link="$(cur_link "$slot")"
+  nc="$dir/$(nc_name "$slot")"
+  tmp="$dir/.$link.wfos-tmp"
   check_app_dirs "$slug"
   lock
   [[ ! -L "$rel" ]] || fail "$rel is a symlink: refusing to activate it"
@@ -1117,32 +1352,41 @@ cmd_release_activate() {
   if [[ "$DRY" == 0 ]]; then
     [[ "$(stat -c '%U' -- "$rel")" == "$user" ]] || fail "$rel is not owned by $user"
   fi
-  if [[ -e "$dir/current" && ! -L "$dir/current" ]]; then fail "$dir/current is not a symlink"; fi
-  prev="$(current_sha "$slug")"
+  if [[ -e "$dir/$link" && ! -L "$dir/$link" ]]; then fail "$dir/$link is not a symlink"; fi
+  safe_dir "$nc" 1
+  if [[ "$slot" == blue ]]; then retire_legacy "$slug"; fi
+  prev="$(current_sha "$slug" "$slot")"
   # a relative link (the same inside the sandbox), swapped atomically: ln on a root-owned temp name, then rename
   if [[ -e "$tmp" || -L "$tmp" ]]; then run rm -rf --one-file-system -- "$tmp"; fi
   run ln -sfn "releases/$sha" "$tmp"
-  run mv -fT -- "$tmp" "$dir/current"
+  run mv -fT -- "$tmp" "$dir/$link"
   # a new version starts with an empty Next.js runtime cache (entries of another build are stale); the folder sits
-  # in the root-owned app folder, rm -rf never follows links, and the running old version keeps its own mount
+  # in the root-owned app folder, rm -rf never follows links. Each slot has its own, so the other slot's stays.
   if [[ "$prev" != "$sha" ]]; then
-    run rm -rf --one-file-system -- "$dir/next-cache"
-    run install -d -m 0700 -o "$user" -g "$user" "$dir/next-cache"
+    run rm -rf --one-file-system -- "$nc"
+    run install -d -m 0700 -o "$user" -g "$user" "$nc"
   fi
-  echo "current -> releases/$sha"
+  echo "$link -> releases/$sha"
   echo "${prev:-none}"
 }
 
+# keeps every release a current link points at (the v3 `current`, current-blue, current-green) and the newest others
+# up to RELEASES_KEPT in all
 cmd_release_prune() {
-  local slug="$1" dir cur kept=0 line name
+  local slug="$1" dir s c active=" " kept=0 line name
   dir="$(app_dir "$slug")"
   check_app_dirs "$slug"
   lock
-  cur="$(current_sha "$slug")"
-  if [[ -n "$cur" && -d "$dir/releases/$cur" && ! -L "$dir/releases/$cur" ]]; then kept=1; fi
+  for s in "" blue green; do
+    c="$(current_sha "$slug" "$s")"
+    if [[ -n "$c" && "$active" != *" $c "* ]]; then
+      active+="$c "
+      if [[ -d "$dir/releases/$c" && ! -L "$dir/releases/$c" ]]; then kept=$((kept + 1)); fi
+    fi
+  done
   while IFS= read -r line; do
     name="${line#* }"
-    [[ "$name" =~ ^[0-9a-f]{40}$ && "$name" != "$cur" ]] || continue
+    [[ "$name" =~ ^[0-9a-f]{40}$ && "$active" != *" $name "* ]] || continue
     if [[ ! -L "$dir/releases/$name" ]] && ((kept < RELEASES_KEPT)); then
       kept=$((kept + 1))
       continue
@@ -1157,26 +1401,28 @@ cmd_release_prune() {
 # systemd unit
 # ---------------------------------------------------------------------------
 
-# next_cache_bind SLUG USER: prints "BindPaths=<app>/next-cache:<app>/releases/<sha>/.next/cache" for the release
-# `current` points at (resolved now, as root), or nothing when there is no current release or it has no .next. The
-# release stays read-only for the app; only this folder is writable. Every path is checked without following links
-# (the release's contents were written by the app's own build), and a missing .next/cache mount point is created
-# by the app user, never by root. Diagnostics go to stderr (stdout is the bind line).
+# next_cache_bind SLUG USER [SLOT]: prints "BindPaths=<app>/next-cache:<app>/releases/<sha>/.next/cache" for the
+# release `current` points at (with a slot: next-cache-<slot>, for the release current-<slot> points at), resolved
+# now, as root, or nothing when there is no such release or it has no .next. The release stays read-only for the app;
+# only this folder is writable. Every path is checked without following links (the release's contents were written
+# by the app's own build), and a missing .next/cache mount point is created by the app user, never by root.
+# Diagnostics go to stderr (stdout is the bind line).
 next_cache_bind() {
-  local slug="$1" user="$2" dir cur rel nc
+  local slug="$1" user="$2" slot="${3:-}" dir cur rel nc link
   dir="$(app_dir "$slug")"
-  nc="$dir/next-cache"
-  cur="$(current_sha "$slug")"
+  nc="$dir/$(nc_name "$slot")"
+  link="$(cur_link "$slot")"
+  cur="$(current_sha "$slug" "$slot")"
   [[ -n "$cur" ]] || return 0
   rel="$dir/releases/$cur"
-  [[ -d "$rel" && ! -L "$rel" && "$(realpath -e -- "$rel")" == "$rel" ]] || fail "current points at releases/$cur, which is not a release folder"
+  [[ -d "$rel" && ! -L "$rel" && "$(realpath -e -- "$rel")" == "$rel" ]] || fail "$link points at releases/$cur, which is not a release folder"
   [[ -e "$rel/.next" || -L "$rel/.next" ]] || return 0
   [[ -d "$rel/.next" && ! -L "$rel/.next" ]] || fail "releases/$cur/.next is not a folder: refusing to bind into it"
   if [[ -L "$rel/.next/cache" || (-e "$rel/.next/cache" && ! -d "$rel/.next/cache") ]]; then
     fail "releases/$cur/.next/cache is not a folder: refusing to bind onto it"
   fi
   if [[ "$(realpath -m -- "$rel/.next/cache")" != "$rel/.next/cache" ]]; then fail "releases/$cur/.next/cache resolves elsewhere"; fi
-  if [[ ! -e "$nc" ]]; then
+  if [[ ! -e "$nc" && ! -L "$nc" ]]; then
     run install -d -m 0700 -o "$user" -g "$user" "$nc" >&2
   else
     safe_dir "$nc"
@@ -1191,27 +1437,39 @@ next_cache_bind() {
   echo "BindPaths=$nc:$rel/.next/cache"
 }
 
+# cmd_unit_install NAME PORT MEM DB [SLOT]: without a slot wfos-app-<name>.service running `current` with
+# start/<name>.sh; with one wfos-app-<name>-<slot>.service running current-<slot> with start/<name>-<slot>.sh and its
+# own Next.js cache. Both slots share data/, cache/, the env file and the database.
 cmd_unit_install() {
-  local slug="$1" port="$2" mem="$3" db="$4" cmd user dir after="" next_bind
+  local slug="$1" port="$2" mem="$3" db="$4" slot="${5:-}" cmd user dir after="" next_bind start what exec
   stdin_line 500 "unit-install"
   cmd="$LINE"
   [[ "$db" == 0 ]] || require_pg
   user="$(app_user "$slug")"
   dir="$(app_dir "$slug")"
+  start="$(start_file "$slug" "$slot")"
+  what="$slug"
+  exec="/bin/sh $start"
+  # both slots share the env file, and EnvironmentFile= wins over Environment=: a slot's own port is set on the
+  # command itself, so a PORT in the env file can never send the green slot to blue's port
+  if [[ -n "$slot" ]]; then
+    what="$slug, $slot slot"
+    exec="/usr/bin/env PORT=$port /bin/sh $start"
+  fi
   check_app_dirs "$slug"
   require_user "$user"
   lock
   [[ "$DRY" == 1 || -d "$START_DIR" ]] || fail "$START_DIR is missing (re-run prepare.sh)"
-  next_bind="$(next_cache_bind "$slug" "$user")"
+  next_bind="$(next_cache_bind "$slug" "$user" "$slot")"
   # the start command runs as the app user inside the sandbox; root only writes it (never runs or sources it)
   printf '# Managed by wfos-app-helper unit-install (Workforce OS): the start command of wfos-app.json.\n%s\n' "$cmd" |
-    write_file "$(start_file "$slug")" 0644 root:root
+    write_file "$start" 0644 root:root
   [[ "$db" == 0 ]] || after=" postgresql@$C_PG_VERSION-apps.service"
   {
     cat << EOF
 # Managed by wfos-app-helper (Workforce OS): rewritten by unit-install, removed by app-remove. Do not edit.
 [Unit]
-Description=Workforce OS app $slug (port $port)
+Description=Workforce OS app $what (port $port)
 Wants=network-online.target
 # the app firewall (nftables table inet wfos_apps) must be loaded; when it stops, the app stops too
 Requires=wfos-apps-firewall.service
@@ -1227,8 +1485,8 @@ User=$user
 Group=$RUN_GROUP
 # refuses to start when the app firewall is not loaded ("+": runs outside the sandbox)
 ExecStartPre=+/usr/sbin/nft list table inet wfos_apps
-WorkingDirectory=$dir/current
-ExecStart=/bin/sh $(start_file "$slug")
+WorkingDirectory=$dir/$(cur_link "$slot")
+ExecStart=$exec
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
@@ -1240,7 +1498,7 @@ TasksMax=256
 SocketBindAllow=tcp:$port
 SocketBindDeny=any
 EOF
-    sandbox_props "$slug" unit "$db"
+    sandbox_props "$slug" unit "$db" "" "$start"
     if [[ -n "$next_bind" ]]; then
       echo "# Next.js writes its runtime cache (images, ISR, fetch) into .next/cache: the only writable spot in the release"
       echo "$next_bind"
@@ -1251,29 +1509,29 @@ EOF
 [Install]
 WantedBy=multi-user.target
 EOF
-  } | write_file "$(unit_path "$slug")" 0644 root:root
+  } | write_file "$(unit_path "$slug" "$slot")" 0644 root:root
   run systemctl daemon-reload
-  run systemctl enable "$(unit_name "$slug")"
-  echo "unit $(unit_name "$slug") installed"
+  run systemctl enable "$(unit_name "$slug" "$slot")"
+  echo "unit $(unit_name "$slug" "$slot") installed"
 }
 
 require_unit() {
-  [[ "$DRY" == 1 || -f "$(unit_path "$1")" ]] || fail "app $1 has no unit (unit-install first)"
+  [[ "$DRY" == 1 || -f "$(unit_path "$1" "${2:-}")" ]] || fail "app $1 has no unit $(unit_name "$1" "${2:-}") (unit-install first)"
 }
 
 # the unit's Next.js cache bind must still be the one next_cache_bind computes now (current may have moved without a
 # unit-install, or the release may have changed); the same link checks run again
 check_unit_bind() {
-  local slug="$1" want have
-  want="$(next_cache_bind "$slug" "$(app_user "$slug")")"
-  have="$(grep -E "^BindPaths=$(app_dir "$slug")/next-cache:" "$(unit_path "$slug")" 2> /dev/null || true)"
-  [[ "$want" == "$have" ]] || fail "the unit of $slug does not match its current release (run unit-install first)"
+  local slug="$1" slot="${2:-}" want have
+  want="$(next_cache_bind "$slug" "$(app_user "$slug")" "$slot")"
+  have="$(grep -E "^BindPaths=$(app_dir "$slug")/$(nc_name "$slot"):" "$(unit_path "$slug" "$slot")" 2> /dev/null || true)"
+  [[ "$want" == "$have" ]] || fail "the unit $(unit_name "$slug" "$slot") does not match its current release (run unit-install first)"
 }
 
 cmd_unit_action() {
-  local action="$1" slug="$2" unit
-  unit="$(unit_name "$slug")"
-  require_unit "$slug"
+  local action="$1" slug="$2" slot="${3:-}" unit
+  unit="$(unit_name "$slug" "$slot")"
+  require_unit "$slug" "$slot"
   case "$action" in
     # a stopped preview stays stopped after a reboot; a started one comes back
     unit-start | unit-restart)
@@ -1282,7 +1540,8 @@ cmd_unit_action() {
       running_guard "$slug"
       [[ "$action" == unit-restart ]] || disk_guard
       check_app_dirs "$slug"
-      check_unit_bind "$slug"
+      check_unit_bind "$slug" "$slot"
+      port_guard "$slug" "$slot"
       if [[ "$action" == unit-start ]]; then
         run systemctl enable --now "$unit"
       else
@@ -1294,16 +1553,15 @@ cmd_unit_action() {
   esac
 }
 
-cmd_unit_status() {
-  local slug="$1" unit state sub
-  unit="$(unit_name "$slug")"
+# unit_state UNIT: active, inactive or failed (a crash loop counts as failed). Dry-run: active when the test lists it.
+unit_state() {
+  local state sub
   if [[ "$DRY" == 1 ]]; then
-    run systemctl show "$unit" -p ActiveState -p SubState
-    echo inactive
+    if unit_active "$1"; then echo active; else echo inactive; fi
     return 0
   fi
-  state="$(systemctl show "$unit" -p ActiveState --value 2> /dev/null || true)"
-  sub="$(systemctl show "$unit" -p SubState --value 2> /dev/null || true)"
+  state="$(systemctl show "$1" -p ActiveState --value 2> /dev/null || true)"
+  sub="$(systemctl show "$1" -p SubState --value 2> /dev/null || true)"
   case "$state" in
     active | reloading | refreshing) echo active ;;
     failed) echo failed ;;
@@ -1311,6 +1569,46 @@ cmd_unit_status() {
     activating) if [[ "$sub" == auto-restart ]]; then echo failed; else echo inactive; fi ;;
     *) echo inactive ;;
   esac
+}
+
+cmd_unit_status() {
+  local unit
+  unit="$(unit_name "$1" "${2:-}")"
+  if [[ "$DRY" == 1 ]]; then
+    run systemctl show "$unit" -p ActiveState -p SubState
+    echo inactive
+    return 0
+  fi
+  unit_state "$unit"
+}
+
+# slots NAME: one JSON line, read-only, for the worker's recovery and the v3 → v4 move of a live instance:
+# {"legacy":{…},"blue":{…},"green":{…},"site":{"port":<proxied port or null>,"maintenance":<bool>} or null}, where
+# legacy (the unit without a slot), blue and green are each {"unit":<unit file present>,"state":"active|inactive|
+# failed","sha":<the release its current link points at, or null>}
+cmd_slots() {
+  local slug="$1" dir s key sha unit out="" site port maint=false
+  dir="$(app_dir "$slug")"
+  check_apps_root
+  safe_dir "$dir" 1
+  for s in "" blue green; do
+    key="${s:-legacy}"
+    sha=""
+    if [[ -d "$dir" ]]; then sha="$(current_sha "$slug" "$s")"; fi
+    unit=false
+    if [[ -f "$(unit_path "$slug" "$s")" ]]; then unit=true; fi
+    out+="${out:+,}\"$key\":{\"unit\":$unit,\"state\":\"$(unit_state "$(unit_name "$slug" "$s")")\",\"sha\":"
+    if [[ -n "$sha" ]]; then out+="\"$sha\"}"; else out+="null}"; fi
+  done
+  site="$NGINX_SITES/wfos-app-$slug"
+  if [[ -f "$site" && ! -L "$site" ]]; then
+    port="$(sed -nE 's|^[[:space:]]*proxy_pass http://127\.0\.0\.1:([0-9]{1,5});$|\1|p' -- "$site" | head -1)"
+    if grep -qxF -- "$MAINT_MARK" "$site"; then maint=true; fi
+    out+=",\"site\":{\"port\":${port:-null},\"maintenance\":$maint}"
+  else
+    out+=",\"site\":null"
+  fi
+  printf '{%s}\n' "$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -1351,12 +1649,18 @@ nginx_http2_directive() {
   if ((ma > 1 || (ma == 1 && (mi > 25 || (mi == 25 && pa >= 1))))); then echo modern; else echo legacy; fi
 }
 
-# site_content SLUG PORT AUTH(0|1) MODE(http|full) INDEX(0|1) DOMAIN [ALIAS...]: the nginx site of one instance.
-# DOMAIN is proxied to 127.0.0.1:PORT; http (DOMAIN and every ALIAS) redirects to https://DOMAIN, and every ALIAS
-# answers https with a 301 to https://DOMAIN too (same certificate). The redirects never use the request's Host.
+# the maintenance page prepare.sh installs (nginx reads it; the path is the same on every server)
+MAINT_PAGE=/etc/wfos-apps/maintenance.html
+# the line that marks a site showing the maintenance page (`slots` reads it)
+MAINT_MARK="    # wfos-maintenance: the maintenance page is shown instead of the app"
+
+# site_content SLUG PORT AUTH(0|1) MODE(http|full) INDEX(0|1) MAINT(0|1) DOMAIN [ALIAS...]: the nginx site of one
+# instance. DOMAIN is proxied to 127.0.0.1:PORT (MAINT=1: answers 503 with the maintenance page instead); http (DOMAIN
+# and every ALIAS) redirects to https://DOMAIN, and every ALIAS answers https with a 301 to https://DOMAIN too (same
+# certificate). The redirects never use the request's Host.
 site_content() {
-  local slug="$1" port="$2" auth="$3" mode="$4" index="$5" domain="$6" h2 listen443 listen443v6 http2_line="" names realm=Preview
-  shift 6
+  local slug="$1" port="$2" auth="$3" mode="$4" index="$5" maint="$6" domain="$7" h2 listen443 listen443v6 http2_line="" names realm=Preview
+  shift 7
   local -a aliases=("$@")
   names="$domain"
   if ((${#aliases[@]} > 0)); then names+=" ${aliases[*]}"; fi
@@ -1416,10 +1720,35 @@ EOF
     auth_basic_user_file /etc/wfos-apps/htpasswd/$slug;
 EOF
   fi
-  # the password is nginx's business: the app never sees it
-  local strip_auth=""
-  [[ "$auth" == 0 ]] || strip_auth=$'\n        proxy_set_header Authorization "";'
-  cat << EOF
+  if [[ "$maint" == 1 ]]; then
+    # every request gets 503 + Retry-After and the static page (the method becomes GET for the page); `return` runs
+    # before basic auth, so the neutral page shows without the password; the app is not asked anything
+    cat << EOF
+
+$MAINT_MARK
+    # (the app at 127.0.0.1:$port is not proxied while it is on)
+    add_header Retry-After 60 always;
+    add_header Cache-Control "no-store" always;
+    error_page 503 /.wfos-maintenance.html;
+
+    location / {
+        return 503;
+    }
+
+    location = /.wfos-maintenance.html {
+        internal;
+        auth_basic off;
+        alias $MAINT_PAGE;
+        default_type text/html;
+        charset utf-8;
+    }
+}
+EOF
+  else
+    # the password is nginx's business: the app never sees it
+    local strip_auth=""
+    [[ "$auth" == 0 ]] || strip_auth=$'\n        proxy_set_header Authorization "";'
+    cat << EOF
 
     location / {
         proxy_pass http://127.0.0.1:$port;
@@ -1434,6 +1763,7 @@ EOF
     }
 }
 EOF
+  fi
   if ((${#aliases[@]} > 0)); then
     cat << EOF
 
@@ -1622,11 +1952,12 @@ drop_lineage() {
   fi
 }
 
-# cmd_publish SLUG PORT AUTH INDEX DOMAIN [ALIAS...]: DOMAIN empty = the preview name <slug>.<BASE_DOMAIN>
+# cmd_publish SLUG PORT AUTH INDEX MAINT DOMAIN [ALIAS...]: DOMAIN empty = the preview name <slug>.<BASE_DOMAIN>;
+# MAINT=1 serves the maintenance page instead of proxying to PORT (switching back is another publish without it)
 cmd_publish() {
-  local slug="$1" port="$2" auth="$3" index="$4" domain="$5" custom=0 site enabled htpasswd line="" backup="" cert
+  local slug="$1" port="$2" auth="$3" index="$4" maint="$5" domain="$6" custom=0 site enabled htpasswd line="" backup="" cert
   local need_cert=0 taken have want nm
-  shift 5
+  shift 6
   local -a aliases=("$@") names=() certbot_args=()
   if [[ -n "$domain" ]]; then custom=1; else domain="$slug.$C_BASE_DOMAIN"; fi
   names=("$domain" "${aliases[@]}")
@@ -1661,6 +1992,7 @@ cmd_publish() {
   if [[ "$need_cert" == 1 ]]; then cert_budget_check; fi
   if [[ "$DRY" == 0 ]]; then
     [[ -d "$HTPASSWD_DIR" ]] || fail "$HTPASSWD_DIR is missing (re-run prepare.sh)"
+    if [[ "$maint" == 1 ]] && [[ ! -f "$MAINT_PAGE" || -L "$MAINT_PAGE" ]]; then fail "$MAINT_PAGE is missing (re-run prepare.sh)"; fi
     if [[ -f "$site" ]]; then
       backup="$(mktemp "$NGINX_SITES/.wfos-backup.XXXXXX")"
       cp -p -- "$site" "$backup"
@@ -1675,7 +2007,7 @@ cmd_publish() {
   #    certificate for every name; it counts once against the daily cap)
   if [[ "$need_cert" == 1 ]]; then
     cert_budget_take
-    site_content "$slug" "$port" "$auth" http "$index" "$domain" "${aliases[@]}" | write_file "$site" 0644 root:root
+    site_content "$slug" "$port" "$auth" http "$index" "$maint" "$domain" "${aliases[@]}" | write_file "$site" 0644 root:root
     run ln -sfn "$site" "$enabled"
     nginx_apply "$site" "$enabled" "$backup"
     certbot_args=(certonly --nginx)
@@ -1695,7 +2027,7 @@ cmd_publish() {
     echo "certificate for $domain present"
   fi
   # 2) the real site
-  site_content "$slug" "$port" "$auth" full "$index" "$domain" "${aliases[@]}" | write_file "$site" 0644 root:root
+  site_content "$slug" "$port" "$auth" full "$index" "$maint" "$domain" "${aliases[@]}" | write_file "$site" 0644 root:root
   run ln -sfn "$site" "$enabled"
   nginx_apply "$site" "$enabled" "$backup"
   [[ -z "$backup" ]] || rm -f -- "$backup"
@@ -1713,6 +2045,7 @@ cmd_publish() {
     fi
   fi
   for nm in "${aliases[@]}"; do echo "redirect https://$nm -> https://$domain"; done
+  if [[ "$maint" == 1 ]]; then echo "maintenance page on (503, Retry-After 60): the app at port $port is not proxied"; fi
   echo "published https://$domain"
 }
 
@@ -1780,8 +2113,8 @@ keep_db_dump() {
 }
 
 cmd_app_remove() {
-  local slug="$1" drop="$2" keep="$3" user dir unit name site live c
-  local -a certs=()
+  local slug="$1" drop="$2" keep="$3" user dir unit name site live c s
+  local -a certs=() starts=()
   user="$(app_user "$slug")"
   dir="$(app_dir "$slug")"
   unit="$(unit_name "$slug")"
@@ -1811,14 +2144,29 @@ cmd_app_remove() {
     live="$(sed -nE 's|^[[:space:]]*ssl_certificate /etc/letsencrypt/live/([^/]+)/fullchain\.pem;$|\1|p' -- "$site" | head -1)"
   fi
   if [[ -n "$live" && "$live" != "${certs[0]}" ]]; then certs+=("$live"); fi
+  # the instance's unit, and both slots of a live instance
   if [[ "$DRY" == 1 || -f "$(unit_path "$slug")" ]]; then
     run systemctl disable --now "$unit"
     run rm -f -- "$(unit_path "$slug")"
     run systemctl daemon-reload
   fi
-  if [[ "$DRY" == 0 ]]; then systemctl reset-failed "$unit" "$(build_unit "$slug")" 2> /dev/null || true; fi
+  starts=("$(start_file "$slug")")
+  if [[ "$slug" == *-live ]]; then
+    for s in blue green; do
+      starts+=("$(start_file "$slug" "$s")")
+      if [[ -e "$(unit_path "$slug" "$s")" || -L "$(unit_path "$slug" "$s")" ]]; then
+        run systemctl disable --now "$(unit_name "$slug" "$s")"
+        run rm -f -- "$(unit_path "$slug" "$s")"
+        run systemctl daemon-reload
+      fi
+    done
+  fi
+  if [[ "$DRY" == 0 ]]; then
+    systemctl reset-failed "$unit" "$(build_unit "$slug")" 2> /dev/null || true
+    if [[ "$slug" == *-live ]]; then systemctl reset-failed "$(unit_name "$slug" blue)" "$(unit_name "$slug" green)" 2> /dev/null || true; fi
+  fi
   remove_site "$slug"
-  run rm -f -- "$(env_file "$slug")" "$(start_file "$slug")" "$HTPASSWD_DIR/$slug"
+  run rm -f -- "$(env_file "$slug")" "${starts[0]}" "$HTPASSWD_DIR/$slug" "${starts[@]:1}"
   # after the site is gone (nginx no longer loads the files), best effort: certbot stops renewing them
   for c in "${certs[@]}"; do drop_lineage "$c" "$slug"; done
   if [[ -e "$DOMAINS_DIR/$slug" || -L "$DOMAINS_DIR/$slug" ]]; then run rm -f -- "$DOMAINS_DIR/$slug"; fi
@@ -1861,7 +2209,8 @@ cmd_stop_all() {
   fi
   for f in "$UNIT_DIR"/wfos-app-*.service; do
     n="$(basename -- "$f")"
-    if [[ -f "$f" && "$n" =~ ^wfos-app-[a-z0-9-]{2,35}\.service$ ]]; then units+=("$n"); fi
+    # an instance's unit (2 to 35 characters) or a slot of a live instance (+ -blue / -green)
+    if [[ -f "$f" && "$n" =~ ^wfos-app-[a-z0-9-]{2,41}\.service$ ]]; then units+=("$n"); fi
   done
   if ((${#units[@]} == 0)); then
     echo "no app units"
@@ -1879,6 +2228,11 @@ cmd="${1:-}"
 [[ $# -gt 0 ]] && shift
 nargs() { [[ "$1" == "$2" ]] || usage "$cmd: wrong number of arguments"; }
 flag() { if [[ "$1" == "$2" ]]; then echo 1; else echo 0; fi; }
+# with_slot NAME SLOT: SLOT (blue or green) for NAME, a live instance; exit 2 otherwise
+with_slot() {
+  check_slot "$2"
+  check_slot_name "$1"
+}
 
 case "$cmd" in
   version)
@@ -1925,19 +2279,34 @@ case "$cmd" in
     check_name "$1"
     cmd_db_create "$1" "$(flag $# 2)"
     ;;
-  db-dump | db-restore)
+  db-dump)
+    [[ $# -eq 2 || ($# -eq 5 && "$3" == --keep-kind) ]] || usage "db-dump <name> <backup> [--keep-kind <prefix> <n>]"
+    read_conf
+    check_name "$1"
+    check_backup_name "$2"
+    if (($# == 5)); then check_keep_kind "$2" "$4" "$5"; fi
+    cmd_db_dump "$1" "$2" "${4:-}" "${5:-}"
+    ;;
+  db-restore)
     nargs $# 2
     read_conf
     check_name "$1"
     check_backup_name "$2"
-    if [[ "$cmd" == db-dump ]]; then cmd_db_dump "$1" "$2"; else cmd_db_restore "$1" "$2"; fi
+    cmd_db_restore "$1" "$2"
+    ;;
+  db-backups)
+    nargs $# 1
+    read_conf
+    check_name "$1"
+    cmd_db_backups "$1"
     ;;
   release-activate)
-    nargs $# 2
+    [[ $# -eq 2 || ($# -eq 4 && "$3" == --slot) ]] || usage "release-activate <name> <sha> [--slot blue|green]"
     read_conf
     check_name "$1"
     check_sha "$2"
-    cmd_release_activate "$1" "$2"
+    if (($# == 4)); then with_slot "$1" "$4"; fi
+    cmd_release_activate "$1" "$2" "${4:-}"
     ;;
   release-prune)
     nargs $# 1
@@ -1946,24 +2315,45 @@ case "$cmd" in
     cmd_release_prune "$1"
     ;;
   unit-install)
-    [[ $# -eq 3 || ($# -eq 4 && "${4:-}" == --database) ]] || usage "unit-install <name> <port> <memMB> [--database]"
+    ui_usage="unit-install <name> <port> <memMB> [--database] [--slot blue|green]"
+    (($# >= 3)) || usage "$ui_usage"
+    ui_name="$1" ui_port="$2" ui_mem="$3" ui_db=0 ui_has_slot=0 ui_slot=""
+    shift 3
+    while (($# > 0)); do
+      case "$1" in
+        --database)
+          ((ui_db == 0)) || usage "unit-install: --database given twice"
+          ui_db=1
+          ;;
+        --slot)
+          ((ui_has_slot == 0)) || usage "unit-install: --slot given twice"
+          (($# >= 2)) || usage "unit-install: --slot needs blue or green"
+          ui_has_slot=1 ui_slot="$2"
+          shift
+          ;;
+        *) usage "$ui_usage" ;;
+      esac
+      shift
+    done
+    read_conf
+    check_name "$ui_name"
+    check_port "$ui_port"
+    check_mem "$ui_mem"
+    if ((ui_has_slot)); then with_slot "$ui_name" "$ui_slot"; fi
+    cmd_unit_install "$ui_name" "$ui_port" "$ui_mem" "$ui_db" "$ui_slot"
+    ;;
+  unit-start | unit-stop | unit-restart | unit-status)
+    [[ $# -eq 1 || ($# -eq 3 && "$2" == --slot) ]] || usage "$cmd <name> [--slot blue|green]"
     read_conf
     check_name "$1"
-    check_port "$2"
-    check_mem "$3"
-    cmd_unit_install "$1" "$2" "$3" "$(flag $# 4)"
+    if (($# == 3)); then with_slot "$1" "$3"; fi
+    if [[ "$cmd" == unit-status ]]; then cmd_unit_status "$1" "${3:-}"; else cmd_unit_action "$cmd" "$1" "${3:-}"; fi
     ;;
-  unit-start | unit-stop | unit-restart)
+  slots)
     nargs $# 1
     read_conf
     check_name "$1"
-    cmd_unit_action "$cmd" "$1"
-    ;;
-  unit-status)
-    nargs $# 1
-    read_conf
-    check_name "$1"
-    cmd_unit_status "$1"
+    cmd_slots "$1"
     ;;
   health)
     nargs $# 3
@@ -1974,8 +2364,8 @@ case "$cmd" in
     cmd_health "$1" "$2" "$3"
     ;;
   publish)
-    (($# >= 2)) || usage "publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]"
-    pub_name="$1" pub_port="$2" pub_auth=0 pub_index=0 pub_has_domain=0 pub_domain=""
+    (($# >= 2)) || usage "publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index] [--maintenance]"
+    pub_name="$1" pub_port="$2" pub_auth=0 pub_index=0 pub_maint=0 pub_has_domain=0 pub_domain=""
     pub_aliases=()
     shift 2
     while (($# > 0)); do
@@ -1987,6 +2377,10 @@ case "$cmd" in
         --index)
           ((pub_index == 0)) || usage "publish: --index given twice"
           pub_index=1
+          ;;
+        --maintenance)
+          ((pub_maint == 0)) || usage "publish: --maintenance given twice"
+          pub_maint=1
           ;;
         --domain)
           ((pub_has_domain == 0)) || usage "publish: --domain given twice"
@@ -2017,7 +2411,7 @@ case "$cmd" in
         pub_seen+="$a "
       done
     fi
-    cmd_publish "$pub_name" "$pub_port" "$pub_auth" "$pub_index" "$pub_domain" "${pub_aliases[@]}"
+    cmd_publish "$pub_name" "$pub_port" "$pub_auth" "$pub_index" "$pub_maint" "$pub_domain" "${pub_aliases[@]}"
     ;;
   unpublish)
     nargs $# 1
@@ -2053,7 +2447,7 @@ case "$cmd" in
     cmd_stop_all
     ;;
   "")
-    usage "missing command (version, info, app-init, release-unpack, env-install, build-run, db-create, db-dump, db-restore, release-activate, release-prune, unit-install, unit-start, unit-stop, unit-restart, unit-status, health, publish, unpublish, app-remove, stop-all)"
+    usage "missing command (version, info, app-init, release-unpack, env-install, build-run, db-create, db-dump, db-restore, db-backups, release-activate, release-prune, unit-install, unit-start, unit-stop, unit-restart, unit-status, slots, health, publish, unpublish, app-remove, stop-all)"
     ;;
   *)
     usage "unknown command ${cmd@Q}"

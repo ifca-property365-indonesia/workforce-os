@@ -28,7 +28,9 @@
     "firewall_off": "Firewall aplikasi tidak aktif di server, jadi tidak ada yang dijalankan. Jalankan ulang prepare.sh atau cek wfos-apps-firewall.service di server itu.",
     "no_database_cluster": "Server belum punya database untuk aplikasi. Jalankan ulang prepare.sh di server itu.",
     "restart_failed": "Versi baru gagal, dan versi sebelumnya tidak berhasil jalan lagi. Jalankan lagi atau terbitkan perbaikan.",
-    "env_forbidden": "Tidak dijalankan: sebagian variabel lingkungan aplikasi diatur oleh platform. Hapus variabel itu di pengaturan aplikasi."
+    "env_forbidden": "Tidak dijalankan: sebagian variabel lingkungan aplikasi diatur oleh platform. Hapus variabel itu di pengaturan aplikasi.",
+    "restore_failed": "Pemulihan database gagal dan aplikasi tidak kembali sehat, jadi halaman pemeliharaan tetap tampil. Lihat log, lalu pulihkan lagi atau rilis perbaikan.",
+    "restoring": "Database sedang dipulihkan dari backup; selama itu halaman pemeliharaan ditampilkan."
   },
   "health": {
     "healthy": "Menjawab pemeriksaan kesehatan",
@@ -125,7 +127,16 @@
     "deployingLiveNote": "Penerbitan ke live sedang berjalan. Ikuti prosesnya di log di bawah.",
     "dangerHelpLive": "Menghapus berarti aplikasi dicabut dari servernya, baik preview maupun situs live, beserta file dan database-nya, lalu dari Workforce OS. Hanya Owner yang bisa: dengan situs live dihentikan, domainnya diketik, serta password dan kode autentikator.",
     "deleteConfirmLive": "Hapus {name} beserta situs live-nya di {domain}? Kedua lingkungan dicabut dari servernya beserta file dan database-nya. Tindakan ini tidak bisa dibatalkan.",
-    "deleteNeedsOwner": "Aplikasi ini punya situs live, jadi hanya Owner yang bisa menghapusnya."
+    "deleteNeedsOwner": "Aplikasi ini punya situs live, jadi hanya Owner yang bisa menghapusnya.",
+    "maintenance": "Halaman pemeliharaan",
+    "slotHelp": "Live berjalan di salah satu dari dua slot: versi baru dinyalakan di slot satunya, lalu lalu lintas dipindahkan tanpa memutus koneksi.",
+    "slot": {
+      "blue": "slot biru",
+      "green": "slot hijau"
+    },
+    "lastBackup": "Database dicadangkan {ago}",
+    "noBackup": "Belum ada cadangan database",
+    "backupStale": "Lebih dari sehari tanpa cadangan"
   },
   "actions": {
     "deploy": "Terbitkan",
@@ -334,7 +345,21 @@
     "removeDump": "Dump terakhir database live disimpan di server selama 30 hari.",
     "removeType": "Ketik <b>{domain}</b> untuk mengonfirmasi",
     "removeFinal": "Hapus permanen",
-    "stopFirst": "Hentikan situs live dulu."
+    "stopFirst": "Hentikan situs live dulu.",
+    "planTitle": "Yang akan terjadi",
+    "planBackup": "Dicadangkan dulu",
+    "planBackupHelp": "Database live dicadangkan sebelum apa pun berubah. Jika pencadangan gagal, rilis berhenti dan tidak ada yang berubah.",
+    "planNoDowntime": "Tanpa henti layanan",
+    "planNoDatabase": "Tanpa database: versi baru dinyalakan di slotnya sendiri, lalu lalu lintas dipindahkan setelah versi baru menjawab.",
+    "planExpand": "Migrasinya hanya menambah (expand): dijalankan sementara versi yang live sekarang tetap melayani. Rilis yang mengaku expand tetapi menghapus, mengganti nama, atau mempersempit sesuatu ditolak sebelum mengubah apa pun.",
+    "planMaintenance": "Halaman pemeliharaan selama migrasi",
+    "planBreaking": "Migrasinya bisa mengubah data yang ada (breaking): pengunjung melihat halaman pemeliharaan sebentar selama database dimigrasi, lalu versi baru mengambil alih.",
+    "planUnknown": "Mode migrasi ditentukan saat build",
+    "planUnknownHelp": "wfos.json versi ini dibaca saat build: expand berjalan tanpa henti layanan, breaking (bawaan) menampilkan halaman pemeliharaan selama migrasi.",
+    "planGrace": "Jalan kembali seketika",
+    "planGraceHelp": "{minutes, plural, other {Versi yang live sekarang tetap berjalan # menit setelah peralihan, jadi rollback dalam waktu itu langsung terjadi.}}",
+    "markExpand": "tanpa henti layanan",
+    "markBreaking": "halaman pemeliharaan saat migrasi"
   },
   "dns": {
     "title": "Domain dan DNS",
@@ -370,5 +395,37 @@
     "noServerAddress": "Alamat server sendiri tidak ditemukan di DNS publik. Periksa host server di Pengaturan → Server, lalu periksa lagi.",
     "certificate": "Saat penerbitan ke live yang pertama, Let's Encrypt menerbitkan sertifikat untuk {domain}. Syaratnya DNS sudah oke.",
     "certificateWithAliases": "Saat penerbitan ke live yang pertama, Let's Encrypt menerbitkan satu sertifikat untuk {domain} dan {aliases}; nama-nama itu dialihkan ke {domain}. Syaratnya DNS sudah oke."
+  },
+  "backups": {
+    "title": "Cadangan database",
+    "liveHelp": "Dibuat sebelum setiap rilis ke live, sekali sehari, sebelum pemulihan, dan kapan pun Anda minta. Yang terbaru disimpan di server; cadangan harian yang lebih lama dipangkas.",
+    "previewHelp": "Dibuat sebelum rilis yang menjalankan migrasi, sebelum pemulihan, dan kapan pun Anda minta. Preview punya database sendiri, terpisah dari live.",
+    "now": "Cadangkan sekarang",
+    "running": "Mencadangkan…",
+    "queued": "Pencadangan diantrekan. Hasilnya muncul di sini setelah selesai.",
+    "loading": "Memuat cadangan…",
+    "empty": "Belum ada cadangan. Yang pertama dibuat sebelum rilis berikutnya yang memakai database, atau sekarang.",
+    "stale": "Cadangan terakhir dari {ago}: pencadangan harian tidak berjalan. Cadangkan sekarang dan periksa servernya.",
+    "staleNever": "Situs live ini belum punya cadangan. Cadangkan sekarang.",
+    "bySchedule": "jadwal harian",
+    "restore": "Pulihkan…",
+    "restoreOwnerOnly": "Hanya Owner yang memulihkan database.",
+    "serverOnly": "Cadangan hanya disimpan di server aplikasi: belum ada salinan di luar server. Jika server hilang, cadangannya ikut hilang.",
+    "kind": {
+      "pre_migrate": "sebelum rilis",
+      "daily": "harian",
+      "manual": "manual",
+      "pre_restore": "sebelum pemulihan"
+    },
+    "restoreTitle": "Pulihkan database",
+    "restoreDescription": "Kembalikan database {domain} ke cadangan ini.",
+    "restoreLoss": "Semua yang ditulis ke database sejak {time} akan hilang.",
+    "restoreSafety": "Database saat ini dicadangkan dulu (sebelum pemulihan), jadi langkah ini bisa dibatalkan dengan cadangan itu.",
+    "restoreMaintenance": "Pengunjung melihat halaman pemeliharaan selama pemulihan; situs kembali dengan sendirinya setelah menjawab lagi.",
+    "restoreDowntime": "Preview berhenti selama pemulihan dan menyala lagi dengan sendirinya.",
+    "restoreType": "Ketik <b>{domain}</b> untuk mengonfirmasi",
+    "restoreAudited": "Anda mengonfirmasi dengan kata sandi dan kode autentikator. Pemulihan dicatat di log audit.",
+    "restoreConfirm": "Pulihkan database",
+    "restoreQueued": "Pemulihan diantrekan. Situs menampilkan halaman pemeliharaan sampai selesai."
   }
 }

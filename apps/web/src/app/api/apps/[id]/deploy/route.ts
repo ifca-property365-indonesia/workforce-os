@@ -5,6 +5,7 @@ import { appDeploySchema } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import {
   activeRelease,
+  assertNoRestore,
   assertDeploysAllowed,
   assertNotRemoving,
   assertServerReady,
@@ -63,6 +64,8 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
     // the environment row is the lock: two clicks at once cannot both see "nothing running"
     await tx.select({ id: appEnvironments.id }).from(appEnvironments).where(eq(appEnvironments.id, env.id)).for("update");
     if (await activeRelease(env.id, tx)) throw new HttpError(409, "A deploy of this app is already running", { code: "app_deploy_running" });
+    // a database restore of this environment waits or runs: the release waits for it
+    await assertNoRestore(env.id);
     if (promotedFrom) {
       // still a release that ran in the preview (an app removal could race this)
       const [still] = await tx

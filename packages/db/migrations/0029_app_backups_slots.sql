@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS "app_backups" (
   "workspace_id" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
   "name" text NOT NULL,
   "kind" text NOT NULL,
-  "size_bytes" integer,
+  "size_bytes" bigint,
   "offsite" boolean DEFAULT false NOT NULL,
   "deleted_at" timestamp with time zone,
   "release_id" uuid REFERENCES "app_releases"("id") ON DELETE SET NULL,

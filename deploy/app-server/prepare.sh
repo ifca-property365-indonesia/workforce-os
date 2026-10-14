@@ -16,12 +16,14 @@
 #   - a system user (default wfos-apps) without sudo rights, its ~/incoming upload folder, and the workspace's public
 #     key in its authorized_keys (no agent / port / X11 forwarding, no pty)
 #   - /srv/wfos-apps (the apps), /etc/wfos-apps/{env,start,htpasswd} (root-owned app config), /var/lib/wfos-apps
-#     (+ domains/, removed/: the helper's records and kept database dumps)
+#     (+ domains/, removed/: the helper's records and kept database dumps), /etc/wfos-apps/maintenance.html (the
+#     neutral page a live site shows during a release that migrates its database)
 #   - a separate PostgreSQL cluster "apps" on <pg-port>, reachable only through its socket in /run/wfos-apps-pg (no
 #     TCP at all); each app gets its own role and database later (the helper's db-create)
 #   - the app firewall: nftables table inet wfos_apps (only that table, nothing else is flushed), loaded now and at
 #     boot by wfos-apps-firewall.service: apps cannot open connections to this host, private networks or the
-#     server's own addresses (DNS excepted), and app ports are reachable from loopback only
+#     server's own addresses (DNS excepted), and app ports (4100-4899: 4500 and up are the second port of each live
+#     app, for releases without downtime) are reachable from loopback only
 #   - wfos-apps.slice: every app and build runs in it, so together they never take more than 40 % of the memory,
 #     two CPUs and 2048 tasks; the helper starts at most <max-running> apps and creates at most <max-apps>
 #   - /usr/local/sbin/wfos-app-helper (root:root 0755) + a sudoers rule that lets the user run exactly that file
@@ -39,7 +41,8 @@ USER_NAME=wfos-apps PG_PORT=5433 NODE_MAJOR=24 PNPM_VERSION=10.33.0 MAX_RUNNING=
 HELPER_DST=/usr/local/sbin/wfos-app-helper
 SUDOERS=/etc/sudoers.d/wfos-app-helper
 CONF=/etc/wfos-app-helper.conf
-PORT_MIN=4100 PORT_MAX=4499
+# 4100-4499: one port per app environment; 4500-4899: the second (green) slot of each live environment (port + 400)
+PORT_MIN=4100 PORT_MAX=4899
 APPS_ROOT=/srv/wfos-apps
 ETC_APPS=/etc/wfos-apps
 STATE_DIR=/var/lib/wfos-apps
@@ -68,7 +71,7 @@ while [[ $# -gt 0 ]]; do
     --max-running) [[ $# -ge 2 ]] || die "--max-running needs a value"; MAX_RUNNING="$2"; shift 2 ;;
     --max-apps) [[ $# -ge 2 ]] || die "--max-apps needs a value"; MAX_APPS="$2"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
-    -h | --help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h | --help) sed -n '2,36p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
 done
@@ -311,6 +314,39 @@ done
 run install -d -m 0700 -o root -g root "$STATE_DIR/domains" "$STATE_DIR/removed"
 # nginx workers (www-data) read the preview passwords
 run install -d -m 0750 -o root -g www-data "$ETC_APPS/htpasswd"
+# the page a live site shows while its release migrates the database (helper publish --maintenance: HTTP 503 with
+# Retry-After): neutral, no product name, no external resources; nginx reads it, so it stays world-readable
+write_if_changed "$ETC_APPS/maintenance.html" 0644 root:root << 'EOF' || true
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta http-equiv="refresh" content="60">
+<title>Back in a moment</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f5f5f3; color: #1c1c1a;
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 34rem; padding: 2.5rem 1.25rem; text-align: center; }
+  h1 { font-size: 1.5rem; line-height: 1.25; margin: 0 0 .5rem; }
+  p { margin: 0; opacity: .75; }
+  hr { width: 3rem; margin: 2rem auto; border: 0; border-top: 1px solid currentColor; opacity: .25; }
+  @media (prefers-color-scheme: dark) { body { background: #161615; color: #ececea; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>We&rsquo;ll be right back</h1>
+  <p>This site is being updated. Please try again in a minute.</p>
+  <hr>
+  <h1 lang="id">Sebentar lagi kembali</h1>
+  <p lang="id">Situs ini sedang diperbarui. Silakan coba lagi dalam satu menit.</p>
+</main>
+</body>
+</html>
+EOF
 
 # A1 kept apps in ~/apps of the apps user; they live in root-owned /srv/wfos-apps now (C1: root never works in a
 # folder a user controls). The old folder was always empty (A1 ran no apps): the user removes it if it still is.
@@ -518,6 +554,19 @@ ExecStop=-/usr/sbin/nft delete table inet wfos_apps
 [Install]
 WantedBy=sysinit.target
 EOF
+# outside traffic to the app ports is dropped: warn about anything else that listens there on a public address
+if [[ "$DRY" == 1 && -n "${WFOS_PREPARE_TEST_LISTEN:-}" ]]; then
+  listening="$(cat -- "$WFOS_PREPARE_TEST_LISTEN")"
+else
+  listening="$(ss -Hltn 2> /dev/null | awk '{ print $4 }' || true)"
+fi
+while read -r addr; do
+  [[ "$addr" =~ ^(.*):([0-9]{1,5})$ ]] || continue
+  lport="${BASH_REMATCH[2]}" lhost="${BASH_REMATCH[1]}"
+  ((lport >= PORT_MIN && lport <= PORT_MAX)) || continue
+  [[ "$lhost" == 127.* || "$lhost" == "[::1]" || "$lhost" == "::1" ]] && continue
+  warn "$addr listens on a port of the app range $PORT_MIN-$PORT_MAX: the app firewall drops traffic to it from other hosts"
+done <<< "$listening"
 run nft -c -f "$NFT_CONF"
 run nft -f "$NFT_CONF"
 run systemctl enable wfos-apps-firewall.service
@@ -567,6 +616,12 @@ else
   mv -f "$tmp" "$SUDOERS"
 fi
 
+# the port range of an earlier install is widened in place (helper v4: a second port for each live app)
+old_port_max=""
+if [[ -f "$OLD_CONF" ]]; then old_port_max="$(sed -nE 's/^PORT_MAX=([0-9]+)$/\1/p' "$OLD_CONF" | head -1)"; fi
+if [[ -n "$old_port_max" && "$old_port_max" != "$PORT_MAX" ]]; then
+  echo "PORT_MAX moves from $old_port_max to $PORT_MAX (the second port of each live app, for releases without downtime)"
+fi
 write_file "$CONF" 0644 root:root << EOF
 # Written by Workforce OS prepare.sh; read (never sourced) by $HELPER_DST. Re-run prepare.sh to change it.
 USER=$USER_NAME

@@ -1,4 +1,4 @@
-import type { ReleaseStatus, ReleaseStep, ReleaseWarning } from "@wfos/shared";
+import type { AppManifest, ReleaseStatus, ReleaseStep, ReleaseWarning } from "@wfos/shared";
 
 /**
  * A preview a Developer published from a task (request_preview → approval → release), as the task page shows it.
@@ -27,4 +27,14 @@ export interface ReleaseOrigin {
   taskTitle: string;
   employeeId: string | null;
   employeeName: string | null;
+}
+
+/**
+ * What a release's manifest says about its database, for the Release to LIVE dialog: whether it has one (live then
+ * takes a backup first) and how its migrations run on live ("expand": while the old version serves, no downtime;
+ * "breaking": behind the maintenance page).
+ */
+export interface ReleaseDbPlan {
+  database: boolean;
+  migrations: AppManifest["migrations"];
 }

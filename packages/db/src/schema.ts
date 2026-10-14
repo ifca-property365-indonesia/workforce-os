@@ -6,6 +6,7 @@ import {
   text,
   timestamp,
   integer,
+  bigint,
   boolean,
   jsonb,
   doublePrecision,
@@ -1154,7 +1155,7 @@ export const appBackups = pgTable(
     /** the helper's backup name (backups/<name>.dump on the server) */
     name: text("name").notNull(),
     kind: text("kind").$type<AppBackupKind>().notNull(),
-    sizeBytes: integer("size_bytes"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
     /** copied off the server (B2: offsite storage is optional; false until it is configured) */
     offsite: boolean("offsite").notNull().default(false),
     /** pruned on the server (kept as a record) */

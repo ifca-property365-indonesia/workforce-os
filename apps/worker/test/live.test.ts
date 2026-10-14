@@ -73,7 +73,8 @@ describe("live releases", () => {
     expect(srv.callsOf("publish")).toEqual([
       { cmd: "publish", args: [inst, String(live.port), "--domain", live.domain, "--alias", `www.${live.domain}`, "--index"], stdin: undefined },
     ]);
-    expect(srv.callsOf("unit-install")[0]!.args).toEqual([inst, String(live.port), "512", "--database"]);
+    // B2: a first live release starts in the active slot (blue = the environment's port)
+    expect(srv.callsOf("unit-install")[0]!.args).toEqual([inst, String(live.port), "512", "--database", "--slot", "blue"]);
     expect(srv.callsOf("db-create")[0]!.args).toEqual([inst]);
     expect(pub.publicCalls).toEqual([{ url: `https://${live.domain}/api/health`, headers: {} }]);
 
@@ -84,13 +85,14 @@ describe("live releases", () => {
     const livePw = decryptSecret(liveRow.dbPasswordEnc!);
     expect(env).toMatchObject({
       SMTP_PASSWORD: LIVE_ENV,
-      PORT: String(live.port),
       APP_URL: `https://${live.domain}`,
       APP_DATA_DIR: `/srv/wfos-apps/${inst}/data`,
       APP_SECRET: decryptSecret(liveRow.appSecretEnc!),
       DATABASE_URL: `postgresql://app_${inst.replace(/-/g, "_")}:${livePw}@localhost:5433/app_${inst.replace(/-/g, "_")}?host=/run/wfos-apps-pg`,
     });
     expect(env.FEATURE).toBeUndefined();
+    // both slots share the env file; each unit sets its own PORT
+    expect(env.PORT).toBeUndefined();
     expect(srv.env).not.toContain(SECRET_ENV);
     expect(livePw).not.toBe(decryptSecret(previewRow.dbPasswordEnc!));
     expect(liveRow.appSecretEnc && decryptSecret(liveRow.appSecretEnc)).not.toBe(decryptSecret(previewRow.appSecretEnc!));

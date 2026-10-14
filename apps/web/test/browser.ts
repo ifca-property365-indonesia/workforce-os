@@ -53,6 +53,8 @@ export const queueModule = {
     publish: async () => 0,
   }),
   q: { task: vi.fn(), chat: vi.fn(), action: vi.fn(), ingest: vi.fn(), misc: vi.fn(), deploy: vi.fn() },
+  /** db_backup / db_restore jobs still waiting or running for an environment (none unless a test says so) */
+  pendingDbJobs: vi.fn(async (_environmentId: string): Promise<("db_backup" | "db_restore")[]> => []),
   publish: vi.fn(async () => {}),
   control: vi.fn(async () => {}),
 };

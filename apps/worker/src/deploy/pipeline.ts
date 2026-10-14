@@ -1,7 +1,7 @@
 import { Transform } from "node:stream";
 import { and, eq, inArray, ne } from "drizzle-orm";
-import { appEnvironments, apps, appReleases, audit, db, repositories, servers, tasks, users, workspaces } from "@wfos/db";
-import { RELEASE_STEPS, WFOS_HELPER_VERSION, type AppManifest, type AppStatus, type ReleaseCheckpoint, type ReleaseStatus, type ReleaseStep } from "@wfos/shared";
+import { appBackups, appEnvironments, apps, appReleases, audit, db, repositories, servers, tasks, users, workspaces } from "@wfos/db";
+import { APP_LIVE_GRACE_SECONDS, RELEASE_STEPS, WFOS_HELPER_VERSION, type AppManifest, type AppSlot, type AppStatus, type ReleaseStatus, type ReleaseStep } from "@wfos/shared";
 import { decryptSecret } from "@wfos/shared/server";
 import { sftpPut, type SshTarget } from "@wfos/shared/ssh";
 import { errorMessage } from "../lib/errors";
@@ -21,6 +21,16 @@ import {
   namesUnchangedSince,
   recordPublishedNames,
   envLabel,
+  idleSlot,
+  mergeCheckpoint,
+  notifyOwners,
+  pendingGrace,
+  readSlots,
+  servingUnit,
+  slotFlags,
+  slotOfUnit,
+  slotPort,
+  type SlotUnit,
   extraEnv,
   forbiddenEnvKeys,
   forbiddenEnvMessage,
@@ -45,7 +55,9 @@ import {
 } from "./common";
 import { helper, helperCall, HELPER_EXIT_GUARD, HelperError, statusCodeOf, type HelperOptions } from "./helper";
 import { Redactor, ReleaseLog } from "./log";
-import { assertCommit, commitSubject, DeployInputError, parseManifest, readManifest, releaseWarnings, resolveBranch } from "./manifest";
+import { assertCommit, commitSubject, DeployInputError, expandRefusalMessage, expandViolations, parseManifest, readManifest, releaseWarnings, resolveBranch } from "./manifest";
+import { takeBackup } from "./backups";
+import { GRACE_MS, queueGraceStop } from "./slots";
 import { appMsg } from "./messages";
 import { afterReleaseSettled } from "../runner/approvals";
 
@@ -75,6 +87,35 @@ interface RunState {
   oldStopped: boolean;
 }
 
+/**
+ * A LIVE release (blue-green, B2): the new version starts in the idle slot while the old unit keeps serving, nginx is
+ * switched to it, and the old unit keeps running for the grace time. What a failure (or recovery) needs to undo it.
+ */
+interface LiveState {
+  /** the unit of the current release (null: nothing was deployed) */
+  oldUnit: SlotUnit | null;
+  /** it served when the release started (running, no maintenance page) */
+  oldServes: boolean;
+  /** the maintenance page was on before this release (a failed restore): a failure leaves it on */
+  maintenanceBefore: boolean;
+  activeSlotBefore: AppSlot;
+  /** where this release runs: the idle slot (an instant rollback: the grace unit it goes back to) */
+  newUnit: SlotUnit;
+  instant: boolean;
+  /** the release folder was on the server already (a slot holds it): no install / build / migrate */
+  reused: boolean;
+  /** breaking migration with the old version serving: maintenance page on and old unit stopped for it */
+  breaking: boolean;
+  /** a failure after the migration restores the database (migrations "breaking") */
+  restoreDb: boolean;
+  /** the maintenance page is (or may be) on because of this release */
+  maintenanceOn: boolean;
+  /** the idle slot's unit was (re)started with this release */
+  newStarted: boolean;
+  /** nginx was (or may have been) pointed at newUnit */
+  switched: boolean;
+}
+
 interface Ctx {
   rel: Release;
   app: App;
@@ -93,7 +134,9 @@ interface Ctx {
   redactor: Redactor;
   state: RunState;
   /** what is stored in release.checkpoint (for a restart mid-deploy) */
-  checkpoint: ReleaseCheckpoint;
+  checkpoint: LiveCheckpoint;
+  /** live environments only */
+  live: LiveState | null;
 }
 
 /** A deploy refused before anything happened (kill switch, dry run, server not ready, capacity…). */
@@ -137,7 +180,7 @@ async function run(c: Ctx, cmd: string, args: (string | number)[], o: HelperOpti
 const say = (c: Ctx) => (line: string) => c.log.line(line);
 
 /** Store how far the release got (release.checkpoint): what recovery after a restart needs to undo it. */
-async function checkpoint(c: Ctx, patch: Partial<ReleaseCheckpoint>): Promise<void> {
+async function checkpoint(c: Ctx, patch: Partial<LiveCheckpoint>): Promise<void> {
   c.checkpoint = { ...c.checkpoint, ...patch };
   await db.update(appReleases).set({ checkpoint: c.checkpoint }).where(eq(appReleases.id, c.rel.id));
 }
@@ -148,8 +191,10 @@ function buildMemory(s: Server, want: number): number {
   return Math.max(256, half > 0 ? Math.min(want, half) : want);
 }
 
-async function unitInstall(c: Ctx, m: AppManifest): Promise<void> {
-  await run(c, "unit-install", [c.env.instanceName, c.env.port, m.memoryMb, ...(m.database ? ["--database"] : [])], { stdin: `${m.start}\n` });
+/** unit-install of the environment's unit (a live slot: its own port and `--slot`). */
+async function unitInstall(c: Ctx, m: AppManifest, unit: SlotUnit | null = null): Promise<void> {
+  const port = unit ? slotPort(c.env, unit) : c.env.port;
+  await run(c, "unit-install", [c.env.instanceName, port, m.memoryMb, ...(m.database ? ["--database"] : []), ...slotFlags(unit)], { stdin: `${m.start}\n` });
 }
 
 async function installEnv(c: Ctx, sha: string, m: AppManifest): Promise<void> {
@@ -252,6 +297,11 @@ async function prepare(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): 
     if (refusal) throw new Refusal(refusal);
   }
 
+  if (live) c.live = initLiveState(c, { statusBefore: env.status, maintenanceBefore: env.maintenance });
+  if (env.maintenance) {
+    // left on by a failed restore (or an undo that failed): a release is how it is fixed, so it goes on, and says so
+    c.log.line(`note: the maintenance page is on (${env.statusMessage ?? "left by an earlier failure"}): this release replaces it when it switches over; if it fails, the page stays on`);
+  }
   await updateEnvironment(env, { status: "deploying", statusMessage: null });
   c.state.appTouched = true;
 
@@ -299,6 +349,15 @@ async function prepare(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): 
     accessMode: env.accessMode,
   });
   if (warnings.length) c.log.line(`warnings: ${warnings.join(", ")}`);
+  if (live) {
+    c.log.line(`migrations: ${c.manifest.migrate ? c.manifest.migrations : "none (no migrate command)"}`);
+    // "expand" runs while the old version serves and is never undone: its files must only add
+    if (c.manifest.migrations === "expand" && c.manifest.migrate && c.current && c.current.commit !== sha && rel.trigger !== "rollback") {
+      const v = await expandViolations(c.mirror, c.current.commit, sha);
+      if (v.length) throw new DeployInputError(expandRefusalMessage(v));
+      c.log.line(`expand check: the migration files changed since ${sha8(c.current.commit)} only add (a best-effort lint of the files, not a proof: an expand migration must stay safe for the old version)`);
+    }
+  }
   const row = await updateRelease(c.rel, { commit: sha, commitSubject: subject, manifest: c.manifest, warnings });
   if (row) c.rel = row;
 }
@@ -426,6 +485,12 @@ async function buildAndActivate(c: Ctx): Promise<void> {
         await run(c, "db-dump", [c.env.instanceName, c.rel.id], { timeoutMs: 600_000 });
         c.state.backup = c.rel.id;
         await updateRelease(c.rel, { dbBackup: c.rel.id });
+        // listed with the environment's backups (the preview keeps its dump name: the release id)
+        await db
+          .insert(appBackups)
+          .values({ environmentId: c.env.id, workspaceId: c.env.workspaceId, name: c.rel.id, kind: "pre_migrate", releaseId: c.rel.id, createdBy: c.rel.createdBy })
+          .onConflictDoNothing()
+          .catch((e: unknown) => log.warn({ err: e, releaseId: c.rel.id }, "backup row not stored"));
       }
     });
   }
@@ -440,16 +505,18 @@ async function buildAndActivate(c: Ctx): Promise<void> {
   await step(c, "activate", () => activate(c));
 }
 
-async function healthStep(c: Ctx, m: AppManifest): Promise<void> {
-  const h = await waitHealthy(c.target, c.env, m.health, say(c));
+async function healthStep(c: Ctx, m: AppManifest, unit: SlotUnit | null = null): Promise<void> {
+  const port = unit ? slotPort(c.env, unit) : c.env.port;
+  const h = await waitHealthy(c.target, c.env, m.health, say(c), port);
   if (!h.ok) {
-    const unit = await unitStatus(c.target, c.env.instanceName);
-    throw new Error(`The app did not answer 2xx on ${m.health} within ${Math.round(deployTiming.healthTimeoutMs / 1000)} s (last: ${h.last}; unit ${unit})`);
+    const state = await unitStatus(c.target, c.env.instanceName, slotFlags(unit));
+    throw new Error(`The app did not answer 2xx on ${m.health} within ${Math.round(deployTiming.healthTimeoutMs / 1000)} s (last: ${h.last}; unit ${state})`);
   }
 }
 
 async function pipeline(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }): Promise<void> {
   await step(c, "prepare", () => prepare(c, ws));
+  if (c.live) return livePipeline(c);
   const reused = c.rel.trigger === "rollback" && (await step(c, "activate", () => activateExisting(c)));
   if (!reused) await buildAndActivate(c);
   await step(c, "health", () => healthStep(c, c.manifest));
@@ -471,6 +538,390 @@ async function pipeline(c: Ctx, ws: { killSwitch: boolean; demoMode: boolean }):
       c.log.line(`warning: release-prune failed: ${errorMessage(e)}`);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// live: blue-green slots (B2)
+// ---------------------------------------------------------------------------
+
+/** The live state at the start of a release (or, in recovery, as it was when the release started). */
+function initLiveState(c: Ctx, before: { statusBefore: AppStatus; maintenanceBefore: boolean }): LiveState {
+  const cur = c.current;
+  const cp = (c.rel.checkpoint ?? null) as LiveCheckpoint | null;
+  return {
+    oldUnit: cur ? servingUnit(c.env, cur) : null,
+    oldServes: !!cur && before.statusBefore === "running" && !before.maintenanceBefore,
+    maintenanceBefore: before.maintenanceBefore,
+    activeSlotBefore: cur ? slotOfUnit(servingUnit(c.env, cur)) : c.env.activeSlot,
+    // recovery: the slot the release had taken; otherwise the idle one
+    newUnit: cp?.slot ?? idleSlot(c.env, cur),
+    instant: false,
+    reused: false,
+    breaking: false,
+    restoreDb: false,
+    maintenanceOn: false,
+    newStarted: false,
+    switched: false,
+  };
+}
+
+const unitName = (u: SlotUnit) => (u === "legacy" ? "the single (B1) unit" : `slot ${u}`);
+
+/**
+ * Live, after prepare: an instant rollback when the target still runs in its grace unit; otherwise build (or reuse)
+ * the release in the idle slot while the old unit serves, migrate (expand: still serving; breaking: maintenance page
+ * and old unit stopped), start it on the slot's port, health there, switch nginx, public check.
+ */
+async function livePipeline(c: Ctx): Promise<void> {
+  const L = c.live!;
+  const instantTo = c.rel.trigger === "rollback" ? await instantRollbackUnit(c) : null;
+  if (instantTo) return instantRollback(c, instantTo);
+  let reused = false;
+  if (c.rel.trigger === "rollback") {
+    await liveBackup(c);
+    reused = await step(c, "activate", () => liveActivateExisting(c));
+  }
+  if (!reused) await liveBuildAndActivate(c);
+  await step(c, "health", () => healthStep(c, c.manifest, L.newUnit));
+  await step(c, "publish", () => liveSwitch(c));
+  await step(c, "public_check", () => publicCheck(c.env, c.manifest.health, say(c)));
+  await step(c, "cleanup", async () => {
+    try {
+      await run(c, "release-prune", [c.env.instanceName]);
+    } catch (e) {
+      c.log.line(`warning: release-prune failed: ${errorMessage(e)}`);
+    }
+  });
+}
+
+async function liveBuildAndActivate(c: Ctx): Promise<void> {
+  const m = c.manifest;
+  const L = c.live!;
+  await step(c, "upload", () => upload(c));
+  await step(c, "unpack", async () => {
+    try {
+      await run(c, "release-unpack", [c.env.instanceName, c.sha], { timeoutMs: 600_000 });
+    } catch (e) {
+      // the idle slot still holds this very commit (it ran here before): its folder and build are used as they are
+      if (e instanceof HelperError && e.guard === "release_active") {
+        L.reused = true;
+        c.log.line(`release ${sha8(c.sha)} is already on the server (a slot holds it): its build is used as it is`);
+        return;
+      }
+      throw e;
+    }
+  });
+  await step(c, "env", async () => {
+    await installEnv(c, c.sha, m);
+    c.state.envInstalled = true;
+  });
+  if (m.database) {
+    await step(c, "database", async () => {
+      const pw = decryptSecret(c.env.dbPasswordEnc!);
+      await run(c, "db-create", [c.env.instanceName], { stdin: `${pw}\n` });
+    });
+  }
+  if (!L.reused) {
+    const mem = buildMemory(c.server, BUILD_MEMORY_MB);
+    await step(c, "install", () => buildRun(c, "install", INSTALL_TIMEOUT_SEC, mem, m.install));
+    await step(c, "build", () => buildRun(c, "build", BUILD_TIMEOUT_SEC, mem, m.build));
+  }
+  await liveBackup(c);
+  if (m.migrate && c.rel.trigger !== "rollback") {
+    const cmd = m.migrate;
+    // also for a reused build: migrations are idempotent (SKILL), and a restore since may have taken the schema back
+    await step(c, "migrate", async () => {
+      c.state.migrated = true;
+      await checkpoint(c, { migrated: true });
+      c.log.line(L.breaking ? "migrate: the maintenance page is on, nothing else runs" : "migrate: the old version keeps serving (expand)");
+      try {
+        await buildRun(c, "migrate", MIGRATE_TIMEOUT_SEC, buildMemory(c.server, MIGRATE_MEMORY_MB), cmd);
+      } catch (e) {
+        if (L.reused && e instanceof HelperError && e.guard === "release_active") {
+          throw new Error(`The migration of ${sha8(c.sha)} cannot run: its release folder is a slot's (the helper never runs a command in an active release). Release a new commit, or roll back to it instead`);
+        }
+        throw e;
+      }
+    });
+  }
+  await step(c, "activate", () => liveActivate(c, c.sha));
+}
+
+/**
+ * The backup step of a live release: ALWAYS a `pre_migrate` dump when the app has a database (refused when it fails),
+ * and for a breaking migration while the old version serves, first the maintenance page and the old unit stopped (the
+ * dump is then consistent, and nothing writes while it migrates).
+ */
+async function liveBackup(c: Ctx): Promise<void> {
+  const m = c.manifest;
+  const L = c.live!;
+  const rollback = c.rel.trigger === "rollback";
+  const needsDump = m.database && !!c.current && !!c.currentManifest?.database && !c.state.backup;
+  L.restoreDb = m.migrations === "breaking";
+  const breaking = !rollback && !!m.migrate && m.migrations === "breaking" && L.oldServes && !!L.oldUnit && !c.state.oldStopped;
+  if (!needsDump && !breaking) return;
+  await step(c, "backup", async () => {
+    if (breaking) {
+      L.breaking = true;
+      // recorded first: a restart from here on brings the old unit back and takes the page down again
+      L.maintenanceOn = true;
+      await checkpoint(c, { maintenance: true });
+      c.log.write(await publishSite(c.target, c.env, c.redactor, { port: slotPort(c.env, L.oldUnit!), maintenance: true }));
+      c.env.maintenance = true;
+      await updateEnvironment(c.env, { maintenance: true });
+      c.state.oldStopped = true;
+      await run(c, "unit-stop", [c.env.instanceName, ...slotFlags(L.oldUnit)]);
+      // the release before that may still run its grace time: it uses the same database
+      const g = pendingGrace(c.current);
+      if (g && g.slot !== L.oldUnit) {
+        await run(c, "unit-stop", [c.env.instanceName, ...slotFlags(g.slot)]);
+        await markGraceDone(c);
+      }
+      c.log.line(`maintenance: the maintenance page is on and ${unitName(L.oldUnit!)} is stopped for the migration`);
+    }
+    if (needsDump) {
+      try {
+        const b = await takeBackup(c.target, c.env, { kind: "pre_migrate", releaseId: c.rel.id, createdBy: c.rel.createdBy, onData: (s) => c.log.write(s) });
+        c.state.backup = b.name;
+        await updateRelease(c.rel, { dbBackup: b.name });
+        c.log.line(`backup: ${b.name}${b.bytes !== null ? ` (${(b.bytes / 1024 / 1024).toFixed(1)} MB)` : ""}`);
+      } catch (e) {
+        throw new Error(`The database backup failed, so the release is refused: ${errorMessage(e)}`);
+      }
+    }
+  });
+}
+
+/** The current release's grace unit is gone (stopped, or taken over by this release). */
+async function markGraceDone(c: Ctx): Promise<void> {
+  if (!c.current) return;
+  await mergeCheckpoint(c.current.id, { graceDone: true });
+  c.current.checkpoint = { ...(c.current.checkpoint ?? { appStatusBefore: "running" }), graceDone: true } as LiveCheckpoint;
+}
+
+/** `release-activate --slot`, unit-install on the slot's port, (re)start: the new version in the idle slot. */
+async function liveActivate(c: Ctx, sha: string): Promise<void> {
+  const L = c.live!;
+  const slot = L.newUnit as AppSlot;
+  const g = pendingGrace(c.current);
+  // the idle slot still runs the release before the current one (its grace time): this release takes it over (the
+  // grace is settled once release-activate has moved its link)
+  const takesOverGrace = g?.slot === slot;
+  if (takesOverGrace) c.log.line(`slot ${slot} still runs the release before (grace): it is taken over`);
+  else if (g?.slot === "legacy" && slot === "blue") {
+    // the B1 unit listens on blue's port: it is stopped (and disabled) before blue starts
+    await run(c, "unit-stop", [c.env.instanceName]);
+    await markGraceDone(c);
+    c.log.line("the single (B1) unit was stopped: blue takes its port");
+  }
+  // recorded before the call: from here a failure (or recovery) stops this slot again
+  c.state.activated = true;
+  L.newStarted = true;
+  await checkpoint(c, { activated: true, slot, previousSlot: L.oldUnit && L.oldUnit !== "legacy" ? L.oldUnit : null });
+  try {
+    const out = await run(c, "release-activate", [c.env.instanceName, sha, "--slot", slot]);
+    const previous = out.trim().split("\n").pop() ?? "none";
+    await checkpoint(c, { previousSha: previous });
+    c.log.line(`slot ${slot}: previous release ${previous}`);
+    if (takesOverGrace) await markGraceDone(c);
+  } catch (e) {
+    if (e instanceof HelperError && e.exitCode === HELPER_EXIT_GUARD) {
+      // refused before anything was switched: the slot is as it was
+      c.state.activated = false;
+      L.newStarted = false;
+      await checkpoint(c, { activated: false });
+    }
+    throw e;
+  }
+  await unitInstall(c, c.manifest, slot);
+  await run(c, "unit-restart", [c.env.instanceName, "--slot", slot]);
+  c.log.line(`started in slot ${slot} on port ${slotPort(c.env, slot)}`);
+}
+
+/** Rollback (not instant): the release folder in the idle slot again, when it is still on the server. */
+async function liveActivateExisting(c: Ctx): Promise<boolean> {
+  await installEnv(c, c.sha, c.manifest);
+  c.state.envInstalled = true;
+  try {
+    await liveActivate(c, c.sha);
+  } catch (e) {
+    if (e instanceof HelperError && e.guard === "release_missing") {
+      c.log.line(`release ${sha8(c.sha)} is no longer on the server: building it again`);
+      return false;
+    }
+    throw e;
+  }
+  c.log.line("note: a rollback does not restore the database; if this version needs the older schema, restore a backup");
+  return true;
+}
+
+/** The switch: nginx to the new unit's port (reload: open connections are not cut), activeSlot, maintenance off. */
+async function liveSwitch(c: Ctx): Promise<void> {
+  const L = c.live!;
+  L.switched = true;
+  c.log.write(await publishSite(c.target, c.env, c.redactor, { port: slotPort(c.env, L.newUnit) }));
+  L.maintenanceOn = false;
+  const activeSlot = slotOfUnit(L.newUnit);
+  Object.assign(c.env, { activeSlot, maintenance: false });
+  await updateEnvironment(c.env, { activeSlot, maintenance: false });
+  c.log.line(`switched: ${c.env.domain} → ${unitName(L.newUnit)} (port ${slotPort(c.env, L.newUnit)})`);
+  const publishedNames = liveNames(c.env);
+  c.checkpoint = { ...c.checkpoint, publishedNames };
+  await recordPublishedNames(c.rel.id, publishedNames);
+}
+
+/**
+ * Rollback to the release that served right before the current one, while its unit still runs (grace): the target
+ * and its unit, or null (then the rollback activates it in the idle slot).
+ */
+async function instantRollbackUnit(c: Ctx): Promise<SlotUnit | null> {
+  const L = c.live!;
+  if (!c.current || !L.oldServes) return null;
+  const g = pendingGrace(c.current);
+  if (!g?.releaseId || g.slot === L.oldUnit) return null;
+  let same = g.releaseId === c.rel.rollbackOfId;
+  if (!same) {
+    const [gr] = await db.select({ commit: appReleases.commit }).from(appReleases).where(eq(appReleases.id, g.releaseId));
+    same = gr?.commit === c.sha;
+  }
+  if (!same) return null;
+  const state = await unitStatus(c.target, c.env.instanceName, slotFlags(g.slot));
+  if (state !== "active") {
+    c.log.line(`${unitName(g.slot)} no longer runs (${state}): the rollback starts it again`);
+    return null;
+  }
+  return g.slot;
+}
+
+async function instantRollback(c: Ctx, unit: SlotUnit): Promise<void> {
+  const L = c.live!;
+  L.instant = true;
+  L.newUnit = unit;
+  await checkpoint(c, { slot: unit === "legacy" ? undefined : unit, previousSlot: L.oldUnit && L.oldUnit !== "legacy" ? L.oldUnit : null });
+  c.log.line(`instant rollback: ${sha8(c.sha)} still runs in ${unitName(unit)} (grace time): nginx goes back to it`);
+  await step(c, "health", () => healthStep(c, c.manifest, unit));
+  await step(c, "publish", () => liveSwitch(c));
+  await step(c, "public_check", () => publicCheck(c.env, c.manifest.health, say(c)));
+  await step(c, "cleanup", async () => {
+    // the env file is shared by the slots: the one of the version that runs now (it is read at the next start)
+    try {
+      await installEnv(c, c.sha, c.manifest);
+    } catch (e) {
+      c.log.line(`warning: env-install failed: ${errorMessage(e)}`);
+    }
+  });
+}
+
+/** A publish whose failure is only logged; true when it went through. */
+async function tryPublish(c: Ctx, what: string, port: number, maintenance: boolean): Promise<boolean> {
+  try {
+    c.log.write(await publishSite(c.target, c.env, c.redactor, { port, maintenance }));
+    return true;
+  } catch (e) {
+    c.log.line(`warning: ${what} failed: ${errorMessage(e)}`);
+    return false;
+  }
+}
+
+/**
+ * Undo a live release that failed (or was interrupted): nginx ends on a running unit with the maintenance page off,
+ * or the call throws (the caller then shows the maintenance page and tells the Owners).
+ * - the old unit kept running (expand, no migration, or nothing switched yet): nginx back to it when it was
+ *   switched, the new slot stopped; the database stays (an expand migration only added);
+ * - the old unit was stopped for a breaking migration: maintenance page (if switched), new slot stopped, database
+ *   restored from the pre_migrate backup (when the migration ran), old unit started, health, nginx back to it;
+ * - nothing served before: the new slot stopped (database restored after a breaking migration), the site as it was.
+ * Returns the environment patch.
+ */
+async function liveUndo(c: Ctx, e: unknown): Promise<Partial<typeof appEnvironments.$inferInsert> & { status: AppStatus }> {
+  const L = c.live!;
+  const inst = c.env.instanceName;
+  const cur = c.current;
+  const curM = c.currentManifest;
+  const code = statusCodeOf(e);
+  const restoreDb = c.state.migrated && !!c.state.backup && L.restoreDb;
+  const stopNew = async (must: boolean) => {
+    if (!L.newStarted) return;
+    if (!must) {
+      await tryRun(c, "stopping the new version", "unit-stop", [inst, ...slotFlags(L.newUnit)]);
+      return;
+    }
+    try {
+      await run(c, "unit-stop", [inst, ...slotFlags(L.newUnit)]);
+    } catch (e2) {
+      // the helper answered (e.g. the unit was never installed: cut right after release-activate): fine as long as
+      // nothing runs there
+      if (!(e2 instanceof HelperError) || (await unitStatus(c.target, inst, slotFlags(L.newUnit))) === "active") throw e2;
+      c.log.line(`note: ${unitName(L.newUnit)} could not be stopped (${errorMessage(e2)}) but does not run`);
+    }
+  };
+  const restore = async () => {
+    await run(c, "db-restore", [inst, c.state.backup!], { timeoutMs: 600_000 });
+    c.log.line(`database restored from backup ${c.state.backup}`);
+  };
+  const envBack = async () => {
+    if (!c.state.envInstalled || !cur || !curM) return;
+    try {
+      await installEnv(c, cur.commit, curM);
+    } catch (e2) {
+      c.log.line(`warning: putting the running version's env back failed: ${errorMessage(e2)}`);
+    }
+  };
+  c.log.line("==> putting LIVE back");
+
+  if (L.oldServes && L.oldUnit && !c.state.oldStopped) {
+    const oldPort = slotPort(c.env, L.oldUnit);
+    if (L.switched) {
+      c.log.write(await publishSite(c.target, c.env, c.redactor, { port: oldPort }));
+      c.log.line(`switched back: ${c.env.domain} → ${unitName(L.oldUnit)} (port ${oldPort})`);
+    }
+    await stopNew(false);
+    await envBack();
+    if (c.state.migrated) c.log.line("note: the expand migration stays (the previous version keeps running on the added schema)");
+    c.log.line(`<== ${sha8(cur!.commit)} keeps serving`);
+    return { status: "running", statusMessage: code, maintenance: false, activeSlot: slotOfUnit(L.oldUnit) };
+  }
+
+  if (L.oldServes && L.oldUnit && c.state.oldStopped) {
+    const oldPort = slotPort(c.env, L.oldUnit);
+    if (L.switched) {
+      c.log.write(await publishSite(c.target, c.env, c.redactor, { port: oldPort, maintenance: true }));
+      L.maintenanceOn = true;
+      await updateEnvironment(c.env, { maintenance: true });
+    }
+    // never a restore while a version runs on the database
+    await stopNew(true);
+    if (restoreDb) await restore();
+    await envBack();
+    await run(c, "unit-start", [inst, ...slotFlags(L.oldUnit)]);
+    const h = await waitHealthy(c.target, c.env, curM!.health, say(c), oldPort);
+    if (!h.ok) throw new Error(`the previous version did not answer 2xx on ${curM!.health} after it was started again (last: ${h.last}; unit ${await unitStatus(c.target, inst, slotFlags(L.oldUnit))})`);
+    c.log.write(await publishSite(c.target, c.env, c.redactor, { port: oldPort }));
+    L.maintenanceOn = false;
+    c.log.line(`<== maintenance over: ${sha8(cur!.commit)} runs again in ${unitName(L.oldUnit)}`);
+    return { status: "running", healthy: true, lastHealthAt: new Date(), statusMessage: code, maintenance: false, activeSlot: slotOfUnit(L.oldUnit) };
+  }
+
+  // nothing served when the release started (first release, stopped, or behind the maintenance page)
+  if (restoreDb) {
+    await stopNew(true);
+    await restore();
+  } else await stopNew(false);
+  const keepMaintenance = L.maintenanceBefore && !!L.oldUnit;
+  if (L.switched) {
+    if (keepMaintenance) {
+      if (!(await tryPublish(c, "showing the maintenance page again", slotPort(c.env, L.oldUnit!), true))) throw new Error("the maintenance page could not be put back");
+    } else await tryRun(c, "unpublishing the site", "unpublish", [inst]);
+  }
+  await envBack();
+  return {
+    status: cur ? statusWithoutChange(c.env, c.state.appStatusBefore) : "failed",
+    ...(cur ? {} : { healthy: false }),
+    statusMessage: code,
+    // nginx untouched (never switched): the flag as it was; switched: what was published back just now
+    maintenance: L.switched ? keepMaintenance : L.maintenanceBefore,
+    activeSlot: L.activeSlotBefore,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -496,6 +947,17 @@ async function auditRelease(c: Pick<Ctx, "rel" | "app" | "env" | "sha">, action:
 
 async function succeed(c: Ctx): Promise<ReleaseStatus> {
   const now = new Date();
+  const L = c.live;
+  // live: the unit that served before keeps running for the grace time (an instant rollback), then it is stopped
+  const graceUnit = L && L.oldServes && L.oldUnit && !c.state.oldStopped && L.oldUnit !== L.newUnit ? L.oldUnit : null;
+  if (L) {
+    await checkpoint(c, {
+      graceSlot: graceUnit,
+      graceReleaseId: graceUnit ? (c.current?.id ?? null) : null,
+      graceUntil: graceUnit ? new Date(now.getTime() + GRACE_MS).toISOString() : null,
+      graceDone: !graceUnit,
+    });
+  }
   const superseded = await db.transaction(async (tx) => {
     const old = await tx
       .update(appReleases)
@@ -505,7 +967,19 @@ async function succeed(c: Ctx): Promise<ReleaseStatus> {
     await tx.update(appReleases).set({ status: "deployed", step: "cleanup", error: null, finishedAt: now }).where(eq(appReleases.id, c.rel.id));
     await tx
       .update(appEnvironments)
-      .set({ currentReleaseId: c.rel.id, status: "running", healthy: true, lastDeployedAt: now, lastHealthAt: now, memoryMb: c.manifest.memoryMb, statusMessage: null, updatedAt: now })
+      .set({
+        currentReleaseId: c.rel.id,
+        status: "running",
+        healthy: true,
+        lastDeployedAt: now,
+        lastHealthAt: now,
+        memoryMb: c.manifest.memoryMb,
+        statusMessage: null,
+        // the site was published just now: no maintenance page (also one a failed restore had left on)
+        maintenance: false,
+        ...(L ? { activeSlot: slotOfUnit(L.newUnit) } : {}),
+        updatedAt: now,
+      })
       .where(eq(appEnvironments.id, c.env.id));
     return old;
   });
@@ -513,6 +987,17 @@ async function succeed(c: Ctx): Promise<ReleaseStatus> {
   await publishRelease({ ...c.rel, status: "deployed", step: "cleanup" });
   await publish(c.app.workspaceId, { type: "app.updated", appId: c.app.id, status: "running", environmentId: c.env.id });
   c.log.line(`deployed ${c.sha} at ${appUrl(c.env)}`);
+  if (L && !graceUnit && L.oldUnit && L.oldUnit !== L.newUnit && !c.state.oldStopped && !L.instant) {
+    // the old unit did not serve (stopped, or behind the maintenance page): nothing to keep it running for
+    await tryRun(c, `stopping ${unitName(L.oldUnit)}`, "unit-stop", [c.env.instanceName, ...slotFlags(L.oldUnit)]);
+  }
+  if (graceUnit && L) {
+    c.log.line(`grace: ${unitName(graceUnit)} keeps running ${APP_LIVE_GRACE_SECONDS} s (an instant rollback), then it is stopped`);
+    await queueGraceStop({ appId: c.app.id, workspaceId: c.app.workspaceId, environmentId: c.env.id, releaseId: c.rel.id, slot: graceUnit }, GRACE_MS).catch((e: unknown) =>
+      // the sweep (apps tick, worker start) queues it again from the checkpoint
+      log.warn({ err: e, releaseId: c.rel.id }, "grace stop could not be queued"),
+    );
+  }
   await auditRelease(c, "app.deployed", { warnings: c.rel.warnings });
   // a preview a task asked for is announced by that task (done, with the URL): one notification, not two
   if (!c.rel.taskId) await notifyApp({
@@ -585,6 +1070,8 @@ async function fail(c: Ctx, e: unknown): Promise<ReleaseStatus> {
     return "failed";
   }
 
+  if (c.live) return liveFail(c, e, error, notifyFailed);
+
   if (!c.state.activated) {
     // the old version's folder was never switched; undo what the failed release changed beside it. The database is
     // only restored while no version runs (the old one was stopped for the migration), then the old one starts again.
@@ -621,7 +1108,7 @@ async function fail(c: Ctx, e: unknown): Promise<ReleaseStatus> {
     try {
       await rollbackToCurrent(c, cur, c.currentManifest!);
       await updateRelease(c.rel, { status: "rolled_back", step, error, finishedAt: now });
-      await updateEnvironment(c.env, { status: "running", healthy: true, lastHealthAt: new Date(), statusMessage: null });
+      await updateEnvironment(c.env, { status: "running", healthy: true, lastHealthAt: new Date(), statusMessage: null, maintenance: false });
       await auditRelease(c, "app.rolled_back", { step, error: error.slice(0, 500), restoredCommit: cur.commit, databaseRestored: !!(c.state.migrated && c.state.backup) });
       await notifyApp({
         workspaceId: c.app.workspaceId,
@@ -649,6 +1136,57 @@ async function fail(c: Ctx, e: unknown): Promise<ReleaseStatus> {
   await updateEnvironment(c.env, { status: "failed", healthy: false, statusMessage: statusCodeOf(e) });
   await notifyFailed(true, { stopped: true });
   return "failed";
+}
+
+/** The outcome of a failed live release: undone (liveUndo), or — when that fails too — the maintenance page and the Owners told. */
+async function liveFail(c: Ctx, e: unknown, error: string, notifyFailed: (nothingRuns: boolean, details: Record<string, unknown>) => Promise<void>): Promise<ReleaseStatus> {
+  const L = c.live!;
+  const step = c.state.step;
+  const now = new Date();
+  const cur = c.current;
+  try {
+    const patch = await liveUndo(c, e);
+    // rolled_back = it was switched on and the previous version serves again; anything else failed
+    const status: ReleaseStatus = L.switched && cur && patch.status === "running" ? "rolled_back" : "failed";
+    await updateRelease(c.rel, { status, step, error, finishedAt: now });
+    await updateEnvironment(c.env, patch);
+    if (status === "rolled_back" && cur) {
+      await auditRelease(c, "app.rolled_back", { step, error: error.slice(0, 500), restoredCommit: cur.commit, databaseRestored: !!(c.state.migrated && c.state.backup && L.restoreDb), instant: L.instant });
+      await notifyApp({
+        workspaceId: c.app.workspaceId,
+        appId: c.app.id,
+        userId: c.rel.createdBy,
+        kind: "task_failed",
+        subject: appMsg(c.locale, "app.rolledBack", { name: envLabel(c.app, c.env) }),
+        text: appMsg(c.locale, "app.rolledBackText", { commit: sha8(c.sha), step, error: error.slice(0, 300), previous: sha8(cur.commit), url: appUrl(c.env) }),
+      });
+    } else await notifyFailed(patch.status !== "running", { databaseRestored: !!(c.state.migrated && c.state.backup && L.restoreDb) });
+    return status;
+  } catch (e2) {
+    const error2 = c.redactor.apply(errorMessage(e2)).slice(0, 500);
+    c.log.line(`<== putting LIVE back FAILED: ${errorMessage(e2)}`);
+    // nothing is known to answer: visitors get the maintenance page rather than an error
+    const port = L.oldUnit ? slotPort(c.env, L.oldUnit) : slotPort(c.env, L.newUnit);
+    const maintenance = cur ? await tryPublish(c, "showing the maintenance page", port, true) : false;
+    if (!cur) await tryRun(c, "unpublishing the site", "unpublish", [c.env.instanceName]);
+    await updateRelease(c.rel, { status: "failed", step, error: `${error} — putting the previous version back failed too: ${error2}`.slice(0, 1500), finishedAt: now });
+    await updateEnvironment(c.env, { status: "failed", healthy: false, maintenance, statusMessage: statusCodeOf(e2) ?? statusCodeOf(e) ?? "rollback_failed" });
+    await notifyFailed(true, { rollbackFailed: true, rollbackError: error2, maintenance });
+    await notifyOwners({
+      workspaceId: c.app.workspaceId,
+      appId: c.app.id,
+      kind: "incident",
+      subject: appMsg(c.locale, "app.liveAttention", { name: envLabel(c.app, c.env) }),
+      text: appMsg(c.locale, "app.liveAttentionText", {
+        commit: c.sha ? sha8(c.sha) : c.rel.branch,
+        step,
+        error: error.slice(0, 300),
+        error2: error2.slice(0, 300),
+        state: appMsg(c.locale, maintenance ? "app.stateMaintenance" : "app.stateUnknown"),
+      }),
+    });
+    return "failed";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -691,7 +1229,8 @@ async function loadContext(rel: Release, workspaceId: string): Promise<Loaded> {
     log: new ReleaseLog(rel.id, redactor, deployTiming.logFlushMs, rel.log),
     redactor,
     state: { step: "prepare", appTouched: false, appStatusBefore: env.status, envInstalled: false, migrated: false, backup: null, activated: false, oldStopped: false },
-    checkpoint: rel.checkpoint ?? { appStatusBefore: env.status },
+    checkpoint: (rel.checkpoint ?? { appStatusBefore: env.status }) as LiveCheckpoint,
+    live: null,
   };
   return { c, ws };
 }
@@ -785,8 +1324,26 @@ async function settleInterruptedRows(rel: Release, reason: string): Promise<Rele
   const loaded = await loadContext(rel, rel.workspaceId).catch((e: unknown) => ({ error: errorMessage(e) }) as Loaded);
   const env = "error" in loaded ? null : loaded.c.env;
   const before: AppStatus = cp?.appStatusBefore ?? (env ? statusWithoutChange(env, "deploying") : "failed");
-  const oldStopped = !!manifest?.migrate && before === "running" && !!env?.currentReleaseId && stepAtLeast(rel.step, "backup") && !cp?.activated;
-  const touchedServer = !!cp?.activated || !!cp?.migrated || oldStopped;
+  const live = env?.kind === "live";
+  const lcp = cp as LiveCheckpoint | null;
+  // live: nginx may point at the new slot from the publish step on; the old unit was stopped only for a breaking
+  // migration, which switched the maintenance page on first (checkpoint.maintenance)
+  const switched = live && stepAtLeast(rel.step, "publish");
+  const oldStopped = live
+    ? !!lcp?.maintenance
+    : !!manifest?.migrate && before === "running" && !!env?.currentReleaseId && stepAtLeast(rel.step, "backup") && !cp?.activated;
+  const touchedServer = !!cp?.activated || !!cp?.migrated || oldStopped || switched;
+  const tellOwners = async () => {
+    if (!live || "error" in loaded) return;
+    const { c } = loaded;
+    await notifyOwners({
+      workspaceId: rel.workspaceId,
+      appId: rel.appId,
+      kind: "incident",
+      subject: appMsg(c.locale, "app.liveAttention", { name: envLabel(c.app, c.env) }),
+      text: appMsg(c.locale, "app.liveInterruptedText", { commit: rel.commit ? sha8(rel.commit) : rel.branch, step: rel.step ?? "prepare", state: appMsg(c.locale, "app.stateUnknown") }),
+    }).catch((e: unknown) => log.warn({ err: e, releaseId: rel.id }, "owners could not be told about an interrupted live release"));
+  };
 
   const settleRows = async (appPatch: { status: AppStatus; statusMessage?: string | null } | null) => {
     const [row] = await db.update(appReleases).set({ status: "failed", error: reason, finishedAt: new Date() }).where(eq(appReleases.id, rel.id)).returning();
@@ -827,13 +1384,54 @@ async function settleInterruptedRows(rel: Release, reason: string): Promise<Rele
     activated: !!cp?.activated,
     oldStopped,
   };
+  if (live) {
+    // the maintenance flag this release set is not the state before it
+    const maintenanceBefore = c.env.maintenance && !lcp?.maintenance;
+    c.live = initLiveState(c, { statusBefore: before, maintenanceBefore });
+    c.live.newStarted = !!cp?.activated;
+    c.live.switched = switched;
+    c.live.maintenanceOn = !!lcp?.maintenance;
+    c.live.breaking = !!lcp?.maintenance;
+    c.live.restoreDb = manifest.migrations === "breaking";
+  }
   // the server must answer before anything is undone on it
   try {
     await helperCall(c.target, "unit-status", [c.env.instanceName], { timeoutMs: 30_000 });
   } catch (e) {
     log.warn({ releaseId: rel.id, err: errorMessage(e) }, "interrupted release: server not reachable, nothing undone");
     await c.log.close().catch(() => null);
-    return settleRows({ status: "failed", statusMessage: "interrupted" });
+    const out = await settleRows({ status: "failed", statusMessage: "interrupted" });
+    await tellOwners();
+    return out;
+  }
+  if (c.live) {
+    // what the server itself says (helper v4 `slots`) beats what the checkpoint could record before the cut
+    const L = c.live;
+    const view = await readSlots(c.target, c.env.instanceName);
+    if (view) {
+      c.log.line(`server: ${JSON.stringify(view)}`);
+      const newPort = slotPort(c.env, L.newUnit);
+      const oldPort = L.oldUnit ? slotPort(c.env, L.oldUnit) : null;
+      if (view.site && view.site.port === newPort && oldPort !== newPort && !view.site.maintenance) L.switched = true;
+      const old = L.oldUnit ? view[L.oldUnit] : null;
+      // the old unit no longer runs (stopped for a migration, or crashed): the undo starts it again
+      if (L.oldServes && old && old.state !== "active") c.state.oldStopped = true;
+      // nginx already serves this release from its own slot and the unit runs it: when it answers, the release is
+      // finished (cleanup, deployed), never undone
+      const mine = view[L.newUnit];
+      if (view.site && !view.site.maintenance && view.site.port === newPort && oldPort !== newPort && mine?.state === "active" && mine.sha === rel.commit) {
+        const h = await waitHealthy(c.target, c.env, manifest.health, say(c), newPort);
+        if (h.ok) {
+          c.log.line(`${reason} at ${rel.step ?? "prepare"}, but ${c.env.domain} already runs it from ${unitName(L.newUnit)} and it answers: finishing it`);
+          L.switched = true;
+          L.newStarted = true;
+          L.maintenanceOn = false;
+          await tryRun(c, "release-prune", "release-prune", [c.env.instanceName]);
+          return settle(c, null);
+        }
+        c.log.line(`it does not answer on ${unitName(L.newUnit)} (${h.last}): undoing it`);
+      }
+    }
   }
   c.log.line(`${reason} at ${rel.step ?? "prepare"} (the worker stopped): undoing it`);
   return settle(c, new Error(reason));

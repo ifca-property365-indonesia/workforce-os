@@ -4,7 +4,9 @@ import { APP_IDLE_STOP_DAYS } from "@wfos/shared";
 import { env } from "../lib/env";
 import { log } from "../lib/logger";
 import { deploysQueue, redis } from "../lib/redis";
-import { envLabel, idleNow, notifyApp, publishEnvironment, sshTarget } from "../deploy/common";
+import { queueDailyBackups } from "../deploy/backups";
+import { envLabel, idleNow, notifyApp, publishEnvironment, servingUnit, slotPort, sshTarget } from "../deploy/common";
+import { sweepGraceStops } from "../deploy/slots";
 import { helperCall } from "../deploy/helper";
 import { parseManifest } from "../deploy/manifest";
 import { appMsg } from "../deploy/messages";
@@ -21,6 +23,10 @@ export interface AppsTickOutcome {
   idle: string[];
   /** environments whose health was checked, and the result */
   health: { appId: string; environmentId: string; healthy: boolean; wentDown: boolean }[];
+  /** live environments a daily database backup was queued for */
+  backups: string[];
+  /** releases whose lost live grace stop was queued again */
+  graceStops: string[];
 }
 
 /**
@@ -63,7 +69,7 @@ async function queueIdleStops(now: Date): Promise<string[]> {
  */
 async function checkHealth(now: Date, skip: Set<string>): Promise<AppsTickOutcome["health"]> {
   const due = await db
-    .select({ env: appEnvironments, appName: apps.name, server: servers, manifest: appReleases.manifest, locale: workspaces.defaultLocale })
+    .select({ env: appEnvironments, appName: apps.name, server: servers, manifest: appReleases.manifest, checkpoint: appReleases.checkpoint, locale: workspaces.defaultLocale })
     .from(appEnvironments)
     .innerJoin(apps, eq(apps.id, appEnvironments.appId))
     .innerJoin(servers, eq(servers.id, appEnvironments.serverId))
@@ -79,15 +85,19 @@ async function checkHealth(now: Date, skip: Set<string>): Promise<AppsTickOutcom
     .orderBy(sql`${appEnvironments.lastHealthAt} asc nulls first`)
     .limit(HEALTH_BATCH);
   const out: AppsTickOutcome["health"] = [];
-  for (const { env: e, appName, server, manifest, locale } of due) {
+  for (const { env: e, appName, server, manifest, checkpoint, locale } of due) {
     if (skip.has(e.id)) continue;
+    // behind the maintenance page (a breaking migration, a restore) the app is down on purpose
+    if (e.maintenance || e.statusMessage === "restoring") continue;
     try {
       const target = await sshTarget(server);
       if (!target) continue;
       const path = parseManifest(manifest).health;
       let r;
       try {
-        r = await helperCall(target, "health", [e.instanceName, e.port, path], { timeoutMs: 30_000 });
+        // live: the port of the unit that serves (a slot, or the B1 single unit)
+        const port = e.kind === "live" ? slotPort(e, servingUnit(e, { checkpoint })) : e.port;
+        r = await helperCall(target, "health", [e.instanceName, port, path], { timeoutMs: 30_000 });
       } catch (err) {
         log.warn({ appId: e.appId, environmentId: e.id, err: (err as Error).message }, "app health check: server not reachable");
         continue;
@@ -135,9 +145,17 @@ async function checkHealth(now: Date, skip: Set<string>): Promise<AppsTickOutcom
   return out;
 }
 
-/** Called every APPS_TICK_MS by index.ts. */
+/** Called every APPS_TICK_MS by index.ts: idle stops, health, daily live backups, lost grace stops. */
 export async function tickApps(now: Date = new Date()): Promise<AppsTickOutcome> {
   const idle = await queueIdleStops(now);
   const health = await checkHealth(now, new Set(idle));
-  return { idle, health };
+  const backups = await queueDailyBackups(now).catch((e: unknown) => {
+    log.warn({ err: e }, "daily backups could not be queued");
+    return [] as string[];
+  });
+  const graceStops = await sweepGraceStops(now.getTime()).catch((e: unknown) => {
+    log.warn({ err: e }, "grace stops could not be swept");
+    return [] as string[];
+  });
+  return { idle, health, backups, graceStops };
 }

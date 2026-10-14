@@ -4,7 +4,22 @@ import bcrypt from "bcryptjs";
 import { and, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { apps, appEnvironments, appReleases, auditLog, db, members, servers, workspaceSshPrivateKey } from "@wfos/db";
-import { APP_ENV_NAME_RE, APP_IDLE_STOP_DAYS, APP_RESERVED_ENV, isForbiddenAppEnv, type AppEnv, type AppManifest, type AppStatus, type DomainCheck, type NotificationKind, type ReleaseCheckpoint, type ReleaseStatus, type ReleaseStep } from "@wfos/shared";
+import {
+  APP_ALT_PORT_OFFSET,
+  APP_ENV_NAME_RE,
+  APP_IDLE_STOP_DAYS,
+  APP_RESERVED_ENV,
+  isForbiddenAppEnv,
+  type AppEnv,
+  type AppManifest,
+  type AppSlot,
+  type AppStatus,
+  type DomainCheck,
+  type NotificationKind,
+  type ReleaseCheckpoint,
+  type ReleaseStatus,
+  type ReleaseStep,
+} from "@wfos/shared";
 import { checkDomains } from "@wfos/shared/dns";
 import { safeFetch } from "@wfos/shared/netguard";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
@@ -112,16 +127,102 @@ export async function isOwner(workspaceId: string, userId: string | null): Promi
 export const liveNames = (e: Pick<Environment, "domain" | "extraDomains">) => [e.domain, ...[...new Set(e.extraDomains ?? [])].filter((x) => x && x !== e.domain)];
 const sameNames = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
 
-/** release.checkpoint of a live release, plus the names its publish step published (the rollback DNS exemption) */
-/** kept as a name for the live gates; publishedNames is part of ReleaseCheckpoint */
-export type LiveCheckpoint = ReleaseCheckpoint;
+// ---- live blue-green slots (B2) ----
+
+/**
+ * The unit a live release runs in: one of the two slots, or "legacy" = the single unit (`wfos-app-<instance>`, the
+ * `current` link, the environment's port) a live environment ran under B1 until its first slotted release moved it.
+ */
+export type SlotUnit = AppSlot | "legacy";
+
+/**
+ * release.checkpoint of a live release. Beyond ReleaseCheckpoint: the grace bookkeeping of the release that runs now
+ * (the unit that served before it keeps running APP_LIVE_GRACE_SECONDS for an instant rollback, then is stopped).
+ */
+export type LiveCheckpoint = ReleaseCheckpoint & {
+  /** the unit that served before this release and still runs for the grace time (null: nothing to stop) */
+  graceSlot?: SlotUnit | null;
+  /** the release that runs in graceSlot (an instant rollback to it only publishes its port again) */
+  graceReleaseId?: string | null;
+  /** ISO time the grace unit is due to be stopped */
+  graceUntil?: string | null;
+  /** the grace unit was stopped (or found stopped / taken over) */
+  graceDone?: boolean;
+};
+
+export const otherSlot = (s: AppSlot): AppSlot => (s === "blue" ? "green" : "blue");
+/** blue (and the B1 unit) listen on the environment's port, green on port + APP_ALT_PORT_OFFSET */
+export const slotPort = (e: Pick<Environment, "port">, u: SlotUnit): number => (u === "green" ? e.port + APP_ALT_PORT_OFFSET : e.port);
+/** helper flags naming the unit: `--slot <s>` for a slot; none for a preview or the B1 unit */
+export const slotFlags = (u: SlotUnit | null): string[] => (u && u !== "legacy" ? ["--slot", u] : []);
+/** the slot the activeSlot column records for a unit (the B1 unit listens on blue's port) */
+export const slotOfUnit = (u: SlotUnit): AppSlot => (u === "legacy" ? "blue" : u);
+const cpOf = (r: Pick<Release, "checkpoint"> | null | undefined) => (r?.checkpoint ?? null) as LiveCheckpoint | null;
+
+/**
+ * The unit that runs (or ran) the current release of a live environment: the slot its checkpoint names; a current
+ * release without one was activated by B1 (the single unit); without a current release, the active slot.
+ */
+export function servingUnit(e: Pick<Environment, "activeSlot">, current: Pick<Release, "checkpoint"> | null | undefined): SlotUnit {
+  if (!current) return e.activeSlot;
+  return cpOf(current)?.slot ?? "legacy";
+}
+
+/**
+ * Where a new live release starts: the slot that does not serve now. A first release takes the active slot (nothing
+ * runs); a B1 environment's first slotted release takes green (its single unit holds blue's port).
+ */
+export function idleSlot(e: Pick<Environment, "activeSlot">, current: Pick<Release, "checkpoint"> | null | undefined): AppSlot {
+  if (!current) return e.activeSlot;
+  const u = servingUnit(e, current);
+  return u === "legacy" ? "green" : otherSlot(u);
+}
+
+/** The grace unit of the current release still to be stopped, or null. */
+export function pendingGrace(current: Pick<Release, "checkpoint"> | null | undefined): { slot: SlotUnit; releaseId: string | null; until: string | null } | null {
+  const cp = cpOf(current);
+  if (!cp?.graceSlot || cp.graceDone) return null;
+  return { slot: cp.graceSlot, releaseId: cp.graceReleaseId ?? null, until: cp.graceUntil ?? null };
+}
+
+/** One unit in `slots`: its unit file is there, its state, the sha its link points at. */
+export interface SlotView {
+  unit: boolean;
+  state: string;
+  sha: string | null;
+}
+/** helper v4 `slots <instance>` (live only): the B1 unit, both slots, and what nginx serves. */
+export interface SlotsView {
+  legacy: SlotView | null;
+  blue: SlotView | null;
+  green: SlotView | null;
+  site: { port: number | null; maintenance: boolean } | null;
+}
+
+/** What the server says about a live instance's units and site (null when it cannot tell: never throws). */
+export async function readSlots(t: SshTarget, instance: string): Promise<SlotsView | null> {
+  try {
+    const r = await helperCall(t, "slots", [instance], { timeoutMs: 30_000 });
+    if (r.code !== 0) return null;
+    const v = JSON.parse(r.stdout.trim().split("\n").pop() ?? "") as Partial<SlotsView>;
+    if (!v || typeof v !== "object") return null;
+    return { legacy: v.legacy ?? null, blue: v.blue ?? null, green: v.green ?? null, site: v.site ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** Merge fields into a release's checkpoint (jsonb ||), without reading it first. */
+export async function mergeCheckpoint(releaseId: string, patch: Partial<LiveCheckpoint>): Promise<void> {
+  await db
+    .update(appReleases)
+    .set({ checkpoint: sql`coalesce(${appReleases.checkpoint}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb` })
+    .where(eq(appReleases.id, releaseId));
+}
 
 /** Store on a release which names were just published for it (merged into its checkpoint). */
 export async function recordPublishedNames(releaseId: string, names: string[]): Promise<void> {
-  await db
-    .update(appReleases)
-    .set({ checkpoint: sql`coalesce(${appReleases.checkpoint}, '{}'::jsonb) || ${JSON.stringify({ publishedNames: names })}::jsonb` })
-    .where(eq(appReleases.id, releaseId));
+  await mergeCheckpoint(releaseId, { publishedNames: names });
 }
 
 /**
@@ -215,7 +316,9 @@ export async function appEnvFile(e: Environment, sha: string, manifest: AppManif
   const appSecret = await ensureAppSecret(e, "appSecretEnc", hexSecret(32));
   redactor.add(appSecret);
   const platform: Record<string, string> = {
-    PORT: String(e.port),
+    // live: both slots share this file and each listens on its own port, which its unit sets (a PORT here would win
+    // over the unit's Environment=, systemd reads EnvironmentFile last)
+    ...(e.kind === "live" ? {} : { PORT: String(e.port) }),
     HOST: "127.0.0.1",
     NODE_ENV: "production",
     APP_URL: appUrl(e),
@@ -256,14 +359,14 @@ export function seedRedactor(e: Environment, redactor: Redactor): void {
 
 // ---- server steps shared by deploys, rollbacks and start ----
 
-/** Poll `health` until it answers 2xx or the time is up. */
-export async function waitHealthy(t: SshTarget, e: Environment, path: string, say: (line: string) => void): Promise<{ ok: boolean; last: string }> {
+/** Poll `health` (on `port`: the environment's, or a live slot's) until it answers 2xx or the time is up. */
+export async function waitHealthy(t: SshTarget, e: Environment, path: string, say: (line: string) => void, port: number = e.port): Promise<{ ok: boolean; last: string }> {
   const deadline = Date.now() + deployTiming.healthTimeoutMs;
   let last = "no answer";
   for (let i = 0; ; i++) {
     let seen: string;
     try {
-      const r = await helperCall(t, "health", [e.instanceName, e.port, path], { timeoutMs: 30_000 });
+      const r = await helperCall(t, "health", [e.instanceName, port, path], { timeoutMs: 30_000 });
       const status = (() => {
         try {
           return String((JSON.parse(r.stdout.trim().split("\n").pop() ?? "") as { status?: unknown }).status ?? "?");
@@ -286,10 +389,10 @@ export async function waitHealthy(t: SshTarget, e: Environment, path: string, sa
   }
 }
 
-/** The unit's state, for an error message (never throws). */
-export async function unitStatus(t: SshTarget, instance: string): Promise<string> {
+/** The unit's state (a live slot with `flags`), for an error message or a check (never throws). */
+export async function unitStatus(t: SshTarget, instance: string, flags: string[] = []): Promise<string> {
   try {
-    const r = await helperCall(t, "unit-status", [instance], { timeoutMs: 30_000 });
+    const r = await helperCall(t, "unit-status", [instance, ...flags], { timeoutMs: 30_000 });
     return r.stdout.trim().split("\n").pop() || "unknown";
   } catch {
     return "unknown";
@@ -307,13 +410,20 @@ export async function refreshAccess(e: Environment): Promise<void> {
   e.accessPasswordEnc = row.accessPasswordEnc;
 }
 
+/** where a publish sends the site: a port (a live slot's; default the environment's), or the maintenance page */
+export interface PublishTarget {
+  port?: number;
+  /** serve the static maintenance page (HTTP 503) instead of proxying to the port */
+  maintenance?: boolean;
+}
+
 /**
- * `publish` arguments (helper v3): `<instance> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]`. A
- * preview takes the helper's own <instance>.<baseDomain> (noindex); a live environment its domain, its extra names
- * (301 to the domain, one certificate for all) and --index (no X-Robots-Tag noindex).
+ * `publish` arguments (helper v4): `<instance> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]
+ * [--maintenance]`. A preview takes the helper's own <instance>.<baseDomain> (noindex); a live environment its domain,
+ * its extra names (301 to the domain, one certificate for all) and --index (no X-Robots-Tag noindex).
  */
-export function publishArgs(e: Pick<Environment, "kind" | "instanceName" | "port" | "domain" | "extraDomains">, auth: boolean): (string | number)[] {
-  const args: (string | number)[] = [e.instanceName, e.port];
+export function publishArgs(e: Pick<Environment, "kind" | "instanceName" | "port" | "domain" | "extraDomains">, auth: boolean, to: PublishTarget = {}): (string | number)[] {
+  const args: (string | number)[] = [e.instanceName, to.port ?? e.port];
   if (auth) args.push("--auth");
   if (e.kind === "live") {
     args.push("--domain", e.domain);
@@ -321,20 +431,21 @@ export function publishArgs(e: Pick<Environment, "kind" | "instanceName" | "port
     for (const alias of [...new Set(e.extraDomains ?? [])].filter((x) => x && x !== e.domain).slice(0, 3)) args.push("--alias", alias);
     args.push("--index");
   }
+  if (to.maintenance) args.push("--maintenance");
   return args;
 }
 
 /** nginx site (+ certificate) of the environment, behind basic auth when its access mode (as stored now) is password. */
-export async function publishSite(t: SshTarget, e: Environment, redactor: Redactor): Promise<string> {
+export async function publishSite(t: SshTarget, e: Environment, redactor: Redactor, to: PublishTarget = {}): Promise<string> {
   await refreshAccess(e);
   if (e.accessMode !== "password") {
-    const r = await helper(t, "publish", publishArgs(e, false), { timeoutMs: 300_000 });
+    const r = await helper(t, "publish", publishArgs(e, false, to), { timeoutMs: 300_000 });
     return `${r.stdout}${r.stderr}`;
   }
   const pw = await ensureAppSecret(e, "accessPasswordEnc", generatePreviewPassword);
   redactor.add(pw);
   const line = `preview:${await bcrypt.hash(pw, 10)}`;
-  const r = await helper(t, "publish", publishArgs(e, true), { stdin: `${line}\n`, timeoutMs: 300_000 });
+  const r = await helper(t, "publish", publishArgs(e, true, to), { stdin: `${line}\n`, timeoutMs: 300_000 });
   return `${r.stdout}${r.stderr}`;
 }
 
@@ -400,6 +511,12 @@ export async function notifyApp(o: { workspaceId: string; appId: string; userId:
     text: o.text,
     link: `/apps/${o.appId}`,
   });
+}
+
+/** The same notification to every Owner of the workspace (LIVE needs a person: a failed undo, a failed restore). */
+export async function notifyOwners(o: { workspaceId: string; appId: string; kind: NotificationKind; subject: string; text: string }): Promise<void> {
+  const owners = await db.select({ userId: members.userId }).from(members).where(and(eq(members.workspaceId, o.workspaceId), eq(members.role, "OWNER")));
+  for (const m of owners) await notifyApp({ ...o, userId: m.userId });
 }
 
 const IDLE_MS = APP_IDLE_STOP_DAYS * 24 * 60 * 60_000;

@@ -172,5 +172,11 @@
   "live_dns_not_ok": "Domainnya belum mengarah ke server. Periksa DNS dulu.",
   "domain_reserved": "{domain} milik platform atau salah satu servernya. Pilih domain milik klien sendiri.",
   "confirm_mismatch": "Ketik domain live persis sama untuk mengonfirmasi.",
-  "live_running": "Hentikan situs live dulu."
+  "live_running": "Hentikan situs live dulu.",
+  "app_no_database": "Lingkungan ini belum punya database: database dibuat pada rilis pertama yang memintanya.",
+  "app_restore_running": "Pemulihan database lingkungan ini sedang berjalan. Tunggu sampai selesai.",
+  "app_backup_running": "Pencadangan lingkungan ini sudah diantrekan atau sedang berjalan. Tunggu sampai selesai.",
+  "restore_confirm_mismatch": "Ketik domain lingkungan ini persis untuk mengonfirmasi.",
+  "backup_not_found": "Cadangan tidak ditemukan.",
+  "backup_pruned": "Cadangan ini sudah dipangkas dari server dan tidak bisa dipulihkan lagi."
 }
