@@ -27,6 +27,9 @@ import type {
   IncidentStatus,
   MessageMeta,
   TeamResponderMode,
+  TeamMemberRole,
+  ProjectHealth,
+  Bilingual,
   AllowListEntry,
   ToolPermission,
   ApprovalStatus,
@@ -191,8 +194,8 @@ export const employees = pgTable(
     executionMode: text("execution_mode").$type<ExecutionMode>().notNull().default("tool"),
     /** extra hosts the sandbox may reach through the egress proxy (e.g. registry.npmjs.org) */
     egressDomains: jsonb("egress_domains").$type<string[]>().notNull().default([]),
-    /** department key: SOP instructions and (Workspace mode) subagents */
-    department: text("department"),
+    /** one line of expertise: how a division head or code lead picks this employee */
+    specialty: text("specialty").notNull().default(""),
     /** office character (officeLookSchema); null derives one from the id */
     look: jsonb("look").$type<OfficeLook>(),
     createdAt: createdAt(),
@@ -201,24 +204,51 @@ export const employees = pgTable(
   (t) => [index("employees_ws").on(t.workspaceId)],
 );
 
-export const teams = pgTable("teams", {
-  id: id(),
-  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description").notNull().default(""),
-  leadId: uuid("lead_id").references(() => employees.id, { onDelete: "set null" }),
-  /** who answers an un-mentioned message in the team chat */
-  responderMode: text("responder_mode").$type<TeamResponderMode>().notNull().default("lead"),
-  createdAt: createdAt(),
-});
+/**
+ * A division (UI: "Divisi"): the unit work is assigned to. The head (leadId) takes division tasks and either does them
+ * or delegates to members; the code lead (codeLeadId) works in a Workspace-mode sandbox and loads the members with
+ * role "subagent" as Claude Code subagents (one branch per task). Every employee belongs to at most one division.
+ */
+export const teams = pgTable(
+  "teams",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** stable slug (e.g. delivery, support); null for divisions made before 0031 */
+    key: text("key"),
+    description: text("description").notNull().default(""),
+    /** head of the division: takes division-level tasks */
+    leadId: uuid("lead_id").references(() => employees.id, { onDelete: "set null" }),
+    /** member who runs code work in a sandbox; the division's "subagent" members work inside that run */
+    codeLeadId: uuid("code_lead_id").references(() => employees.id, { onDelete: "set null" }),
+    /** who answers an un-mentioned message in the team chat */
+    responderMode: text("responder_mode").$type<TeamResponderMode>().notNull().default("lead"),
+    /** standard operating procedure, both languages (the employee's output language picks one) */
+    sop: jsonb("sop").$type<Bilingual>().notNull().default({ en: "", id: "" }),
+    /** hex colour for the org chart and the office (#rrggbb), "" = derived */
+    color: text("color").notNull().default(""),
+    /** division-level runs (head, members, code lead) at the same time; enforced with a Redis lease */
+    maxParallel: integer("max_parallel").notNull().default(1),
+    /** credits per day across the division's members; null = only the employees' own budgets apply */
+    dailyBudget: doublePrecision("daily_budget"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("teams_ws_key").on(t.workspaceId, t.key).where(sql`key is not null`)],
+);
 
 export const teamMembers = pgTable(
   "team_members",
   {
     teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
     employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    /** member: takes subtasks from the head · subagent: works inside the code lead's sandbox run */
+    role: text("role").$type<TeamMemberRole>().notNull().default("member"),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.employeeId] })],
+  // one division per employee
+  (t) => [primaryKey({ columns: [t.teamId, t.employeeId] }), uniqueIndex("team_members_employee").on(t.employeeId)],
 );
 
 // ---------------------------------------------------------------------------
@@ -229,6 +259,10 @@ export const clients = pgTable("clients", {
   id: id(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  /** short client code (e.g. GOB), unique per workspace when set; "" = none */
+  code: text("code").notNull().default(""),
+  website: text("website").notNull().default(""),
+  industry: text("industry").notNull().default(""),
   email: text("email").notNull().default(""),
   /** read through clientContactSchema: rows written before 0025 lack phone/receives (defaults apply) */
   contacts: jsonb("contacts").$type<StoredClientContact[]>().notNull().default([]),
@@ -243,7 +277,7 @@ export const clients = pgTable("clients", {
   phone: text("phone").notNull().default(""),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-});
+}, (t) => [uniqueIndex("clients_ws_code").on(t.workspaceId, t.code).where(sql`code <> ''`)]);
 
 export const projects = pgTable("projects", {
   id: id(),
@@ -257,6 +291,15 @@ export const projects = pgTable("projects", {
   deadline: date("deadline", { mode: "string" }),
   /** 0..100 */
   progress: integer("progress").notNull().default(0),
+  /** division responsible: tasks for this project without an assignee go to it */
+  teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+  /** calendar date in the workspace time zone (YYYY-MM-DD) */
+  startDate: date("start_date", { mode: "string" }),
+  nextMilestone: text("next_milestone").notNull().default(""),
+  /** on_track | at_risk | late */
+  health: text("health").$type<ProjectHealth>().notNull().default("on_track"),
+  nextStep: text("next_step").notNull().default(""),
+  statusUpdatedAt: timestamp("status_updated_at", { withTimezone: true }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -300,8 +343,10 @@ export const tasks = pgTable(
     costCredits: doublePrecision("cost_credits").notNull().default(0),
     /** Claude session of the last Workspace-mode run, resumed by follow-ups */
     agentSessionId: text("agent_session_id"),
-    /** the task whose approved PRD created this one (Project → Developer handoff) */
+    /** the task this one came from: an approved PRD, a handoff to another division, a reassigned subtask */
     originTaskId: uuid("origin_task_id"),
+    /** sibling subtasks that must be DONE before this one starts (their deliverables are passed in as data) */
+    dependsOn: uuid("depends_on").array().notNull().default(sql`'{}'::uuid[]`),
     /** repository checked out into the task workspace (Workspace mode) */
     repositoryId: uuid("repository_id"),
     /** null | active | archived (workspace files removed after retention; deliverables kept) */
@@ -415,6 +460,8 @@ export const steps = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }),
     conversationId: uuid("conversation_id"),
     employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    /** who acted when it was not the run's employee: a division member working as a subagent in the code lead's run */
+    actorEmployeeId: uuid("actor_employee_id").references(() => employees.id, { onDelete: "set null" }),
     kind: text("kind").$type<StepKind>().notNull(),
     name: text("name").notNull(),
     model: text("model"),
@@ -433,6 +480,7 @@ export const steps = pgTable(
     index("steps_task").on(t.taskId),
     index("steps_ws_created").on(t.workspaceId, t.createdAt),
     index("steps_employee_created").on(t.employeeId, t.createdAt),
+    index("steps_actor_created").on(t.actorEmployeeId, t.createdAt).where(sql`actor_employee_id is not null`),
   ],
 );
 
@@ -499,6 +547,8 @@ export const memories = pgTable(
     id: id(),
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    /** learned on a task for this client: recalled only on that client's work (null = general) */
+    clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
     kind: text("kind").notNull().default("fact"), // fact | feedback | preference
     content: text("content").notNull(),
     source: text("source").notNull().default("agent"), // agent | user | rejection | import
@@ -512,7 +562,7 @@ export const memories = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("memories_emp").on(t.employeeId)],
+  (t) => [index("memories_emp").on(t.employeeId, t.clientId)],
 );
 
 export const documents = pgTable("documents", {
@@ -522,6 +572,8 @@ export const documents = pgTable("documents", {
   mime: text("mime").notNull(),
   size: integer("size").notNull(),
   storagePath: text("storage_path").notNull(),
+  /** knowledge for one client: searchable only on that client's work (null = general knowledge) */
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
   status: text("status").notNull().default("pending"), // pending | indexed | failed
   chunkCount: integer("chunk_count").notNull().default(0),
   error: text("error"),
@@ -645,23 +697,6 @@ export const claudeLimits = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [primaryKey({ columns: [t.workspaceId, t.credentialSource, t.rateLimitType] })],
-);
-
-/** Per-workspace, editable copy of a department: bilingual SOP and subagent definitions. */
-export const departments = pgTable(
-  "departments",
-  {
-    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-    key: text("key").notNull(),
-    name: jsonb("name").$type<{ en: string; id: string }>().notNull(),
-    sop: jsonb("sop").$type<{ en: string; id: string }>().notNull(),
-    subagents: jsonb("subagents")
-      .$type<{ name: string; description: { en: string; id: string }; prompt: { en: string; id: string }; tools?: string[] }[]>()
-      .notNull()
-      .default([]),
-    updatedAt: updatedAt(),
-  },
-  (t) => [primaryKey({ columns: [t.workspaceId, t.key] })],
 );
 
 /** One-time codes for linking a Telegram chat to a user (stored hashed, 10 minutes). */

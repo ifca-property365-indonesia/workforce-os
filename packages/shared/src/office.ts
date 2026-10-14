@@ -102,8 +102,7 @@ export function animationFor(activity: Activity, employeeId: string, now: number
 export interface OfficeMember {
   id: string;
   name: string;
-  department?: string | null;
-  /** teams the employee belongs to, any order */
+  /** the employee's division (at most one; older data may list several, the first by name wins) */
   teams?: { id: string; name: string }[];
 }
 
@@ -114,7 +113,7 @@ export interface Point {
 export interface Room {
   key: string;
   label: string;
-  kind: "team" | "department" | "general" | "lounge";
+  kind: "team" | "general" | "lounge";
   x: number;
   y: number;
   w: number;
@@ -162,11 +161,10 @@ const GAP = 1; // corridor between rooms
 const RECEPTION_H = 6;
 const RECEPTION_MAX_W = 16;
 
-/** Room of an employee: first team (by name), else department, else the general room. */
-export function roomOf(m: OfficeMember, departmentLabel?: (key: string) => string): { key: string; label: string; kind: Room["kind"] } {
+/** Room of an employee: their division, else the general room. */
+export function roomOf(m: OfficeMember): { key: string; label: string; kind: Room["kind"] } {
   const team = [...(m.teams ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))[0];
   if (team) return { key: `team:${team.id}`, label: team.name, kind: "team" };
-  if (m.department) return { key: `dept:${m.department}`, label: departmentLabel?.(m.department) ?? m.department, kind: "department" };
   return { key: "general", label: "", kind: "general" };
 }
 
@@ -178,16 +176,16 @@ function columnsFor(n: number): number {
  * Rooms and desks from the actual employee list (any count). Rooms are packed left to right and wrap at MAX_W;
  * desks fill each room in rows. The lounge comes last and grows with the headcount. Same input → same layout.
  */
-export function layoutOffice(members: OfficeMember[], departmentLabel?: (key: string) => string): OfficeLayout {
+export function layoutOffice(members: OfficeMember[]): OfficeLayout {
   const groups = new Map<string, { label: string; kind: Room["kind"]; ids: string[] }>();
   const sorted = [...members].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   for (const m of sorted) {
-    const r = roomOf(m, departmentLabel);
+    const r = roomOf(m);
     const g = groups.get(r.key) ?? groups.set(r.key, { label: r.label, kind: r.kind, ids: [] }).get(r.key)!;
     g.ids.push(m.id);
   }
-  // teams first, then departments, then the general room; alphabetical inside each kind
-  const order = { team: 0, department: 1, general: 2, lounge: 3 };
+  // divisions first, then the general room; alphabetical inside each kind
+  const order = { team: 0, general: 1, lounge: 2 };
   const keys = [...groups.keys()].sort(
     (a, b) => order[groups.get(a)!.kind] - order[groups.get(b)!.kind] || groups.get(a)!.label.localeCompare(groups.get(b)!.label) || a.localeCompare(b),
   );

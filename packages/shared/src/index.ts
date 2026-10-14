@@ -624,6 +624,25 @@ export interface StepDTO {
 export const TEAM_RESPONDER_MODES = ["lead", "everyone", "mentions", "auto"] as const;
 export type TeamResponderMode = (typeof TEAM_RESPONDER_MODES)[number];
 
+/** Text kept in both UI languages (division SOPs, names). */
+export interface Bilingual {
+  en: string;
+  id: string;
+}
+
+/**
+ * How a member works in a division (UI: "Divisi"): member = takes subtasks from the head; subagent = works inside
+ * the code lead's sandbox run (one branch per task). The head and the code lead are set on the division itself.
+ */
+export const TEAM_MEMBER_ROLES = ["member", "subagent"] as const;
+export type TeamMemberRole = (typeof TEAM_MEMBER_ROLES)[number];
+
+/** Runs of one division at the same time (head, members, code lead), enforced across workers. */
+export const DIVISION_MAX_PARALLEL = 10;
+
+export const PROJECT_HEALTH = ["on_track", "at_risk", "late"] as const;
+export type ProjectHealth = (typeof PROJECT_HEALTH)[number];
+
 /** Fast, cheap model used to pick a responder in team chats set to "auto". */
 export const ROUTING_MODEL = "claude-haiku-5-5";
 /** Minimum classifier confidence to act on its pick; below it the lead answers. */
@@ -827,7 +846,8 @@ export const employeeInputSchema = z.object({
   dailyBudget: z.number().nonnegative().max(1_000_000).default(200),
   outputLanguage: z.enum(OUTPUT_LANGUAGES).default("inherit"),
   executionMode: z.enum(EXECUTION_MODES).default("tool"),
-  department: z.string().regex(/^[a-z0-9_-]{1,40}$/).nullable().optional(),
+  /** one line of expertise: how a division head or code lead picks this employee */
+  specialty: z.string().max(200).default(""),
   egressDomains: z.array(egressDomainSchema).max(50).default([]),
   /** office character; null derives one from the id */
   look: officeLookSchema.nullable().optional(),
@@ -971,6 +991,13 @@ export type StoredClientContact = z.input<typeof clientContactSchema>;
 
 export const clientInputSchema = z.object({
   name: z.string().min(1).max(160),
+  /** short code (e.g. GOB), unique per workspace; "" = none */
+  code: z
+    .string()
+    .regex(/^([A-Z0-9][A-Z0-9-]{1,11})?$/)
+    .default(""),
+  website: z.string().max(300).default(""),
+  industry: z.string().max(200).default(""),
   email: z.email().or(z.literal("")).default(""),
   contacts: z.array(clientContactSchema).max(50).default([]),
   notes: z.string().max(5000).default(""),
@@ -1103,6 +1130,12 @@ export const projectInputSchema = z.object({
   hourlyRate: z.number().nonnegative().default(0),
   deadline: z.iso.date().nullable().optional(),
   progress: z.number().int().min(0).max(100).default(0),
+  /** division responsible: the project's tasks without an assignee go to it */
+  teamId: z.string().uuid().nullable().optional(),
+  startDate: z.iso.date().nullable().optional(),
+  nextMilestone: z.string().max(500).default(""),
+  health: z.enum(PROJECT_HEALTH).default("on_track"),
+  nextStep: z.string().max(1000).default(""),
 });
 
 export function isTimeZone(tz: string): boolean {
@@ -1123,13 +1156,54 @@ export const smtpSettingsSchema = z.object({
   fromAddress: z.string().min(3),
 });
 
-export const teamInputSchema = z.object({
-  name: z.string().min(1).max(120),
-  description: z.string().max(2000).default(""),
-  leadId: z.string().uuid().nullable(),
-  memberIds: z.array(z.string().uuid()).default([]),
-  responderMode: z.enum(TEAM_RESPONDER_MODES).default("lead"),
-});
+const bilingualSchema = (max: number) => z.object({ en: z.string().max(max).default(""), id: z.string().max(max).default("") });
+
+/** A division (stored in `teams`). Members are listed with their role; the head and code lead must be members too. */
+export const teamInputSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    key: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{1,39}$/)
+      .nullable()
+      .optional(),
+    description: z.string().max(2000).default(""),
+    leadId: z.string().uuid().nullable(),
+    codeLeadId: z.string().uuid().nullable().default(null),
+    members: z
+      .array(z.object({ employeeId: z.string().uuid(), role: z.enum(TEAM_MEMBER_ROLES).default("member") }))
+      .max(100)
+      .default([]),
+    responderMode: z.enum(TEAM_RESPONDER_MODES).default("lead"),
+    sop: bilingualSchema(20000).default({ en: "", id: "" }),
+    color: z
+      .string()
+      .regex(/^(#[0-9a-fA-F]{6})?$/)
+      .default(""),
+    maxParallel: z.number().int().min(1).max(DIVISION_MAX_PARALLEL).default(1),
+    dailyBudget: z.number().nonnegative().max(1_000_000).nullable().default(null),
+    sortOrder: z.number().int().min(0).max(10_000).default(0),
+  })
+  .superRefine((d, ctx) => {
+    const err = divisionStructureError(d);
+    if (err) ctx.addIssue({ code: "custom", message: err });
+  });
+export type TeamInput = z.infer<typeof teamInputSchema>;
+
+/**
+ * The rules a division's structure must satisfy (also checked server-side against the database):
+ * no duplicate members; the head and the code lead are members with role "member"; subagents need a code lead.
+ */
+export function divisionStructureError(d: { leadId: string | null; codeLeadId: string | null; members: { employeeId: string; role: TeamMemberRole }[] }): string | null {
+  const ids = d.members.map((m) => m.employeeId);
+  if (new Set(ids).size !== ids.length) return "An employee is listed twice in this division.";
+  const roleOf = (id: string) => d.members.find((m) => m.employeeId === id)?.role;
+  if (d.leadId && roleOf(d.leadId) !== "member") return "The head must be a member of the division (not a subagent).";
+  if (d.codeLeadId && roleOf(d.codeLeadId) !== "member") return "The code lead must be a member of the division (not a subagent).";
+  if (d.codeLeadId && d.codeLeadId === d.leadId) return "The head and the code lead must be different people.";
+  if (!d.codeLeadId && d.members.some((m) => m.role === "subagent")) return "Subagents work inside the code lead's run: choose a code lead first.";
+  return null;
+}
 
 export const approvalDecisionSchema = z.object({
   decision: z.enum(["approve", "edit_approve", "reject"]),

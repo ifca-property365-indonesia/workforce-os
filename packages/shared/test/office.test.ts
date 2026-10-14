@@ -105,33 +105,34 @@ describe("layout", () => {
     checkLayout(layoutOffice(people(n)), n);
   });
 
-  it("gives teams and departments their own rooms; the rest share the general room", () => {
-    const team = { id: "t1", name: "Growth" };
-    const l = layoutOffice(people(9, (i) => (i < 3 ? { teams: [team] } : i < 6 ? { department: "finance" } : {})), (k) => (k === "finance" ? "Keuangan" : k));
-    expect(l.rooms.map((r) => [r.kind, r.label])).toEqual([["team", "Growth"], ["department", "Keuangan"], ["general", ""]]);
+  it("gives each division its own room; the rest share the general room", () => {
+    const growth = { id: "t1", name: "Growth" };
+    const finance = { id: "t2", name: "Finance" };
+    const l = layoutOffice(people(9, (i) => (i < 3 ? { teams: [growth] } : i < 6 ? { teams: [finance] } : {})));
+    expect(l.rooms.map((r) => [r.kind, r.label])).toEqual([["team", "Finance"], ["team", "Growth"], ["general", ""]]);
     expect(l.desks.filter((d) => d.room === "team:t1")).toHaveLength(3);
-    expect(l.desks.filter((d) => d.room === "dept:finance")).toHaveLength(3);
+    expect(l.desks.filter((d) => d.room === "team:t2")).toHaveLength(3);
     checkLayout(l, 9);
   });
 
-  it("an employee in several teams sits in the first by name; team beats department", () => {
-    expect(roomOf({ id: "x", name: "X", department: "developer", teams: [{ id: "b", name: "Zeta" }, { id: "a", name: "Alpha" }] }).key).toBe("team:a");
+  it("an employee listed in several teams (older data) sits in the first by name", () => {
+    expect(roomOf({ id: "x", name: "X", teams: [{ id: "b", name: "Zeta" }, { id: "a", name: "Alpha" }] }).key).toBe("team:a");
   });
 
   it("is deterministic and independent of input order", () => {
-    const ps = people(13, (i) => ({ department: i % 2 ? "developer" : "marketing" }));
+    const ps = people(13, (i) => ({ teams: [i % 2 ? { id: "d", name: "Delivery" } : { id: "s", name: "Support" }] }));
     expect(layoutOffice([...ps].reverse())).toEqual(layoutOffice(ps));
   });
 
   it("wraps rooms into rows instead of growing forever sideways", () => {
-    const l = layoutOffice(people(40, (i) => ({ department: `d${i % 8}` })));
+    const l = layoutOffice(people(40, (i) => ({ teams: [{ id: `d${i % 8}`, name: `Division ${i % 8}` }] })));
     expect(l.width).toBeLessThanOrEqual(MAX_W);
     expect(new Set(l.rooms.map((r) => r.y)).size).toBeGreaterThan(1);
     checkLayout(l, 40);
   });
 
   it("spots: desk is the seat; shelf and rack are in the employee's own room", () => {
-    const l = layoutOffice(people(5, () => ({ department: "developer" })));
+    const l = layoutOffice(people(5, () => ({ teams: [{ id: "d", name: "Delivery" }] })));
     const room = l.rooms[0]!;
     for (const d of l.desks) {
       expect(spotPoint(l, d.employeeId, "desk")).toEqual(d.seat);

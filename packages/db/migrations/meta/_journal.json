@@ -218,6 +218,13 @@
       "when": 1791950000000,
       "tag": "0030_app_uptime",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791960000000,
+      "tag": "0031_divisions_clients",
+      "breakpoints": true
     }
   ]
 }

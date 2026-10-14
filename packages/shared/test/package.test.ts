@@ -77,12 +77,33 @@ describe("wfosPackageSchema", () => {
     ["a key that is not a slug", { employees: [{ key: "Dewi Sales", name: "A", role: "r", model: "m" }], teams: [], routines: [] }, "employees.0.key"],
     ["an invalid tool selector", { employees: [{ key: "dewi", name: "A", role: "r", model: "m", toolPermissions: ["rm -rf"] }], teams: [], routines: [] }, "employees.0.toolPermissions.0"],
     ["a non-http MCP url", { mcpSlots: [{ name: "crm", url: "file:///etc/passwd" }] }, "mcpSlots.0.url"],
+    ["an employee in two divisions", { teams: [{ key: "sales", name: "Sales", leadKey: "dewi", memberKeys: ["dewi", "budi"] }, { key: "ops", name: "Ops", leadKey: null, memberKeys: ["budi"] }] }, "teams.1.memberKeys.0"],
+    ["subagents without a code lead", { teams: [{ key: "sales", name: "Sales", leadKey: "dewi", memberKeys: ["dewi"], subagentKeys: ["budi"] }] }, "teams.0"],
+    ["a code lead who is a subagent", { teams: [{ key: "sales", name: "Sales", leadKey: "dewi", memberKeys: ["dewi"], codeLeadKey: "budi", subagentKeys: ["budi"] }] }, "teams.0"],
   ])("rejects %s", (_label, over, path) => {
     const r = parseWfosPackage(pkg(over));
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.reason).toBe("invalid");
     expect(r.issues.map((i) => i.path)).toContain(path);
+  });
+
+  it("reads a division with a code lead and subagents, and an older package's departments without failing", () => {
+    const raw = pkg({
+      employees: [
+        { key: "pm", name: "Pratiwi", role: "PM", model: "m" },
+        { key: "tl", name: "Arif", role: "Tech Lead", model: "m", executionMode: "workspace", department: "developer" },
+        { key: "fe", name: "Citra", role: "Frontend", model: "m", specialty: "UI" },
+      ],
+      teams: [{ key: "delivery", name: "Delivery", leadKey: "pm", memberKeys: ["pm", "tl"], codeLeadKey: "tl", subagentKeys: ["fe"], sop: { en: "Ship it", id: "Kirim" }, color: "#4f7cff", maxParallel: 2 }],
+      routines: [],
+      departments: [{ key: "developer", name: { en: "Developer", id: "Developer" }, sop: { en: "", id: "" } }],
+    });
+    const r = parseWfosPackage(raw);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.pkg.teams[0]).toMatchObject({ codeLeadKey: "tl", subagentKeys: ["fe"], maxParallel: 2 });
+    expect(r.pkg.employees[2]!.specialty).toBe("UI");
   });
 
   it("rejects a package over 2 MB", () => {

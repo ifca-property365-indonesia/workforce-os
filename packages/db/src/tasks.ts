@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { TASK_SOURCES, type TaskSource } from "@wfos/shared";
 import type { DB } from "./index";
 import { clients, employees, projects, repositories, tasks, teams } from "./schema";
@@ -16,6 +16,8 @@ export const TASK_INPUT_ERROR_CODES = [
   "unknown_parent_task",
   "unknown_origin_task",
   "invalid_task_source",
+  "project_client_mismatch",
+  "invalid_dependency",
 ] as const;
 export type TaskInputErrorCode = (typeof TASK_INPUT_ERROR_CODES)[number];
 
@@ -31,6 +33,8 @@ const MESSAGES: Record<TaskInputErrorCode, string> = {
   unknown_parent_task: "Unknown parent task",
   unknown_origin_task: "Unknown origin task",
   invalid_task_source: "Invalid task source",
+  project_client_mismatch: "The project belongs to another client",
+  invalid_dependency: "A subtask can only wait for other subtasks of the same parent",
 };
 
 export class TaskInputError extends Error {
@@ -54,6 +58,8 @@ export interface CreateTaskInput {
   repositoryId?: string | null;
   parentTaskId?: string | null;
   originTaskId?: string | null;
+  /** sibling subtasks (same parent) that must be DONE first; their deliverables are passed in as data */
+  dependsOn?: string[];
   routineId?: string | null;
   dryRun?: boolean;
   phase?: string | null;
@@ -73,13 +79,30 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The one way to create a task. Every referenced row (assignee, team and its Lead, client, project,
- * repository, parent and origin task) must belong to the task's workspace, or a TaskInputError is thrown.
+ * repository, parent and origin task, dependencies) must belong to the task's workspace, or a TaskInputError is thrown.
+ * A project task without an assignee goes to the project's division; its client is the project's client.
  * Publishing task.created and enqueueing stay with the caller.
  */
 export async function createTask(database: Database, input: CreateTaskInput): Promise<TaskRow> {
   const ws = input.workspaceId;
   if (!(TASK_SOURCES as readonly string[]).includes(input.source)) throw new TaskInputError("invalid_task_source");
-  if ((input.requireAssignee ?? true) && !input.assigneeId && !input.teamId) throw new TaskInputError("task_needs_assignee");
+  let teamId = input.teamId ?? null;
+  let clientId = input.clientId ?? null;
+  if (input.projectId) {
+    const [project] = UUID.test(input.projectId)
+      ? await database
+          .select({ clientId: projects.clientId, teamId: projects.teamId })
+          .from(projects)
+          .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, ws)))
+          .limit(1)
+      : [];
+    if (!project) throw new TaskInputError("unknown_project");
+    // the project fixes the client: client-scoped knowledge and memory must not be crossed by a mismatched pair
+    if (clientId && clientId !== project.clientId) throw new TaskInputError("project_client_mismatch");
+    clientId = project.clientId;
+    if (!input.assigneeId && !teamId) teamId = project.teamId;
+  }
+  if ((input.requireAssignee ?? true) && !input.assigneeId && !teamId) throw new TaskInputError("task_needs_assignee");
 
   /** true when the id is set and names a row of this workspace in the given table */
   const owned = async (
@@ -92,9 +115,9 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
   };
 
   if (input.assigneeId && !(await owned(employees, input.assigneeId))) throw new TaskInputError("unknown_employee");
-  if (input.teamId) {
-    const [team] = UUID.test(input.teamId)
-      ? await database.select({ id: teams.id, leadId: teams.leadId }).from(teams).where(and(eq(teams.id, input.teamId), eq(teams.workspaceId, ws))).limit(1)
+  if (teamId) {
+    const [team] = UUID.test(teamId)
+      ? await database.select({ id: teams.id, leadId: teams.leadId }).from(teams).where(and(eq(teams.id, teamId), eq(teams.workspaceId, ws))).limit(1)
       : [];
     if (!team) throw new TaskInputError("unknown_team");
     if (team.leadId) {
@@ -103,11 +126,19 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
       throw new TaskInputError("team_has_no_lead");
     }
   }
-  if (input.clientId && !(await owned(clients, input.clientId))) throw new TaskInputError("unknown_client");
-  if (input.projectId && !(await owned(projects, input.projectId))) throw new TaskInputError("unknown_project");
+  if (clientId && !(await owned(clients, clientId))) throw new TaskInputError("unknown_client");
   if (input.repositoryId && !(await owned(repositories, input.repositoryId))) throw new TaskInputError("repository_not_found");
   if (input.parentTaskId && !(await owned(tasks, input.parentTaskId))) throw new TaskInputError("unknown_parent_task");
   if (input.originTaskId && !(await owned(tasks, input.originTaskId))) throw new TaskInputError("unknown_origin_task");
+  const dependsOn = [...new Set(input.dependsOn ?? [])];
+  if (dependsOn.length) {
+    if (!input.parentTaskId || dependsOn.some((id) => !UUID.test(id))) throw new TaskInputError("invalid_dependency");
+    const siblings = await database
+      .select({ id: tasks.id })
+      .from(tasks)
+      .where(and(inArray(tasks.id, dependsOn), eq(tasks.workspaceId, ws), eq(tasks.parentTaskId, input.parentTaskId)));
+    if (siblings.length !== dependsOn.length) throw new TaskInputError("invalid_dependency");
+  }
 
   const [row] = await database
     .insert(tasks)
@@ -116,12 +147,13 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
       title: input.title,
       brief: input.brief ?? "",
       assigneeId: input.assigneeId ?? null,
-      teamId: input.teamId ?? null,
-      clientId: input.clientId ?? null,
+      teamId,
+      clientId,
       projectId: input.projectId ?? null,
       repositoryId: input.repositoryId ?? null,
       parentTaskId: input.parentTaskId ?? null,
       originTaskId: input.originTaskId ?? null,
+      dependsOn,
       routineId: input.routineId ?? null,
       source: input.source,
       dryRun: input.dryRun ?? false,

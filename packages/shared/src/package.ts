@@ -3,6 +3,8 @@ import { z } from "zod";
 // module body runs. Every schema that needs them is therefore built lazily (on first parse), never at load time.
 import {
   AUTONOMY_LEVELS,
+  DIVISION_MAX_PARALLEL,
+  divisionStructureError,
   egressDomainSchema,
   EXECUTION_MODES,
   officeLookSchema,
@@ -12,11 +14,12 @@ import {
   SKILL_SLUG_RE,
   TEAM_RESPONDER_MODES,
   toolPermissionSchema,
+  type TeamMemberRole,
 } from "./index";
 
 // ---------------------------------------------------------------------------
 // Team / employee packages (wfos.package v1): a portable, secret-free description of employees, teams,
-// routines, departments, skills (SKILL.md) and MCP server slots. Never contains allow-lists, credentials, chats, tasks or DB ids.
+// divisions (teams), routines, skills (SKILL.md) and MCP server slots; "departments" from older packages are read and ignored. Never contains allow-lists, credentials, chats, tasks or DB ids.
 // ---------------------------------------------------------------------------
 
 export const PACKAGE_FORMAT = "wfos.package";
@@ -126,7 +129,9 @@ function buildSchema() {
     toolPermissions: z.array(toolPermissionSchema.shape.tool).max(300).default([]),
     outputLanguage: z.enum(OUTPUT_LANGUAGES).default("inherit"),
     executionMode: z.enum(EXECUTION_MODES).default("tool"),
+    /** packages made before divisions: read and ignored (the SOP now lives on the division) */
     department: z.string().regex(DEPARTMENT_KEY_RE).nullable().optional(),
+    specialty: z.string().max(200).default(""),
     egressDomains: z.array(egressDomainSchema).max(50).default([]),
     look: officeLookSchema.nullable().optional(),
     seedMemories: z
@@ -156,7 +161,15 @@ function buildSchema() {
     name: z.string().min(1).max(120),
     description: z.string().max(2000).default(""),
     leadKey: key().nullable().default(null),
+    /** members taking subtasks from the head (include the head and the code lead) */
     memberKeys: z.array(key()).max(200).default([]),
+    /** division fields (absent in packages made before divisions) */
+    codeLeadKey: key().nullable().default(null),
+    /** members working inside the code lead's run */
+    subagentKeys: z.array(key()).max(200).default([]),
+    sop: bilingual().optional(),
+    color: z.string().regex(/^(#[0-9a-fA-F]{6})?$/).default(""),
+    maxParallel: z.number().int().min(1).max(DIVISION_MAX_PARALLEL).default(1),
     responderMode: z.enum(TEAM_RESPONDER_MODES).default("lead"),
   });
   const routine = z.object({
@@ -221,11 +234,26 @@ function buildSchema() {
       });
       const emps = new Set(p.employees.map((e) => e.key));
       const teams = new Set(p.teams.map((t) => t.key));
+      const inDivision = new Map<string, string>();
       p.teams.forEach((t, i) => {
         if (t.leadKey && !emps.has(t.leadKey)) ctx.addIssue({ code: "custom", path: ["teams", i, "leadKey"], message: `unknown employee "${t.leadKey}"` });
-        t.memberKeys.forEach((m, j) => {
-          if (!emps.has(m)) ctx.addIssue({ code: "custom", path: ["teams", i, "memberKeys", j], message: `unknown employee "${m}"` });
+        if (t.codeLeadKey && !emps.has(t.codeLeadKey)) ctx.addIssue({ code: "custom", path: ["teams", i, "codeLeadKey"], message: `unknown employee "${t.codeLeadKey}"` });
+        const all = [...t.memberKeys.map((m, j) => ({ m, path: ["memberKeys", j] })), ...t.subagentKeys.map((m, j) => ({ m, path: ["subagentKeys", j] }))];
+        for (const { m, path } of all) {
+          if (!emps.has(m)) ctx.addIssue({ code: "custom", path: ["teams", i, ...path], message: `unknown employee "${m}"` });
+          const other = inDivision.get(m);
+          if (other !== undefined && other !== t.key) ctx.addIssue({ code: "custom", path: ["teams", i, ...path], message: `"${m}" is already in division "${other}"` });
+          inDivision.set(m, t.key);
+        }
+        const structure = divisionStructureError({
+          leadId: t.leadKey && t.memberKeys.includes(t.leadKey) ? t.leadKey : null,
+          codeLeadId: t.codeLeadKey,
+          members: [
+            ...[...new Set(t.memberKeys)].map((employeeId) => ({ employeeId, role: "member" as TeamMemberRole })),
+            ...t.subagentKeys.map((employeeId) => ({ employeeId, role: "subagent" as TeamMemberRole })),
+          ],
         });
+        if (structure) ctx.addIssue({ code: "custom", path: ["teams", i], message: structure });
       });
       p.routines.forEach((r, i) => {
         if (!r.assigneeKey && !r.teamKey) ctx.addIssue({ code: "custom", path: ["routines", i], message: "a routine needs an assigneeKey or a teamKey" });
