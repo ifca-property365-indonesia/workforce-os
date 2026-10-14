@@ -8,7 +8,7 @@ describe("classifyTool", () => {
 
   it("classifies every irreversible builtin as irreversible", () => {
     const irreversible = BUILTIN_TOOLS.filter((t) => t.class === "irreversible").map((t) => t.name).sort();
-    expect(irreversible).toEqual(["create_pull_request", "git_push", "post_webhook", "request_preview", "send_email", "send_invoice"]);
+    expect(irreversible).toEqual(["create_pull_request", "git_push", "post_webhook", "request_preview", "request_release", "send_email", "send_invoice"]);
   });
 
   it("request_preview is irreversible although its name holds the read verb \"preview\" (the registry wins)", () => {

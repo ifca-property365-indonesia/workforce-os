@@ -1489,6 +1489,8 @@ WorkingDirectory=$dir/$(cur_link "$slot")
 ExecStart=$exec
 Restart=on-failure
 RestartSec=5
+# pnpm/node exit 143 (128 + SIGTERM) when systemd stops them: a clean stop, not a failure
+SuccessExitStatus=143 SIGTERM
 TimeoutStopSec=20
 MemoryMax=${mem}M
 MemorySwapMax=0

@@ -219,6 +219,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "git_push", label: "Push branch", description: "Workspace mode: push your committed work to agent/<task> on the remote (the platform pushes after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "create_pull_request", label: "Open pull request", description: "Workspace mode: open a pull/merge request from your branch (after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "list_apps", label: "List apps", description: "Workspace mode: the workspace's apps (preview URL, status, repository, branch, the version that runs) so you know which app to preview", class: "reversible", credits: 0.02, category: "code" },
+  { name: "request_release", label: "Propose LIVE release", description: "Workspace mode: propose releasing a preview version that already ran to the app's LIVE site (only an Owner can approve it)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "request_preview", label: "Publish preview", description: "Workspace mode: publish the branch you pushed (git_push) as a preview of an app at its URL (the platform deploys after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "post_webhook", label: "Publish to webhook", description: "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)", class: "irreversible", credits: 0.5, category: "comms" },
 ] as const;
@@ -1460,10 +1461,51 @@ export const liveEnvironmentInputSchema = z.object({
   extraDomains: z.array(customDomainSchema).max(3).default([]),
   memoryMb: z.number().int().min(256).max(2048).optional(),
 });
+// ---- live operations (Phase B3) ----
+/** live sites are checked from the platform this often; history kept this long */
+export const UPTIME_CHECK_EVERY_MS = 5 * 60_000;
+export const UPTIME_RETENTION_DAYS = 30;
+/** warn the Owners this many days before a live certificate expires (renewal is automatic) */
+export const CERT_WARN_DAYS = 14;
+export const UPTIME_STATUSES = ["unknown", "up", "down"] as const;
+export type UptimeStatus = (typeof UPTIME_STATUSES)[number];
+
+const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24 h)");
+/** when LIVE releases may start (rollbacks are always allowed); an end before the start spans midnight */
+export const releaseWindowSchema = z.object({
+  /** 0 = Sunday … 6 = Saturday, of the day the window STARTS */
+  days: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([0, 1, 2, 3, 4, 5, 6]),
+  start: HHMM,
+  end: HHMM,
+  timeZone: z.string().min(1).max(64).default("Asia/Jakarta"),
+});
+export type ReleaseWindow = z.infer<typeof releaseWindowSchema>;
+
+function minutesIn(timeZone: string, at: Date): { day: number; minute: number } {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(at);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(get("weekday"));
+  return { day, minute: Number(get("hour")) * 60 + Number(get("minute")) };
+}
+const hhmm = (v: string) => Number(v.slice(0, 2)) * 60 + Number(v.slice(3, 5));
+
+/** whether `at` lies inside the window (start inclusive, end exclusive; overnight windows count from their start day) */
+export function isWithinReleaseWindow(w: ReleaseWindow, at: Date = new Date()): boolean {
+  const { day, minute } = minutesIn(w.timeZone, at);
+  const start = hhmm(w.start);
+  const end = hhmm(w.end);
+  if (start === end) return w.days.includes(day);
+  if (start < end) return w.days.includes(day) && minute >= start && minute < end;
+  // overnight: today after the start, or the morning part of a window that started yesterday
+  return (w.days.includes(day) && minute >= start) || (w.days.includes((day + 6) % 7) && minute < end);
+}
+
 export const liveEnvironmentUpdateSchema = z.object({
   domain: customDomainSchema.optional(),
   extraDomains: z.array(customDomainSchema).max(3).optional(),
   accessMode: z.enum(APP_ACCESS_MODES).optional(),
+  /** null removes the window (releases any time) */
+  releaseWindow: releaseWindowSchema.nullable().optional(),
 });
 
 /** whether a domain points at the environment's server (public DNS, A/AAAA) */
@@ -1477,6 +1519,34 @@ export interface DomainCheck {
   names: { name: string; status: DomainCheckStatus; found: string[] }[];
   checkedAt: string;
 }
+
+/**
+ * Approval payload of request_release (Phase B3): a Developer proposes bringing a preview release that ran to LIVE.
+ * Only an Owner (with step-up) can approve it; the executor re-checks that the preview release still qualifies.
+ */
+export const requestReleasePayloadSchema = z.object({
+  appId: z.uuid(),
+  appName: z.string(),
+  environmentId: z.uuid(),
+  url: z.string(),
+  fromReleaseId: z.uuid(),
+  commit: z.string().regex(/^[0-9a-f]{40}$/),
+  commitSubject: z.string().nullable(),
+  /** the commit LIVE runs now (null: first LIVE release) */
+  currentCommit: z.string().nullable(),
+  commits: z.array(z.object({ sha: z.string(), subject: z.string() })).max(50),
+  files: z.array(z.object({ path: z.string(), added: z.number(), removed: z.number() })).max(300),
+  filesTruncated: z.boolean(),
+  warnings: z.array(z.enum(RELEASE_WARNINGS)),
+  migrations: z.enum(["expand", "breaking"]),
+  database: z.boolean(),
+  /** LIVE env names changed since the running LIVE release (names only) */
+  liveEnvChanged: z.array(z.string()),
+  /** the LIVE release window, if any (the release waits for it or is refused outside it) */
+  releaseWindow: releaseWindowSchema.nullable(),
+  summary: z.string().max(2000),
+});
+export type RequestReleasePayload = z.infer<typeof requestReleasePayloadSchema>;
 
 /** a task waits for at most this many failed previews before it fails instead of being sent back again */
 export const PREVIEW_MAX_FAILED_ATTEMPTS = 3;

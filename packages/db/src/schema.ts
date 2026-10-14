@@ -64,6 +64,8 @@ import type {
   DomainCheck,
   AppSlot,
   AppBackupKind,
+  UptimeStatus,
+  ReleaseWindow,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -1132,6 +1134,15 @@ export const appEnvironments = pgTable(
     maintenance: boolean("maintenance").notNull().default(false),
     /** live: last daily database backup */
     lastBackupAt: timestamp("last_backup_at", { withTimezone: true }),
+    /** live uptime (B3): checked from the platform every UPTIME_CHECK_EVERY_MS */
+    uptimeStatus: text("uptime_status").$type<UptimeStatus>().notNull().default("unknown"),
+    /** since when uptimeStatus holds (the last up↔down change) */
+    uptimeSince: timestamp("uptime_since", { withTimezone: true }),
+    uptimeCheckedAt: timestamp("uptime_checked_at", { withTimezone: true }),
+    /** live: when the served certificate expires (read during the uptime check) */
+    certExpiresAt: timestamp("cert_expires_at", { withTimezone: true }),
+    /** live: when releases may start (null = any time; rollbacks always) */
+    releaseWindow: jsonb("release_window").$type<ReleaseWindow>(),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1165,4 +1176,22 @@ export const appBackups = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("app_backups_env_name").on(t.environmentId, t.name), index("app_backups_env").on(t.environmentId, t.createdAt)],
+);
+
+/** Uptime checks of live environments (B3): one row per check, kept UPTIME_RETENTION_DAYS. */
+export const appUptimeChecks = pgTable(
+  "app_uptime_checks",
+  {
+    id: id(),
+    environmentId: uuid("environment_id").notNull().references(() => appEnvironments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+    ok: boolean("ok").notNull(),
+    statusCode: integer("status_code"),
+    /** response time of the successful try, or of the last failed one */
+    ms: integer("ms"),
+    /** short reason when not ok (timeout, tls, dns, http 502 …) — never response bodies */
+    error: text("error"),
+  },
+  (t) => [index("app_uptime_env_at").on(t.environmentId, t.checkedAt)],
 );

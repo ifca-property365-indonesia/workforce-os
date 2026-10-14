@@ -568,7 +568,7 @@ for line in \
   "  | ExecStart=/bin/sh $PFX/etc/wfos-apps/start/shop.sh" \
   "  | EnvironmentFile=$PFX/etc/wfos-apps/env/shop.env" \
   "  | Environment=HOST=127.0.0.1 PORT=4100 NODE_ENV=production" \
-  "  | MemoryMax=512M" "  | MemorySwapMax=0" "  | CPUQuota=100%" "  | TasksMax=256" \
+  "  | SuccessExitStatus=143 SIGTERM" "  | MemoryMax=512M" "  | MemorySwapMax=0" "  | CPUQuota=100%" "  | TasksMax=256" \
   "  | SocketBindAllow=tcp:4100" "  | SocketBindDeny=any" \
   "  | UMask=0077" "  | NoNewPrivileges=yes" "  | CapabilityBoundingSet=" "  | RestrictSUIDSGID=yes" "  | LockPersonality=yes" \
   "  | RestrictNamespaces=yes" "  | SystemCallArchitectures=native" "  | SystemCallFilter=@system-service" \
