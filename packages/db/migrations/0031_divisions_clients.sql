@@ -75,3 +75,13 @@ ALTER TABLE "memories" ADD COLUMN IF NOT EXISTS "client_id" uuid REFERENCES "cli
 DROP INDEX IF EXISTS "memories_emp";
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "memories_emp" ON "memories" ("employee_id", "client_id");
+--> statement-breakpoint
+-- Deleting an employee with chat approvals nulled approvals.employee_id while the same statement deleted the chat
+-- (conversations → messages cascade): the immediate check on message_id/conversation_id then failed. Check at commit.
+ALTER TABLE "approvals" DROP CONSTRAINT IF EXISTS "approvals_message_id_fkey";
+--> statement-breakpoint
+ALTER TABLE "approvals" ADD CONSTRAINT "approvals_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "messages"("id") ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED;
+--> statement-breakpoint
+ALTER TABLE "approvals" DROP CONSTRAINT IF EXISTS "approvals_conversation_id_fkey";
+--> statement-breakpoint
+ALTER TABLE "approvals" ADD CONSTRAINT "approvals_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED;
