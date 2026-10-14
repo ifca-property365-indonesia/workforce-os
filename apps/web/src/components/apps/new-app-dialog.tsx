@@ -46,7 +46,8 @@ export function slugify(name: string): string {
 /** null when fine, else the reason the subdomain is refused (the API refuses the same) */
 export function slugProblem(slug: string): "invalid" | "reserved" | null {
   if (!APP_SLUG_RE.test(slug) || slug.includes("--")) return "invalid";
-  if ((RESERVED_APP_SLUGS as readonly string[]).includes(slug)) return "reserved";
+  // <slug>-live is the instance name of an app's live environment
+  if ((RESERVED_APP_SLUGS as readonly string[]).includes(slug) || slug.endsWith("-live")) return "reserved";
   return null;
 }
 

@@ -1272,7 +1272,9 @@ export const APP_SLUG_RE = /^[a-z][a-z0-9-]{0,28}[a-z0-9]$/;
 export const appSlugSchema = z
   .string()
   .regex(APP_SLUG_RE, "Use 2–30 lowercase letters, digits and dashes, starting with a letter")
-  .refine((s) => !s.includes("--") && !(RESERVED_APP_SLUGS as readonly string[]).includes(s), "This name is reserved");
+  .refine((s) => !s.includes("--") && !(RESERVED_APP_SLUGS as readonly string[]).includes(s), "This name is reserved")
+  // <slug>-live is the live environment's instance name on a server (appInstanceName)
+  .refine((s) => !s.endsWith("-live"), "Names ending in -live are reserved for live environments");
 
 /** a single shell command line from the manifest (run as the app's own user inside its sandbox) */
 const manifestCommand = z
@@ -1361,6 +1363,8 @@ export interface ReleaseCheckpoint {
   activated?: boolean;
   /** the migration ran (dbBackup holds the backup to restore) */
   migrated?: boolean;
+  /** live: the names this release published (domain + redirecting names), so a rollback can tell nothing moved */
+  publishedNames?: string[];
 }
 
 /**
@@ -1434,18 +1438,20 @@ export interface DomainCheck {
 /** a task waits for at most this many failed previews before it fails instead of being sent back again */
 export const PREVIEW_MAX_FAILED_ATTEMPTS = 3;
 
-export interface AppDTO {
+/**
+ * One environment of an app as the browser sees it: never the env values, the access password, APP_SECRET or the
+ * database password — only the env names and whether a database exists.
+ */
+export interface AppEnvironmentDTO {
   id: string;
-  name: string;
-  slug: string;
-  url: string;
+  kind: AppEnvironmentKind;
   serverId: string;
   serverName: string;
-  repositoryId: string | null;
-  repositoryName: string | null;
-  branch: string;
-  clientId: string | null;
-  projectId: string | null;
+  /** preview: <slug>.<server baseDomain>; live: the client's domain */
+  domain: string;
+  /** live: names that redirect (301) to `domain` */
+  extraDomains: string[];
+  url: string;
   port: number;
   status: AppStatus;
   statusMessage: string | null;
@@ -1457,11 +1463,29 @@ export interface AppDTO {
   lastHealthAt: string | null;
   lastDeployedAt: string | null;
   currentRelease: ReleaseDTO | null;
+  /** live: the last DNS check of domain + extraDomains (null: not checked since the names were set) */
+  dnsCheck: DomainCheck | null;
+}
+export interface AppDTO {
+  id: string;
+  name: string;
+  slug: string;
+  repositoryId: string | null;
+  repositoryName: string | null;
+  branch: string;
+  clientId: string | null;
+  projectId: string | null;
   createdAt: string;
+  preview: AppEnvironmentDTO;
+  live: AppEnvironmentDTO | null;
 }
 export interface ReleaseDTO {
   id: string;
   appId: string;
+  environmentId: string;
+  environmentKind: AppEnvironmentKind;
+  /** live: the preview release whose commit this one brings to live */
+  promotedFromReleaseId: string | null;
   commit: string;
   branch: string;
   commitSubject: string | null;

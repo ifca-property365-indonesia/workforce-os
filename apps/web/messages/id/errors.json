@@ -139,7 +139,7 @@
   "helper_outdated": "Helper di server sudah terlalu lama. Jalankan lagi skrip persiapan versi terbaru.",
   "ssh_failed": "Koneksi SSH gagal. Coba lagi sebentar lagi.",
   "prepare_script_missing": "Skrip persiapan tidak ada di instalasi ini.",
-  "server_has_apps": "{count, plural, other {Masih ada # aplikasi}} di server ini. Hapus dulu di Aplikasi.",
+  "server_has_apps": "{count, plural, other {Masih ada # lingkungan aplikasi}} di server ini. Hapus dulu di Aplikasi.",
   "app_not_found": "Aplikasi tidak ditemukan.",
   "app_name_taken": "Sudah ada aplikasi dengan nama ini.",
   "app_slug_taken": "Alamat ini sudah dipakai. Pilih nama subdomain lain.",
@@ -159,5 +159,18 @@
   "app_already_running": "Aplikasi sudah berjalan.",
   "app_removing": "Aplikasi ini sedang dihapus.",
   "repository_url_invalid": "Ini bukan URL clone repositori di penyedia itu, contohnya https://github.com/pemilik/repositori.git.",
-  "repository_url_is_preview": "Itu alamat preview aplikasi, bukan repositori. Pakai URL clone repositorinya, contohnya https://github.com/pemilik/repositori.git."
+  "repository_url_is_preview": "Itu alamat preview aplikasi, bukan repositori. Pakai URL clone repositorinya, contohnya https://github.com/pemilik/repositori.git.",
+  "unknown_environment": "Lingkungan tidak dikenal: pakai preview atau live.",
+  "live_not_found": "Aplikasi ini tidak punya situs live.",
+  "live_exists": "Aplikasi ini sudah punya situs live.",
+  "live_instance_taken": "Server itu sudah menjalankan aplikasi dengan nama ini. Pilih server lain.",
+  "domain_taken": "{domain} sudah dipakai oleh sebuah aplikasi.",
+  "domain_is_preview": "{domain} adalah alamat preview. Situs live butuh domain sendiri.",
+  "domain_duplicate": "Ada nama yang tercantum dua kali.",
+  "live_running_domain": "Hentikan situs live dulu sebelum mengubah domain atau namanya.",
+  "live_needs_preview_release": "Hanya versi yang sudah berjalan di preview yang bisa dinaikkan ke live.",
+  "live_dns_not_ok": "Domainnya belum mengarah ke server. Periksa DNS dulu.",
+  "domain_reserved": "{domain} milik platform atau salah satu servernya. Pilih domain milik klien sendiri.",
+  "confirm_mismatch": "Ketik domain live persis sama untuk mengonfirmasi.",
+  "live_running": "Hentikan situs live dulu."
 }

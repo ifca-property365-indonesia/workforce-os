@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNotNull, type SQL } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
 import { getDb } from "./index";
-import { apps, credentials, members, repositories, users, workspaces } from "./schema";
+import { appEnvironments, apps, credentials, members, repositories, users, workspaces } from "./schema";
 
 /**
  * Re-encrypt every stored secret with the current ENCRYPTION_KEY. Values still under ENCRYPTION_KEY_PREVIOUS are
@@ -32,6 +32,13 @@ export async function reencryptAll(opts: { workspaceIds?: string[] } = {}): Prom
       for (const r of await tx.select({ id: apps.id, v: apps[col] }).from(apps).where(scope(apps.workspaceId, isNotNull(apps[col])))) {
         await tx.update(apps).set({ [col]: encryptSecret(decryptSecret(r.v!)) }).where(eq(apps.id, r.id));
         n[`apps.${col}`] = (n[`apps.${col}`] ?? 0) + 1;
+      }
+    }
+    // app environments (B1): access password, extra env, APP_SECRET and database password of each preview / live
+    for (const col of ["accessPasswordEnc", "envEnc", "appSecretEnc", "dbPasswordEnc"] as const) {
+      for (const r of await tx.select({ id: appEnvironments.id, v: appEnvironments[col] }).from(appEnvironments).where(scope(appEnvironments.workspaceId, isNotNull(appEnvironments[col])))) {
+        await tx.update(appEnvironments).set({ [col]: encryptSecret(decryptSecret(r.v!)) }).where(eq(appEnvironments.id, r.id));
+        n[`app_environments.${col}`] = (n[`app_environments.${col}`] ?? 0) + 1;
       }
     }
     const userRows = ws

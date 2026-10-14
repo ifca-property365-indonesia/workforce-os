@@ -22,7 +22,8 @@
     "./office": "./src/office.ts",
     "./ops": "./src/ops.ts",
     "./ssh": "./src/ssh.ts",
-    "./ssh-keys": "./src/ssh-keys.ts"
+    "./ssh-keys": "./src/ssh-keys.ts",
+    "./dns": "./src/dns.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

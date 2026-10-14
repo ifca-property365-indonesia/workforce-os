@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { apps, appReleases, auditLog, db, servers, workspaces } from "@wfos/db";
+import { appEnvironments, appReleases, auditLog, db, servers, workspaces } from "@wfos/db";
 import type { NotifyJob, RealtimeEvent } from "@wfos/shared";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
 import { deployControl, runRelease } from "../src/deploy/pipeline";
-import { makeApp, makeRemote, FakeServer, fastDeploys, queueRelease, SECRET_ENV, tarNames, MANIFEST } from "./deploy-fixtures";
+import { makeApp, makeOtherEnv, makeRemote, FakeServer, fastDeploys, queueRelease, SECRET_ENV, tarNames, MANIFEST } from "./deploy-fixtures";
 import { resetTransport, transport } from "./transport";
 
 // SSH is never real: sshExec / sftpPut answer like helper v2 (FakeServer); the repository is a real local git repo.
@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 const releaseRow = async (id: string) => (await db.select().from(appReleases).where(eq(appReleases.id, id)))[0]!;
-const appRow = async (id: string) => (await db.select().from(apps).where(eq(apps.id, id)))[0]!;
+const envRow = async (id: string) => (await db.select().from(appEnvironments).where(eq(appEnvironments.id, id)))[0]!;
 const audits = async (appId: string) => (await db.select().from(auditLog).where(eq(auditLog.targetId, appId))).map((a) => ({ action: a.action, details: a.details }));
 const notifications = (workspaceId: string) => transport.queued.filter((q) => q.name === "notify").map((q) => q.data as NotifyJob).filter((n) => n.workspaceId === workspaceId);
 const events = (workspaceId: string) => transport.published.filter((p) => p.workspaceId === workspaceId).map((p) => p.ev as RealtimeEvent);
@@ -47,7 +47,7 @@ async function deployFirst() {
 describe("release pipeline", () => {
   it("first deploy: every step in order, the right statuses, the env and preview login, nothing secret in the log", async () => {
     const repo = makeRemote();
-    const { ws, user, app, server } = await makeApp({ remote: repo.remote });
+    const { ws, user, app, server, preview } = await makeApp({ remote: repo.remote });
     const rel = await queueRelease(app, { createdBy: user.id });
     // the build prints a secret, split across two output chunks
     srv.replies["build-run:build"] = { code: 0, data: [`building with SMTP_PASSWORD=${SECRET_ENV.slice(0, 10)}`, `${SECRET_ENV.slice(10)} done\n`] };
@@ -83,10 +83,10 @@ describe("release pipeline", () => {
       [app.slug, sha, "migrate", "300", "1024"],
     ]);
     expect(srv.callsOf("build-run").map((c) => c.stdin)).toEqual(["pnpm install --frozen-lockfile\n", "pnpm build\n", "pnpm db:migrate\n"]);
-    expect(srv.callsOf("unit-install")[0]).toEqual({ cmd: "unit-install", args: [app.slug, String(app.port), "512", "--database"], stdin: "pnpm start -H 127.0.0.1 -p $PORT\n" });
-    expect(srv.callsOf("health")[0]!.args).toEqual([app.slug, String(app.port), "/api/health"]);
+    expect(srv.callsOf("unit-install")[0]).toEqual({ cmd: "unit-install", args: [app.slug, String(preview.port), "512", "--database"], stdin: "pnpm start -H 127.0.0.1 -p $PORT\n" });
+    expect(srv.callsOf("health")[0]!.args).toEqual([app.slug, String(preview.port), "/api/health"]);
 
-    const after = await appRow(app.id);
+    const after = await envRow(preview.id);
     // env file: the person's variables plus the platform's
     const env = Object.fromEntries(srv.env.trim().split("\n").map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1)]));
     const dbPw = decryptSecret(after.dbPasswordEnc!);
@@ -94,10 +94,10 @@ describe("release pipeline", () => {
     expect(env).toEqual({
       SMTP_PASSWORD: SECRET_ENV,
       FEATURE: "on",
-      PORT: String(app.port),
+      PORT: String(preview.port),
       HOST: "127.0.0.1",
       NODE_ENV: "production",
-      APP_URL: `https://${app.domain}`,
+      APP_URL: `https://${preview.domain}`,
       APP_SECRET: decryptSecret(after.appSecretEnc!),
       APP_VERSION: sha,
       APP_DATA_DIR: `/srv/wfos-apps/${app.slug}/data`,
@@ -110,12 +110,12 @@ describe("release pipeline", () => {
     const pw = decryptSecret(after.accessPasswordEnc!);
     expect(pw).toMatch(/^[a-km-zA-HJ-NP-Z2-9]{16}$/);
     const publishCall = srv.callsOf("publish")[0]!;
-    expect(publishCall.args).toEqual([app.slug, String(app.port), "--auth"]);
+    expect(publishCall.args).toEqual([app.slug, String(preview.port), "--auth"]);
     const [user_, hash] = publishCall.stdin!.trim().split(":");
     expect(user_).toBe("preview");
     expect(hash).toMatch(/^\$2[aby]\$10\$/);
     expect(await bcrypt.compare(pw, hash!)).toBe(true);
-    expect(pub.publicCalls).toEqual([{ url: `https://${app.domain}/api/health`, headers: { authorization: `Basic ${Buffer.from(`preview:${pw}`).toString("base64")}` } }]);
+    expect(pub.publicCalls).toEqual([{ url: `https://${preview.domain}/api/health`, headers: { authorization: `Basic ${Buffer.from(`preview:${pw}`).toString("base64")}` } }]);
 
     // statuses
     const r = await releaseRow(rel.id);
@@ -138,14 +138,14 @@ describe("release pipeline", () => {
     // events, audit, notification to the person who deployed
     const steps = events(ws.id).filter((e) => e.type === "release.updated").map((e) => (e as { step: string | null }).step);
     expect(steps).toEqual(expect.arrayContaining(["prepare", "upload", "install", "activate", "health", "public_check", "cleanup"]));
-    expect(events(ws.id)).toContainEqual({ type: "app.updated", appId: app.id, status: "deploying" });
-    expect(events(ws.id).at(-1)).toEqual({ type: "app.updated", appId: app.id, status: "running" });
+    expect(events(ws.id)).toContainEqual({ type: "app.updated", appId: app.id, status: "deploying", environmentId: preview.id });
+    expect(events(ws.id).at(-1)).toEqual({ type: "app.updated", appId: app.id, status: "running", environmentId: preview.id });
     expect((await audits(app.id)).map((a) => a.action)).toEqual(["app.deployed"]);
     expect(notifications(ws.id)).toEqual([expect.objectContaining({ notificationKind: "task_done", userId: user.id, link: `/apps/${app.id}` })]);
   });
 
   it("a second deploy backs up the database before migrating, supersedes the previous release and computes the warnings", async () => {
-    const { repo, ws, app, rel: first } = await deployFirst();
+    const { repo, ws, app, rel: first, preview } = await deployFirst();
     const sha2 = repo.commit(
       {
         "prisma/migrations/0002_drop/migration.sql": "ALTER TABLE orders DROP COLUMN note;\nDROP TABLE legacy;\n",
@@ -162,25 +162,25 @@ describe("release pipeline", () => {
     expect(seq.slice(seq.indexOf("build-run:build"), seq.indexOf("release-activate"))).toEqual(["build-run:build", "unit-stop", "db-dump", "build-run:migrate"]);
     expect((await releaseRow(rel.id)).log).toContain("maintenance: old version stopped for the migration");
     expect(srv.callsOf("db-dump")[0]!.args).toEqual([app.slug, rel.id]);
-    expect(srv.callsOf("unit-install")[0]!.args).toEqual([app.slug, String(app.port), "768", "--database"]);
+    expect(srv.callsOf("unit-install")[0]!.args).toEqual([app.slug, String(preview.port), "768", "--database"]);
     const r = await releaseRow(rel.id);
     expect(r).toMatchObject({ status: "deployed", commit: sha2, dbBackup: rel.id });
     expect(r.warnings).toEqual(["manifest_changed", "scripts_changed", "destructive_migration"]);
     expect(await releaseRow(first.id)).toMatchObject({ status: "superseded" });
-    expect(await appRow(app.id)).toMatchObject({ currentReleaseId: rel.id, memoryMb: 768 });
+    expect(await envRow(preview.id)).toMatchObject({ currentReleaseId: rel.id, memoryMb: 768 });
     // the same database password is kept (db-create is idempotent, no reset)
     expect(srv.callsOf("db-create")[0]!.args).toEqual([app.slug]);
   });
 
   it("a public app: the site without a login, the public check without one, the public_access warning", async () => {
     const repo = makeRemote();
-    const { ws, app } = await makeApp({ remote: repo.remote, app: { accessMode: "public" } });
+    const { ws, app, preview } = await makeApp({ remote: repo.remote, preview: { accessMode: "public" } });
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("deployed");
-    expect(srv.callsOf("publish")[0]).toMatchObject({ args: [app.slug, String(app.port)], stdin: undefined });
+    expect(srv.callsOf("publish")[0]).toMatchObject({ args: [app.slug, String(preview.port)], stdin: undefined });
     expect(pub.publicCalls[0]!.headers).toEqual({});
     expect((await releaseRow(rel.id)).warnings).toContain("public_access");
-    expect((await appRow(app.id)).accessPasswordEnc).toBeNull();
+    expect((await envRow(preview.id)).accessPasswordEnc).toBeNull();
   });
 
   it("build memory is capped at half the server's memory", async () => {
@@ -209,7 +209,7 @@ describe("release pipeline", () => {
   ])("manifest %s → failed at prepare with the reason, nothing runs on the server", async (_n, files, re) => {
     const repo = makeRemote();
     repo.commit(files as Record<string, string | null>);
-    const { ws, app } = await makeApp({ remote: repo.remote });
+    const { ws, app, preview } = await makeApp({ remote: repo.remote });
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     const r = await releaseRow(rel.id);
@@ -217,7 +217,7 @@ describe("release pipeline", () => {
     expect(r.error).toMatch(re);
     expect(srv.calls).toEqual([]);
     // a new app with nothing deployed: failed
-    expect(await appRow(app.id)).toMatchObject({ status: "failed", currentReleaseId: null });
+    expect(await envRow(preview.id)).toMatchObject({ status: "failed", currentReleaseId: null });
     expect((await audits(app.id)).map((a) => a.action)).toEqual(["app.deploy_failed"]);
   });
 
@@ -227,14 +227,14 @@ describe("release pipeline", () => {
     ["the server is not ready", async (wsId: string) => void (await db.update(servers).set({ status: "error" }).where(eq(servers.workspaceId, wsId))), /not ready/],
   ])("refused when %s: release failed, the app untouched, no SSH", async (_n, arrange, re) => {
     const repo = makeRemote();
-    const { ws, app } = await makeApp({ remote: repo.remote });
+    const { ws, app, preview } = await makeApp({ remote: repo.remote });
     await arrange(ws.id);
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     const r = await releaseRow(rel.id);
     expect(r).toMatchObject({ status: "failed", step: "prepare" });
     expect(r.error).toMatch(re);
-    expect(await appRow(app.id)).toMatchObject({ status: "new" });
+    expect(await envRow(preview.id)).toMatchObject({ status: "new" });
     expect(srv.calls).toEqual([]);
     expect(events(ws.id)).not.toContainEqual(expect.objectContaining({ type: "app.updated", status: "deploying" }));
   });
@@ -245,21 +245,21 @@ describe("release pipeline", () => {
     await db.update(servers).set({ info: { ...server.info!, helperVersion: 1 } }).where(eq(servers.id, server.id));
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
-    expect((await releaseRow(rel.id)).error).toMatch(/version 1, version 2 is needed: run the new prepare\.sh/);
+    expect((await releaseRow(rel.id)).error).toMatch(/version 1, version 3 is needed: run the new prepare\.sh/);
   });
 
   it("refused when the server already runs maxRunningApps other apps; an app that already runs may still deploy", async () => {
     const repo = makeRemote();
-    const { ws, app, server } = await makeApp({ remote: repo.remote, server: { maxRunningApps: 2 } });
+    const { ws, app, server, preview } = await makeApp({ remote: repo.remote, server: { maxRunningApps: 2 } });
     for (const n of [1, 2]) {
-      await db.insert(apps).values({ workspaceId: ws.id, serverId: server.id, name: `other ${n}`, slug: `other-${n}-${app.slug}`.slice(0, 30), domain: `o${n}-${app.domain}`, port: app.port + 1000 + n, status: n === 1 ? "running" : "deploying" });
+      await makeOtherEnv(ws.id, server.id, n === 1 ? "running" : "deploying");
     }
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     expect((await releaseRow(rel.id)).error).toMatch(/already runs 2 apps \(at most 2\)/);
     expect(srv.calls).toEqual([]);
 
-    await db.update(apps).set({ status: "running" }).where(eq(apps.id, app.id));
+    await db.update(appEnvironments).set({ status: "running" }).where(eq(appEnvironments.id, preview.id));
     const again = await queueRelease(app);
     expect(await runRelease(again.id, ws.id)).toBe("deployed");
   });
@@ -272,7 +272,7 @@ describe("release pipeline", () => {
   });
 
   it("failure in build: the running version is untouched, its env is put back, release failed, app still running", async () => {
-    const { repo, ws, app, rel: first, user } = await deployFirst();
+    const { repo, ws, app, rel: first, user, preview } = await deployFirst();
     const sha2 = repo.commit({ "src/page.tsx": "broken" }, "Broken build");
     srv.calls.length = 0;
     srv.replies["build-run:build"] = { code: 1, data: "Type error: nope\n", stderr: `Type error: nope ${SECRET_ENV}` };
@@ -286,7 +286,7 @@ describe("release pipeline", () => {
     const r = await releaseRow(rel.id);
     expect(r).toMatchObject({ status: "failed", step: "build", commit: sha2 });
     expect(r.error).toMatch(/build-run failed \(exit 1\)/);
-    expect(await appRow(app.id)).toMatchObject({ status: "running", currentReleaseId: first.id, healthy: true });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running", currentReleaseId: first.id, healthy: true });
     expect(await releaseRow(first.id)).toMatchObject({ status: "deployed" });
     expect(await everythingVisible(rel.id, app.id, ws.id)).not.toContain(SECRET_ENV);
     expect(notifications(ws.id)).toEqual([expect.objectContaining({ notificationKind: "task_failed", userId: user.id })]);
@@ -303,7 +303,7 @@ describe("release pipeline", () => {
   });
 
   it("failure in health after migrating: rolled back to the previous release, database restored, published again", async () => {
-    const { repo, ws, app, rel: first } = await deployFirst();
+    const { repo, ws, app, rel: first, preview } = await deployFirst();
     const sha2 = repo.commit({ "src/page.tsx": "crashes at start" }, "Crashes");
     srv.calls.length = 0;
     srv.healthy = (sha) => sha !== sha2;
@@ -335,7 +335,7 @@ describe("release pipeline", () => {
     expect(r).toMatchObject({ status: "rolled_back", step: "health", dbBackup: rel.id });
     expect(r.error).toMatch(/did not answer 2xx on \/api\/health/);
     expect(r.log).toMatch(/<== rollback done/);
-    expect(await appRow(app.id)).toMatchObject({ status: "running", currentReleaseId: first.id, healthy: true });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running", currentReleaseId: first.id, healthy: true });
     expect((await audits(app.id)).map((a) => a.action)).toContain("app.rolled_back");
     expect(notifications(ws.id)).toEqual([expect.objectContaining({ notificationKind: "task_failed", subject: expect.stringContaining("rolled back") })]);
   });
@@ -353,14 +353,14 @@ describe("release pipeline", () => {
 
   it("first deploy failing health: stopped and unpublished, release failed, app failed", async () => {
     const repo = makeRemote();
-    const { ws, app } = await makeApp({ remote: repo.remote });
+    const { ws, app, preview } = await makeApp({ remote: repo.remote });
     srv.healthy = () => false;
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     const seq = srv.sequence();
     expect(seq.slice(seq.indexOf("unit-restart"))).toEqual(["unit-restart", "health", "unit-status", "unit-stop", "unpublish"]);
     expect(await releaseRow(rel.id)).toMatchObject({ status: "failed", step: "health" });
-    expect(await appRow(app.id)).toMatchObject({ status: "failed", currentReleaseId: null, healthy: false });
+    expect(await envRow(preview.id)).toMatchObject({ status: "failed", currentReleaseId: null, healthy: false });
     expect(notifications(ws.id).at(-1)!.text).toContain("No version of the app is running");
   });
 });
@@ -387,17 +387,17 @@ describe("review fixes", () => {
   });
 
   it("deploying the commit that already runs is refused (the helper never unpacks over the running release)", async () => {
-    const { ws, app } = await deployFirst();
+    const { ws, app, preview } = await deployFirst();
     srv.calls.length = 0;
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     expect(await releaseRow(rel.id)).toMatchObject({ step: "prepare", error: expect.stringMatching(/is the version running now/) });
     expect(srv.calls).toEqual([]);
-    expect(await appRow(app.id)).toMatchObject({ status: "running" });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running" });
   });
 
   it("a running release without a stored manifest refuses the deploy before anything changes", async () => {
-    const { repo, ws, app, rel: first } = await deployFirst();
+    const { repo, ws, app, rel: first, preview } = await deployFirst();
     await db.update(appReleases).set({ manifest: null }).where(eq(appReleases.id, first.id));
     repo.commit({ "src/page.tsx": "v2" }, "v2");
     srv.calls.length = 0;
@@ -405,11 +405,11 @@ describe("review fixes", () => {
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     expect((await releaseRow(rel.id)).error).toMatch(/has no valid stored manifest/);
     expect(srv.calls).toEqual([]);
-    expect(await appRow(app.id)).toMatchObject({ status: "running" });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running" });
   });
 
   it("a failed migration: database restored while the old version is stopped, then the old version started again", async () => {
-    const { repo, ws, app, rel: first } = await deployFirst();
+    const { repo, ws, app, rel: first, preview } = await deployFirst();
     repo.commit({ "prisma/migrations/0002/migration.sql": "ALTER TABLE orders ADD COLUMN x int;\n" }, "v2");
     srv.calls.length = 0;
     srv.replies["build-run:migrate"] = { code: 1, stderr: "migration failed\n" };
@@ -419,34 +419,34 @@ describe("review fixes", () => {
     expect(seq.slice(seq.indexOf("build-run:build"))).toEqual(["build-run:build", "unit-stop", "db-dump", "build-run:migrate", "db-restore", "env-install", "unit-start"]);
     expect(srv.callsOf("db-restore")[0]!.args).toEqual([app.slug, rel.id]);
     expect(await releaseRow(rel.id)).toMatchObject({ status: "failed", step: "migrate", checkpoint: { appStatusBefore: "running", migrated: true } });
-    expect(await appRow(app.id)).toMatchObject({ status: "running", currentReleaseId: first.id, statusMessage: null });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running", currentReleaseId: first.id, statusMessage: null });
     expect(srv.unit).toBe("active");
     expect((await releaseRow(rel.id)).log).toContain("maintenance over: the old version runs again");
   });
 
   it("the old version failing to start again after a failed migration: app failed (restart_failed)", async () => {
-    const { repo, ws, app } = await deployFirst();
+    const { repo, ws, app, preview } = await deployFirst();
     repo.commit({ "src/page.tsx": "v2" }, "v2");
     srv.replies["build-run:migrate"] = { code: 1 };
     srv.replies["unit-start"] = { code: 1, stderr: "wfos-app-helper: systemctl failed\n" };
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
-    expect(await appRow(app.id)).toMatchObject({ status: "failed", statusMessage: "restart_failed" });
+    expect(await envRow(preview.id)).toMatchObject({ status: "failed", statusMessage: "restart_failed" });
   });
 
   it("access mode / preview password are read again right before publish and the public check", async () => {
     const repo = makeRemote();
-    const { ws, app } = await makeApp({ remote: repo.remote });
+    const { ws, app, preview } = await makeApp({ remote: repo.remote });
     // an Admin switches the app to public while it builds
     srv.replies["build-run:build"] = () => {
-      void db.update(apps).set({ accessMode: "public" }).where(eq(apps.id, app.id)).then(() => undefined);
+      void db.update(appEnvironments).set({ accessMode: "public" }).where(eq(appEnvironments.id, preview.id)).then(() => undefined);
       return undefined;
     };
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("deployed");
     // prepare saw password mode (no public_access warning), publish saw public
     expect((await releaseRow(rel.id)).warnings).not.toContain("public_access");
-    expect(srv.callsOf("publish")[0]!.args).toEqual([app.slug, String(app.port)]);
+    expect(srv.callsOf("publish")[0]!.args).toEqual([app.slug, String(preview.port)]);
     expect(pub.publicCalls[0]!.headers).toEqual({});
   });
 });
@@ -454,26 +454,26 @@ describe("review fixes", () => {
 describe("helper refusals in a deploy", () => {
   it("firewall_off in build-run (first deploy): release failed with what to do, app failed with statusMessage firewall_off", async () => {
     const repo = makeRemote();
-    const { ws, app } = await makeApp({ remote: repo.remote });
+    const { ws, app, preview } = await makeApp({ remote: repo.remote });
     srv.replies["build-run:install"] = { code: 3, stderr: "wfos-app-helper: firewall_off: the app firewall is not loaded\n" };
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     expect(await releaseRow(rel.id)).toMatchObject({ step: "install", error: expect.stringMatching(/firewall is not loaded on the server; the Owner should start wfos-apps-firewall\.service or re-run prepare\.sh \(firewall_off\)/) });
-    expect(await appRow(app.id)).toMatchObject({ status: "failed", statusMessage: "firewall_off" });
+    expect(await envRow(preview.id)).toMatchObject({ status: "failed", statusMessage: "firewall_off" });
   });
 
   it("server_full from app-init: statusMessage server_full; an existing version keeps running", async () => {
-    const { repo, ws, app } = await deployFirst();
+    const { repo, ws, app, preview } = await deployFirst();
     repo.commit({ "src/page.tsx": "v2" }, "v2");
     srv.replies["app-init"] = { code: 3, stderr: "wfos-app-helper: server_full: 40 apps exist on this server (at most 40)\n" };
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
-    expect(await appRow(app.id)).toMatchObject({ status: "running", statusMessage: "server_full" });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running", statusMessage: "server_full" });
   });
 
   it("a person-set env name the platform owns is refused in prepare, before anything is sent", async () => {
     const repo = makeRemote();
-    const { ws, app } = await makeApp({ remote: repo.remote, app: { envEnc: encryptSecret(JSON.stringify({ COREPACK_HOME: "/tmp", PATH: "/bin" })) } });
+    const { ws, app } = await makeApp({ remote: repo.remote, preview: { envEnc: encryptSecret(JSON.stringify({ COREPACK_HOME: "/tmp", PATH: "/bin" })) } });
     const rel = await queueRelease(app);
     expect(await runRelease(rel.id, ws.id)).toBe("failed");
     expect(await releaseRow(rel.id)).toMatchObject({ step: "prepare", error: expect.stringMatching(/COREPACK_HOME, PATH are set by the platform/) });
@@ -495,7 +495,7 @@ describe("rollback releases", () => {
   }
 
   it("with the release folder still on the server: switch back, env, unit, restart — no build, no database restore", async () => {
-    const { ws, app, second, first, rb } = await twoVersions();
+    const { ws, second, first, rb, preview } = await twoVersions();
     expect(await runRelease(rb.id, ws.id)).toBe("deployed");
     expect(srv.sequence()).toEqual(["release-activate", "env-install", "unit-install", "unit-restart", "health", "publish", "release-prune"]);
     expect(srv.uploads).toEqual([]);
@@ -505,7 +505,7 @@ describe("rollback releases", () => {
     expect(r).toMatchObject({ status: "deployed", commit: first.commit });
     expect(r.log).toMatch(/a rollback does not restore the database/);
     expect(await releaseRow(second.id)).toMatchObject({ status: "superseded" });
-    expect(await appRow(app.id)).toMatchObject({ status: "running", currentReleaseId: rb.id });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running", currentReleaseId: rb.id });
   });
 
   it("with the folder gone (release_missing): the commit is built again with the full pipeline", async () => {
@@ -525,7 +525,7 @@ describe("rollback releases", () => {
 
 describe("interplay", () => {
   it("on shutdown a deploy that has not switched anything on stops at its next step and fails cleanly", async () => {
-    const { repo, ws, app, rel: first } = await deployFirst();
+    const { repo, ws, app, rel: first, preview } = await deployFirst();
     repo.commit({ "src/page.tsx": "v2" }, "v2");
     srv.calls.length = 0;
     srv.replies["build-run:install"] = () => {
@@ -540,7 +540,7 @@ describe("interplay", () => {
     }
     expect(srv.sequence()).toEqual(["app-init", "release-unpack", "env-install", "db-create", "build-run:install", "env-install"]);
     expect(await releaseRow(rel.id)).toMatchObject({ status: "failed", step: "install", error: expect.stringMatching(/shutting down/) });
-    expect(await appRow(app.id)).toMatchObject({ status: "running", currentReleaseId: first.id });
+    expect(await envRow(preview.id)).toMatchObject({ status: "running", currentReleaseId: first.id });
   });
 
   it("only the app's own workspace: a job naming another workspace does nothing", async () => {

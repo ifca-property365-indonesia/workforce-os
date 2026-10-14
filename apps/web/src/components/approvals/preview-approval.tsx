@@ -44,8 +44,8 @@ export function PreviewApprovalPreview({ a, payload }: { a: Approval; payload: R
   const parsed = requestPreviewPayloadSchema.safeParse(payload);
   if (!parsed.success) return <pre className="overflow-auto rounded-lg border bg-muted/40 p-3 text-xs">{JSON.stringify(payload, null, 2)}</pre>;
   const p: RequestPreviewPayload = parsed.data;
-  const live = apps?.find((x) => x.id === p.appId);
-  const color = appColors((apps ?? []).map((x) => x.id).concat(live ? [] : [p.appId])).get(p.appId) ?? "biru";
+  const known = apps?.find((x) => x.id === p.appId);
+  const color = appColors((apps ?? []).map((x) => x.id).concat(known ? [] : [p.appId])).get(p.appId) ?? "biru";
   const outcome = releaseOutcome(a);
   const maxLines = Math.max(0, ...p.files.map((x) => x.added + x.removed));
   const totals = p.files.reduce((s, x) => ({ added: s.added + x.added, removed: s.removed + x.removed }), { added: 0, removed: 0 });
@@ -57,7 +57,7 @@ export function PreviewApprovalPreview({ a, payload }: { a: Approval; payload: R
       {/* the shopfront: the app's sign over its address */}
       <div className="relative space-y-2.5 border-b bg-[color-mix(in_srgb,var(--sign)_7%,transparent)] px-4 pt-4 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <AppSign app={{ name: p.appName, status: live?.status ?? "running" }} color={color} />
+          <AppSign app={{ name: p.appName, status: known?.preview.status ?? "running" }} color={color} />
           {p.currentCommit ? (
             <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{t("preview.update")}</span>
           ) : (

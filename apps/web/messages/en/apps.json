@@ -1,6 +1,6 @@
 {
   "title": "Apps",
-  "description": "Previews of the apps your employees build, each at its own address on one of your servers. A deploy takes an exact commit; if anything fails, the version that ran before keeps running.",
+  "description": "The apps your employees build: a preview of each at its own address on your server, and, once a client is ready, its live site at the client's own domain. A deploy takes an exact commit; if anything fails, the version that ran before keeps running.",
   "newApp": "New app",
   "stopAll": "Stop all previews",
   "stopAllConfirm": "Stop every running preview in this workspace? Each one can be started again with one click.",
@@ -43,7 +43,8 @@
     "never": "Never deployed",
     "by": "by {name}",
     "byPlatform": "by an employee",
-    "open": "Open {name}"
+    "open": "Open {name}",
+    "liveVersion": "Live"
   },
   "empty": {
     "title": "No apps yet",
@@ -96,14 +97,11 @@
     "notFound": "This app does not exist (any more).",
     "open": "Open preview",
     "tiles": {
-      "status": "Status",
-      "live": "Live version",
       "server": "Server",
-      "memory": "Memory"
+      "memory": "Memory",
+      "port": "Port"
     },
-    "port": "port {port}",
     "memoryValue": "{mb} MB",
-    "withDatabase": "with a database",
     "noRelease": "None yet",
     "deployedAgo": "deployed {ago}",
     "repoMissing": "Repository removed",
@@ -117,7 +115,17 @@
     "dangerHelp": "Deleting removes the app from its server with its files and its database, then from Workforce OS. You confirm with your password and authenticator code.",
     "deleteConfirm": "Delete {name}? It is removed from its server together with its files and its database. This cannot be undone.",
     "deleting": "Deleting the app from its server…",
-    "deployingNote": "A deploy is running. You can follow it in the log below."
+    "deployingNote": "A deploy is running. You can follow it in the log below.",
+    "openLive": "Open the live site",
+    "redirects": "Also answers at {names} (redirected)",
+    "previewVersion": "Version in the preview",
+    "liveVersion": "Version live",
+    "db": "database",
+    "settingsTitle": "Access and variables",
+    "deployingLiveNote": "A release to live is running. You can follow it in the log below.",
+    "dangerHelpLive": "Deleting removes the app from its servers, the preview and the live site, with their files and databases, then from Workforce OS. Only the Owner can: with the live site stopped, its domain typed, and password and authenticator code.",
+    "deleteConfirmLive": "Delete {name} with its live site at {domain}? Both environments are removed from their servers with their files and databases. This cannot be undone.",
+    "deleteNeedsOwner": "This app has a live site, so only the Owner can delete it."
   },
   "actions": {
     "deploy": "Deploy",
@@ -129,7 +137,9 @@
     "stopping": "Stopping {name}.",
     "starting": "Starting {name}.",
     "deployQueued": "Deploy queued.",
-    "rollbackQueued": "Rollback queued."
+    "rollbackQueued": "Rollback queued.",
+    "stopLiveConfirm": "Stop the live site of {name}? {domain} shows an error to its visitors until it is started again.",
+    "rollbackLiveConfirm": "Bring back {commit} on the live site? It runs as a new live release. The live database is not restored: its data stays as it is now."
   },
   "deploy": {
     "title": "Deploy {name}",
@@ -152,7 +162,11 @@
     "rotate": "New password",
     "rotateConfirm": "Make a new password? A running preview switches to it within a minute and the old one stops working.",
     "rotated": "New password made. A running preview switches to it within a minute.",
-    "audited": "Every time it is shown, the audit log records who looked."
+    "audited": "Every time it is shown, the audit log records who looked.",
+    "liveTitle": "Live site password",
+    "liveDescription": "The live site asks for this before it shows anything. Useful before launch; switch it to public in the live settings when the client goes live.",
+    "livePublic": "The live site is public: anyone can open it, and search engines may index it.",
+    "liveOwnerOnly": "Only the Owner sees or changes the live password."
   },
   "env": {
     "title": "Environment variables",
@@ -172,7 +186,10 @@
     "nameInvalid": "Use UPPER_CASE letters, digits and underscores, starting with a letter.",
     "nameReserved": "{name} is set by the platform.",
     "nameDuplicate": "{name} is listed twice.",
-    "readOnly": "Only Admins change variables. Names set now:"
+    "readOnly": "Only Admins change variables. Names set now:",
+    "liveTitle": "Live environment variables",
+    "liveDescription": "The live site's own settings: real SMTP, payment keys and the like. They are never shared with the preview, are stored encrypted and never shown again; they apply at the next release to live.",
+    "liveReadOnly": "Only the Owner changes the live variables. Names set now:"
   },
   "releases": {
     "title": "Releases",
@@ -244,7 +261,10 @@
     "byTask": "<b>{employee}</b> via <task>{title}</task>",
     "unknownEmployee": "An employee",
     "approvedBy": "approved by {name}",
-    "viewApproval": "view the approval"
+    "viewApproval": "view the approval",
+    "filter": "Show releases of",
+    "filterAll": "All",
+    "promoted": "To live"
   },
   "taskPreviews": {
     "title": "Previews",
@@ -252,5 +272,103 @@
     "waiting": "The task waits here until the platform reports how the deploy went; the employee does not continue before that.",
     "openApp": "Open the app's page",
     "approval": "Approval"
+  },
+  "environments": {
+    "preview": "Preview",
+    "live": "Live"
+  },
+  "live": {
+    "emptyTitle": "No live site yet",
+    "emptyLead": "When the client is ready, the app goes live at the client's own domain, on a server of your choice, with its own variables and its own database. Previews never touch live data.",
+    "setup": "Set up live",
+    "ownerOnly": "Only the Owner sets up a live site.",
+    "setupTitle": "Live site for {name}",
+    "setupDescription": "Choose the server and the client's domain. Nothing is published yet: you first point the domain at the server, then release a version that ran in the preview.",
+    "serverLive": "{name} (live server)",
+    "serverDev": "{name} (dev server)",
+    "serverHelp": "A live server: meant for client sites.",
+    "serverDevHelp": "This is a dev server. Fine for a test; for a client's real site, pick a server with the live role.",
+    "domain": "Domain",
+    "domainPlaceholder": "guestbook.example.com",
+    "domainHelp": "The address the client's visitors type, e.g. app.client.com. The client's DNS must point it at the server.",
+    "domainInvalid": "Use a domain like app.example.com: lowercase letters, digits, dashes and dots.",
+    "domainPreview": "{domain} is a preview address. A live site needs a domain of its own.",
+    "domainDuplicate": "{domain} is listed twice.",
+    "aliases": "Also answer at",
+    "aliasesHelp": "Up to {max} more names that redirect to the domain, such as www. Each needs the same DNS record.",
+    "aliasLabel": "Extra name {n}",
+    "aliasRemove": "Remove {name}",
+    "aliasAdd": "Another name",
+    "setupNoteSeparate": "Its own variables, password and database: nothing is copied from the preview.",
+    "setupNotePublic": "Public by default and visible to search engines; you can put a password on it in the live settings.",
+    "setupNoteDns": "Next: create the DNS records shown on the app's page, then check DNS.",
+    "setupConfirm": "Set up live",
+    "created": "Live site set up. Point the domain at the server, then check DNS.",
+    "settings": "Live settings",
+    "editTitle": "Live settings",
+    "editDescription": "A new domain or name is checked again in DNS before the next release to live.",
+    "editRunning": "The live site is running: stop it first to change its domain or names. Access can be changed now.",
+    "accessPublic": "Public",
+    "accessPublicHelp": "Anyone can open it; search engines may index it. Usual for a site that has launched.",
+    "accessPasswordHelp": "Visitors need a username and password. Useful before launch.",
+    "namesResetDns": "Changing the names checks DNS again right away; a release to live waits until it is ok.",
+    "saved": "Live settings saved.",
+    "dnsPending": "The domain does not point at the server yet. Create the DNS records below, then check DNS.",
+    "release": "Release to live",
+    "releaseTitle": "Release {name} to live",
+    "releaseDescription": "Pick a version that ran in the preview. Exactly that commit is built on the live server and switched on at {domain}; if a step fails, the version live now keeps running.",
+    "releasePick": "Versions that ran in the preview, newest first",
+    "releaseRan": "ran in the preview {ago}",
+    "releaseInPreview": "in the preview now",
+    "releaseIsLive": "live now",
+    "releaseNone": "No version has run in the preview yet. Deploy the preview first and check it there.",
+    "releaseDnsFirst": "The domain does not point at the server yet. Check DNS first: a release to live waits until it is ok.",
+    "releaseAudited": "You confirm with your password and authenticator code. The release is recorded in the audit log.",
+    "releaseConfirm": "Release to live",
+    "releaseQueued": "Release to live queued.",
+    "remove": "Remove live site",
+    "removeHelp": "Removes the live site at {domain} from its server with its files and its database. The preview stays.",
+    "removeConfirm": "Remove the live site at {domain}? Its files and its database are deleted from the server. The preview stays. This cannot be undone.",
+    "removing": "Removing the live site from its server…",
+    "releaseEnvChanged": "{count, plural, one {This live variable changed} other {These # live variables changed}} since the version live now. The release brings the new values:",
+    "removeDump": "A final dump of the live database is kept on the server for 30 days.",
+    "removeType": "Type <b>{domain}</b> to confirm",
+    "removeFinal": "Remove for good",
+    "stopFirst": "Stop the live site first."
+  },
+  "dns": {
+    "title": "Domain and DNS",
+    "help": "At the client's DNS provider, create these records for every name, then check. It can take a few minutes, sometimes hours, before public DNS sees a change.",
+    "okHelp": "Every name points at the server. The live site can be released.",
+    "check": "Check DNS",
+    "checking": "Checking…",
+    "checkedAgo": "checked {ago}",
+    "okToast": "DNS is ok: every name points at the server.",
+    "summary": {
+      "ok": "DNS is ok.",
+      "wrong": "Some names point at another address. Correct the records and check again.",
+      "missing": "Some names have no record yet. Create them and check again in a few minutes.",
+      "error": "Public DNS did not answer. Try again in a moment."
+    },
+    "status": {
+      "ok": "Points here",
+      "wrong": "Points elsewhere",
+      "missing": "No record",
+      "error": "No answer",
+      "unchecked": "Not checked"
+    },
+    "columns": {
+      "type": "Type",
+      "name": "Name",
+      "value": "Points to",
+      "now": "Now"
+    },
+    "copyName": "Copy {name}",
+    "copyValue": "Copy {value}",
+    "found": "found {addresses}",
+    "notChecked": "Not checked yet. Check DNS to see the server's address and what each name answers.",
+    "noServerAddress": "The server's own address could not be found in public DNS. Check the server's host in Settings → Servers, then check again.",
+    "certificate": "At the first release to live, Let's Encrypt issues the certificate for {domain}. It needs DNS to be ok.",
+    "certificateWithAliases": "At the first release to live, Let's Encrypt issues one certificate for {domain} and {aliases}; those names redirect to {domain}. It needs DNS to be ok."
   }
 }

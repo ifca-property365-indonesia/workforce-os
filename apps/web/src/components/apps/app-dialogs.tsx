@@ -47,7 +47,7 @@ export function DeployDialog({ app, onClose }: { app: AppDTO; onClose: () => voi
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("deploy.title", { name: app.name })}</DialogTitle>
-          <DialogDescription>{t("deploy.description", { server: app.serverName })}</DialogDescription>
+          <DialogDescription>{t("deploy.description", { server: app.preview.serverName })}</DialogDescription>
         </DialogHeader>
         <form
           id={`${uid}-form`}
@@ -117,7 +117,7 @@ export function EditAppDialog({ app, onClose }: { app: AppDTO; onClose: () => vo
   const qc = useQueryClient();
   const uid = useId();
   const { data: clients } = useClients();
-  const [f, setF] = useState({ name: app.name, branch: app.branch, clientId: app.clientId ?? "", projectId: app.projectId ?? "", accessMode: app.accessMode as AppAccessMode });
+  const [f, setF] = useState({ name: app.name, branch: app.branch, clientId: app.clientId ?? "", projectId: app.projectId ?? "", accessMode: app.preview.accessMode as AppAccessMode });
   const projects = clients?.find((c) => c.id === f.clientId)?.projects ?? [];
   const m = useMutation({
     mutationFn: () =>

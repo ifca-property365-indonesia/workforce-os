@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { AlertTriangle, Copy, History, ScrollText, Undo2 } from "lucide-react";
-import { RELEASE_STEPS, type ReleaseDTO, type ReleaseStep } from "@wfos/shared";
+import { RELEASE_STEPS, type AppEnvironmentKind, type ReleaseDTO, type ReleaseStep } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/layout/common";
@@ -14,7 +14,7 @@ import { api } from "@/lib/api";
 import type { ReleaseOrigin } from "@/lib/app-previews";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
-import { CommitChip, copyText, isActiveRelease, ReleaseStatusBadge, releaseQueryKey, shortSha, useDuration } from "./shared";
+import { CommitChip, copyText, EnvPlate, isActiveRelease, ReleaseStatusBadge, releaseQueryKey, shortSha, useDuration } from "./shared";
 
 /** warnings that ask a person to look twice are amber; the rest are informational */
 export const LOUD_WARNINGS: ReadonlySet<string> = new Set(["destructive_migration", "new_database", "public_access"]);
@@ -71,30 +71,35 @@ function ReleaseBy({ release: r, origin }: { release: ReleaseDTO; origin: Releas
 }
 
 /**
- * The releases of one app, newest first: what ran, how it got there and how long it took. Members open a log;
- * Admins bring back an earlier version that ran.
+ * The releases of one app, newest first: what ran, in which environment, how it got there and how long it took.
+ * Members open a log; whoever may change that environment brings back an earlier version that ran in it. With a
+ * live environment the table gets an environment filter and a PREVIEW / LIVE plate per row.
  */
 export function ReleasesTable({
   releases,
   origins = {},
-  currentId,
+  currentIds,
   logs,
-  admin,
+  canRollback: mayRollback,
   onRollback,
   rollbackPending,
+  showEnvironments = false,
 }: {
   releases: ReleaseDTO[];
   origins?: Record<string, ReleaseOrigin>;
-  currentId: string | null;
+  /** the release each environment runs now */
+  currentIds: readonly string[];
   logs: boolean;
-  admin: boolean;
+  canRollback: (r: ReleaseDTO) => boolean;
   onRollback: (r: ReleaseDTO) => void;
   rollbackPending: boolean;
+  showEnvironments?: boolean;
 }) {
   const t = useTranslations("apps");
   const f = useFormat();
   const duration = useDuration();
   const [open, setOpen] = useState<string | null>(null);
+  const [filter, setFilter] = useState<AppEnvironmentKind | "all">("all");
   const opened = releases.find((r) => r.id === open) ?? null;
   // an active release ticks its duration every second
   const [now, setNow] = useState(() => Date.now());
@@ -104,10 +109,31 @@ export function ReleasesTable({
     const h = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(h);
   }, [active]);
+  const shown = showEnvironments && filter !== "all" ? releases.filter((r) => r.environmentKind === filter) : releases;
+  const count = (k: AppEnvironmentKind) => releases.filter((r) => r.environmentKind === k).length;
 
   if (!releases.length) return <EmptyState icon={<History className="size-7" />} title={t("releases.empty")} />;
   return (
     <>
+      {showEnvironments && (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("releases.filter")}>
+          {(["all", "preview", "live"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={filter === k}
+              onClick={() => setFilter(k)}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                filter === k ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+              )}
+            >
+              {k === "all" ? t("releases.filterAll") : t(`environments.${k}`)}
+              <span className="tabular-nums opacity-70">{k === "all" ? releases.length : count(k)}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="relative overflow-x-auto rounded-xl border bg-card">
         <table className="w-full min-w-[46rem] text-sm">
           <thead>
@@ -136,13 +162,14 @@ export function ReleasesTable({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {releases.map((r) => {
-              const current = r.id === currentId;
-              const canRollback = admin && !current && (r.status === "deployed" || r.status === "superseded") && !!r.commit;
+            {shown.map((r) => {
+              const current = currentIds.includes(r.id);
+              const canRollback = mayRollback(r) && !current && (r.status === "deployed" || r.status === "superseded") && !!r.commit;
               return (
                 <tr key={r.id} className={cn("align-top", current && "bg-success/[0.06]", isActiveRelease(r) && "bg-[color-mix(in_srgb,var(--sign-biru)_7%,transparent)]")}>
                   <td className="px-3 py-2.5">
                     <div className="flex flex-col items-start gap-1">
+                      {showEnvironments && <EnvPlate kind={r.environmentKind} />}
                       <ReleaseStatusBadge status={r.status} />
                       {current && <span className="text-[11px] font-semibold text-success">{t("releases.current")}</span>}
                       {r.step && (isActiveRelease(r) || r.status === "failed" || r.status === "rolled_back") && (
@@ -161,7 +188,7 @@ export function ReleasesTable({
                     </div>
                     {r.error && <p className="mt-1 line-clamp-2 text-xs text-destructive">{r.error}</p>}
                   </td>
-                  <td className="px-3 py-2.5 text-xs whitespace-nowrap">{t(`releases.trigger.${r.trigger}`)}</td>
+                  <td className="px-3 py-2.5 text-xs whitespace-nowrap">{r.promotedFromReleaseId && r.trigger !== "rollback" ? t("releases.promoted") : t(`releases.trigger.${r.trigger}`)}</td>
                   <td className="px-3 py-2.5 text-xs">
                     <ReleaseBy release={r} origin={r.taskId ? origins[r.taskId] : undefined} />
                   </td>
@@ -260,6 +287,7 @@ function LogViewer({ release: initial }: { release: ReleaseDTO }) {
       <SheetHeader className="border-b pr-12">
         <SheetTitle className="flex flex-wrap items-center gap-2 text-base">
           {t("releases.logTitle", { commit: release.commit ? shortSha(release.commit) : release.branch })}
+          <EnvPlate kind={release.environmentKind} />
           <ReleaseStatusBadge status={release.status} />
         </SheetTitle>
         <SheetDescription className="truncate">

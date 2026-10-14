@@ -1,80 +1,95 @@
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
-import { apps, appReleases, db, servers, workspaces } from "@wfos/db";
+import { appEnvironments, apps, appReleases, db, servers, workspaces } from "@wfos/db";
 import { APP_IDLE_STOP_DAYS } from "@wfos/shared";
 import { env } from "../lib/env";
 import { log } from "../lib/logger";
-import { deploysQueue, publish, redis } from "../lib/redis";
-import { idleNow, notifyApp, sshTarget } from "../deploy/common";
+import { deploysQueue, redis } from "../lib/redis";
+import { envLabel, idleNow, notifyApp, publishEnvironment, sshTarget } from "../deploy/common";
 import { helperCall } from "../deploy/helper";
 import { parseManifest } from "../deploy/manifest";
 import { appMsg } from "../deploy/messages";
 
-/** How often index.ts looks for apps due a health check or an idle stop. */
+/** How often index.ts looks for environments due a health check or an idle stop. */
 export const APPS_TICK_MS = 10 * 60_000;
-/** A running app's health is checked again when its last check is at least this old (hourly). */
+/** A running environment's health is checked again when its last check is at least this old (hourly). */
 export const APP_HEALTH_EVERY_MS = 60 * 60_000;
 const IDLE_MS = APP_IDLE_STOP_DAYS * 24 * 60 * 60_000;
 const HEALTH_BATCH = 50;
 
 export interface AppsTickOutcome {
-  /** apps an idle stop was queued for */
+  /** environments (always previews) an idle stop was queued for */
   idle: string[];
-  /** apps whose health was checked, and the result */
-  health: { appId: string; healthy: boolean; wentDown: boolean }[];
+  /** environments whose health was checked, and the result */
+  health: { appId: string; environmentId: string; healthy: boolean; wentDown: boolean }[];
 }
 
 /**
- * Running apps with no new release for APP_IDLE_STOP_DAYS (and not started again by a person within that time) get a
- * `stop` job with reason idle; the stop itself notifies. A day-long Redis claim keeps one tick from queueing it twice.
+ * Running PREVIEWS with no new release for APP_IDLE_STOP_DAYS (and not started again by a person within that time)
+ * get a `stop` job with reason idle; the stop itself notifies. A live environment is never stopped for being idle.
+ * A day-long Redis claim keeps one tick from queueing it twice.
  */
 async function queueIdleStops(now: Date): Promise<string[]> {
   const cutoff = new Date(now.getTime() - IDLE_MS);
   const candidates = await db
-    .select({ id: apps.id, workspaceId: apps.workspaceId, status: apps.status, lastDeployedAt: apps.lastDeployedAt })
-    .from(apps)
-    .where(and(eq(apps.status, "running"), lte(apps.lastDeployedAt, cutoff)));
+    .select({
+      id: appEnvironments.id,
+      appId: appEnvironments.appId,
+      workspaceId: appEnvironments.workspaceId,
+      kind: appEnvironments.kind,
+      status: appEnvironments.status,
+      lastDeployedAt: appEnvironments.lastDeployedAt,
+    })
+    .from(appEnvironments)
+    .where(and(eq(appEnvironments.kind, "preview"), eq(appEnvironments.status, "running"), lte(appEnvironments.lastDeployedAt, cutoff)));
   const out: string[] = [];
-  for (const a of candidates) {
-    if (!(await idleNow(a, now))) continue;
-    if ((await redis.set(`${env.namespace}:app-idle-stop:${a.id}`, "1", "PX", 24 * 60 * 60_000, "NX")) === null) continue;
+  for (const e of candidates) {
+    if (!(await idleNow(e, now))) continue;
+    if ((await redis.set(`${env.namespace}:app-idle-stop:${e.id}`, "1", "PX", 24 * 60 * 60_000, "NX")) === null) continue;
     await deploysQueue.add(
       "app_action",
-      { kind: "app_action", appId: a.id, workspaceId: a.workspaceId, action: "stop", userId: null, reason: "idle" },
-      { jobId: `app-${a.id}-stop-${now.getTime()}` },
+      { kind: "app_action", appId: e.appId, workspaceId: e.workspaceId, environmentId: e.id, action: "stop", userId: null, reason: "idle" },
+      { jobId: `app-${e.appId}-${e.id}-stop-${now.getTime()}` },
     );
-    out.push(a.id);
+    out.push(e.id);
   }
   return out;
 }
 
 /**
- * Health of each running app on a ready server whose last check is APP_HEALTH_EVERY_MS old: `health` through the
- * helper (the app's own port, its manifest's path). healthy → unhealthy notifies once (the conditional update
- * decides who sends it); every change publishes app.updated. An SSH failure says nothing about the app (the server
- * check reports it) and is skipped.
+ * Health of each running environment (preview and live) on a ready server whose last check is APP_HEALTH_EVERY_MS
+ * old: `health` through the helper (the environment's instance and port, its current manifest's path). healthy →
+ * unhealthy notifies once (the conditional update decides who sends it); every change publishes app.updated. An SSH
+ * failure says nothing about the app (the server check reports it) and is skipped.
  */
 async function checkHealth(now: Date, skip: Set<string>): Promise<AppsTickOutcome["health"]> {
   const due = await db
-    .select({ app: apps, server: servers, manifest: appReleases.manifest, locale: workspaces.defaultLocale })
-    .from(apps)
-    .innerJoin(servers, eq(servers.id, apps.serverId))
-    .innerJoin(appReleases, eq(appReleases.id, apps.currentReleaseId))
-    .innerJoin(workspaces, eq(workspaces.id, apps.workspaceId))
-    .where(and(eq(apps.status, "running"), eq(servers.status, "ready"), or(isNull(apps.lastHealthAt), lte(apps.lastHealthAt, new Date(now.getTime() - APP_HEALTH_EVERY_MS)))))
-    .orderBy(sql`${apps.lastHealthAt} asc nulls first`)
+    .select({ env: appEnvironments, appName: apps.name, server: servers, manifest: appReleases.manifest, locale: workspaces.defaultLocale })
+    .from(appEnvironments)
+    .innerJoin(apps, eq(apps.id, appEnvironments.appId))
+    .innerJoin(servers, eq(servers.id, appEnvironments.serverId))
+    .innerJoin(appReleases, eq(appReleases.id, appEnvironments.currentReleaseId))
+    .innerJoin(workspaces, eq(workspaces.id, appEnvironments.workspaceId))
+    .where(
+      and(
+        eq(appEnvironments.status, "running"),
+        eq(servers.status, "ready"),
+        or(isNull(appEnvironments.lastHealthAt), lte(appEnvironments.lastHealthAt, new Date(now.getTime() - APP_HEALTH_EVERY_MS))),
+      ),
+    )
+    .orderBy(sql`${appEnvironments.lastHealthAt} asc nulls first`)
     .limit(HEALTH_BATCH);
   const out: AppsTickOutcome["health"] = [];
-  for (const { app, server, manifest, locale } of due) {
-    if (skip.has(app.id)) continue;
+  for (const { env: e, appName, server, manifest, locale } of due) {
+    if (skip.has(e.id)) continue;
     try {
       const target = await sshTarget(server);
       if (!target) continue;
       const path = parseManifest(manifest).health;
       let r;
       try {
-        r = await helperCall(target, "health", [app.slug, app.port, path], { timeoutMs: 30_000 });
-      } catch (e) {
-        log.warn({ appId: app.id, err: (e as Error).message }, "app health check: server not reachable");
+        r = await helperCall(target, "health", [e.instanceName, e.port, path], { timeoutMs: 30_000 });
+      } catch (err) {
+        log.warn({ appId: e.appId, environmentId: e.id, err: (err as Error).message }, "app health check: server not reachable");
         continue;
       }
       const healthy = r.code === 0;
@@ -87,33 +102,34 @@ async function checkHealth(now: Date, skip: Set<string>): Promise<AppsTickOutcom
       })();
       // only while it still runs (a stop or deploy in the meantime wins); going down is claimed by the row moving
       // from healthy (or unknown) to unhealthy, so one tick sends the notification
-      const running = and(eq(apps.id, app.id), eq(apps.status, "running"));
+      const running = and(eq(appEnvironments.id, e.id), eq(appEnvironments.status, "running"));
       const [down] = healthy
         ? []
         : await db
-            .update(apps)
+            .update(appEnvironments)
             .set({ healthy: false, lastHealthAt: now })
-            .where(and(running, or(isNull(apps.healthy), eq(apps.healthy, true))))
-            .returning({ id: apps.id });
+            .where(and(running, or(isNull(appEnvironments.healthy), eq(appEnvironments.healthy, true))))
+            .returning({ id: appEnvironments.id });
       const wentDown = !!down;
       if (!wentDown) {
-        const [row] = await db.update(apps).set({ healthy, lastHealthAt: now }).where(running).returning({ id: apps.id });
+        const [row] = await db.update(appEnvironments).set({ healthy, lastHealthAt: now }).where(running).returning({ id: appEnvironments.id });
         if (!row) continue;
       }
       if (wentDown) {
+        const name = envLabel({ name: appName }, e);
         await notifyApp({
-          workspaceId: app.workspaceId,
-          appId: app.id,
+          workspaceId: e.workspaceId,
+          appId: e.appId,
           userId: null,
           kind: "incident",
-          subject: appMsg(locale, "app.unhealthy", { name: app.name }),
-          text: appMsg(locale, "app.unhealthyText", { name: app.name, detail: `${path} → HTTP ${status}` }),
+          subject: appMsg(locale, "app.unhealthy", { name }),
+          text: appMsg(locale, "app.unhealthyText", { name, detail: `${path} → HTTP ${status}` }),
         });
       }
-      if (app.healthy !== healthy) await publish(app.workspaceId, { type: "app.updated", appId: app.id, status: "running" });
-      out.push({ appId: app.id, healthy, wentDown });
-    } catch (e) {
-      log.warn({ err: e, appId: app.id }, "app health check failed");
+      if (e.healthy !== healthy) await publishEnvironment({ ...e, status: "running" });
+      out.push({ appId: e.appId, environmentId: e.id, healthy, wentDown });
+    } catch (err) {
+      log.warn({ err, appId: e.appId, environmentId: e.id }, "app health check failed");
     }
   }
   return out;

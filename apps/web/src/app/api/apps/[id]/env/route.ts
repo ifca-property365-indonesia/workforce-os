@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { apps, audit, db } from "@wfos/db";
+import { appEnvironments, audit, db } from "@wfos/db";
 import { APP_ENV_NAME_RE, appEnvSchema } from "@wfos/shared";
 import { encryptSecret } from "@wfos/shared/server";
 import { HttpError } from "@/lib/server/auth";
-import { loadApp, readEnv } from "@/lib/server/apps";
+import { loadAppEnv, readEnv, requireLiveOwner } from "@/lib/server/apps";
 import { publish } from "@/lib/server/queue";
 import { route } from "@/lib/server/route";
 
@@ -20,12 +20,14 @@ const mergeSchema = z
   .strict();
 
 /**
- * Replace (a plain `{ NAME: value }` object) or merge (`{ set, remove }`) the app's extra env. The values are
- * stored encrypted and reach only the server's root-owned env file at the next deploy; the response and every
- * other endpoint return the names only.
+ * Replace (a plain `{ NAME: value }` object) or merge (`{ set, remove }`) the extra env of one environment
+ * (`?env=preview`, the default, or `?env=live`: the two never share values). The values are stored encrypted and
+ * reach only the server's root-owned env file at that environment's next deploy; the response and every other
+ * endpoint return the names only. The live environment's values are the Owner's, with a fresh step-up.
  */
 export const PUT = route<{ id: string }>("ADMIN", async ({ session, req, params }) => {
-  const a = await loadApp(session.workspaceId, params.id);
+  const { app: a, env: e } = await loadAppEnv(session.workspaceId, params.id, req);
+  if (e.kind === "live") await requireLiveOwner(session);
   let json: unknown;
   try {
     json = await req.json();
@@ -33,7 +35,7 @@ export const PUT = route<{ id: string }>("ADMIN", async ({ session, req, params 
     throw new HttpError(400, "Invalid JSON body", { code: "invalid_json" });
   }
   if (!json || typeof json !== "object" || Array.isArray(json)) throw new HttpError(400, "Body must be an object", { code: "invalid_json" });
-  const before = readEnv(a.envEnc);
+  const before = readEnv(e.envEnc);
   let next: Record<string, string>;
   // env names are UPPER_CASE, so lower-case `set` / `remove` can only mean a merge
   if ("set" in json || "remove" in json) {
@@ -45,9 +47,9 @@ export const PUT = route<{ id: string }>("ADMIN", async ({ session, req, params 
   const env = appEnvSchema.parse(next);
   const keys = Object.keys(env).sort();
   await db
-    .update(apps)
+    .update(appEnvironments)
     .set({ envEnc: keys.length ? encryptSecret(JSON.stringify(env)) : null, updatedAt: new Date() })
-    .where(eq(apps.id, a.id));
+    .where(eq(appEnvironments.id, e.id));
   const old = Object.keys(before);
   await audit({
     workspaceId: session.workspaceId,
@@ -59,11 +61,13 @@ export const PUT = route<{ id: string }>("ADMIN", async ({ session, req, params 
     // names only: never a value, not even a hash of one
     details: {
       name: a.name,
+      environment: e.kind,
+      environmentId: e.id,
       added: keys.filter((k) => !old.includes(k)),
       changed: keys.filter((k) => old.includes(k) && before[k] !== env[k]),
       removed: old.filter((k) => !keys.includes(k)),
     },
   });
-  await publish(session.workspaceId, { type: "app.updated", appId: a.id, status: a.status });
+  await publish(session.workspaceId, { type: "app.updated", appId: a.id, status: e.status, environmentId: e.id });
   return { envKeys: keys };
 });

@@ -5,15 +5,16 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { vi } from "vitest";
-import { apps, appReleases, db, getOrCreateWorkspaceSshKey, members, repositories, servers, users } from "@wfos/db";
-import { WFOS_HELPER_VERSION, type ServerInfo } from "@wfos/shared";
+import { and, eq } from "drizzle-orm";
+import { appEnvironments, apps, appReleases, db, getOrCreateWorkspaceSshKey, members, repositories, servers, users } from "@wfos/db";
+import { appInstanceName, WFOS_HELPER_VERSION, type DomainCheck, type ServerInfo } from "@wfos/shared";
 import { encryptSecret } from "@wfos/shared/server";
 import * as ssh from "@wfos/shared/ssh";
 import { deployDeps, deployTiming } from "../src/deploy/common";
 import { makeWorkspace } from "./fixtures";
 
 // The test files vi.mock("@wfos/shared/ssh") with sshExec / sftpPut as vi.fn(); FakeServer answers them like the
-// helper v2 of contract A2 §1 would, and records every call (command, arguments, stdin).
+// helper v3 of contract B1 would, and records every call (command, arguments, stdin).
 
 export const HOST_KEY = Buffer.concat([Buffer.from([0, 0, 0, 11]), Buffer.from("ssh-ed25519"), Buffer.from([0, 0, 0, 32]), Buffer.alloc(32, 7)]).toString("base64");
 
@@ -98,6 +99,10 @@ export class FakeServer {
       case "db-restore":
         if (!this.backups.has(c.args[1]!)) return { code: 1, stderr: `wfos-app-helper: backup_missing: no backup ${c.args[1]} for ${c.args[0]}\n` };
         return { code: 0, stdout: "restored\n" };
+      case "app-remove":
+        // helper v3: a live environment's database is dumped before it is dropped; the path is the last line
+        if (c.args.includes("--keep-db-dump")) return { code: 0, stdout: `removed ${c.args[0]}\n/var/lib/wfos-apps/removed/${c.args[0]}-20261014T033000Z.dump\n` };
+        return { code: 0, stdout: `removed ${c.args[0]}\n` };
       case "unit-status":
         return { code: 0, stdout: `${this.unit}\n` };
       case "health": {
@@ -203,16 +208,56 @@ export const serverInfo = (over: Partial<ServerInfo> = {}): ServerInfo => ({
 
 export const SECRET_ENV = "s3cr3t-smtp-password-value";
 
-/** Workspace + SSH key + creator + ready server + repository (the given remote) + a new app. */
-export async function makeApp(o: { remote: string; app?: Partial<typeof apps.$inferInsert>; server?: Partial<typeof servers.$inferInsert> }) {
+type EnvInsert = typeof appEnvironments.$inferInsert;
+let nextPort = 4100 + Math.floor(Math.random() * 300);
+
+/**
+ * Workspace + SSH key + creator (role ADMIN, or `role`) + ready server + repository (the given remote) + a new app
+ * with its preview environment (instance = slug, <slug>.preview.example.com, password access).
+ */
+export async function makeApp(o: {
+  remote: string;
+  app?: Partial<typeof apps.$inferInsert>;
+  preview?: Partial<EnvInsert>;
+  server?: Partial<typeof servers.$inferInsert>;
+  role?: "OWNER" | "ADMIN" | "MEMBER";
+}) {
   const ws = await makeWorkspace();
   await getOrCreateWorkspaceSshKey(db, ws.id, ws.slug);
   const [u] = await db.insert(users).values({ email: `admin-${randomUUID().slice(0, 8)}@test.local`, name: "Admin", passwordHash: "x" }).returning();
-  await db.insert(members).values({ workspaceId: ws.id, userId: u!.id, role: "ADMIN" });
+  await db.insert(members).values({ workspaceId: ws.id, userId: u!.id, role: o.role ?? "ADMIN" });
+  const server = await makeServer(ws.id, o.server);
+  const [repo] = await db.insert(repositories).values({ workspaceId: ws.id, name: `repo-${randomUUID().slice(0, 6)}`, provider: "git", url: o.remote }).returning();
+  const slug = `kopi-${randomUUID().slice(0, 6)}`;
+  // only the app's own fields: the deprecated environment columns of apps are never written
+  const [app] = await db
+    .insert(apps)
+    .values({ workspaceId: ws.id, repositoryId: repo!.id, name: `Toko ${slug}`, slug, createdBy: u!.id, ...o.app })
+    .returning();
+  const [preview] = await db
+    .insert(appEnvironments)
+    .values({
+      appId: app!.id,
+      workspaceId: ws.id,
+      kind: "preview",
+      serverId: server.id,
+      instanceName: appInstanceName(app!.slug, "preview"),
+      domain: `${app!.slug}.preview.example.com`,
+      port: nextPort++,
+      envEnc: encryptSecret(JSON.stringify({ SMTP_PASSWORD: SECRET_ENV, FEATURE: "on" })),
+      createdBy: u!.id,
+      ...o.preview,
+    })
+    .returning();
+  return { ws, user: u!, server, repo: repo!, app: app!, preview: preview! };
+}
+
+/** A ready server of the workspace (host key pinned, helper v3). */
+export async function makeServer(workspaceId: string, over: Partial<typeof servers.$inferInsert> = {}) {
   const [server] = await db
     .insert(servers)
     .values({
-      workspaceId: ws.id,
+      workspaceId,
       name: "dev",
       host: `s-${randomUUID().slice(0, 8)}.example.com`,
       baseDomain: "preview.example.com",
@@ -223,33 +268,49 @@ export async function makeApp(o: { remote: string; app?: Partial<typeof apps.$in
       info: serverInfo(),
       // checked just now: the hourly server re-check (servers.test.ts, same database) leaves them alone
       lastCheckedAt: new Date(),
-      ...o.server,
+      ...over,
     })
     .returning();
-  const [repo] = await db.insert(repositories).values({ workspaceId: ws.id, name: `repo-${randomUUID().slice(0, 6)}`, provider: "git", url: o.remote }).returning();
-  const slug = `kopi-${randomUUID().slice(0, 6)}`;
-  const [app] = await db
-    .insert(apps)
-    .values({
-      workspaceId: ws.id,
-      serverId: server!.id,
-      repositoryId: repo!.id,
-      name: `Toko ${slug}`,
-      slug,
-      domain: `${slug}.preview.example.com`,
-      port: 4100 + Math.floor(Math.random() * 399),
-      envEnc: encryptSecret(JSON.stringify({ SMTP_PASSWORD: SECRET_ENV, FEATURE: "on" })),
-      createdBy: u!.id,
-      ...o.app,
-    })
-    .returning();
-  return { ws, user: u!, server: server!, repo: repo!, app: app! };
+  return server!;
 }
 
+export const LIVE_ENV = "live-only-secret-value";
+export const okDns = (names: string[]): DomainCheck => ({ status: "ok", expected: ["203.0.113.10"], names: names.map((name) => ({ name, status: "ok", found: ["203.0.113.10"] })), checkedAt: new Date().toISOString() });
+
+/** The app's live environment (instance <slug>-live, the client's domain + www., public, its own env). */
+export async function makeLive(app: { id: string; slug: string; workspaceId: string }, serverId: string, over: Partial<EnvInsert> = {}) {
+  const domain = `${app.slug}.client-example.org`;
+  const [live] = await db
+    .insert(appEnvironments)
+    .values({
+      appId: app.id,
+      workspaceId: app.workspaceId,
+      kind: "live",
+      serverId,
+      instanceName: appInstanceName(app.slug, "live"),
+      domain,
+      extraDomains: [`www.${domain}`],
+      port: nextPort++,
+      accessMode: "public",
+      envEnc: encryptSecret(JSON.stringify({ SMTP_PASSWORD: LIVE_ENV })),
+      ...over,
+    })
+    .returning();
+  return live!;
+}
+
+/** The app's preview environment. */
+export async function previewOf(appId: string) {
+  const [row] = await db.select().from(appEnvironments).where(and(eq(appEnvironments.appId, appId), eq(appEnvironments.kind, "preview")));
+  return row!;
+}
+
+/** A queued release, in the app's preview unless `over.environmentId` names another environment. */
 export async function queueRelease(app: { id: string; workspaceId: string }, over: Partial<typeof appReleases.$inferInsert> = {}) {
+  const environmentId = over.environmentId ?? (await previewOf(app.id)).id;
   const [r] = await db
     .insert(appReleases)
-    .values({ appId: app.id, workspaceId: app.workspaceId, commit: "", branch: "main", trigger: "manual", ...over })
+    .values({ appId: app.id, workspaceId: app.workspaceId, environmentId, commit: "", branch: "main", trigger: "manual", ...over })
     .returning();
   return r!;
 }
@@ -267,4 +328,15 @@ export function fastDeploys() {
     return status;
   };
   return { publicCalls, setPublicStatus: (s: number) => (status = s) };
+}
+
+/** Another app with an environment on `serverId` in `status` (for the per-server running limit). */
+export async function makeOtherEnv(workspaceId: string, serverId: string, status: "running" | "deploying" | "stopped") {
+  const slug = `other-${randomUUID().slice(0, 8)}`;
+  const [app] = await db.insert(apps).values({ workspaceId, name: `Other ${slug}`, slug }).returning();
+  const [e] = await db
+    .insert(appEnvironments)
+    .values({ appId: app!.id, workspaceId, kind: "preview", serverId, instanceName: slug, domain: `${slug}.preview.example.com`, port: nextPort++, status })
+    .returning();
+  return { app: app!, env: e! };
 }

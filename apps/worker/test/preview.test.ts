@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { approvals, apps, appReleases, db, repositories, steps, tasks } from "@wfos/db";
+import { appEnvironments, approvals, apps, appReleases, db, repositories, steps, tasks } from "@wfos/db";
 import { PREVIEW_MAX_FAILED_ATTEMPTS, requestPreviewPayloadSchema, type NotifyJob, type ToolPermission } from "@wfos/shared";
 import { BUILTIN_SKILL_MARKER, builtinSkillVersion, syncBuiltinSkills } from "@wfos/runner/skills";
 import { buildTools, type RunContext } from "../src/tools/registry";
@@ -16,7 +16,7 @@ import { buildSystemPrompt } from "../src/runner/prompt";
 import { mirrorPath, syncMirror } from "../src/runner/workspace/git";
 import { prepareWorkspaceDirs } from "../src/runner/workspace/query";
 import { runLayout, type SandboxHost } from "../src/runner/workspace/layout";
-import { makeApp, makeRemote, FakeServer, fastDeploys, MANIFEST, SECRET_ENV } from "./deploy-fixtures";
+import { LIVE_ENV, makeApp, makeLive, makeRemote, FakeServer, fastDeploys, MANIFEST, SECRET_ENV } from "./deploy-fixtures";
 import { makeApproval, makeEmployee, makeTask, runContext } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 
@@ -43,9 +43,9 @@ const PERMS: ToolPermission[] = ["git_push", "list_apps", "request_preview"].map
  * A Developer task on the app's repository: mirror synced, and `agentCommit` writes files on agent/<task> in the work
  * tree and exports that branch into the mirror as refs/agent/<task> (what git_push's bundle import does).
  */
-async function setup(o: { perms?: ToolPermission[]; app?: Parameters<typeof makeApp>[0]["app"] } = {}) {
+async function setup(o: { perms?: ToolPermission[]; preview?: Parameters<typeof makeApp>[0]["preview"] } = {}) {
   const remote = makeRemote();
-  const f = await makeApp({ remote: remote.remote, app: o.app });
+  const f = await makeApp({ remote: remote.remote, preview: o.preview });
   const emp = await makeEmployee(f.ws.id, { autonomyLevel: "EXECUTE", toolPermissions: o.perms ?? PERMS });
   const task = await makeTask(f.ws.id, emp.id, { repositoryId: f.repo.id, status: "RUNNING" });
   const repoRef = { id: f.repo.id, name: f.repo.name, provider: "git" as const, url: f.repo.url, defaultBranch: "main", token: null };
@@ -151,7 +151,7 @@ describe("request_preview (tool)", () => {
     expect(p).toMatchObject({
       appId: s.app.id,
       appName: s.app.name,
-      url: `https://${s.app.domain}`,
+      url: `https://${s.preview.domain}`,
       serverName: s.server.name,
       repositoryId: s.repo.id,
       repository: s.repo.name,
@@ -174,12 +174,12 @@ describe("request_preview (tool)", () => {
   });
 
   it("later preview: commits since the release that runs now, and its warnings", async () => {
-    const s = await setup({ app: { dbPasswordEnc: null } });
+    const s = await setup({ preview: { dbPasswordEnc: null } });
     const [cur] = await db
       .insert(appReleases)
-      .values({ appId: s.app.id, workspaceId: s.ws.id, commit: s.remote.first, branch: "main", trigger: "manual", status: "deployed", manifest: { ...MANIFEST, install: "pnpm install --frozen-lockfile", build: "pnpm build", start: "pnpm start -H 127.0.0.1 -p $PORT", type: "nextjs" } as never })
+      .values({ appId: s.app.id, environmentId: s.preview.id, workspaceId: s.ws.id, commit: s.remote.first, branch: "main", trigger: "manual", status: "deployed", manifest: { ...MANIFEST, install: "pnpm install --frozen-lockfile", build: "pnpm build", start: "pnpm start -H 127.0.0.1 -p $PORT", type: "nextjs" } as never })
       .returning();
-    await db.update(apps).set({ currentReleaseId: cur!.id, status: "running" }).where(eq(apps.id, s.app.id));
+    await db.update(appEnvironments).set({ currentReleaseId: cur!.id, status: "running" }).where(eq(appEnvironments.id, s.preview.id));
     const sha = s.agentCommit({ "prisma/migrations/0002/migration.sql": "ALTER TABLE orders DROP COLUMN note;\n", "wfos-app.json": JSON.stringify({ ...MANIFEST, memoryMb: 768 }) }, "Bigger");
     await s.pushed(sha);
     const r = await s.call(s.ctx, "request_preview", { appId: s.app.id, summary: "Bigger" });
@@ -236,7 +236,7 @@ describe("request_preview (approved)", () => {
     const s = await setup();
     const sha = s.agentCommit({ "src/notes.tsx": "export const n = 1;\n" });
     await s.pushed(sha);
-    await db.insert(appReleases).values({ appId: s.app.id, workspaceId: s.ws.id, commit: "", branch: "main", trigger: "manual", status: "deploying" });
+    await db.insert(appReleases).values({ appId: s.app.id, environmentId: s.preview.id, workspaceId: s.ws.id, commit: "", branch: "main", trigger: "manual", status: "deploying" });
     const a = await requestAndApprove(s);
     await executeApproval(a.id);
     const [after] = await db.select().from(approvals).where(eq(approvals.id, a.id));
@@ -286,7 +286,7 @@ describe("request_preview (approved)", () => {
 
     const t = await taskRow(s.task.id);
     expect(t.status).toBe("DONE");
-    const url = `https://${s.app.domain}`;
+    const url = `https://${s.preview.domain}`;
     expect(t.deliverables.filter((d) => d.title === `Preview: ${url}`)).toEqual([expect.objectContaining({ kind: "summary", meta: expect.objectContaining({ releaseId: rel!.id, url, commit: sha }) })]);
     expect(t.result).toContain(url);
     const [after] = await db.select().from(approvals).where(eq(approvals.id, a.id));
@@ -338,7 +338,7 @@ describe("request_preview (approved)", () => {
     // two earlier attempts of this task failed (their approvals already handed back)
     for (let i = 0; i < PREVIEW_MAX_FAILED_ATTEMPTS - 1; i++) {
       const old = await makeApproval(s.ws.id, s.task.id, s.emp.id, { toolName: "request_preview", status: "EXECUTED", payload: { appName: s.app.name, commit: sha }, executionResult: { ok: true, summary: "Preview queued", consumed: true } });
-      await db.insert(appReleases).values({ appId: s.app.id, workspaceId: s.ws.id, commit: sha, branch: `agent/${s.task.id}`, trigger: "approval", status: i ? "rolled_back" : "failed", approvalId: old.id, taskId: s.task.id });
+      await db.insert(appReleases).values({ appId: s.app.id, environmentId: s.preview.id, workspaceId: s.ws.id, commit: sha, branch: `agent/${s.task.id}`, trigger: "approval", status: i ? "rolled_back" : "failed", approvalId: old.id, taskId: s.task.id });
     }
     await s.pushed(sha);
     const a = await requestAndApprove(s);
@@ -380,7 +380,7 @@ describe("request_preview (approved)", () => {
     for (let i = 0; i < PREVIEW_MAX_FAILED_ATTEMPTS - 1; i++) {
       await makeApproval(s.ws.id, s.task.id, s.emp.id, { toolName: "request_preview", status: "FAILED", payload: { commit: sha }, executionResult: { ok: false, summary: "already has a deploy", consumed: true }, createdAt: past(10 - i) });
     }
-    await db.insert(appReleases).values({ appId: s.app.id, workspaceId: s.ws.id, commit: "", branch: "main", trigger: "manual", status: "deploying" });
+    await db.insert(appReleases).values({ appId: s.app.id, environmentId: s.preview.id, workspaceId: s.ws.id, commit: "", branch: "main", trigger: "manual", status: "deploying" });
     const a = await requestAndApprove(s);
     await executeApproval(a.id);
     const t = await taskRow(s.task.id);
@@ -489,7 +489,7 @@ describe("reaper sweeps for previews", () => {
 
       // a deploying release (another app, no task): seen once, then unchanged for 30 minutes → lost
       const other = await setup();
-      const [dep] = await db.insert(appReleases).values({ appId: other.app.id, workspaceId: other.ws.id, commit: "", branch: "main", trigger: "manual", status: "deploying", step: "install", log: "==> install\n" }).returning();
+      const [dep] = await db.insert(appReleases).values({ appId: other.app.id, environmentId: other.preview.id, workspaceId: other.ws.id, commit: "", branch: "main", trigger: "manual", status: "deploying", step: "install", log: "==> install\n" }).returning();
       const t0 = Date.now();
       expect(await sweepLostReleases(t0)).not.toContain(dep!.id);
       expect(await sweepLostReleases(t0 + LOST_DEPLOYING_RELEASE_MS - 60_000)).not.toContain(dep!.id);
@@ -515,7 +515,7 @@ describe("reaper sweeps for previews", () => {
     expect(await handBackMissedReleases()).toEqual([rel!.id]);
     const t = await taskRow(s.task.id);
     expect(t.status).toBe("DONE");
-    expect(t.deliverables.map((d) => d.title)).toContain(`Preview: https://${s.app.domain}`);
+    expect(t.deliverables.map((d) => d.title)).toContain(`Preview: https://${s.preview.domain}`);
     expect(await handBackMissedReleases()).toEqual([]);
   });
 
@@ -543,8 +543,8 @@ describe("releaseLogTail", () => {
 describe("list_apps", () => {
   it("lists the workspace's apps without secrets, marks the ones of the task's repository, other workspaces stay out", async () => {
     const s = await setup();
-    const [cur] = await db.insert(appReleases).values({ appId: s.app.id, workspaceId: s.ws.id, commit: s.remote.first, commitSubject: "First version", branch: "main", trigger: "manual", status: "deployed", finishedAt: new Date() }).returning();
-    await db.update(apps).set({ currentReleaseId: cur!.id, status: "running", healthy: true, lastDeployedAt: new Date(), accessPasswordEnc: "enc-password-blob" }).where(eq(apps.id, s.app.id));
+    const [cur] = await db.insert(appReleases).values({ appId: s.app.id, environmentId: s.preview.id, workspaceId: s.ws.id, commit: s.remote.first, commitSubject: "First version", branch: "main", trigger: "manual", status: "deployed", finishedAt: new Date() }).returning();
+    await db.update(appEnvironments).set({ currentReleaseId: cur!.id, status: "running", healthy: true, lastDeployedAt: new Date(), accessPasswordEnc: "enc-password-blob" }).where(eq(appEnvironments.id, s.preview.id));
     const foreign = await setup();
     const r = await s.call(s.ctx, "list_apps", {});
     expect(r.isError).toBeFalsy();
@@ -554,7 +554,7 @@ describe("list_apps", () => {
       id: s.app.id,
       name: s.app.name,
       slug: s.app.slug,
-      url: `https://${s.app.domain}`,
+      url: `https://${s.preview.domain}`,
       status: "running",
       healthy: true,
       repository: s.repo.name,
@@ -563,6 +563,7 @@ describe("list_apps", () => {
       linkedToYourRepository: true,
       currentRelease: { commit: s.remote.first, subject: "First version", status: "deployed", at: expect.any(String) },
       lastDeployedAt: expect.any(String),
+      live: null,
     });
     const raw = text(r);
     for (const secret of [SECRET_ENV, "SMTP_PASSWORD", "enc-password-blob", foreign.app.id]) expect(raw).not.toContain(secret);
@@ -575,6 +576,53 @@ describe("list_apps", () => {
     // outside the repository's task: nothing is "yours"
     const chat = runContext(s.ws, s.emp, null);
     expect(text(await s.call(chat, "list_apps", {}))).toContain('"linkedToYourRepository": false');
+  });
+
+  it("shows the live environment read-only (url, status, version), never its env or passwords", async () => {
+    const s = await setup();
+    const live = await makeLive(s.app, s.server.id, { status: "running", accessMode: "password", accessPasswordEnc: "enc-live-password-blob" });
+    const [lr] = await db
+      .insert(appReleases)
+      .values({ appId: s.app.id, environmentId: live.id, workspaceId: s.ws.id, commit: s.remote.first, branch: "main", trigger: "manual", status: "deployed", finishedAt: new Date() })
+      .returning();
+    await db.update(appEnvironments).set({ currentReleaseId: lr!.id }).where(eq(appEnvironments.id, live.id));
+    const out = JSON.parse(text(await s.call(s.ctx, "list_apps", {}))) as { apps: Record<string, unknown>[] };
+    expect(out.apps[0]).toMatchObject({ url: `https://${s.preview.domain}`, status: "new", currentRelease: null, live: { url: `https://${live.domain}`, status: "running", version: s.remote.first } });
+    const raw = JSON.stringify(out);
+    for (const secret of [LIVE_ENV, "enc-live-password-blob", live.instanceName]) expect(raw).not.toContain(secret);
+  });
+});
+
+describe("previews and the live environment", () => {
+  it("request_preview and its release act on the preview only, also when the app has a live environment", async () => {
+    const s = await setup();
+    const live = await makeLive(s.app, s.server.id, { status: "running" });
+    const sha = s.agentCommit({ "src/notes.tsx": "export const n = 1;\n" }, "Notes page");
+    await s.pushed(sha);
+    const a = await requestAndApprove(s);
+    expect(requestPreviewPayloadSchema.parse(a.payload).url).toBe(`https://${s.preview.domain}`);
+    await executeApproval(a.id);
+    const [rel] = await releasesOf(s.task.id);
+    expect(rel).toMatchObject({ environmentId: s.preview.id, commit: sha });
+    expect(await runRelease(rel!.id, s.ws.id)).toBe("deployed");
+    // the live environment was never touched: no call with its instance, its row unchanged
+    expect(srv.calls.filter((c) => c.args.includes(live.instanceName))).toEqual([]);
+    const [liveAfter] = await db.select().from(appEnvironments).where(eq(appEnvironments.id, live.id));
+    expect(liveAfter).toMatchObject({ status: "running", currentReleaseId: null });
+    const [previewAfter] = await db.select().from(appEnvironments).where(eq(appEnvironments.id, s.preview.id));
+    expect(previewAfter).toMatchObject({ status: "running", currentReleaseId: rel!.id });
+  });
+
+  it("a deploy running on live does not block a preview request (one queue per environment)", async () => {
+    const s = await setup();
+    const live = await makeLive(s.app, s.server.id);
+    await db.insert(appReleases).values({ appId: s.app.id, environmentId: live.id, workspaceId: s.ws.id, commit: s.remote.first, branch: "main", trigger: "manual", status: "deploying" });
+    const sha = s.agentCommit({ "src/notes.tsx": "export const n = 2;\n" }, "Notes page");
+    await s.pushed(sha);
+    const a = await requestAndApprove(s);
+    await executeApproval(a.id);
+    const [rel] = await releasesOf(s.task.id);
+    expect(rel).toMatchObject({ status: "queued", environmentId: s.preview.id });
   });
 });
 

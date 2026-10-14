@@ -5,10 +5,11 @@ import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Copy, Eye, EyeOff, Globe, KeyRound, RefreshCw } from "lucide-react";
-import type { AppDTO } from "@wfos/shared";
+import type { AppDTO, AppEnvironmentDTO } from "@wfos/shared";
+import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { copyText } from "./shared";
+import { copyText, envQuery } from "./shared";
 
 // i18n-ignore: the basic-auth user name, the same in every language
 const PREVIEW_USER = "preview";
@@ -19,34 +20,38 @@ interface Access {
 }
 
 /**
- * The preview's login. The password is fetched only when an Admin asks to see it (each view is audited) and is kept
- * in this component's memory, never in the query cache.
+ * An environment's login (each has its own password). The password is fetched only when an Admin asks to see it
+ * (each view is audited) and is kept in this component's memory, never in the query cache.
  */
-export function AccessCard({ app, admin }: { app: AppDTO; admin: boolean }) {
+export function AccessCard({ app, env, admin }: { app: Pick<AppDTO, "id">; env: AppEnvironmentDTO; admin: boolean }) {
   const t = useTranslations("apps");
   const tc = useTranslations("common");
+  const withStepUp = useStepUp();
   const [shown, setShown] = useState<Access | null>(null);
   const reveal = useMutation({
-    mutationFn: () => api.get<Access>(`/api/apps/${app.id}/access`),
+    mutationFn: () => api.get<Access>(`/api/apps/${app.id}/access${envQuery(env.kind)}`),
     onSuccess: setShown,
     onError: (e) => toast.error((e as Error).message),
   });
   const rotate = useMutation({
-    mutationFn: () => api.post<Access>(`/api/apps/${app.id}/access`),
+    // the live password is the Owner's, confirmed with a step-up
+    mutationFn: () => (env.kind === "live" ? withStepUp : (fn: () => Promise<Access>) => fn())(() => api.post<Access>(`/api/apps/${app.id}/access${envQuery(env.kind)}`)),
     onSuccess: (r) => {
+      if (!r) return;
       setShown(r);
       toast.success(t("access.rotated"));
     },
     onError: (e) => toast.error((e as Error).message),
   });
 
-  if (app.accessMode === "public")
+  const live = env.kind === "live";
+  if (env.accessMode === "public")
     return (
       <section className="flex gap-3 rounded-xl border bg-card p-4">
         <Globe className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 space-y-1">
-          <h2 className="text-sm font-semibold">{t("access.title")}</h2>
-          <p className="text-sm text-muted-foreground">{t("access.public")}</p>
+          <h2 className="text-sm font-semibold">{t(live ? "access.liveTitle" : "access.title")}</h2>
+          <p className="text-sm text-muted-foreground">{t(live ? "access.livePublic" : "access.public")}</p>
         </div>
       </section>
     );
@@ -56,8 +61,9 @@ export function AccessCard({ app, admin }: { app: AppDTO; admin: boolean }) {
       <div className="flex items-start gap-3">
         <KeyRound className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 space-y-1">
-          <h2 className="text-sm font-semibold">{t("access.title")}</h2>
-          <p className="text-sm text-muted-foreground">{t("access.description")}</p>
+          <h2 className="text-sm font-semibold">{t(live ? "access.liveTitle" : "access.title")}</h2>
+          <p className="text-sm text-muted-foreground">{t(live ? "access.liveDescription" : "access.description")}</p>
+          {live && !admin && <p className="text-xs text-muted-foreground">{t("access.liveOwnerOnly")}</p>}
         </div>
       </div>
       {admin && (

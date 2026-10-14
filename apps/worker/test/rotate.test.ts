@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { apps, credentials, db, repositories, servers, workspaces } from "@wfos/db";
+import { appEnvironments, apps, credentials, db, repositories, servers, workspaces } from "@wfos/db";
 import { reencryptAll } from "@wfos/db/rotate";
 import { decryptSecret, encryptSecret } from "@wfos/shared/server";
 import { makeWorkspace } from "./fixtures";
@@ -34,6 +34,22 @@ describe("ENCRYPTION_KEY rotation", () => {
         dbPasswordEnc: encryptSecret("db-pw"),
       })
       .returning();
+    const [env] = await db
+      .insert(appEnvironments)
+      .values({
+        appId: app!.id,
+        workspaceId: ws.id,
+        kind: "live",
+        serverId: srv!.id,
+        instanceName: `${app!.slug}-live`.slice(0, 35),
+        domain: `${ws.slug}.kopi.example`,
+        port: 4101,
+        accessPasswordEnc: encryptSecret("live-pw"),
+        envEnc: encryptSecret('{"PAYMENT_KEY":"live"}'),
+        appSecretEnc: encryptSecret("live-secret"),
+        dbPasswordEnc: encryptSecret("live-db-pw"),
+      })
+      .returning();
 
     const newKey = randomBytes(32).toString("hex");
     process.env.ENCRYPTION_KEY_PREVIOUS = original;
@@ -45,6 +61,7 @@ describe("ENCRYPTION_KEY rotation", () => {
     expect(n["credentials.secret_enc"]).toBeGreaterThanOrEqual(1);
     expect(n["repositories.token_enc"]).toBeGreaterThanOrEqual(1);
     for (const col of ["accessPasswordEnc", "envEnc", "appSecretEnc", "dbPasswordEnc"]) expect(n[`apps.${col}`]).toBe(1);
+    for (const col of ["accessPasswordEnc", "envEnc", "appSecretEnc", "dbPasswordEnc"]) expect(n[`app_environments.${col}`]).toBe(1);
 
     delete process.env.ENCRYPTION_KEY_PREVIOUS; // old key gone: everything must open with the new key alone
     const [c2] = await db.select().from(credentials).where(eq(credentials.workspaceId, ws.id));
@@ -55,6 +72,8 @@ describe("ENCRYPTION_KEY rotation", () => {
     expect(decryptSecret(w2!.webhookUrlEnc!)).toBe("https://hooks.example/abc");
     const [a2] = await db.select().from(apps).where(eq(apps.id, app!.id));
     expect([a2!.accessPasswordEnc, a2!.envEnc, a2!.appSecretEnc, a2!.dbPasswordEnc].map((v) => decryptSecret(v!))).toEqual(["preview-pw", '{"SMTP_PASSWORD":"x"}', "app-secret", "db-pw"]);
+    const [e2] = await db.select().from(appEnvironments).where(eq(appEnvironments.id, env!.id));
+    expect([e2!.accessPasswordEnc, e2!.envEnc, e2!.appSecretEnc, e2!.dbPasswordEnc].map((v) => decryptSecret(v!))).toEqual(["live-pw", '{"PAYMENT_KEY":"live"}', "live-secret", "live-db-pw"]);
   });
 
   it("a wrong key fails loudly and rotation changes nothing", async () => {

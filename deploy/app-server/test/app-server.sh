@@ -80,6 +80,22 @@ guarded() {
   code 3 "$2"
   has "wfos-app-helper: $1:" "$2"
 }
+# hasline LINE MSG: the output has exactly this line (not just a line that starts with it)
+hasline() { grep -qxF -- "$1" "$WORK/out" || fail "$2: expected the line: $1"; }
+hasntline() { ! grep -qxF -- "$1" "$WORK/out" || fail "$2: expected no line: $1"; }
+# written PATH: what the last "[dry-run] write PATH" of the output would put into PATH
+written() {
+  awk -v b="[dry-run] write $1 (" -v e="[dry-run] end $1" '
+    index($0, b) == 1 { buf = ""; on = 1; next }
+    on && $0 == e { on = 0; last = buf; next }
+    on { sub(/^  \| ?/, ""); buf = buf $0 "\n" }
+    END { printf "%s", last }' "$WORK/out"
+}
+# site_blocks PATH: the last site written to PATH, one file per server block: $WORK/blk.1, $WORK/blk.2, …
+site_blocks() {
+  rm -f "$WORK"/blk.*
+  written "$1" | awk -v d="$WORK/blk" '/^server \{/ { n++ } n { print > (d "." n) }'
+}
 # app skeleton as app-init leaves it (a fresh one per test that needs it)
 fresh_app() {
   rm -rf "${ROOT:?}/$1"
@@ -95,18 +111,18 @@ upload() {
 # --- version / info --------------------------------------------------------
 helper version
 code 0 "version"
-[[ "$(cat "$WORK/out")" == 2 ]] || fail "version prints 2"
-pass "version prints 2"
+[[ "$(cat "$WORK/out")" == 3 ]] || fail "version prints 3"
+pass "version prints 3"
 
 helper info
 code 0 "info"
 json="$(tail -1 "$WORK/out")"
 if command -v node > /dev/null; then
-  node -e 'const j = JSON.parse(process.argv[1]); const ok = j.helperVersion === 2 && j.baseDomain === "preview.example.com" && typeof j.nginx === "boolean" && typeof j.certbot === "boolean" && typeof j.diskFreeMb === "number" && typeof j.memTotalMb === "number" && typeof j.memAvailableMb === "number" && typeof j.os === "string" && typeof j.node === "string" && typeof j.pnpm === "string" && ("postgresPort" in j) && typeof j.systemd === "number" && j.firewall === false && typeof j.appsRoot === "string"; if (!ok) process.exit(1)' "$json" || fail "info JSON shape: $json"
+  node -e 'const j = JSON.parse(process.argv[1]); const ok = j.helperVersion === 3 && j.baseDomain === "preview.example.com" && typeof j.nginx === "boolean" && typeof j.certbot === "boolean" && typeof j.diskFreeMb === "number" && typeof j.memTotalMb === "number" && typeof j.memAvailableMb === "number" && typeof j.os === "string" && typeof j.node === "string" && typeof j.pnpm === "string" && ("postgresPort" in j) && typeof j.systemd === "number" && j.firewall === false && typeof j.appsRoot === "string"; if (!ok) process.exit(1)' "$json" || fail "info JSON shape: $json"
 elif command -v jq > /dev/null; then
-  jq -e '.helperVersion == 2 and .baseDomain == "preview.example.com" and (.nginx | type == "boolean") and (.systemd | type == "number") and .firewall == false' <<< "$json" > /dev/null || fail "info JSON shape: $json"
+  jq -e '.helperVersion == 3 and .baseDomain == "preview.example.com" and (.nginx | type == "boolean") and (.systemd | type == "number") and .firewall == false' <<< "$json" > /dev/null || fail "info JSON shape: $json"
 fi
-pass "info prints one JSON line (helperVersion 2, the A1 fields, systemd, firewall)"
+pass "info prints one JSON line (helperVersion 3, the A1 fields, systemd, firewall)"
 
 # --- bad arguments: exit 2, one line, nothing to run ------------------------
 fresh_app shop
@@ -124,12 +140,14 @@ helper unit-remove shop
 rejected "the A1 draft's unit-remove is gone"
 pass "unknown commands and wrong argument counts exit 2"
 
-LONG31="$(printf 'a%.0s' {1..31})"
-for s in Shop a -ab ab- "a--b" www api preview status "$LONG31" "a b" "a;b" "a/b" "../x" "" 1ab "shop_1"; do
-  helper app-init "$s"
-  rejected "slug ${s@Q}"
+LONG36="$(printf 'a%.0s' {1..36})"
+for s in Shop a -ab ab- "a--b" "shop--live" "shop-live-" www api preview status "$LONG36" "a b" "a;b" "a/b" "../x" "" 1ab "shop_1" "Shop-live" "shop.live"; do
+  for c in app-init unit-status release-prune unpublish; do
+    helper "$c" "$s"
+    rejected "$c with instance name ${s@Q}"
+  done
 done
-pass "invalid and reserved slugs exit 2"
+pass "invalid and reserved instance names exit 2 (2 to 35 characters, no --)"
 
 for args in \
   "release-unpack shop 0123" "release-unpack shop ${SHA^^}" "release-unpack shop ${SHA}0" "release-unpack shop" \
@@ -717,6 +735,268 @@ has "[dry-run] systemctl reload nginx" "unpublish"
 hasnt "letsencrypt" "unpublish keeps the certificate"
 pass "unpublish removes the site and keeps the certificate"
 
+# --- instance names: a live environment is <slug>-live, a world of its own ---------------
+rm -rf "${ROOT:?}/shop-live"
+helper app-init shop-live
+code 0 "app-init shop-live"
+has "--comment Workforce\ OS\ app\ shop-live wa-shop-live" "app-init shop-live"
+has "[dry-run] install -d -m 0755 -o root -g root $ROOT/shop-live $ROOT/shop-live/releases" "app-init shop-live"
+has "[dry-run] install -d -m 0700 -o wa-shop-live -g wa-shop-live $ROOT/shop-live/data $ROOT/shop-live/cache $ROOT/shop-live/next-cache" "app-init shop-live"
+NAME35="abcdefghijklmnopqrstuvwxyz1234-live"
+[[ ${#NAME35} == 35 ]] || fail "test setup: NAME35 has 35 characters"
+rm -rf "${ROOT:?}/$NAME35"
+helper app-init "$NAME35"
+code 0 "app-init with a 35-character instance name"
+user="$(sed -nE 's/.*groupadd --system --gid [0-9]+ (wa-[a-z0-9-]+).*/\1/p' "$WORK/out")"
+[[ -n "$user" && ${#user} -le 31 && "$user" == wa-abcdefghijklmnopqrs-* ]] || fail "35-character name user: ${user@Q}"
+has "--comment Workforce\ OS\ app\ $NAME35 $user" "the marker names the whole instance"
+helper app-init "${NAME35:0:28}"
+has "wa-${NAME35:0:28}" "names up to 28 characters keep their v2 user name"
+rm -rf "${ROOT:?}/${NAME35:0:28}"
+fresh_app shop-live
+helper_in "PORT=4101"$'\n'"APP_URL=https://shop.example.org"$'\n' env-install shop-live
+code 0 "env-install shop-live"
+has "[dry-run] write $PFX/etc/wfos-apps/env/shop-live.env (mode 0600, owner root:root)" "env-install shop-live"
+printf 'local all postgres peer\nlocal app_shop app_shop peer map=wfos_app_shop\nlocal app_shop app_shop scram-sha-256\n' > "$PFX/etc/postgresql/18/apps/pg_hba.conf"
+printf 'wfos_app_shop postgres app_shop\nwfos_app_shop wa-shop app_shop\n' > "$PFX/etc/postgresql/18/apps/pg_ident.conf"
+helper_in "$PW" db-create shop-live
+code 0 "db-create shop-live"
+has "create role app_shop_live" "db-create shop-live: its own role and database"
+hasline "  | local app_shop_live app_shop_live peer map=wfos_app_shop_live" "db-create shop-live"
+hasline "  | wfos_app_shop_live wa-shop-live app_shop_live" "db-create shop-live: only its own user"
+hasline "  | local app_shop app_shop peer map=wfos_app_shop" "db-create shop-live keeps the preview's lines"
+hasntline "  | wfos_app_shop wa-shop-live app_shop" "the live user never maps to the preview's role"
+helper_in "$PW" db-create "$NAME35"
+has "create role app_abcdefghijklmnopqrstuvwxyz1234_live" "db-create with a 35-character name"
+mkdir -p "$ROOT/shop-live/releases/$SHA"
+helper_in "pnpm build" build-run shop-live "$SHA" build 1200 1536
+code 0 "build-run shop-live"
+has "--unit=wfos-build-shop-live.service" "build-run shop-live"
+has "--uid=wa-shop-live --gid=wfos-app-run" "build-run shop-live"
+has "-p BindReadOnlyPaths=$ROOT/shop-live -p BindPaths=$ROOT/shop-live/data\ $ROOT/shop-live/cache -p BindPaths=$ROOT/shop-live/releases/$SHA" "build-run shop-live"
+has "-p EnvironmentFile=$PFX/etc/wfos-apps/env/shop-live.env" "build-run shop-live"
+helper_in 'pnpm start' unit-install shop-live 4101 512 --database
+code 0 "unit-install shop-live"
+for line in "  | User=wa-shop-live" "  | BindReadOnlyPaths=$ROOT/shop-live" "  | BindPaths=$ROOT/shop-live/data $ROOT/shop-live/cache" \
+  "  | EnvironmentFile=$PFX/etc/wfos-apps/env/shop-live.env" "  | ExecStart=/bin/sh $PFX/etc/wfos-apps/start/shop-live.sh" \
+  "  | BindReadOnlyPaths=$PFX/etc/wfos-apps/start/shop-live.sh" "  | WorkingDirectory=$ROOT/shop-live/current" \
+  "  | Environment=HOST=127.0.0.1 PORT=4101 NODE_ENV=production" "  | SocketBindAllow=tcp:4101"; do
+  hasline "$line" "unit-install shop-live"
+done
+has "[dry-run] write $PFX/etc/systemd/system/wfos-app-shop-live.service" "unit-install shop-live"
+hasntline "  | BindReadOnlyPaths=$ROOT/shop" "the live unit never sees the preview's folder"
+hasntline "  | EnvironmentFile=$PFX/etc/wfos-apps/env/shop.env" "the live unit never reads the preview's env"
+rm -f "$PFX/home/wfos-apps/incoming"/*.tar.gz
+mkdir -p "$WORK/tlive" && echo x > "$WORK/tlive/a"
+tar -czf "$PFX/home/wfos-apps/incoming/shop-live-$SHA2.tar.gz" -C "$WORK/tlive" .
+helper release-unpack shop-live "$SHA2"
+code 0 "release-unpack shop-live"
+has "runuser -u wfos-apps -- cat -- $PFX/home/wfos-apps/incoming/shop-live-$SHA2.tar.gz | runuser -u wa-shop-live" "release-unpack shop-live reads <name>-<sha>.tar.gz"
+has "[dry-run] install -d -m 0750 -o wa-shop-live -g wa-shop-live $ROOT/shop-live/releases/$SHA2" "release-unpack shop-live"
+helper release-activate shop-live "$SHA"
+code 0 "release-activate shop-live"
+has "[dry-run] mv -fT -- $ROOT/shop-live/.current.wfos-tmp $ROOT/shop-live/current" "release-activate shop-live"
+for c in unit-start unit-restart; do
+  WFOS_HELPER_TEST_ACTIVE_UNITS="wfos-app-a.service wfos-app-b.service wfos-app-shop.service" helper "$c" shop-live
+  guarded server_full "$c shop-live: the preview of the same app counts as a running app"
+done
+helper unit-stop shop-live
+has "[dry-run] systemctl disable --now wfos-app-shop-live.service" "unit-stop shop-live"
+helper health shop-live 4101 /api/health
+has "http://127.0.0.1:4101/api/health" "health shop-live"
+rm -rf "${ROOT:?}/shop-live/current"
+pass "instance names: <slug>-live gets its own user, folders, env, start script, unit, build unit, database and upload name"
+pass "instance names up to 35 characters (long ones hash to a 31-character user; up to 28 keep the v2 name)"
+
+# --- publish with a live domain ------------------------------------------------------------
+SITE_LIVE="$PFX/etc/nginx/sites-available/wfos-app-shop-live"
+clean_nginx() {
+  rm -f "$PFX/var/lib/wfos-apps"/cert-count-* "$PFX/etc/nginx/sites-enabled"/* "$PFX/etc/nginx/conf.d"/* "$PFX/etc/nginx/nginx.conf"
+  rm -rf "$PFX/etc/letsencrypt/live"/*
+}
+clean_nginx
+helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --alias shop.example.net --index
+code 0 "publish --domain --alias --index"
+has "[dry-run] certbot certonly --nginx --cert-name shop.example.org -d shop.example.org -d www.shop.example.org -d shop.example.net --keep-until-expiring --renew-with-new-domains --non-interactive --agree-tos --register-unsafely-without-email --deploy-hook systemctl\ reload\ nginx" "one certificate for the domain and every alias"
+[[ "$(grep -c 'certbot certonly' "$WORK/out")" == 1 ]] || fail "publish --domain asks certbot once"
+[[ "$(grep -c "write $PFX/var/lib/wfos-apps/cert-count-" "$WORK/out")" == 1 ]] || fail "publish --domain counts one certificate"
+has "  | 1" "the first certificate of the day"
+has "[dry-run] write $SITE_LIVE (mode 0644, owner root:root)" "publish --domain writes the instance's site"
+has "[dry-run] ln -sfn $SITE_LIVE $PFX/etc/nginx/sites-enabled/wfos-app-shop-live" "publish --domain enables it"
+has "  |     server_name shop.example.org www.shop.example.org shop.example.net;" "the http site answers the challenge for every name"
+has "redirect https://www.shop.example.org -> https://shop.example.org" "publish --domain names the redirects"
+has "published https://shop.example.org" "publish --domain"
+hasnt "shop-live.preview.example.com" "a live site never takes a preview name"
+hasnt "X-Robots-Tag" "--index: no noindex header"
+hasnt "auth_basic" "no basic auth without --auth"
+hasnt 'Authorization ""' "no basic auth without --auth"
+site_blocks "$SITE_LIVE"
+[[ -f "$WORK/blk.1" && -f "$WORK/blk.2" && -f "$WORK/blk.3" && ! -f "$WORK/blk.4" ]] || fail "live site: three server blocks (http, the domain, the aliases)"
+grep -qF "server_name shop.example.org www.shop.example.org shop.example.net;" "$WORK/blk.1" || fail "live site: http for every name"
+grep -qF 'return 301 https://shop.example.org$request_uri;' "$WORK/blk.1" || fail "live site: http redirects to https://<domain>"
+grep -qxF "    server_name shop.example.org;" "$WORK/blk.2" || fail "live site: the https site serves the domain only"
+grep -qF "proxy_pass http://127.0.0.1:4101;" "$WORK/blk.2" || fail "live site: the domain is proxied to the app"
+grep -qF "ssl_certificate /etc/letsencrypt/live/shop.example.org/fullchain.pem;" "$WORK/blk.2" || fail "live site: the domain's certificate"
+grep -qxF "    server_name www.shop.example.org shop.example.net;" "$WORK/blk.3" || fail "live site: the alias block"
+grep -qF "listen 443 ssl;" "$WORK/blk.3" || fail "live site: aliases answer https"
+grep -qF "ssl_certificate /etc/letsencrypt/live/shop.example.org/fullchain.pem;" "$WORK/blk.3" || fail "live site: aliases share the certificate"
+grep -qF 'return 301 https://shop.example.org$request_uri;' "$WORK/blk.3" || fail "live site: aliases redirect (301) to the domain"
+! grep -qF "proxy_pass" "$WORK/blk.3" || fail "live site: aliases are never proxied"
+! grep -qF 'https://$host' "$WORK/blk.1" "$WORK/blk.3" || fail "live site: redirects never use the request's Host"
+pass "publish --domain: one certificate for domain + aliases (counted once), http for every name, aliases 301 to https://<domain>"
+pass "publish --index omits noindex; no basic auth without --auth"
+
+clean_nginx
+helper publish shop-live 4101 --domain shop.example.org
+code 0 "publish --domain without --index"
+has 'add_header X-Robots-Tag "noindex, nofollow" always;' "publish --domain without --index keeps noindex"
+has "certbot certonly --nginx --cert-name shop.example.org -d shop.example.org --keep-until-expiring" "publish --domain without aliases"
+site_blocks "$SITE_LIVE"
+[[ -f "$WORK/blk.2" && ! -f "$WORK/blk.3" ]] || fail "live site without aliases: no alias block"
+clean_nginx
+helper_in "$BCRYPT" publish shop-live 4101 --index --domain shop.example.org --auth --alias www.shop.example.org
+code 0 "publish options in another order, with --auth"
+has "[dry-run] write $PFX/etc/wfos-apps/htpasswd/shop-live (mode 0640, owner root:www-data)" "publish --domain --auth"
+has "auth_basic_user_file /etc/wfos-apps/htpasswd/shop-live;" "publish --domain --auth"
+has 'auth_basic "Private";' "publish --domain --auth"
+has 'proxy_set_header Authorization "";' "publish --domain --auth"
+hasnt '$2y$10$' "publish --domain never prints the hash"
+site_blocks "$SITE_LIVE"
+! grep -qF "auth_basic" "$WORK/blk.3" || fail "the alias redirect needs no password"
+clean_nginx
+helper publish shop 4100
+code 0 "preview publish in v3"
+has "[dry-run] certbot certonly --nginx -d shop.preview.example.com --keep-until-expiring --non-interactive" "a preview certificate is requested as in v2"
+hasnt "--cert-name" "a preview certificate is requested as in v2"
+has 'add_header X-Robots-Tag "noindex, nofollow" always;' "previews stay noindex"
+site_blocks "$PFX/etc/nginx/sites-available/wfos-app-shop"
+[[ -f "$WORK/blk.2" && ! -f "$WORK/blk.3" ]] || fail "preview site: two server blocks as in v2"
+clean_nginx
+helper_in "$BCRYPT" publish shop 4100 --auth
+has 'auth_basic "Preview";' "preview realm unchanged"
+pass "publish --domain: noindex unless --index, basic auth only with --auth (options in any order); previews unchanged"
+
+# the certificate: kept when it covers exactly the names, requested again (and counted) when they changed
+if command -v openssl > /dev/null; then
+  mkcert() {
+    local dir="$PFX/etc/letsencrypt/live/$1" san="$2"
+    mkdir -p "$dir"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout "$WORK/key.pem" -out "$dir/fullchain.pem" \
+      -days 2 -subj "/CN=$1" -addext "subjectAltName=$san" > /dev/null 2>&1 || fail "test setup: openssl req"
+  }
+  clean_nginx
+  mkcert shop.example.org "DNS:shop.example.org,DNS:www.shop.example.org"
+  helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --index
+  code 0 "publish --domain with a matching certificate"
+  has "certificate for shop.example.org present" "a matching certificate is kept"
+  hasnt "certbot" "a matching certificate is kept"
+  hasnt "cert-count" "a kept certificate is not counted"
+  echo 10 > "$PFX/var/lib/wfos-apps/cert-count-$(date -u +%Y%m%d)"
+  helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --index
+  code 0 "publish --domain with a matching certificate at the daily cap"
+  helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --alias shop.example.net
+  guarded cert_limit "a new alias at the daily cap"
+  hasnt "certbot" "a new alias at the daily cap"
+  hasnt "[dry-run] write" "a new alias at the daily cap"
+  rm -f "$PFX/var/lib/wfos-apps"/cert-count-*
+  helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --alias shop.example.net
+  code 0 "publish --domain with a new alias"
+  has "covers shop.example.org www.shop.example.org instead of shop.example.net shop.example.org www.shop.example.org" "a new alias: the certificate is requested again"
+  has "--cert-name shop.example.org -d shop.example.org -d www.shop.example.org -d shop.example.net --keep-until-expiring --renew-with-new-domains" "a new alias: one certificate for all names"
+  has "  | 1" "a new alias counts one certificate"
+  helper publish shop-live 4101 --domain shop.example.org
+  code 0 "publish --domain with a dropped alias"
+  has "--cert-name shop.example.org -d shop.example.org --keep-until-expiring --renew-with-new-domains" "a dropped alias leaves the certificate too"
+  rm -f "$PFX/var/lib/wfos-apps"/cert-count-*
+  mkcert shop.example.org "DNS:SHOP.example.org"
+  helper publish shop-live 4101 --domain shop.example.org
+  code 0 "certificate names compare case-insensitively"
+  hasnt "certbot" "certificate names compare case-insensitively"
+  echo "not a certificate" > "$PFX/etc/letsencrypt/live/shop.example.org/fullchain.pem"
+  helper publish shop-live 4101 --domain shop.example.org
+  code 0 "an unreadable certificate"
+  has "certbot certonly" "an unreadable certificate is requested again"
+  pass "publish --domain keeps a certificate that covers exactly its names, else requests one (≤ 10 a day, counted once)"
+else
+  echo "skip - openssl is not installed (certificate name checks)"
+fi
+
+# refusals: bad host names, preview names, too many or repeated names (exit 2, nothing run)
+clean_nginx
+LABEL64="$(printf 'a%.0s' {1..64})"
+LONG254="$(printf 'abcdefghi.%.0s' {1..25})abcd"
+[[ ${#LONG254} == 254 ]] || fail "test setup: LONG254"
+for args in \
+  "--domain shop.preview.example.com" "--domain preview.example.com" "--domain a.b.preview.example.com" \
+  "--domain shop.example.org --alias www.preview.example.com" "--domain shop.example.org --alias preview.example.com" \
+  "--domain Shop.example.org" "--domain shop" "--domain 1.2.3.4" "--domain *.example.org" "--domain -a.example.org" \
+  "--domain a-.example.org" "--domain a_b.example.org" "--domain a..b.org" "--domain .example.org" "--domain example.org." \
+  "--domain $LABEL64.example.org" "--domain $LONG254" "--domain shop.example.org/x" "--domain shop.example.org:443" \
+  "--domain shop.example.1" "--domain a.b" \
+  "--domain shop.example.org --alias a.example.org --alias b.example.org --alias c.example.org --alias d.example.org" \
+  "--alias www.shop.example.org" "--domain shop.example.org --alias shop.example.org" \
+  "--domain shop.example.org --alias www.example.org --alias www.example.org" \
+  "--domain shop.example.org --domain shop.example.net" "--domain shop.example.org --index --index" \
+  "--auth --auth" "--domain" "--domain shop.example.org --alias" "--alias=www.shop.example.org" \
+  "--domain shop.example.org extra" "--domain=shop.example.org" "--noindex" "--domain shop.example.org --alias Bad.example.org"; do
+  # shellcheck disable=SC2086 # word splitting builds the argument list on purpose
+  helper_in "$BCRYPT" publish shop-live 4101 $args
+  rejected "publish $args"
+done
+helper publish shop-live 4101 --domain "shop.example.org"$'\n'"x"
+rejected "publish --domain with a newline"
+helper publish shop-live 4101 --domain ""
+rejected "publish --domain with an empty name"
+helper publish "shop live" 4101 --domain shop.example.org
+rejected "publish with a bad instance name"
+helper publish shop-live 4099 --domain shop.example.org
+rejected "publish --domain with a bad port"
+helper publish shop-live 4101 --domain shop.example.org --alias a.example.org --alias b.example.org --alias c.example.org
+code 0 "publish with 3 aliases"
+pass "publish refuses bad host names, the preview domain and names under it, > 3 aliases, repeated names, stray options (exit 2)"
+
+# names another site serves (exact for every name; wildcards of other sites for live names)
+taken_by() {
+  clean_nginx
+  printf 'server {\n  listen 80;\n  server_name %s; # someone else\n}\n' "$1" > "$PFX/etc/nginx/sites-enabled/other"
+}
+for t in "www.shop.example.org" "shop.example.org" "WWW.Shop.Example.org" "*.shop.example.org" ".example.org" "shop.example.*" "www.shop.*"; do
+  taken_by "$t"
+  helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org
+  guarded server_name_taken "publish --domain over another site's server_name $t"
+  hasnt "[dry-run] write" "publish --domain over another site's server_name $t"
+  hasnt "certbot" "publish --domain over another site's server_name $t"
+done
+taken_by "shop.example.net"
+helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --alias shop.example.net
+guarded server_name_taken "an alias another site serves"
+has "another nginx site already serves shop.example.net" "the refusal names the alias"
+for t in "*.example.net" "example.org" "*.org.example" "shop.example.org.evil" "~^shop\.example\.org$"; do
+  taken_by "$t"
+  helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org
+  code 0 "publish --domain next to a site with $t"
+done
+# the preview catch-all (a wildcard by design) never blocks a preview, nor a live domain (never under it)
+clean_nginx
+printf 'server {\n  listen 80;\n  server_name preview.example.com *.preview.example.com;\n  return 404;\n}\n' > "$PFX/etc/nginx/sites-enabled/wfos-apps-catchall"
+helper publish shop 4100
+code 0 "a preview next to the catch-all"
+helper publish shop-live 4101 --domain shop.example.org
+code 0 "a live domain next to the catch-all"
+printf 'server { server_name shop.example.org www.shop.example.org; }\n' > "$PFX/etc/nginx/sites-enabled/wfos-app-shop-live"
+helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org
+code 0 "republish over its own live site"
+helper publish shop 4100 --domain shop.example.org
+guarded server_name_taken "the preview instance cannot take the live instance's domain"
+clean_nginx
+pass "publish refuses a name (domain or alias) another site serves, incl. other sites' wildcards for live names (exit 3)"
+
+helper unpublish shop-live
+code 0 "unpublish shop-live"
+has "[dry-run] rm -f -- $PFX/etc/nginx/sites-enabled/wfos-app-shop-live $SITE_LIVE" "unpublish shop-live"
+hasnt "letsencrypt" "unpublish shop-live keeps the certificate"
+pass "unpublish of a live instance removes only its site"
+
 # --- app-remove / stop-all -------------------------------------------------------------
 fresh_app shop
 printf 'local all postgres peer\nlocal app_shop app_shop scram-sha-256\n' > "$PFX/etc/postgresql/18/apps/pg_hba.conf"
@@ -758,6 +1038,146 @@ code 0 "stop-all"
 has "[dry-run] systemctl disable --now wfos-app-blog.service wfos-app-shop.service" "stop-all"
 hasnt "other.service" "stop-all only touches app units"
 pass "stop-all stops and disables every wfos-app-* unit"
+touch "$PFX/etc/systemd/system/wfos-app-shop-live.service" "$PFX/etc/systemd/system/wfos-app-$NAME35.service"
+helper stop-all
+has "wfos-app-$NAME35.service" "stop-all includes 35-character instance names"
+has "wfos-app-shop-live.service" "stop-all includes live instances"
+rm -f "$PFX/etc/systemd/system"/*.service
+fresh_app shop-live
+fresh_app shop
+helper app-remove shop-live --drop-db
+code 0 "app-remove shop-live --drop-db"
+has "DROP DATABASE IF EXISTS app_shop_live WITH (FORCE); DROP ROLE IF EXISTS app_shop_live" "app-remove shop-live drops only its database"
+has "[dry-run] rm -rf --one-file-system -- $ROOT/shop-live" "app-remove shop-live"
+has "[dry-run] rm -f -- $PFX/etc/nginx/sites-enabled/wfos-app-shop-live $PFX/etc/nginx/sites-available/wfos-app-shop-live" "app-remove shop-live"
+hasline "[dry-run] rm -rf --one-file-system -- $ROOT/shop-live" "app-remove shop-live"
+hasntline "[dry-run] rm -rf --one-file-system -- $ROOT/shop" "app-remove shop-live keeps the preview's folder"
+hasnt "DROP DATABASE IF EXISTS app_shop " "app-remove shop-live keeps the preview's database"
+hasnt "wa-shop " "app-remove shop-live keeps the preview's user"
+pass "stop-all and app-remove handle live instances; removing one environment never touches the other"
+
+# --- app-remove --keep-db-dump -------------------------------------------------------------
+for args in "shop --keep-db-dump" "shop --drop-db --drop-db" "shop --keep-db-dump --keep-db-dump --drop-db" "shop --keep" \
+  "shop --drop-db --keep-db-dump extra" "shop --drop-db=1"; do
+  # shellcheck disable=SC2086 # word splitting builds the argument list on purpose
+  helper app-remove $args
+  rejected "app-remove $args"
+done
+REMOVED="$PFX/var/lib/wfos-apps/removed"
+rm -rf "$REMOVED"
+fresh_app shop-live
+helper app-remove shop-live --keep-db-dump --drop-db
+code 0 "app-remove --keep-db-dump --drop-db (any order)"
+has "[dry-run] install -d -m 0700 -o root -g root $REMOVED" "the dump folder is created when missing"
+has "[dry-run] runuser -u postgres -- /usr/lib/postgresql/18/bin/pg_dump -h /run/wfos-apps-pg -p 5433 -U app_shop_live -Fc -d app_shop_live > $REMOVED/shop-live-" "the dump runs as the app role"
+dump="$(tail -1 "$WORK/out")"
+[[ "$dump" =~ ^"kept database dump: $REMOVED/shop-live-"[0-9]{8}T[0-9]{4}Z\.dump$ ]] || fail "app-remove --keep-db-dump: last line names the dump, got ${dump@Q}"
+has "${dump#kept database dump: } (root-owned, mode 0600, via a temp file)" "the dump goes where the last line says"
+n_dump="$(grep -n 'pg_dump' "$WORK/out" | head -1 | cut -d: -f1)"
+for later in "systemctl disable --now wfos-app-shop-live.service" "rm -f -- $PFX/etc/nginx/sites-enabled/wfos-app-shop-live" \
+  "DROP DATABASE IF EXISTS app_shop_live" "rm -rf --one-file-system -- $ROOT/shop-live"; do
+  [[ "$n_dump" -lt "$(grep -nF -- "$later" "$WORK/out" | head -1 | cut -d: -f1)" ]] || fail "the dump comes before: $later"
+done
+[[ "$(grep -n 'flock' "$WORK/out" | head -1 | cut -d: -f1)" -lt "$n_dump" ]] || fail "the dump runs under the lock"
+mkdir -p "$REMOVED"
+touch -d "40 days ago" "$REMOVED/old-20260101T0000Z.dump"
+touch -d "5 days ago" "$REMOVED/recent-20260101T0000Z.dump"
+fresh_app shop-live
+helper app-remove shop-live --drop-db --keep-db-dump
+code 0 "app-remove --keep-db-dump with older dumps"
+has "[dry-run] rm -f -- $REMOVED/old-20260101T0000Z.dump" "dumps older than 30 days are pruned"
+hasnt "recent-20260101T0000Z.dump" "newer dumps are kept"
+hasnt "install -d -m 0700 -o root -g root $REMOVED" "an existing dump folder is used as it is"
+rm -rf "$REMOVED"
+ln -s "$WORK/outside" "$REMOVED"
+fresh_app shop-live
+helper app-remove shop-live --drop-db --keep-db-dump
+code 1 "app-remove --keep-db-dump into a symlinked folder"
+has "nothing was removed" "app-remove --keep-db-dump into a symlinked folder"
+hasnt "systemctl disable" "a failed dump removes nothing"
+hasnt "DROP DATABASE" "a failed dump removes nothing"
+hasnt "rm -rf" "a failed dump removes nothing"
+rm -f "$REMOVED"
+fresh_app shop-live
+helper app-remove shop-live --drop-db
+code 0 "app-remove --drop-db without --keep-db-dump"
+hasnt "pg_dump" "no dump without --keep-db-dump"
+hasnt "kept database dump" "no dump without --keep-db-dump"
+pass "app-remove --keep-db-dump (needs --drop-db): dump as the app role first, then remove; last line names it; 30 days kept"
+
+# --- certificates of a removed instance ------------------------------------------------------
+DOMAINS="$PFX/var/lib/wfos-apps/domains"
+clean_nginx
+rm -rf "$DOMAINS"
+helper publish shop-live 4101 --domain shop.example.org --alias www.shop.example.org --index
+code 0 "publish --domain records its domain"
+has "[dry-run] install -d -m 0700 -o root -g root $DOMAINS" "the record folder is created when missing"
+has "[dry-run] write $DOMAINS/shop-live (mode 0600, owner root:root)" "publish --domain records its domain"
+has "  | shop.example.org" "publish --domain records its domain"
+mkdir -p "$DOMAINS" "$PFX/etc/letsencrypt/live/shop.example.org" "$PFX/etc/letsencrypt/live/shop.preview.example.com"
+echo shop.example.org > "$DOMAINS/shop-live"
+helper publish shop-live 4101 --domain shop.example.org --index
+hasnt "write $DOMAINS/shop-live" "the same domain is not recorded again"
+hasnt "certbot delete" "the same domain keeps its certificate"
+helper publish shop-live 4101 --domain shop.example.net --index
+code 0 "publish with another domain"
+has "  | shop.example.net" "the new domain is recorded"
+has "[dry-run] certbot delete --cert-name shop.example.org --non-interactive" "the replaced domain gives up its certificate"
+[[ "$(grep -n 'certbot delete' "$WORK/out" | cut -d: -f1)" -gt "$(grep -n "write $PFX/etc/nginx/sites-available/wfos-app-shop-live" "$WORK/out" | tail -1 | cut -d: -f1)" ]] || fail "the old certificate goes only after the new site is in place"
+helper publish shop 4100
+hasnt "certbot delete" "a preview publish never deletes a certificate"
+hasnt "$DOMAINS/shop " "a preview publish records nothing"
+
+clean_nginx
+mkdir -p "$PFX/etc/letsencrypt/live/shop.example.org" "$PFX/etc/letsencrypt/live/shop.preview.example.com"
+echo shop.example.org > "$DOMAINS/shop-live"
+fresh_app shop-live
+helper app-remove shop-live --drop-db
+code 0 "app-remove of a live instance"
+has "[dry-run] certbot delete --cert-name shop.example.org --non-interactive" "app-remove deletes the live certificate"
+has "[dry-run] rm -f -- $DOMAINS/shop-live" "app-remove drops the domain record"
+hasnt "cert-name shop.preview.example.com" "app-remove of the live instance keeps the preview's certificate"
+[[ "$(grep -n 'certbot delete' "$WORK/out" | cut -d: -f1)" -gt "$(grep -n "rm -f -- $PFX/etc/nginx/sites-enabled/wfos-app-shop-live" "$WORK/out" | cut -d: -f1)" ]] || fail "the certificate goes after the site"
+last_line "app shop-live removed" "app-remove without --keep-db-dump"
+fresh_app shop
+helper app-remove shop --drop-db
+code 0 "app-remove of a preview instance"
+has "[dry-run] certbot delete --cert-name shop.preview.example.com --non-interactive" "app-remove deletes the preview certificate too"
+hasnt "cert-name shop.example.org" "app-remove of the preview keeps the live certificate"
+# no record (published by v2/v3 before the record existed): the site names the certificate
+rm -f "$DOMAINS/shop-live"
+mkdir -p "$PFX/etc/nginx/sites-available"
+printf 'server {\n    server_name shop.example.org;\n    ssl_certificate /etc/letsencrypt/live/shop.example.org/fullchain.pem;\n}\n' > "$PFX/etc/nginx/sites-available/wfos-app-shop-live"
+fresh_app shop-live
+helper app-remove shop-live
+has "[dry-run] certbot delete --cert-name shop.example.org --non-interactive" "without a record the site names the certificate"
+rm -f "$PFX/etc/nginx/sites-available/wfos-app-shop-live"
+# never someone else's
+echo shop.example.org > "$DOMAINS/shop-live"
+echo shop.example.org > "$DOMAINS/other-live"
+fresh_app shop-live
+helper app-remove shop-live
+code 0 "app-remove with a certificate another instance uses"
+has "certificate shop.example.org kept: instance other-live uses it" "a certificate another instance records is kept"
+hasnt "certbot delete --cert-name shop.example.org" "a certificate another instance records is kept"
+rm -f "$DOMAINS/other-live"
+echo shop.example.org > "$DOMAINS/shop-live"
+printf 'server { server_name shop.example.org; }\n' > "$PFX/etc/nginx/sites-enabled/other"
+fresh_app shop-live
+helper app-remove shop-live
+has "certificate shop.example.org kept: another nginx site serves shop.example.org" "a certificate another site serves is kept"
+hasnt "certbot delete --cert-name shop.example.org" "a certificate another site serves is kept"
+rm -f "$PFX/etc/nginx/sites-enabled/other"
+printf '../../etc/passwd\n' > "$DOMAINS/shop-live"
+rm -rf "$PFX/etc/letsencrypt/live"/*
+fresh_app shop-live
+helper app-remove shop-live
+code 0 "app-remove with a bad record"
+hasnt "certbot delete" "a record that is not a host name is ignored"
+has "no certificate shop-live.preview.example.com" "no lineage, nothing to delete"
+clean_nginx
+rm -rf "$DOMAINS"
+pass "app-remove deletes the instance's certificates (preview and live; best effort, never another's); a replaced live domain too"
 
 # --- prepare.sh --------------------------------------------------------------
 KEY="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJXcRLnEUF79Xv5t7O1ZIxo7NbQ5VM/aN67ad/RUhWRA wfos-acme"
@@ -783,7 +1203,7 @@ for line in \
   "log_statement = 'none'" "log_min_error_statement = panic" \
   "[dry-run] write /etc/systemd/system/wfos-apps.slice" "  | MemoryMax=40%" "  | MemoryHigh=35%" "  | CPUQuota=200%" "  | TasksMax=2048" "  | IOWeight=50" \
   "fib daddr type { local, broadcast, multicast, anycast } reject" \
-  "server_names_hash_bucket_size 128;" \
+  "server_names_hash_bucket_size 512;" \
   "[dry-run] write /etc/nginx/sites-available/wfos-apps-catchall" "  |     server_name preview.example.com *.preview.example.com;" "  |     ssl_reject_handshake on;" \
   "[dry-run] ln -sfn /etc/nginx/sites-available/wfos-apps-catchall /etc/nginx/sites-enabled/wfos-apps-catchall" \
   "168.63.129.16/32" "192.0.0.0/24" "198.18.0.0/15" "64:ff9b::/96" \
@@ -792,6 +1212,7 @@ for line in \
   "[dry-run] runuser -u wfos-apps -- rmdir --ignore-fail-on-non-empty -- /home/wfos-apps/apps" \
   "[dry-run] install -d -m 0755 -o root -g root /srv/wfos-apps /etc/wfos-apps /etc/wfos-apps/start" \
   "[dry-run] install -d -m 0700 -o root -g root /etc/wfos-apps/env /var/lib/wfos-apps" \
+  "[dry-run] install -d -m 0700 -o root -g root /var/lib/wfos-apps/domains /var/lib/wfos-apps/removed" \
   "[dry-run] install -d -m 0750 -o root -g www-data /etc/wfos-apps/htpasswd" \
   "[dry-run] install -d -m 0755 -o root -g root /opt/wfos-apps /opt/wfos-apps/corepack" \
   "corepack prepare pnpm@10.33.0 --activate" \

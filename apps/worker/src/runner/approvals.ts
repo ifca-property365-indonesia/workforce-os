@@ -1,6 +1,6 @@
 import { memorySnapshot, recordMemoryEvent } from "../lib/memory-journal";
 import { and, eq, inArray } from "drizzle-orm";
-import { approvals, apps, appReleases, audit, db, employees, memories, messages, steps, tasks, workspaces } from "@wfos/db";
+import { appEnvironments, approvals, apps, appReleases, audit, db, employees, memories, messages, steps, tasks, workspaces } from "@wfos/db";
 import type { Deliverable } from "@wfos/db";
 import { recordStep } from "../lib/steps";
 import { enqueueTask, publish } from "../lib/redis";
@@ -417,7 +417,11 @@ export async function afterReleaseSettled(releaseId: string): Promise<void> {
   if (!rel?.taskId || isActive(rel)) return;
   const [task] = await db.select({ id: tasks.id, status: tasks.status, workspaceId: tasks.workspaceId }).from(tasks).where(eq(tasks.id, rel.taskId));
   if (!task || TERMINAL_STATUSES.includes(task.status)) return;
-  const [app] = await db.select({ name: apps.name, domain: apps.domain }).from(apps).where(eq(apps.id, rel.appId));
+  const [app] = await db
+    .select({ name: apps.name, domain: appEnvironments.domain })
+    .from(apps)
+    .innerJoin(appEnvironments, and(eq(appEnvironments.id, rel.environmentId), eq(appEnvironments.appId, apps.id)))
+    .where(eq(apps.id, rel.appId));
   const url = app ? appUrl(app) : null;
   const deployed = rel.status === "deployed" || rel.status === "superseded";
 

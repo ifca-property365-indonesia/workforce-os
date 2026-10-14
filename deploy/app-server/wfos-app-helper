@@ -10,30 +10,39 @@
 #
 #   version                                         helper version (one number)
 #   info                                            one JSON line: versions, disk, memory, base domain, firewall
-#   app-init <slug>                                 user/group wa-<slug> and the app's folders (idempotent)
-#   release-unpack <slug> <sha>                     ~<user>/incoming/<slug>-<sha>.tar.gz → <root>/<slug>/releases/<sha>
-#   env-install <slug>                              stdin: KEY=VALUE lines → /etc/wfos-apps/env/<slug>.env (0600)
-#   build-run <slug> <sha> <step> <timeoutSec> <memMB>
+#   app-init <name>                                 user/group wa-<name> and the app's folders (idempotent)
+#   release-unpack <name> <sha>                     ~<user>/incoming/<name>-<sha>.tar.gz → <root>/<name>/releases/<sha>
+#   env-install <name>                              stdin: KEY=VALUE lines → /etc/wfos-apps/env/<name>.env (0600)
+#   build-run <name> <sha> <step> <timeoutSec> <memMB>
 #                                                   stdin: one command line; runs it sandboxed in releases/<sha>
-#   db-create <slug> [--reset-password]             stdin: password; role + database app_<slug> (apps cluster)
-#   db-dump <slug> <name> / db-restore <slug> <name>
-#                                                   <root>/<slug>/backups/<name>.dump (pg_dump -Fc / pg_restore)
-#   release-activate <slug> <sha>                   current → releases/<sha>; last stdout line = previous sha or none
-#   unit-install <slug> <port> <memMB> [--database] stdin: the start command; writes the sandboxed systemd unit
-#   unit-start|unit-stop|unit-restart <slug>        start (+enable) / stop (+disable) / restart
-#   unit-status <slug>                              one word: active, inactive or failed
-#   health <slug> <port> <path>                     {"status":<http code>}; exit 0 on 2xx, else 1
-#   publish <slug> <port> [--auth]                  nginx site + certificate; --auth reads `preview:<bcrypt>` on stdin
-#   unpublish <slug>                                removes the nginx site (the certificate stays)
-#   release-prune <slug>                            keeps the newest 3 releases (always the current one)
-#   app-remove <slug> [--drop-db]                   removes everything of the app (and its database with --drop-db)
+#   db-create <name> [--reset-password]             stdin: password; role + database app_<name> (apps cluster)
+#   db-dump <name> <backup> / db-restore <name> <backup>
+#                                                   <root>/<name>/backups/<backup>.dump (pg_dump -Fc / pg_restore)
+#   release-activate <name> <sha>                   current → releases/<sha>; last stdout line = previous sha or none
+#   unit-install <name> <port> <memMB> [--database] stdin: the start command; writes the sandboxed systemd unit
+#   unit-start|unit-stop|unit-restart <name>        start (+enable) / stop (+disable) / restart
+#   unit-status <name>                              one word: active, inactive or failed
+#   health <name> <port> <path>                     {"status":<http code>}; exit 0 on 2xx, else 1
+#   publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]
+#                                                   nginx site + certificate; --auth reads `preview:<bcrypt>` on stdin.
+#                                                   Without --domain: <name>.<BASE_DOMAIN> (a preview). With --domain:
+#                                                   that name (never under BASE_DOMAIN), up to 3 aliases that redirect
+#                                                   (301) to it, one certificate for all. noindex unless --index
+#   unpublish <name>                                removes the nginx site (the certificate stays)
+#   release-prune <name>                            keeps the newest 3 releases (always the current one)
+#   app-remove <name> [--drop-db] [--keep-db-dump]  removes everything of the instance, its certificates (best
+#                                                   effort) and with --drop-db its database; --keep-db-dump first
+#                                                   dumps it to /var/lib/wfos-apps/removed/ (last line: the path)
 #   stop-all                                        stops (and disables) every wfos-app-* unit
+#
+# <name> is an instance name: an app slug for its preview, <slug>-live for its live environment (2 to 35 of a-z,
+# 0-9, -; starts with a letter, ends with a letter or digit, no --, not a reserved name).
 #
 # Security model (A2 review C1/H2/H3/M1/M4):
 #   - root never opens a path a user controls: uploads are read by the SSH user (`runuser … cat`) and unpacked by the
 #     app's own user; env, start command and htpasswd arrive on stdin and are written by root to root-owned paths;
 #     every folder root touches is checked for symlinks first and lives under root-owned parents.
-#   - every app has its own system user wa-<slug>; its processes run with primary group wfos-app-run, which is what
+#   - every app instance has its own system user wa-<name>; its processes run with primary group wfos-app-run, which is what
 #     the nftables table of prepare.sh matches (`meta skgid` sees the effective gid only, not supplementary groups).
 #   - units and builds share one sandbox (sandbox_props): own folder only, no /home, /root, sockets of host services,
 #     certificates or Workforce OS config, no capabilities, @system-service syscalls, memory/CPU/task limits.
@@ -51,8 +60,8 @@ export LC_ALL=C
 cd /
 
 # keep in step with WFOS_HELPER_VERSION in packages/shared
-HELPER_VERSION=2
-# same list as RESERVED_APP_SLUGS in packages/shared
+HELPER_VERSION=3
+# same list as RESERVED_APP_SLUGS in packages/shared (refused as instance names too)
 RESERVED_SLUGS=" www api app apps admin mail preview static assets cdn status "
 RUN_GROUP=wfos-app-run
 PG_SOCK=/run/wfos-apps-pg
@@ -99,6 +108,9 @@ NGINX_SITES="$NGINX_DIR/sites-available"
 NGINX_ENABLED="$NGINX_DIR/sites-enabled"
 LE_LIVE="$P/etc/letsencrypt/live"
 STATE_DIR="$P/var/lib/wfos-apps"
+DOMAINS_DIR="$STATE_DIR/domains"    # domains/<name>: the live domain (= certificate name) <name> published
+REMOVED_DIR="$STATE_DIR/removed"    # database dumps app-remove --keep-db-dump kept
+REMOVED_KEEP_DAYS=30
 PG_ETC="$P/etc/postgresql"
 
 # ---------------------------------------------------------------------------
@@ -291,10 +303,11 @@ systemd_version() {
 # argument validation (exit 2 on anything unexpected; nothing has run yet)
 # ---------------------------------------------------------------------------
 
-check_slug() {
+# an instance name (APP_INSTANCE_RE in packages/shared): an app slug (preview) or <slug>-live (live environment)
+check_name() {
   local s="${1:-}"
-  [[ "$s" =~ ^[a-z][a-z0-9-]{0,28}[a-z0-9]$ && "$s" != *--* ]] || usage "invalid slug ${s@Q} (2 to 30 of a-z, 0-9, -; starts with a letter, no --)"
-  [[ "$RESERVED_SLUGS" != *" $s "* ]] || usage "slug ${s@Q} is reserved"
+  [[ "$s" =~ ^[a-z][a-z0-9-]{0,33}[a-z0-9]$ && "$s" != *--* ]] || usage "invalid instance name ${s@Q} (2 to 35 of a-z, 0-9, -; starts with a letter, no --)"
+  [[ "$RESERVED_SLUGS" != *" $s "* ]] || usage "instance name ${s@Q} is reserved"
 }
 check_sha() { [[ "${1:-}" =~ ^[0-9a-f]{40}$ ]] || usage "invalid commit ${1@Q} (40 lowercase hex characters)"; }
 check_port() {
@@ -315,6 +328,14 @@ check_timeout() {
 check_step() { [[ "${1:-}" == install || "${1:-}" == build || "${1:-}" == migrate ]] || usage "invalid step ${1@Q} (install, build or migrate)"; }
 check_backup_name() { [[ "${1:-}" =~ ^[0-9A-Za-z-]{1,64}$ ]] || usage "invalid backup name ${1@Q} (1 to 64 of 0-9, A-Z, a-z, -)"; }
 check_health_path() { [[ "${1:-}" =~ ^/[A-Za-z0-9._~/-]{0,200}$ ]] || usage "invalid health path ${1@Q}"; }
+# a live domain or alias (customDomainSchema in packages/shared): a lower-case host name of at least two labels, the
+# last one starting with a letter (no IP literal, no wildcard), and never the preview domain or a name under it
+FQDN_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$'
+check_live_domain() {
+  local d="${1:-}" what="$2"
+  ((${#d} >= 4 && ${#d} <= 253)) && [[ "$d" =~ $FQDN_RE ]] || usage "publish: invalid $what ${d@Q} (a lower-case host name like app.example.com)"
+  [[ "$d" != "$C_BASE_DOMAIN" && "$d" != *".$C_BASE_DOMAIN" ]] || usage "publish: $what $d is the preview domain $C_BASE_DOMAIN or under it (live domains never take preview names)"
+}
 
 # stdin_text MAX: all of stdin (at most MAX bytes, else exit 2) into STDIN_TEXT. A NUL byte becomes CR, which every
 # reader below refuses (bash variables cannot hold NUL, and silently dropping it would change the payload).
@@ -343,7 +364,8 @@ stdin_line() {
 # names and paths
 # ---------------------------------------------------------------------------
 
-# wa-<slug>; systemd and utmp allow 31 characters, so slugs over 28 get a stable hash suffix instead
+# wa-<name>; systemd and utmp allow 31 characters, so names over 28 get a stable hash suffix instead (wa- + 19 + - +
+# 8 hex = 31; names up to 28 keep the v2 user names, so existing apps keep their accounts)
 app_user() {
   local slug="$1"
   if ((${#slug} <= 28)); then
@@ -1329,10 +1351,16 @@ nginx_http2_directive() {
   if ((ma > 1 || (ma == 1 && (mi > 25 || (mi == 25 && pa >= 1))))); then echo modern; else echo legacy; fi
 }
 
-# site_content SLUG PORT AUTH(0|1) MODE(http|full)
+# site_content SLUG PORT AUTH(0|1) MODE(http|full) INDEX(0|1) DOMAIN [ALIAS...]: the nginx site of one instance.
+# DOMAIN is proxied to 127.0.0.1:PORT; http (DOMAIN and every ALIAS) redirects to https://DOMAIN, and every ALIAS
+# answers https with a 301 to https://DOMAIN too (same certificate). The redirects never use the request's Host.
 site_content() {
-  local slug="$1" port="$2" auth="$3" mode="$4" domain h2 listen443 listen443v6 http2_line=""
-  domain="$slug.$C_BASE_DOMAIN"
+  local slug="$1" port="$2" auth="$3" mode="$4" index="$5" domain="$6" h2 listen443 listen443v6 http2_line="" names realm=Preview
+  shift 6
+  local -a aliases=("$@")
+  names="$domain"
+  if ((${#aliases[@]} > 0)); then names+=" ${aliases[*]}"; fi
+  [[ "$domain" == "$slug.$C_BASE_DOMAIN" ]] || realm=Private
   h2="$(nginx_http2_directive)"
   if [[ "$h2" == modern ]]; then
     listen443="listen 443 ssl;"
@@ -1347,10 +1375,10 @@ site_content() {
 server {
     listen 80;
     listen [::]:80;
-    server_name $domain;
+    server_name $names;
 EOF
   if [[ "$mode" == http ]]; then
-    # before the certificate exists: only what certbot needs
+    # before the certificate exists: only what certbot needs (it answers the challenge for every name here)
     cat << 'EOF'
     location / {
         return 404;
@@ -1377,17 +1405,18 @@ $http2_line
     ssl_session_cache shared:wfos_apps_ssl:10m;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
-    add_header X-Robots-Tag "noindex, nofollow" always;
-    client_max_body_size 25m;
 EOF
+  # previews stay out of search engines; a live site (--index) may be indexed
+  if [[ "$index" == 0 ]]; then echo '    add_header X-Robots-Tag "noindex, nofollow" always;'; fi
+  echo "    client_max_body_size 25m;"
   if [[ "$auth" == 1 ]]; then
     cat << EOF
 
-    auth_basic "Preview";
+    auth_basic "$realm";
     auth_basic_user_file /etc/wfos-apps/htpasswd/$slug;
 EOF
   fi
-  # the preview password is nginx's business: the app never sees it
+  # the password is nginx's business: the app never sees it
   local strip_auth=""
   [[ "$auth" == 0 ]] || strip_auth=$'\n        proxy_set_header Authorization "";'
   cat << EOF
@@ -1405,6 +1434,26 @@ EOF
     }
 }
 EOF
+  if ((${#aliases[@]} > 0)); then
+    cat << EOF
+
+# aliases: one certificate with $domain, a permanent redirect to it
+server {
+    $listen443
+    $listen443v6
+$http2_line
+    server_name ${aliases[*]};
+
+    ssl_certificate /etc/letsencrypt/live/$domain/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$domain/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:wfos_apps_ssl:10m;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    return 301 https://$domain\$request_uri;
+}
+EOF
+  fi
 }
 
 # the whole configuration nginx loads (`nginx -T`: every included file, each after a "# configuration file X:"
@@ -1425,11 +1474,16 @@ nginx_dump() {
   fi
 }
 
-# true when a site other than the app's own (file name OWN) already has DOMAIN as a server_name, anywhere in what
-# nginx loads
+# server_name_taken OWN WILD(0|1) NAME...: prints the first NAME that a site other than the app's own (file name OWN)
+# already serves, anywhere in what nginx loads (NGINX_DUMP), and returns 0; returns 1 when none is taken. WILD=1 (a
+# --domain publish) also counts another site's wildcard that covers NAME (*.example.com, .example.com, www.example.*):
+# a live domain never takes over a name another product on this server answers. Previews are checked exactly (the
+# catch-all of the preview domain is a wildcard by design). Regular expression names (~…) are not evaluated.
+NGINX_DUMP=""
 server_name_taken() {
-  local domain="$1" own="$2"
-  nginx_dump | awk -v d="$domain" -v own="$own" '
+  local own="$1" wild="$2"
+  shift 2
+  printf '%s\n' "$NGINX_DUMP" | awk -v names="$*" -v own="$own" -v wild="$wild" '
     /^# configuration file .*:$/ {
       f = $0; sub(/^# configuration file /, "", f); sub(/:$/, "", f)
       n = split(f, parts, "/"); skip = (parts[n] == own)
@@ -1437,7 +1491,25 @@ server_name_taken() {
     }
     skip { next }
     { sub(/#.*/, ""); buf = buf " " $0 }
+    # does the server_name T cover D?
+    function covers(t, d,    s) {
+      if (t == d) return 1
+      if (!wild) return 0
+      if (substr(t, 1, 2) == "*.") {
+        s = substr(t, 2)
+        return length(d) > length(s) && substr(d, length(d) - length(s) + 1) == s
+      }
+      if (substr(t, 1, 1) == ".") {
+        return d == substr(t, 2) || (length(d) > length(t) && substr(d, length(d) - length(t) + 1) == t)
+      }
+      if (length(t) > 2 && substr(t, length(t) - 1) == ".*") {
+        s = substr(t, 1, length(t) - 1)
+        return length(d) > length(s) && index(d, s) == 1
+      }
+      return 0
+    }
     END {
+      k = split(names, want, " ")
       n = split(buf, stmts, ";")
       for (i = 1; i <= n; i++) {
         s = stmts[i]
@@ -1448,11 +1520,13 @@ server_name_taken() {
           for (j = 1; j <= m; j++) {
             t = tolower(toks[j])
             gsub(/^["\047]|["\047]$/, "", t)
-            if (t == d) found = 1
+            if (t == "") continue
+            for (w = 1; w <= k; w++) if (covers(t, want[w])) hit[w] = 1
           }
         }
       }
-      exit !found
+      for (w = 1; w <= k; w++) if (hit[w]) { print want[w]; exit 0 }
+      exit 1
     }'
 }
 
@@ -1497,25 +1571,94 @@ cert_budget_take() {
   echo "$((CERT_COUNT + 1))" | write_file "$CERT_COUNT_FILE" 0600 root:root
 }
 
+# the DNS names a certificate covers: lower case, sorted, one per line (empty when it cannot be read)
+cert_names() {
+  openssl x509 -noout -ext subjectAltName -in "$1" 2> /dev/null | tr ',' '\n' |
+    sed -nE 's/^[[:space:]]*DNS:([^[:space:]]+)[[:space:]]*$/\1/p' | tr 'A-Z' 'a-z' | sort -u || true
+}
+
+# the live domain instance SLUG last published (empty when none, or when the record is not a valid host name)
+recorded_domain() {
+  local f="$DOMAINS_DIR/$1" d=""
+  if [[ -f "$f" && ! -L "$f" ]]; then IFS= read -r d < "$f" || true; fi
+  if [[ ${#d} -le 253 && "$d" =~ $FQDN_RE ]]; then echo "$d"; fi
+}
+
+# drop_lineage CERT OWN: best effort `certbot delete --cert-name CERT` (never fails the caller). Kept when there is no
+# such lineage, another instance's record names it, or a site other than OWN's still serves that name.
+drop_lineage() {
+  local cert="$1" own="$2" f d
+  if [[ ${#cert} -gt 253 || ! "$cert" =~ $FQDN_RE ]]; then
+    echo "warning: ${cert@Q} is not a certificate name; nothing deleted" >&2
+    return 0
+  fi
+  if [[ ! -d "$LE_LIVE/$cert" ]]; then
+    echo "no certificate $cert"
+    return 0
+  fi
+  for f in "$DOMAINS_DIR"/*; do
+    [[ -f "$f" && ! -L "$f" && "$(basename -- "$f")" != "$own" ]] || continue
+    d=""
+    IFS= read -r d < "$f" || true
+    if [[ "$d" == "$cert" ]]; then
+      echo "certificate $cert kept: instance $(basename -- "$f") uses it"
+      return 0
+    fi
+  done
+  if ! NGINX_DUMP="$(nginx_dump 2> /dev/null)"; then
+    echo "warning: nginx -T fails; certificate $cert kept" >&2
+    return 0
+  fi
+  if server_name_taken "wfos-app-$own" 0 "$cert" > /dev/null; then
+    echo "certificate $cert kept: another nginx site serves $cert"
+    return 0
+  fi
+  if [[ "$DRY" == 1 ]]; then
+    run certbot delete --cert-name "$cert" --non-interactive
+  elif certbot delete --cert-name "$cert" --non-interactive > /dev/null 2>&1; then
+    echo "certificate $cert deleted"
+  else
+    echo "warning: certbot delete --cert-name $cert failed; delete it by hand" >&2
+  fi
+}
+
+# cmd_publish SLUG PORT AUTH INDEX DOMAIN [ALIAS...]: DOMAIN empty = the preview name <slug>.<BASE_DOMAIN>
 cmd_publish() {
-  local slug="$1" port="$2" auth="$3" domain site enabled htpasswd line="" backup="" cert need_cert=0
+  local slug="$1" port="$2" auth="$3" index="$4" domain="$5" custom=0 site enabled htpasswd line="" backup="" cert
+  local need_cert=0 taken have want nm
+  shift 5
+  local -a aliases=("$@") names=() certbot_args=()
+  if [[ -n "$domain" ]]; then custom=1; else domain="$slug.$C_BASE_DOMAIN"; fi
+  names=("$domain" "${aliases[@]}")
   if [[ "$auth" == 1 ]]; then
     stdin_line 200 "publish --auth"
     line="$LINE"
     [[ "$line" =~ $HTPASSWD_RE ]] || usage "publish --auth needs one htpasswd line on stdin: preview:\$2y\$… (bcrypt)"
   fi
-  domain="$slug.$C_BASE_DOMAIN"
   site="$NGINX_SITES/wfos-app-$slug"
   enabled="$NGINX_ENABLED/wfos-app-$slug"
   htpasswd="$HTPASSWD_DIR/$slug"
   cert="$LE_LIVE/$domain/fullchain.pem"
+  want="$(printf '%s\n' "${names[@]}" | sort -u)"
   lock
-  # guards first: nothing is written when one says no
-  if server_name_taken "$domain" "wfos-app-$slug"; then refuse server_name_taken "another nginx site already serves $domain"; fi
+  # guards first: nothing is written when one says no. A failing nginx -T stops here (exit 1).
+  NGINX_DUMP="$(nginx_dump)"
+  if taken="$(server_name_taken "wfos-app-$slug" "$custom" "${names[@]}")"; then
+    refuse server_name_taken "another nginx site already serves $taken"
+  fi
   if [[ ! -f "$cert" ]]; then
     need_cert=1
-    cert_budget_check
+  elif [[ "$custom" == 1 ]]; then
+    # one certificate for the domain and its aliases, exactly those names (a dropped alias leaves it too, so its
+    # renewal never depends on a name that may no longer point here)
+    command -v openssl > /dev/null || fail "openssl is missing (re-run prepare.sh)"
+    have="$(cert_names "$cert")"
+    if [[ "$have" != "$want" ]]; then
+      need_cert=1
+      echo "the certificate for $domain covers ${have//$'\n'/ } instead of ${want//$'\n'/ }: requesting it again"
+    fi
   fi
+  if [[ "$need_cert" == 1 ]]; then cert_budget_check; fi
   if [[ "$DRY" == 0 ]]; then
     [[ -d "$HTPASSWD_DIR" ]] || fail "$HTPASSWD_DIR is missing (re-run prepare.sh)"
     if [[ -f "$site" ]]; then
@@ -1528,27 +1671,48 @@ cmd_publish() {
   else
     run rm -f -- "$htpasswd"
   fi
-  # 1) no certificate yet: an HTTP-only site so certbot's nginx authenticator can answer the challenge
+  # 1) no certificate yet: an HTTP-only site so certbot's nginx authenticator can answer the challenge (one
+  #    certificate for every name; it counts once against the daily cap)
   if [[ "$need_cert" == 1 ]]; then
     cert_budget_take
-    site_content "$slug" "$port" "$auth" http | write_file "$site" 0644 root:root
+    site_content "$slug" "$port" "$auth" http "$index" "$domain" "${aliases[@]}" | write_file "$site" 0644 root:root
     run ln -sfn "$site" "$enabled"
     nginx_apply "$site" "$enabled" "$backup"
-    run certbot certonly --nginx -d "$domain" --keep-until-expiring --non-interactive --agree-tos \
-      --register-unsafely-without-email --deploy-hook "systemctl reload nginx"
-    if [[ "$DRY" == 0 && ! -f "$cert" ]]; then
+    certbot_args=(certonly --nginx)
+    if [[ "$custom" == 1 ]]; then certbot_args+=(--cert-name "$domain"); fi
+    for nm in "${names[@]}"; do certbot_args+=(-d "$nm"); done
+    certbot_args+=(--keep-until-expiring)
+    # a changed set of names replaces the lineage's names now (no question asked)
+    if [[ "$custom" == 1 ]]; then certbot_args+=(--renew-with-new-domains); fi
+    certbot_args+=(--non-interactive --agree-tos --register-unsafely-without-email --deploy-hook "systemctl reload nginx")
+    run certbot "${certbot_args[@]}"
+    if [[ "$DRY" == 0 ]] && [[ ! -f "$cert" || ("$custom" == 1 && "$(cert_names "$cert")" != "$want") ]]; then
       if [[ -n "$backup" ]]; then mv -f -- "$backup" "$site"; else rm -f -- "$site" "$enabled"; fi
       { nginx -t > /dev/null 2>&1 && systemctl reload nginx; } || true
-      fail "no certificate for $domain (does DNS for $domain point at this server?)"
+      fail "no certificate for ${names[*]} (does DNS for every name point at this server?)"
     fi
   else
     echo "certificate for $domain present"
   fi
   # 2) the real site
-  site_content "$slug" "$port" "$auth" full | write_file "$site" 0644 root:root
+  site_content "$slug" "$port" "$auth" full "$index" "$domain" "${aliases[@]}" | write_file "$site" 0644 root:root
   run ln -sfn "$site" "$enabled"
   nginx_apply "$site" "$enabled" "$backup"
   [[ -z "$backup" ]] || rm -f -- "$backup"
+  # the live domain is recorded (app-remove deletes its certificate later); a domain it replaces gives up its
+  # certificate now, so certbot never keeps renewing a name nothing serves
+  if [[ "$custom" == 1 ]]; then
+    have="$(recorded_domain "$slug")"
+    if [[ ! -d "$DOMAINS_DIR" || -L "$DOMAINS_DIR" ]]; then
+      [[ ! -L "$DOMAINS_DIR" ]] || fail "$DOMAINS_DIR is a symlink"
+      run install -d -m 0700 -o root -g root "$DOMAINS_DIR"
+    fi
+    if [[ "$have" != "$domain" ]]; then
+      printf '%s\n' "$domain" | write_file "$DOMAINS_DIR/$slug" 0600 root:root
+      if [[ -n "$have" ]]; then drop_lineage "$have" "$slug"; fi
+    fi
+  fi
+  for nm in "${aliases[@]}"; do echo "redirect https://$nm -> https://$domain"; done
   echo "published https://$domain"
 }
 
@@ -1579,12 +1743,50 @@ cmd_unpublish() {
 # app-remove, stop-all
 # ---------------------------------------------------------------------------
 
+# keep_db_dump SLUG NAME: pg_dump -Fc of database NAME (as the app role, peer map, like db-dump) to
+# REMOVED_DIR/<slug>-<UTC yyyymmddTHHMMZ>.dump (root 0600) → KEPT_DUMP (`none` when there is no such database).
+# Fails (exit 1) when the cluster does not answer or the dump fails: app-remove then has removed nothing. Dumps
+# older than REMOVED_KEEP_DAYS days are pruned.
+KEPT_DUMP=""
+keep_db_dump() {
+  local slug="$1" name="$2" out file tmp f
+  if [[ "$DRY" == 0 ]]; then
+    out="$(runuser -u postgres -- "$(pg_bin psql)" -X -tA -h "$PG_SOCK" -p "$C_PG_PORT" -d postgres -c "SELECT 1 FROM pg_database WHERE datname = '$name'")" ||
+      fail "the apps cluster does not answer: nothing was removed"
+    if [[ "$out" != 1 ]]; then
+      echo "no database $name: no dump to keep"
+      KEPT_DUMP=none
+      return 0
+    fi
+  fi
+  [[ ! -L "$REMOVED_DIR" ]] || fail "$REMOVED_DIR is a symlink: nothing was removed"
+  if [[ ! -d "$REMOVED_DIR" ]]; then run install -d -m 0700 -o root -g root "$REMOVED_DIR"; fi
+  file="$REMOVED_DIR/$slug-$(date -u +%Y%m%dT%H%MZ).dump"
+  if [[ "$DRY" == 1 ]]; then
+    echo "[dry-run] runuser -u postgres -- $(pg_bin pg_dump) -h $PG_SOCK -p $C_PG_PORT -U $name -Fc -d $name > $file (root-owned, mode 0600, via a temp file)"
+  else
+    tmp="$(mktemp "$REMOVED_DIR/.wfos-tmp.XXXXXX")"
+    if ! runuser -u postgres -- "$(pg_bin pg_dump)" -h "$PG_SOCK" -p "$C_PG_PORT" -U "$name" -Fc -d "$name" > "$tmp"; then
+      rm -f -- "$tmp"
+      fail "pg_dump of $name failed: nothing was removed"
+    fi
+    chmod 0600 "$tmp"
+    mv -fT -- "$tmp" "$file"
+  fi
+  KEPT_DUMP="$file"
+  while IFS= read -r -d '' f; do
+    run rm -f -- "$f"
+  done < <(find "$REMOVED_DIR" -maxdepth 1 -type f -name '*.dump' -mtime "+$REMOVED_KEEP_DAYS" -print0 2> /dev/null)
+}
+
 cmd_app_remove() {
-  local slug="$1" drop="$2" user dir unit name
+  local slug="$1" drop="$2" keep="$3" user dir unit name site live c
+  local -a certs=()
   user="$(app_user "$slug")"
   dir="$(app_dir "$slug")"
   unit="$(unit_name "$slug")"
   name="$(db_name "$slug")"
+  site="$NGINX_SITES/wfos-app-$slug"
   [[ "$drop" == 0 ]] || require_pg
   check_apps_root
   if acct passwd "$user" > /dev/null && ! our_user "$user" "$slug"; then
@@ -1600,6 +1802,15 @@ cmd_app_remove() {
     systemctl stop "$(build_unit "$slug")" 2> /dev/null || true
   fi
   lock
+  # the database is kept first: when that fails, nothing has been removed
+  if [[ "$keep" == 1 ]]; then keep_db_dump "$slug" "$name"; fi
+  # its certificates: the preview name and the live domain it published (recorded by publish, or read from its site)
+  certs=("$slug.$C_BASE_DOMAIN")
+  live="$(recorded_domain "$slug")"
+  if [[ -z "$live" && -f "$site" && ! -L "$site" ]]; then
+    live="$(sed -nE 's|^[[:space:]]*ssl_certificate /etc/letsencrypt/live/([^/]+)/fullchain\.pem;$|\1|p' -- "$site" | head -1)"
+  fi
+  if [[ -n "$live" && "$live" != "${certs[0]}" ]]; then certs+=("$live"); fi
   if [[ "$DRY" == 1 || -f "$(unit_path "$slug")" ]]; then
     run systemctl disable --now "$unit"
     run rm -f -- "$(unit_path "$slug")"
@@ -1608,6 +1819,9 @@ cmd_app_remove() {
   if [[ "$DRY" == 0 ]]; then systemctl reset-failed "$unit" "$(build_unit "$slug")" 2> /dev/null || true; fi
   remove_site "$slug"
   run rm -f -- "$(env_file "$slug")" "$(start_file "$slug")" "$HTPASSWD_DIR/$slug"
+  # after the site is gone (nginx no longer loads the files), best effort: certbot stops renewing them
+  for c in "${certs[@]}"; do drop_lineage "$c" "$slug"; done
+  if [[ -e "$DOMAINS_DIR/$slug" || -L "$DOMAINS_DIR/$slug" ]]; then run rm -f -- "$DOMAINS_DIR/$slug"; fi
   if [[ "$drop" == 1 ]]; then
     [[ "$DRY" == 0 ]] || echo "[dry-run] stdin: DROP DATABASE IF EXISTS $name WITH (FORCE); DROP ROLE IF EXISTS $name"
     psql_apps << EOF
@@ -1633,6 +1847,7 @@ EOF
   fi
   if acct group "$user" > /dev/null; then run groupdel "$user"; fi
   echo "app $slug removed"
+  if [[ "$keep" == 1 ]]; then echo "kept database dump: $KEPT_DUMP"; fi
 }
 
 cmd_stop_all() {
@@ -1646,7 +1861,7 @@ cmd_stop_all() {
   fi
   for f in "$UNIT_DIR"/wfos-app-*.service; do
     n="$(basename -- "$f")"
-    if [[ -f "$f" && "$n" =~ ^wfos-app-[a-z0-9-]{2,30}\.service$ ]]; then units+=("$n"); fi
+    if [[ -f "$f" && "$n" =~ ^wfos-app-[a-z0-9-]{2,35}\.service$ ]]; then units+=("$n"); fi
   done
   if ((${#units[@]} == 0)); then
     echo "no app units"
@@ -1678,26 +1893,26 @@ case "$cmd" in
   app-init)
     nargs $# 1
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_app_init "$1"
     ;;
   release-unpack)
     nargs $# 2
     read_conf
-    check_slug "$1"
+    check_name "$1"
     check_sha "$2"
     cmd_release_unpack "$1" "$2"
     ;;
   env-install)
     nargs $# 1
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_env_install "$1"
     ;;
   build-run)
     nargs $# 5
     read_conf
-    check_slug "$1"
+    check_name "$1"
     check_sha "$2"
     check_step "$3"
     check_timeout "$4"
@@ -1705,35 +1920,35 @@ case "$cmd" in
     cmd_build_run "$1" "$2" "$3" "$4" "$5"
     ;;
   db-create)
-    [[ $# -eq 1 || ($# -eq 2 && "${2:-}" == --reset-password) ]] || usage "db-create <slug> [--reset-password]"
+    [[ $# -eq 1 || ($# -eq 2 && "${2:-}" == --reset-password) ]] || usage "db-create <name> [--reset-password]"
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_db_create "$1" "$(flag $# 2)"
     ;;
   db-dump | db-restore)
     nargs $# 2
     read_conf
-    check_slug "$1"
+    check_name "$1"
     check_backup_name "$2"
     if [[ "$cmd" == db-dump ]]; then cmd_db_dump "$1" "$2"; else cmd_db_restore "$1" "$2"; fi
     ;;
   release-activate)
     nargs $# 2
     read_conf
-    check_slug "$1"
+    check_name "$1"
     check_sha "$2"
     cmd_release_activate "$1" "$2"
     ;;
   release-prune)
     nargs $# 1
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_release_prune "$1"
     ;;
   unit-install)
-    [[ $# -eq 3 || ($# -eq 4 && "${4:-}" == --database) ]] || usage "unit-install <slug> <port> <memMB> [--database]"
+    [[ $# -eq 3 || ($# -eq 4 && "${4:-}" == --database) ]] || usage "unit-install <name> <port> <memMB> [--database]"
     read_conf
-    check_slug "$1"
+    check_name "$1"
     check_port "$2"
     check_mem "$3"
     cmd_unit_install "$1" "$2" "$3" "$(flag $# 4)"
@@ -1741,41 +1956,96 @@ case "$cmd" in
   unit-start | unit-stop | unit-restart)
     nargs $# 1
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_unit_action "$cmd" "$1"
     ;;
   unit-status)
     nargs $# 1
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_unit_status "$1"
     ;;
   health)
     nargs $# 3
     read_conf
-    check_slug "$1"
+    check_name "$1"
     check_port "$2"
     check_health_path "$3"
     cmd_health "$1" "$2" "$3"
     ;;
   publish)
-    [[ $# -eq 2 || ($# -eq 3 && "${3:-}" == --auth) ]] || usage "publish <slug> <port> [--auth]"
+    (($# >= 2)) || usage "publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]"
+    pub_name="$1" pub_port="$2" pub_auth=0 pub_index=0 pub_has_domain=0 pub_domain=""
+    pub_aliases=()
+    shift 2
+    while (($# > 0)); do
+      case "$1" in
+        --auth)
+          ((pub_auth == 0)) || usage "publish: --auth given twice"
+          pub_auth=1
+          ;;
+        --index)
+          ((pub_index == 0)) || usage "publish: --index given twice"
+          pub_index=1
+          ;;
+        --domain)
+          ((pub_has_domain == 0)) || usage "publish: --domain given twice"
+          (($# >= 2)) || usage "publish: --domain needs a host name"
+          pub_has_domain=1 pub_domain="$2"
+          shift
+          ;;
+        --alias)
+          (($# >= 2)) || usage "publish: --alias needs a host name"
+          pub_aliases+=("$2")
+          shift
+          ;;
+        *) usage "publish: unknown option ${1@Q}" ;;
+      esac
+      shift
+    done
+    ((${#pub_aliases[@]} == 0 || pub_has_domain == 1)) || usage "publish: --alias needs --domain"
+    ((${#pub_aliases[@]} <= 3)) || usage "publish: at most 3 aliases"
     read_conf
-    check_slug "$1"
-    check_port "$2"
-    cmd_publish "$1" "$2" "$(flag $# 3)"
+    check_name "$pub_name"
+    check_port "$pub_port"
+    if ((pub_has_domain)); then
+      check_live_domain "$pub_domain" --domain
+      pub_seen=" $pub_domain "
+      for a in "${pub_aliases[@]}"; do
+        check_live_domain "$a" --alias
+        [[ "$pub_seen" != *" $a "* ]] || usage "publish: $a is given twice (domain and aliases must differ)"
+        pub_seen+="$a "
+      done
+    fi
+    cmd_publish "$pub_name" "$pub_port" "$pub_auth" "$pub_index" "$pub_domain" "${pub_aliases[@]}"
     ;;
   unpublish)
     nargs $# 1
     read_conf
-    check_slug "$1"
+    check_name "$1"
     cmd_unpublish "$1"
     ;;
   app-remove)
-    [[ $# -eq 1 || ($# -eq 2 && "${2:-}" == --drop-db) ]] || usage "app-remove <slug> [--drop-db]"
+    (($# >= 1 && $# <= 3)) || usage "app-remove <name> [--drop-db] [--keep-db-dump]"
+    rm_name="$1" rm_drop=0 rm_keep=0
+    shift
+    for a in "$@"; do
+      case "$a" in
+        --drop-db)
+          ((rm_drop == 0)) || usage "app-remove: --drop-db given twice"
+          rm_drop=1
+          ;;
+        --keep-db-dump)
+          ((rm_keep == 0)) || usage "app-remove: --keep-db-dump given twice"
+          rm_keep=1
+          ;;
+        *) usage "app-remove <name> [--drop-db] [--keep-db-dump]" ;;
+      esac
+    done
+    ((rm_keep == 0 || rm_drop == 1)) || usage "app-remove: --keep-db-dump needs --drop-db"
     read_conf
-    check_slug "$1"
-    cmd_app_remove "$1" "$(flag $# 2)"
+    check_name "$rm_name"
+    cmd_app_remove "$rm_name" "$rm_drop" "$rm_keep"
     ;;
   stop-all)
     nargs $# 0

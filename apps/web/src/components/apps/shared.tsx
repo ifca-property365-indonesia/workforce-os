@@ -2,7 +2,7 @@
 
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { APP_IDLE_STOP_DAYS, hasRole, type AppDTO, type AppStatus, type ReleaseDTO, type ReleaseStatus } from "@wfos/shared";
+import { APP_IDLE_STOP_DAYS, hasRole, type AppDTO, type AppEnvironmentDTO, type AppEnvironmentKind, type AppStatus, type ReleaseDTO, type ReleaseStatus } from "@wfos/shared";
 import { api } from "@/lib/api";
 import type { ReleaseOrigin } from "@/lib/app-previews";
 import { useMe } from "@/lib/hooks";
@@ -20,6 +20,8 @@ export interface AppDetail {
   releases: ReleaseDTO[];
   /** the task behind each release a task triggered (request_preview), keyed by task id */
   origins: Record<string, ReleaseOrigin>;
+  /** live env names changed since the release live now (names only) */
+  liveEnvChanged: string[];
 }
 
 export const ACTIVE_RELEASE: readonly ReleaseStatus[] = ["queued", "deploying"];
@@ -32,8 +34,21 @@ export function useApp(id: string) {
     queryKey: appQueryKey(id),
     queryFn: () => api.get<AppDetail>(`/api/apps/${id}`),
     // the live stream refreshes it; while a release runs, also poll (a dropped stream must not freeze the page)
-    refetchInterval: (q) => (q.state.data?.releases.some(isActiveRelease) || q.state.data?.app.status === "deploying" ? 5000 : false),
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d?.releases.some(isActiveRelease) || d?.app.preview.status === "deploying" || d?.app.live?.status === "deploying" ? 5000 : false;
+    },
   });
+}
+
+/** the query string of an environment route: nothing for the preview (the default), ?env=live for the live one */
+export const envQuery = (kind: AppEnvironmentKind) => (kind === "live" ? "?env=live" : "");
+
+/** an app's state as one environment: running when either runs (the sign lights for any served version) */
+export function appSignStatus(app: Pick<AppDTO, "preview" | "live">): AppStatus {
+  const order: AppStatus[] = ["running", "deploying", "failed", "stopped", "new"];
+  const states = [app.preview.status, app.live?.status].filter((x): x is AppStatus => !!x);
+  return order.find((s) => states.includes(s)) ?? "new";
 }
 
 /** what the signed-in person may do here: Admins change apps, the Owner stops all, Members and up read logs */
@@ -56,7 +71,7 @@ export function appColors(ids: readonly string[]): Map<string, SignColor> {
   return signColors(ids);
 }
 
-export function AppSign({ app, color, size = "md", className }: { app: Pick<AppDTO, "name" | "status">; color: SignColor; size?: "md" | "lg"; className?: string }) {
+export function AppSign({ app, color, size = "md", className }: { app: { name: string; status: AppStatus }; color: SignColor; size?: "md" | "lg"; className?: string }) {
   return (
     <span
       className={cn(
@@ -112,7 +127,7 @@ export function ReleaseStatusBadge({ status, className }: { status: ReleaseStatu
 }
 
 /** a dot for the last health check: green answering, red not, hollow when never checked */
-export function HealthDot({ app, withLabel }: { app: Pick<AppDTO, "healthy" | "lastHealthAt" | "status">; withLabel?: boolean }) {
+export function HealthDot({ app, withLabel }: { app: Pick<AppEnvironmentDTO, "healthy" | "lastHealthAt" | "status">; withLabel?: boolean }) {
   const t = useTranslations("apps");
   const f = useFormat();
   const state = app.healthy === null || app.status !== "running" ? "unknown" : app.healthy ? "healthy" : "unhealthy";
@@ -134,6 +149,25 @@ export function HealthDot({ app, withLabel }: { app: Pick<AppDTO, "healthy" | "l
 }
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
+
+/**
+ * The environment's own small acrylic plate: PREVIEW in blue, LIVE in red. Lit while that environment serves, dark
+ * otherwise, so a glance at the page tells which one is on.
+ */
+export function EnvPlate({ kind, status, className }: { kind: AppEnvironmentKind; status?: AppStatus; className?: string }) {
+  const t = useTranslations("apps");
+  const state: SignState = status ? SIGN_STATE[status] : "lit";
+  return (
+    <span
+      className={cn("sign font-display inline-flex shrink-0 items-center gap-1 rounded px-1.5 pt-[3px] pb-[1px] text-[0.8rem] leading-none tracking-[0.08em]", className)}
+      style={signVars(kind === "live" ? "merah" : "biru")}
+      data-state={state}
+    >
+      {kind === "live" && <span className={cn("size-1.5 rounded-full bg-current", state === "lit" && "animate-pulse motion-reduce:animate-none")} aria-hidden />}
+      {t(`environments.${kind}`)}
+    </span>
+  );
+}
 
 /** "a1b2c3d" in a mono plate; the full hash on hover */
 export function CommitChip({ sha, className }: { sha: string; className?: string }) {

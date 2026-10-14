@@ -1,11 +1,11 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { approvals, apps, appReleases, audit, db, repositories, servers, tasks, users } from "@wfos/db";
+import { appEnvironments, approvals, apps, appReleases, audit, db, repositories, servers, tasks, users } from "@wfos/db";
 import { requestPreviewPayloadSchema, type AppManifest, type RequestPreviewPayload } from "@wfos/shared";
 import { errorMessage } from "../lib/errors";
 import { log } from "../lib/logger";
 import { deploysQueue } from "../lib/redis";
 import { agentBranch, mirrorPath, rootGit, SAFE_REF } from "../runner/workspace/git";
-import { appUrl, publishRelease, sha8, type App } from "./common";
+import { appUrl, environmentOf, publishRelease, sha8, type App, type Environment } from "./common";
 import { commitSubject, DeployInputError, parseManifest, readManifest, releaseWarnings } from "./manifest";
 
 /**
@@ -73,11 +73,11 @@ function storedManifest(m: unknown): AppManifest | null {
   }
 }
 
-export type PreviewRequest = { error: string } | { payload: RequestPreviewPayload; app: App };
+export type PreviewRequest = { error: string } | { payload: RequestPreviewPayload; app: App; environment: Environment };
 
 /**
  * request_preview, before the gate: the app must belong to the workspace and be linked to the task's repository,
- * its server must exist, and the commit is the pushed head of agent/<task>, which must be the head of an EXECUTED
+ * it must have a preview environment whose server exists (agents only ever act on the preview, never on live), and the commit is the pushed head of agent/<task>, which must be the head of an EXECUTED
  * git_push of this task (`requirePushed`: false only in a dry run, where nothing is pushed or deployed).
  */
 export async function buildPreviewRequest(o: {
@@ -93,7 +93,9 @@ export async function buildPreviewRequest(o: {
   if (app.repositoryId !== o.repo.id) {
     return { error: `App "${app.name}" is not linked to your repository ${o.repo.name}: you can only preview an app built from the repository of this task (see list_apps, linkedToYourRepository).` };
   }
-  const [server] = await db.select({ name: servers.name }).from(servers).where(and(eq(servers.id, app.serverId), eq(servers.workspaceId, o.workspaceId)));
+  const environment = await environmentOf(app.id, "preview");
+  if (!environment) return { error: `App "${app.name}" has no preview environment; ask an Admin to check the app.` };
+  const [server] = await db.select({ name: servers.name }).from(servers).where(and(eq(servers.id, environment.serverId), eq(servers.workspaceId, o.workspaceId)));
   if (!server) return { error: `The server of app "${app.name}" no longer exists; ask an Admin to check the app.` };
 
   const notPushed = "Your branch is not pushed: push it first with git_push and wait for the approval, then call request_preview again.";
@@ -121,9 +123,9 @@ export async function buildPreviewRequest(o: {
     if (e instanceof DeployInputError) return { error: `${e.message}. Fix wfos-app.json (see the app-nextjs skill), commit, git_push again, then request_preview again.` };
     throw e;
   }
-  const [current] = app.currentReleaseId ? await db.select().from(appReleases).where(eq(appReleases.id, app.currentReleaseId)) : [];
+  const [current] = environment.currentReleaseId ? await db.select().from(appReleases).where(eq(appReleases.id, environment.currentReleaseId)) : [];
   if (current && current.commit === head) {
-    return { error: `Commit ${sha8(head)} is already the version that runs at ${appUrl(app)}: commit a change and push it before asking for a new preview.` };
+    return { error: `Commit ${sha8(head)} is already the version that runs at ${appUrl(environment)}: commit a change and push it before asking for a new preview.` };
   }
   const from = await rangeStart(mirror, head, current?.commit ?? null, o.repo.defaultBranch);
   const changes = await changesSince(mirror, from, head);
@@ -132,13 +134,13 @@ export async function buildPreviewRequest(o: {
     sha: head,
     manifest,
     current: current ? { commit: current.commit, manifest: storedManifest(current.manifest) } : null,
-    hasDatabase: !!app.dbPasswordEnc,
-    accessMode: app.accessMode,
+    hasDatabase: !!environment.dbPasswordEnc,
+    accessMode: environment.accessMode,
   });
   const payload = requestPreviewPayloadSchema.parse({
     appId: app.id,
     appName: app.name,
-    url: appUrl(app),
+    url: appUrl(environment),
     serverName: server.name,
     repositoryId: o.repo.id,
     repository: o.repo.name,
@@ -151,7 +153,7 @@ export async function buildPreviewRequest(o: {
     manifest,
     summary: o.summary.slice(0, 2000),
   });
-  return { payload, app };
+  return { payload, app, environment };
 }
 
 /** Plain text of a preview request (draft deliverable, dry-run record). */
@@ -176,8 +178,8 @@ export interface PreviewActionResult {
 }
 
 /**
- * The approved request_preview: re-check that agent/<task> still points at the approved commit and that the app has
- * no deploy queued or running, then queue a release of that commit (trigger "approval") on the deploys queue. The
+ * The approved request_preview: re-check that agent/<task> still points at the approved commit and that the app's
+ * preview has no deploy queued or running, then queue a release of that commit (trigger "approval") on the deploys queue. The
  * pipeline re-checks the kill switch, dry run, the server and its capacity.
  */
 export async function queuePreviewRelease(workspaceId: string, raw: Record<string, unknown>, context: { taskId?: string | null; approvalId?: string | null }): Promise<PreviewActionResult> {
@@ -191,6 +193,8 @@ export async function queuePreviewRelease(workspaceId: string, raw: Record<strin
   const [app] = await db.select().from(apps).where(and(eq(apps.id, p.appId), eq(apps.workspaceId, workspaceId)));
   if (!app) return { ok: false, summary: "The app no longer exists: nothing was deployed." };
   if (app.repositoryId !== p.repositoryId) return { ok: false, summary: `App "${app.name}" is no longer linked to ${p.repository}: nothing was deployed.` };
+  const environment = await environmentOf(app.id, "preview");
+  if (!environment) return { ok: false, summary: `App "${app.name}" has no preview environment: nothing was deployed.` };
   const [repo] = await db.select({ id: repositories.id }).from(repositories).where(and(eq(repositories.id, p.repositoryId), eq(repositories.workspaceId, workspaceId)));
   if (!repo) return { ok: false, summary: "The repository no longer exists: nothing was deployed." };
   const head = await agentHead(repo.id, taskId);
@@ -203,18 +207,19 @@ export async function queuePreviewRelease(workspaceId: string, raw: Record<strin
   const createdBy = a?.decidedBy ?? null;
 
   const queued = await db.transaction(async (tx) => {
-    // the app row is the lock (as for a manual deploy): two approvals at once cannot both see "nothing running"
-    await tx.select({ id: apps.id }).from(apps).where(eq(apps.id, app.id)).for("update");
+    // the environment row is the lock (as for a manual deploy): two approvals at once cannot both see "nothing running"
+    await tx.select({ id: appEnvironments.id }).from(appEnvironments).where(eq(appEnvironments.id, environment.id)).for("update");
     const [active] = await tx
       .select({ id: appReleases.id, status: appReleases.status })
       .from(appReleases)
-      .where(and(eq(appReleases.appId, app.id), inArray(appReleases.status, [...ACTIVE_RELEASE_STATUSES])))
+      .where(and(eq(appReleases.environmentId, environment.id), inArray(appReleases.status, [...ACTIVE_RELEASE_STATUSES])))
       .limit(1);
     if (active) return { kind: "busy" as const, active };
     const [r] = await tx
       .insert(appReleases)
       .values({
         appId: app.id,
+        environmentId: environment.id,
         workspaceId,
         commit: p.commit,
         branch: agentBranch(taskId),
@@ -248,12 +253,15 @@ export async function queuePreviewRelease(workspaceId: string, raw: Record<strin
     action: "app.deploy_requested",
     targetType: "app",
     targetId: app.id,
-    details: { name: app.name, releaseId: rel.id, branch: rel.branch, commit: rel.commit, trigger: "approval", approvalId: context.approvalId, taskId },
+    details: { name: app.name, releaseId: rel.id, environmentId: environment.id, environment: "preview", branch: rel.branch, commit: rel.commit, trigger: "approval", approvalId: context.approvalId, taskId },
   });
-  return { ok: true, summary: `Preview queued: release ${rel.id}`, details: { releaseId: rel.id, appId: app.id, commit: rel.commit, url: appUrl(app) } };
+  return { ok: true, summary: `Preview queued: release ${rel.id}`, details: { releaseId: rel.id, appId: app.id, environmentId: environment.id, commit: rel.commit, url: appUrl(environment) } };
 }
 
-/** list_apps: the workspace's apps, without secrets, env names or the preview password. */
+/**
+ * list_apps: the workspace's apps with their preview (what agents work on), without secrets, env names or passwords;
+ * `live` is read-only information (url, status, the commit it runs), never something an agent can act on.
+ */
 export async function listApps(workspaceId: string, yourRepositoryId: string | null) {
   const rows = await db
     .select({ app: apps, repository: repositories.name })
@@ -261,7 +269,14 @@ export async function listApps(workspaceId: string, yourRepositoryId: string | n
     .leftJoin(repositories, eq(repositories.id, apps.repositoryId))
     .where(eq(apps.workspaceId, workspaceId))
     .orderBy(desc(apps.updatedAt));
-  const currentIds = rows.map((r) => r.app.currentReleaseId).filter((x): x is string => !!x);
+  const envs = rows.length
+    ? await db
+        .select()
+        .from(appEnvironments)
+        .where(and(eq(appEnvironments.workspaceId, workspaceId), inArray(appEnvironments.appId, rows.map((r) => r.app.id))))
+    : [];
+  const envOf = (appId: string, kind: Environment["kind"]) => envs.find((e) => e.appId === appId && e.kind === kind) ?? null;
+  const currentIds = envs.map((e) => e.currentReleaseId).filter((x): x is string => !!x);
   const current = currentIds.length
     ? await db
         .select({ id: appReleases.id, commit: appReleases.commit, subject: appReleases.commitSubject, status: appReleases.status, finishedAt: appReleases.finishedAt, createdAt: appReleases.createdAt })
@@ -270,20 +285,25 @@ export async function listApps(workspaceId: string, yourRepositoryId: string | n
     : [];
   const byId = new Map(current.map((r) => [r.id, r]));
   return rows.map(({ app: a, repository }) => {
-    const c = a.currentReleaseId ? byId.get(a.currentReleaseId) : undefined;
+    const preview = envOf(a.id, "preview");
+    const live = envOf(a.id, "live");
+    const c = preview?.currentReleaseId ? byId.get(preview.currentReleaseId) : undefined;
+    const lc = live?.currentReleaseId ? byId.get(live.currentReleaseId) : undefined;
     return {
       id: a.id,
       name: a.name,
       slug: a.slug,
-      url: appUrl(a),
-      status: a.status,
-      healthy: a.healthy,
+      url: preview ? appUrl(preview) : null,
+      status: preview?.status ?? "new",
+      healthy: preview?.healthy ?? null,
       repository: repository ?? null,
       repositoryId: a.repositoryId,
       branch: a.branch,
       linkedToYourRepository: !!yourRepositoryId && a.repositoryId === yourRepositoryId,
       currentRelease: c ? { commit: c.commit, subject: c.subject, status: c.status, at: (c.finishedAt ?? c.createdAt).toISOString() } : null,
-      lastDeployedAt: a.lastDeployedAt?.toISOString() ?? null,
+      lastDeployedAt: preview?.lastDeployedAt?.toISOString() ?? null,
+      // read-only: agents never deploy to, stop or change the live environment
+      live: live ? { url: appUrl(live), status: live.status, version: lc?.commit ?? null } : null,
     };
   });
 }

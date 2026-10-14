@@ -5,12 +5,13 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Check, Copy, ExternalLink, OctagonX, Plus, Rocket } from "lucide-react";
+import { Check, Copy, OctagonX, Plus, Rocket } from "lucide-react";
 import { APP_MANIFEST_FILE, type AppDTO } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/common";
 import { NewAppDialog, useRepositories, useServers } from "@/components/apps/new-app-dialog";
-import { AppSign, AppStatusBadge, CommitChip, HealthDot, appColors, appsQueryKey, copyText, useApps, useAppRights, useStatusMessage } from "@/components/apps/shared";
+import { UrlPlate } from "@/components/apps/environment-panel";
+import { AppSign, AppStatusBadge, CommitChip, EnvPlate, HealthDot, appColors, appSignStatus, appsQueryKey, copyText, useApps, useAppRights, useStatusMessage } from "@/components/apps/shared";
 import { api } from "@/lib/api";
 import { useClients } from "@/lib/hooks";
 import { signVars, type SignColor } from "@/lib/sign";
@@ -23,30 +24,34 @@ function AppCard({ app, color }: { app: AppDTO; color: SignColor }) {
   const t = useTranslations("apps");
   const f = useFormat();
   const statusMessage = useStatusMessage();
-  const cur = app.currentRelease;
-  const note = statusMessage(app.statusMessage);
+  const { preview, live } = app;
+  const cur = preview.currentRelease;
+  const note = statusMessage(preview.statusMessage);
   return (
     <li className="group relative flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 transition-shadow hover:shadow-md">
       <div className="flex min-w-0 items-start justify-between gap-2">
         <Link href={`/apps/${app.id}`} className="min-w-0 rounded-md after:absolute after:inset-0 after:rounded-xl focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring">
-          <AppSign app={app} color={color} />
+          <AppSign app={{ name: app.name, status: appSignStatus(app) }} color={color} />
           <span className="sr-only">{t("list.open", { name: app.name })}</span>
         </Link>
         <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
-          <AppStatusBadge status={app.status} />
-          <HealthDot app={app} />
+          <AppStatusBadge status={preview.status} />
+          <HealthDot app={preview} />
         </div>
       </div>
-      {/* the address plate: the link is above the card's own link, so it opens the preview itself */}
-      <a
-        href={app.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="relative z-10 flex min-w-0 items-center gap-1.5 self-start rounded-md border border-dashed px-2 py-1 font-mono text-xs text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
-      >
-        <span className="min-w-0 truncate">{app.url.replace(/^https:\/\//, "")}</span>
-        <ExternalLink className="size-3 shrink-0" aria-hidden />
-      </a>
+      {/* the address plates sit above the card's own link, so each opens its site itself */}
+      <div className="flex min-w-0 flex-col items-start gap-1.5">
+        <span className="flex min-w-0 max-w-full items-center gap-1.5">
+          {live && <EnvPlate kind="preview" status={preview.status} />}
+          <UrlPlate url={preview.url} kind="preview" size="sm" />
+        </span>
+        {live && (
+          <span className="flex min-w-0 max-w-full items-center gap-1.5">
+            <EnvPlate kind="live" status={live.status} />
+            <UrlPlate url={live.url} kind="live" size="sm" />
+          </span>
+        )}
+      </div>
       <div className="mt-auto space-y-1 border-t pt-3 text-xs text-muted-foreground">
         {cur ? (
           <>
@@ -65,6 +70,13 @@ function AppCard({ app, color }: { app: AppDTO; color: SignColor }) {
         ) : (
           <div>{t("list.never")}</div>
         )}
+        {live?.currentRelease && (
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="shrink-0 font-semibold text-[var(--sign-merah)]">{t("list.liveVersion")}</span>
+            <CommitChip sha={live.currentRelease.commit} className="text-foreground" />
+            <span className="min-w-0 truncate">{f.ago(live.currentRelease.finishedAt ?? live.currentRelease.createdAt)}</span>
+          </div>
+        )}
         {note && <div className="truncate text-warning">{note}</div>}
       </div>
     </li>
@@ -74,7 +86,7 @@ function AppCard({ app, color }: { app: AppDTO; color: SignColor }) {
 /** one street of shop signs per client: its name painted on the kerb, its apps in a row */
 function ClientRow({ title, apps, colors, href }: { title: string; apps: AppDTO[]; colors: Map<string, SignColor>; href?: string }) {
   const t = useTranslations("apps");
-  const running = apps.filter((a) => a.status === "running").length;
+  const running = apps.filter((a) => a.preview.status === "running" || a.live?.status === "running").length;
   return (
     <section className="space-y-3" aria-label={title}>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b-2 border-foreground/80 pb-1.5">
@@ -182,7 +194,7 @@ export default function AppsPage() {
   const [creating, setCreating] = useState(false);
   const list = data ?? [];
   const colors = appColors(list.map((a) => a.id));
-  const live = list.filter((a) => a.status === "running" || a.status === "deploying").length;
+  const previewsOn = list.filter((a) => a.preview.status === "running" || a.preview.status === "deploying").length;
 
   const stopAll = useMutation({
     mutationFn: () => api.post<{ count: number }>("/api/apps/stop-all"),
@@ -214,7 +226,7 @@ export default function AppsPage() {
         }
         actions={
           <>
-            {owner && live > 0 && (
+            {owner && previewsOn > 0 && (
               <Button variant="outline" className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={stopAll.isPending} onClick={() => confirm(t("stopAllConfirm")) && stopAll.mutate()}>
                 <OctagonX className="size-4" /> {t("stopAll")}
               </Button>

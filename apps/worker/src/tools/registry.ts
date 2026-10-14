@@ -1312,7 +1312,8 @@ export function buildTools(ctx: RunContext) {
     tool(
       "list_apps",
       "The workspace's apps: id, name, preview URL, status, health, repository and branch, the version that runs now (currentRelease) and when it was last deployed. " +
-        "linkedToYourRepository marks the apps built from the repository of this task: only those can be previewed with request_preview.",
+        "linkedToYourRepository marks the apps built from the repository of this task: only those can be previewed with request_preview. " +
+        "live (url, status, version) is the client's LIVE environment, shown for information only: you cannot deploy to it, stop it or change it.",
       {},
       wrap(ctx, "list_apps", async () => {
         const list = await listApps(ctx.workspaceId, ctx.workspace?.repository?.id ?? null);

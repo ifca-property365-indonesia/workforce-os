@@ -1,20 +1,22 @@
 # App server preparation
 
 These two files turn a server you own into an **app server** for Workforce OS: the place where the apps your
-employees build are previewed (`https://<app>.<your domain>`).
+employees build are previewed (`https://<app>.<your domain>`) and, once released, run live at a client's own domain
+(`https://app.client.com`).
 
 - `prepare.sh` — run by you, as root, on that server. Safe to run again (to update the helper, after changing the
   domain, or to upgrade an earlier install in place).
 - `wfos-app-helper` — installed by `prepare.sh` as `/usr/local/sbin/wfos-app-helper`. It is the only thing
-  Workforce OS may run as root. It checks every argument and every stdin payload (app name, commit, port, memory,
-  env lines, password hash) before doing anything.
+  Workforce OS may run as root. It checks every argument and every stdin payload (instance name, commit, port,
+  memory, domain names, env lines, password hash) before doing anything. This is helper version 3 (`version`,
+  `info.helperVersion`); Workforce OS shows a server with an older helper as outdated until you re-run `prepare.sh`.
 
 Workforce OS never sees a root password. It logs in as an ordinary user (`wfos-apps`) with the workspace's own SSH
 key, and only after you confirmed the server's host key fingerprint.
 
 ## What `prepare.sh` installs and changes
 
-- packages (skips what is installed): nginx, certbot, PostgreSQL, nftables, jq, git, rsync, build-essential; Node.js
+- packages (skips what is installed): nginx, certbot, openssl, PostgreSQL, nftables, jq, git, rsync, build-essential; Node.js
   of the requested major from NodeSource's signed apt repository (keyring in `/etc/apt/keyrings/nodesource.gpg`)
   when node is missing or another major
 - pnpm (default `10.33.0`) prepared by corepack into `/opt/wfos-apps/corepack`, shared and read-only for every app,
@@ -49,15 +51,65 @@ key, and only after you confirmed the server's host key fingerprint.
 - `/usr/local/sbin/wfos-app-helper` (installed from a root-only copy that was syntax-checked) and
   `/etc/sudoers.d/wfos-app-helper` (the user may run exactly that file as root;
   checked with `visudo` first), and `/etc/wfos-app-helper.conf`
-- `/etc/nginx/conf.d/wfos-apps.conf` (a websocket map), then reloads nginx; ufw: allows 80 and 443 when it is active
+- `/etc/nginx/conf.d/wfos-apps.conf` (a websocket map and `server_names_hash_bucket_size 512`, enough for any valid
+  host name) and the catch-all site `wfos-apps-catchall` (names under the preview domain that no app owns: 404 over
+  http, TLS handshake refused over https; it never covers live domains), then reloads nginx; ufw: allows 80 and 443
+  when it is active
 
 An earlier install (Phase A1) kept apps in `~wfos-apps/apps`. `prepare.sh` moves `APPS_ROOT` to `/srv/wfos-apps`,
 turns the A1 `apps` cluster into a socket-only one (it restarts it once, only when the settings change), and
 removes the old empty `~/apps` folder.
 
+## Previews and live environments
+
+Every command of the helper takes an **instance name**: the app's slug for its preview, `<slug>-live` for its live
+environment (2 to 35 of `a-z 0-9 -`, starting with a letter, no `--`, not one of the reserved names `www api app apps
+admin mail preview static assets cdn status`). Below, `<app>` means that instance name. A preview and the live
+environment of the same app are two separate instances: their own user, folder, releases, env file, start script,
+unit, port, nginx site, certificate and database (`app_<slug>_live`), so a preview never touches live data.
+
+`publish <name> <port> [--auth] [--domain <fqdn> [--alias <fqdn>]...] [--index]` (options in any order):
+
+- without `--domain`: the preview site `https://<name>.<preview domain>`, as before, `X-Robots-Tag: noindex`
+- with `--domain`: a lower-case host name of at least two labels (no IP, no wildcard), never the preview domain or a
+  name under it; up to three `--alias` names (e.g. `www.`) that answer with a permanent redirect (301) to
+  `https://<domain>` over http and https. One Let's Encrypt certificate (`--cert-name <domain>`) covers the domain and
+  every alias and counts once against the daily cap; when the set of names changes (an alias added or dropped) the
+  certificate is requested again for exactly the new set
+- `--index` leaves out `X-Robots-Tag: noindex` (a live site may be indexed); `--auth` adds basic auth (a bcrypt line
+  on stdin), without it there is none
+- every name is refused (`server_name_taken`, nothing is written) when another nginx site on this server already
+  serves it; for live names also when another site's wildcard (`*.example.com`, `.example.com`, `www.example.*`)
+  covers it. Each name needs an A/AAAA record pointing at this server before the certificate can be issued
+
+Removing an instance (`app-remove <name> [--drop-db] [--keep-db-dump]`) also deletes its certificates (best effort,
+`certbot delete`): the preview name's and the live domain it published (recorded in
+`/var/lib/wfos-apps/domains/<name>`), so certbot never keeps renewing a site that is gone. A certificate another
+instance records or another nginx site still serves is kept. Publishing a live environment under a new domain
+deletes the old domain's certificate the same way, once the new site is in place.
+
+### Database dumps kept on removal
+
+`app-remove <name> --drop-db --keep-db-dump` first dumps the instance's database (`pg_dump -Fc` as its own role) to
+`/var/lib/wfos-apps/removed/<name>-<UTC yyyymmddTHHMMZ>.dump` (root, 0600) and prints `kept database dump: <path>`
+as its last line; when the dump fails nothing is removed. Dumps older than 30 days are deleted at the next such
+removal. To restore one by hand (as root), into a fresh database of the apps cluster:
+
+```bash
+f=/var/lib/wfos-apps/removed/shop-live-20261014T0930Z.dump
+psql() { runuser -u postgres -- /usr/lib/postgresql/<v>/bin/psql -h /run/wfos-apps-pg -p 5433 "$@"; }
+psql -d postgres -c 'CREATE DATABASE restored_shop_live'
+runuser -u postgres -- /usr/lib/postgresql/<v>/bin/pg_restore -h /run/wfos-apps-pg -p 5433 -d restored_shop_live \
+  --no-owner --no-privileges --single-transaction < "$f"
+```
+
+(`pg_restore -l "$f"` lists what is in it; `pg_restore -f out.sql "$f"` turns it into plain SQL.) To give it back to
+an app, deploy the app again (Workforce OS creates its role and database), then restore into that database with
+`-d app_<name with _> --clean --if-exists --no-owner --no-privileges --single-transaction`.
+
 ## How an app runs
 
-Each app gets its own system user `wa-<app>` (no login shell, no home, only in `wfos-app-run`, uid/gid from the
+Each app instance gets its own system user `wa-<app>` (names over 28 characters: `wa-<first 19>-<8 hex of a hash>`) (no login shell, no home, only in `wfos-app-run`, uid/gid from the
 range 460000–460999, comment `Workforce OS app <app>`; the helper never uses or deletes an account with that name
 that lacks either). Its folder:
 
@@ -92,9 +144,10 @@ transient unit (`systemd-run`, as the app's user). Both get the same sandbox:
   else), all inside `wfos-apps.slice`; a build also has a time limit, a lower priority and no network access to
   loopback or private ranges at all (systemd `IPAddressDeny`, DNS excepted). Unpacking, installs, builds and
   starting an app stop when less than 2 GB disk is free
-- the app listens on `127.0.0.1:<port>` (`HOST`, `PORT`) and may bind only that port; nginx publishes it at
+- the app listens on `127.0.0.1:<port>` (`HOST`, `PORT`) and may bind only that port; nginx publishes a preview at
   `https://<app>.<domain>` with a Let's Encrypt certificate (at most 10 new certificates a day), HSTS,
-  `X-Robots-Tag: noindex` and, by default, a preview password (basic auth; Workforce OS sends only a bcrypt hash)
+  `X-Robots-Tag: noindex` and, by default, a preview password (basic auth; Workforce OS sends only a bcrypt hash),
+  and a live environment at its own domain (see above)
 
 **Disk (residual risk).** There is no per-app disk quota (it needs a filesystem of its own per app): a running app
 can fill the disk through `data/` or `next-cache/` (files are capped at 2 GB each, not in total). The 2 GB guard
@@ -117,7 +170,8 @@ its own (e.g. `example-previews.com`).
 
 1. In Workforce OS: **Settings → Servers → Add server**. Copy the prepare command it shows (it contains the
    workspace public key and your domain).
-2. Make sure DNS `*.<your domain>` points at the server (for example `*.preview.example.com`).
+2. Make sure DNS `*.<your domain>` points at the server (for example `*.preview.example.com`). A live domain (and
+   each alias) needs its own A/AAAA record pointing at the server; Workforce OS checks it before it publishes.
 3. Copy both files to the server, next to each other, and run the command as root. Try it first with `--dry-run`
    (prints every action, changes nothing):
 
@@ -149,11 +203,12 @@ sudo deluser --remove-home wfos-apps                                         # a
 Then, if you want: delete the app users (`getent passwd | grep '^wa-.*:Workforce OS app '`, then `userdel` and
 `groupdel` each) and
 the group `wfos-app-run`; `pg_dropcluster --stop <version> apps`; remove `/srv/wfos-apps`, `/etc/wfos-apps`,
-`/var/lib/wfos-apps`, `/opt/wfos-apps`, `/etc/tmpfiles.d/wfos-apps-pg.conf`,
+`/var/lib/wfos-apps` (also the kept database dumps in `removed/`), `/opt/wfos-apps`, `/etc/tmpfiles.d/wfos-apps-pg.conf`,
 `/etc/systemd/system/wfos-app-*.service`, `/etc/systemd/system/wfos-apps-firewall.service`,
 `/etc/systemd/system/wfos-apps.slice`, `/etc/apt/sources.list.d/nodesource.list`,
-`/etc/nginx/sites-*/wfos-app-*`, `/etc/nginx/conf.d/wfos-apps.conf` (and the A1 folder `/etc/nginx/wfos-apps`) and
-`/etc/wfos-app-helper.conf`. Certificates stay in `/etc/letsencrypt` (`certbot delete --cert-name <app>.<domain>`).
+`/etc/nginx/sites-*/wfos-app-*`, `/etc/nginx/sites-*/wfos-apps-catchall`, `/etc/nginx/conf.d/wfos-apps.conf` (and the
+A1 folder `/etc/nginx/wfos-apps`) and `/etc/wfos-app-helper.conf`. Certificates stay in `/etc/letsencrypt`
+(`certbot delete --cert-name <app>.<domain>`, and `--cert-name <live domain>` for a live environment).
 
 ## Tests
 

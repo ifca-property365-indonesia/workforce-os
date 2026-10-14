@@ -111,7 +111,7 @@ export async function recoverInterruptedReleases(): Promise<string[]> {
 }
 
 /**
- * A `queued` release no job will ever run: failed with `reason` (it never touched the app), audited, and handed
+ * A `queued` release no job will ever run: failed with `reason` (it never touched its environment), audited, and handed
  * back to the task that asked for it. Conditional on `queued`: false when it started (or ended) meanwhile.
  */
 async function failQueuedRelease(r: { id: string }, reason: "interrupted" | "lost"): Promise<boolean> {
@@ -128,7 +128,7 @@ async function failQueuedRelease(r: { id: string }, reason: "interrupted" | "los
     action: "app.deploy_failed",
     targetType: "app",
     targetId: row.appId,
-    details: { releaseId: row.id, commit: row.commit || null, branch: row.branch, trigger: row.trigger, step: row.step, error: reason },
+    details: { releaseId: row.id, environmentId: row.environmentId, commit: row.commit || null, branch: row.branch, trigger: row.trigger, step: row.step, error: reason },
   });
   await handBack(row.id);
   return true;

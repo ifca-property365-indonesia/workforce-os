@@ -4,7 +4,7 @@ import path from "node:path";
 import bcrypt from "bcryptjs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { appReleases, approvals, apps, db, employees, members, repositories, servers, tasks, users, workspaces } from "@wfos/db";
+import { appEnvironments, appReleases, approvals, apps, db, employees, members, repositories, servers, tasks, users, workspaces } from "@wfos/db";
 import { APP_PORT_MIN, BUILTIN_TOOLS, requestPreviewPayloadSchema, type RequestPreviewPayload } from "@wfos/shared";
 import { POST as login } from "@/app/api/auth/login/route";
 import { POST as decide } from "@/app/api/approvals/[id]/decide/route";
@@ -41,10 +41,12 @@ async function previewFixture(wsId: string, userId: string) {
   const [server] = await db.insert(servers).values({ workspaceId: wsId, name: `srv-${base}`, host: "45.77.10.20", port: 22, baseDomain: base, status: "ready" }).returning();
   const [repo] = await db.insert(repositories).values({ workspaceId: wsId, name: `repo-${randomUUID().slice(0, 6)}`, provider: "github", url: "https://github.com/acme/guestbook.git" }).returning();
   const slug = `guestbook-${randomUUID().slice(0, 4)}`;
-  const [app] = await db
-    .insert(apps)
-    .values({ workspaceId: wsId, serverId: server!.id, repositoryId: repo!.id, name: `Guestbook ${slug}`, slug, domain: `${slug}.${base}`, port: APP_PORT_MIN + 400 })
+  const [row] = await db.insert(apps).values({ workspaceId: wsId, repositoryId: repo!.id, name: `Guestbook ${slug}`, slug }).returning();
+  const [env] = await db
+    .insert(appEnvironments)
+    .values({ appId: row!.id, workspaceId: wsId, kind: "preview", serverId: server!.id, instanceName: slug, domain: `${slug}.${base}`, port: APP_PORT_MIN + 400 })
     .returning();
+  const app = { ...row!, domain: env!.domain, env: env! };
   const [dev] = await db.insert(employees).values({ workspaceId: wsId, name: "Raka", role: "Developer", model: "m" }).returning();
   const [task] = await db.insert(tasks).values({ workspaceId: wsId, title: "Add a guestbook", assigneeId: dev!.id, status: "AWAITING_APPROVAL", repositoryId: repo!.id }).returning();
   const payload: RequestPreviewPayload = {
@@ -74,7 +76,7 @@ async function previewFixture(wsId: string, userId: string) {
     (
       await db
         .insert(appReleases)
-        .values({ appId: app!.id, workspaceId: wsId, commit: SHA, branch: `agent/${task!.id}`, commitSubject: "Add the guestbook form", trigger: "approval", approvalId: approval!.id, taskId: task!.id, createdBy: userId, ...over })
+        .values({ appId: app!.id, workspaceId: wsId, environmentId: env!.id, commit: SHA, branch: `agent/${task!.id}`, commitSubject: "Add the guestbook form", trigger: "approval", approvalId: approval!.id, taskId: task!.id, createdBy: userId, ...over })
         .returning()
     )[0]!;
   return { server: server!, repo: repo!, app: app!, dev: dev!, task: task!, approval: approval!, payload, release };

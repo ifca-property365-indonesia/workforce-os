@@ -1,73 +1,82 @@
 "use client";
 
 import Link, { useRouter } from "@/lib/nav";
-import { use, useState, type ReactNode } from "react";
+import { use, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { ExternalLink, Pencil, Play, Rocket, Square, Trash2 } from "lucide-react";
-import type { ReleaseDTO } from "@wfos/shared";
+import { Pencil, Play, Radio, Rocket, Settings2, Square, Trash2 } from "lucide-react";
+import type { AppEnvironmentDTO, AppEnvironmentKind, ReleaseDTO } from "@wfos/shared";
 import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/common";
 import { AccessCard } from "@/components/apps/access-card";
 import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
+import { DnsPanel } from "@/components/apps/dns-panel";
 import { EnvEditor } from "@/components/apps/env-editor";
-import { ReleasesTable, WarningChips } from "@/components/apps/releases";
-import { AppSign, AppStatusBadge, CommitChip, HealthDot, appColors, appsQueryKey, invalidateApp, isActiveRelease, useApp, useApps, useAppRights, useStatusMessage } from "@/components/apps/shared";
+import { EnvironmentPanel, LiveSlot } from "@/components/apps/environment-panel";
+import { ConfirmLiveRemovalDialog, EditLiveDialog, ReleaseToLiveDialog, SetupLiveDialog } from "@/components/apps/live-dialogs";
+import { ReleasesTable } from "@/components/apps/releases";
+import { AppSign, EnvPlate, appColors, appSignStatus, appsQueryKey, envQuery, invalidateApp, isActiveRelease, useApp, useApps, useAppRights } from "@/components/apps/shared";
 import { api } from "@/lib/api";
 import { useClients } from "@/lib/hooks";
-import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 
-function Tile({ label, children, note, tone }: { label: string; children: ReactNode; note?: ReactNode; tone?: string }) {
-  return (
-    <div className="min-w-0 rounded-xl border bg-card px-4 py-3">
-      <div className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</div>
-      <div className={cn("font-display mt-0.5 truncate text-2xl sm:text-[1.75rem]", tone)}>{children}</div>
-      {note && <div className="mt-0.5 min-w-0 truncate text-xs text-muted-foreground">{note}</div>}
-    </div>
-  );
-}
+type Dialog = "deploy" | "edit" | "setupLive" | "editLive" | "releaseLive" | "removeLive" | "removeApp" | null;
 
 export default function AppPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const t = useTranslations("apps");
-  const f = useFormat();
   const qc = useQueryClient();
   const router = useRouter();
   const withStepUp = useStepUp();
-  const statusMessage = useStatusMessage();
   const { data, isLoading, isError } = useApp(id);
   const { data: all } = useApps();
   const { data: clients } = useClients();
-  const { admin, logs } = useAppRights();
-  const [dialog, setDialog] = useState<"deploy" | "edit" | null>(null);
+  const { admin, owner, logs } = useAppRights();
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [tab, setTab] = useState<AppEnvironmentKind | null>(null);
 
   const onError = (e: unknown) => toast.error((e as Error).message);
+  /** live start / rollback need the Owner's step-up; preview ones go straight through */
+  const send = <T,>(kind: AppEnvironmentKind, fn: () => Promise<T>) => (kind === "live" ? withStepUp(fn) : fn());
   const action = useMutation({
-    mutationFn: (a: "stop" | "start") => api.post(`/api/apps/${id}/${a}`),
-    onSuccess: (_r, a) => {
+    mutationFn: ({ a, env }: { a: "stop" | "start"; env: AppEnvironmentDTO }) =>
+      send(a === "start" ? env.kind : "preview", () => api.post(`/api/apps/${id}/${a}${envQuery(env.kind)}`)),
+    onSuccess: (r, { a, env }) => {
+      if (r === undefined) return;
       invalidateApp(qc, id);
-      if (data) toast.success(t(a === "stop" ? "actions.stopping" : "actions.starting", { name: data.app.name }));
+      if (data) toast.success(t(a === "stop" ? "actions.stopping" : "actions.starting", { name: `${data.app.name} · ${t(`environments.${env.kind}`)}` }));
     },
     onError,
   });
   const rollback = useMutation({
-    mutationFn: (r: ReleaseDTO) => api.post(`/api/apps/${id}/rollback`, { releaseId: r.id }),
-    onSuccess: () => {
+    mutationFn: (r: ReleaseDTO) => send(r.environmentKind, () => api.post(`/api/apps/${id}/rollback${envQuery(r.environmentKind)}`, { releaseId: r.id })),
+    onSuccess: (r) => {
+      if (r === undefined) return;
       invalidateApp(qc, id);
       toast.success(t("actions.rollbackQueued"));
     },
     onError,
   });
   const remove = useMutation({
-    mutationFn: () => withStepUp(() => api.del<{ ok: true }>(`/api/apps/${id}`)),
+    // with a live site the Owner types its domain (`confirm`)
+    mutationFn: (confirm?: string) => withStepUp(() => api.del<{ ok: true }>(`/api/apps/${id}`, confirm ? { confirm } : undefined)),
     onSuccess: (r) => {
       if (!r) return;
       toast.success(t("detail.deleting"));
       void qc.invalidateQueries({ queryKey: appsQueryKey });
       router.push("/apps");
+    },
+    onError,
+  });
+  const removeLive = useMutation({
+    mutationFn: (confirm: string) => withStepUp(() => api.del<{ ok: true }>(`/api/apps/${id}/live`, { confirm })),
+    onSuccess: (r) => {
+      if (!r) return;
+      setDialog(null);
+      toast.success(t("live.removing"));
+      invalidateApp(qc, id);
     },
     onError,
   });
@@ -87,126 +96,229 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
     );
 
   const { app, releases } = data;
+  const { preview, live } = app;
   const color = appColors((all ?? [app]).map((a) => a.id)).get(app.id) ?? "biru";
-  const cur = app.currentRelease;
-  const running = releases.some(isActiveRelease) || app.status === "deploying";
+  const activeIn = (kind: AppEnvironmentKind) => releases.some((r) => r.environmentKind === kind && isActiveRelease(r));
+  const previewBusy = activeIn("preview") || preview.status === "deploying";
+  const liveBusy = !!live && (activeIn("live") || live.status === "deploying");
   const client = clients?.find((c) => c.id === app.clientId);
   const project = client?.projects.find((p) => p.id === app.projectId);
-  const note = statusMessage(app.statusMessage);
+  // the settings below show one environment: the live one first while its DNS still needs work
+  const shownTab: AppEnvironmentKind = live ? (tab ?? (live.dnsCheck?.status === "ok" ? "preview" : "live")) : "preview";
+  const shownEnv = shownTab === "live" && live ? live : preview;
+  const isOn = (env: AppEnvironmentDTO) => env.status === "running" || env.status === "deploying" || env.status === "failed";
+
+  const liveOn = !!live && (isOn(live) || liveBusy);
+  /** stop: Admins on the preview, the Owner on live; start: likewise, and live only once its DNS is ok */
+  const stopStart = (env: AppEnvironmentDTO, mayStop: boolean, mayStart: boolean) =>
+    isOn(env) ? (
+      mayStop && (
+        <Button
+          variant="outline"
+          className="gap-1.5"
+          disabled={action.isPending}
+          onClick={() => confirm(t(env.kind === "live" ? "actions.stopLiveConfirm" : "actions.stopConfirm", { name: app.name, domain: env.domain })) && action.mutate({ a: "stop", env })}
+        >
+          <Square className="size-4" aria-hidden /> {t("actions.stop")}
+        </Button>
+      )
+    ) : (
+      mayStart && (
+        <Button
+          variant="outline"
+          className="gap-1.5"
+          disabled={action.isPending || !env.currentRelease || (env.kind === "live" && env.dnsCheck?.status !== "ok")}
+          onClick={() => action.mutate({ a: "start", env })}
+        >
+          <Play className="size-4" aria-hidden /> {t("actions.start")}
+        </Button>
+      )
+    );
 
   return (
     <div className="space-y-6">
       {back}
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 space-y-3">
-          <AppSign app={app} color={color} size="lg" />
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-            <AppStatusBadge status={app.status} />
-            <HealthDot app={app} withLabel />
+          <AppSign app={{ name: app.name, status: appSignStatus(app) }} color={color} size="lg" />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-muted-foreground">
             {client && (
-              <Link href={`/clients/${client.id}`} className="text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+              <Link href={`/clients/${client.id}`} className="underline-offset-2 hover:text-foreground hover:underline">
                 {[client.name, project?.name].filter(Boolean).join(" · ")}
               </Link>
             )}
+            <span className="text-xs">{app.repositoryName ? t("detail.branchLine", { repository: app.repositoryName, branch: app.branch }) : t("detail.repoMissing")}</span>
           </div>
-          <a
-            href={app.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex max-w-full items-center gap-2 rounded-lg border-2 border-dashed px-3 py-1.5 font-mono text-sm font-semibold transition-colors hover:border-foreground/50"
-          >
-            <span className="min-w-0 truncate">{app.url.replace(/^https:\/\//, "")}</span>
-            <ExternalLink className="size-3.5 shrink-0" aria-hidden />
-            <span className="sr-only">{t("detail.open")}</span>
-          </a>
-          {note && <p className="text-sm text-warning">{note}</p>}
         </div>
         {admin && (
-          <div className="flex flex-wrap gap-2">
-            <Button className="gap-1.5" disabled={running} onClick={() => setDialog("deploy")}>
-              <Rocket className="size-4" aria-hidden /> {t("actions.deploy")}
-            </Button>
-            {app.status === "running" || app.status === "deploying" || app.status === "failed" ? (
-              <Button variant="outline" className="gap-1.5" disabled={action.isPending} onClick={() => confirm(t("actions.stopConfirm", { name: app.name })) && action.mutate("stop")}>
-                <Square className="size-4" aria-hidden /> {t("actions.stop")}
-              </Button>
-            ) : (
-              <Button variant="outline" className="gap-1.5" disabled={action.isPending || !cur} onClick={() => action.mutate("start")}>
-                <Play className="size-4" aria-hidden /> {t("actions.start")}
-              </Button>
-            )}
-            <Button variant="ghost" className="gap-1.5" onClick={() => setDialog("edit")}>
-              <Pencil className="size-4" aria-hidden /> {t("detail.edit")}
-            </Button>
-          </div>
+          <Button variant="ghost" className="gap-1.5 self-start lg:self-auto" onClick={() => setDialog("edit")}>
+            <Pencil className="size-4" aria-hidden /> {t("detail.edit")}
+          </Button>
         )}
       </div>
 
-      {running && <p className="rounded-xl border border-[var(--sign-biru)]/40 bg-[color-mix(in_srgb,var(--sign-biru)_8%,transparent)] px-3 py-2 text-sm">{t("detail.deployingNote")}</p>}
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Tile label={t("detail.tiles.status")} note={app.lastHealthAt ? t("health.checked", { ago: f.ago(app.lastHealthAt) }) : undefined}>
-          {t(`status.${app.status}`)}
-        </Tile>
-        <Tile
-          label={t("detail.tiles.live")}
-          note={cur ? [t("detail.deployedAgo", { ago: f.ago(cur.finishedAt ?? cur.createdAt) }), cur.createdByName].filter(Boolean).join(" · ") : undefined}
-        >
-          {cur ? <CommitChip sha={cur.commit} className="align-middle text-base" /> : <span className="text-muted-foreground">{t("detail.noRelease")}</span>}
-        </Tile>
-        <Tile label={t("detail.tiles.server")} note={t("detail.port", { port: app.port })}>
-          {app.serverName}
-        </Tile>
-        <Tile label={t("detail.tiles.memory")} note={app.hasDatabase ? t("detail.withDatabase") : undefined}>
-          {t("detail.memoryValue", { mb: app.memoryMb })}
-        </Tile>
-      </div>
-
-      {cur && (cur.commitSubject || cur.warnings.length > 0) && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <CommitChip sha={cur.commit} />
-          {cur.commitSubject && <span className="min-w-0 truncate">{cur.commitSubject}</span>}
-          <WarningChips warnings={cur.warnings} />
-        </div>
+      {(previewBusy || liveBusy) && (
+        <p className="rounded-xl border border-[var(--sign-biru)]/40 bg-[color-mix(in_srgb,var(--sign-biru)_8%,transparent)] px-3 py-2 text-sm">
+          {liveBusy ? t("detail.deployingLiveNote") : t("detail.deployingNote")}
+        </p>
       )}
-      <p className="text-xs text-muted-foreground">
-        {app.repositoryName ? t("detail.branchLine", { repository: app.repositoryName, branch: app.branch }) : t("detail.repoMissing")}
-      </p>
 
+      {/* the two shopfronts: the preview everyone tries, and the client's live site */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <AccessCard app={app} admin={admin} />
-        <EnvEditor key={app.envKeys.join(",")} app={app} admin={admin} />
+        <EnvironmentPanel
+          env={preview}
+          actions={
+            admin && (
+              <>
+                <Button className="gap-1.5" disabled={previewBusy} onClick={() => setDialog("deploy")}>
+                  <Rocket className="size-4" aria-hidden /> {t("actions.deploy")}
+                </Button>
+                {stopStart(preview, true, true)}
+              </>
+            )
+          }
+        />
+        {live ? (
+          <EnvironmentPanel
+            env={live}
+            note={live.dnsCheck?.status !== "ok" && <p className="text-xs text-muted-foreground">{t("live.dnsPending")}</p>}
+            actions={
+              admin && (
+                <>
+                  {owner && (
+                    <Button
+                      className="gap-1.5 bg-[var(--sign-merah)] text-white hover:bg-[color-mix(in_srgb,var(--sign-merah)_86%,black)]"
+                      disabled={liveBusy}
+                      onClick={() => setDialog("releaseLive")}
+                    >
+                      <Radio className="size-4" aria-hidden /> {t("live.release")}
+                    </Button>
+                  )}
+                  {stopStart(live, owner, owner)}
+                  {owner && (
+                    <Button variant="ghost" className="gap-1.5" onClick={() => setDialog("editLive")}>
+                      <Settings2 className="size-4" aria-hidden /> {t("live.settings")}
+                    </Button>
+                  )}
+                </>
+              )
+            }
+          />
+        ) : (
+          <LiveSlot owner={owner} onSetup={() => setDialog("setupLive")} />
+        )}
       </div>
+
+      <section className="space-y-3" aria-labelledby="app-settings-title">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 id="app-settings-title" className="font-display text-[1.7rem] leading-none">
+            {t("detail.settingsTitle")}
+          </h2>
+          {live && (
+            <div className="inline-flex rounded-lg border p-0.5" role="tablist" aria-label={t("detail.settingsTitle")}>
+              {(["preview", "live"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  role="tab"
+                  aria-selected={shownTab === k}
+                  onClick={() => setTab(k)}
+                  className={cn(
+                    "inline-flex h-8 items-center rounded-md px-2.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                    shownTab === k ? "bg-secondary" : "opacity-60 hover:opacity-100",
+                  )}
+                >
+                  <EnvPlate kind={k} status={k === "live" ? live.status : preview.status} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="space-y-4" role={live ? "tabpanel" : undefined}>
+          {shownEnv.kind === "live" && <DnsPanel app={app} env={shownEnv} admin={admin} />}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* the live site's password and variables are the Owner's */}
+            <AccessCard key={`access-${shownEnv.id}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
+            <EnvEditor key={`${shownEnv.id}-${shownEnv.envKeys.join(",")}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
+          </div>
+        </div>
+      </section>
 
       <section className="space-y-3">
         <h2 className="font-display text-[1.7rem] leading-none">{t("releases.title")}</h2>
         <ReleasesTable
           releases={releases}
           origins={data.origins}
-          currentId={cur?.id ?? null}
+          currentIds={[preview.currentRelease?.id, live?.currentRelease?.id].filter((x): x is string => !!x)}
           logs={logs}
-          admin={admin && !running}
+          showEnvironments={!!live || releases.some((r) => r.environmentKind === "live")}
+          canRollback={(r) => (r.environmentKind === "live" ? owner && !liveBusy : admin && !previewBusy)}
           rollbackPending={rollback.isPending}
-          onRollback={(r) => confirm(t("actions.rollbackConfirm", { commit: r.commit.slice(0, 7) })) && rollback.mutate(r)}
+          onRollback={(r) =>
+            confirm(t(r.environmentKind === "live" ? "actions.rollbackLiveConfirm" : "actions.rollbackConfirm", { commit: r.commit.slice(0, 7) })) && rollback.mutate(r)
+          }
         />
       </section>
 
       {admin && (
-        <section className="flex flex-col gap-3 rounded-xl border border-destructive/30 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-muted-foreground">{t("detail.dangerHelp")}</p>
-          <Button
-            variant="outline"
-            className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            disabled={remove.isPending}
-            onClick={() => confirm(t("detail.deleteConfirm", { name: app.name })) && remove.mutate()}
-          >
-            <Trash2 className="size-4" aria-hidden /> {t("detail.danger")}
-          </Button>
+        <section className="space-y-3 rounded-xl border border-destructive/30 p-4">
+          {live && owner && (
+            <div className="flex flex-col gap-3 border-b border-destructive/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                {t("live.removeHelp", { domain: live.domain })}
+                {liveOn && <span className="mt-1 block text-xs text-warning">{t("live.stopFirst")}</span>}
+              </p>
+              <Button
+                variant="outline"
+                className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={removeLive.isPending || liveOn}
+                onClick={() => setDialog("removeLive")}
+              >
+                <Trash2 className="size-4" aria-hidden /> {t("live.remove")}
+              </Button>
+            </div>
+          )}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">{live ? t("detail.dangerHelpLive") : t("detail.dangerHelp")}</p>
+            <Button
+              variant="outline"
+              className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+              disabled={remove.isPending || (!!live && (!owner || liveOn))}
+              onClick={() => (live ? setDialog("removeApp") : confirm(t("detail.deleteConfirm", { name: app.name })) && remove.mutate(undefined))}
+            >
+              <Trash2 className="size-4" aria-hidden /> {t("detail.danger")}
+            </Button>
+          </div>
+          {live && !owner && <p className="text-xs text-muted-foreground">{t("detail.deleteNeedsOwner")}</p>}
+          {live && owner && liveOn && <p className="text-xs text-warning">{t("live.stopFirst")}</p>}
         </section>
       )}
 
       {dialog === "deploy" && <DeployDialog app={app} onClose={() => setDialog(null)} />}
       {dialog === "edit" && <EditAppDialog app={app} onClose={() => setDialog(null)} />}
+      {dialog === "setupLive" && <SetupLiveDialog app={app} onClose={() => setDialog(null)} onCreated={() => setTab("live")} />}
+      {dialog === "editLive" && live && <EditLiveDialog app={app} env={live} onClose={() => setDialog(null)} />}
+      {dialog === "releaseLive" && live && <ReleaseToLiveDialog app={app} live={live} releases={releases} envChanged={data.liveEnvChanged ?? []} onClose={() => setDialog(null)} />}
+      {dialog === "removeLive" && live && (
+        <ConfirmLiveRemovalDialog
+          title={t("live.remove")}
+          description={t("live.removeConfirm", { domain: live.domain })}
+          domain={live.domain}
+          pending={removeLive.isPending}
+          onConfirm={(typed) => removeLive.mutate(typed)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "removeApp" && live && (
+        <ConfirmLiveRemovalDialog
+          title={t("detail.danger")}
+          description={t("detail.deleteConfirmLive", { name: app.name, domain: live.domain })}
+          domain={live.domain}
+          pending={remove.isPending}
+          onConfirm={(typed) => remove.mutate(typed)}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   );
 }

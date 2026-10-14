@@ -1,6 +1,6 @@
 {
   "title": "Aplikasi",
-  "description": "Preview aplikasi yang dibuat karyawan Anda, masing-masing dengan alamat sendiri di salah satu server Anda. Setiap penerbitan memakai satu commit yang pasti; kalau ada yang gagal, versi sebelumnya tetap berjalan.",
+  "description": "Aplikasi yang dibuat karyawan Anda: preview masing-masing di alamatnya sendiri di server Anda, dan, begitu klien siap, situs live-nya di domain milik klien. Setiap penerbitan memakai satu commit yang pasti; kalau ada yang gagal, versi sebelumnya tetap berjalan.",
   "newApp": "Aplikasi baru",
   "stopAll": "Hentikan semua preview",
   "stopAllConfirm": "Hentikan semua preview yang sedang berjalan di workspace ini? Masing-masing bisa dijalankan lagi dengan satu klik.",
@@ -43,7 +43,8 @@
     "never": "Belum pernah diterbitkan",
     "by": "oleh {name}",
     "byPlatform": "oleh karyawan",
-    "open": "Buka {name}"
+    "open": "Buka {name}",
+    "liveVersion": "Live"
   },
   "empty": {
     "title": "Belum ada aplikasi",
@@ -96,14 +97,11 @@
     "notFound": "Aplikasi ini tidak ada (lagi).",
     "open": "Buka preview",
     "tiles": {
-      "status": "Status",
-      "live": "Versi tayang",
       "server": "Server",
-      "memory": "Memori"
+      "memory": "Memori",
+      "port": "Port"
     },
-    "port": "port {port}",
     "memoryValue": "{mb} MB",
-    "withDatabase": "dengan database",
     "noRelease": "Belum ada",
     "deployedAgo": "diterbitkan {ago}",
     "repoMissing": "Repository sudah dihapus",
@@ -117,7 +115,17 @@
     "dangerHelp": "Menghapus berarti aplikasi dicabut dari servernya beserta file dan database-nya, lalu dari Workforce OS. Anda mengonfirmasi dengan password dan kode autentikator.",
     "deleteConfirm": "Hapus {name}? Aplikasi ini dicabut dari servernya beserta file dan database-nya. Tindakan ini tidak bisa dibatalkan.",
     "deleting": "Aplikasi sedang dihapus dari servernya…",
-    "deployingNote": "Penerbitan sedang berjalan. Ikuti prosesnya di log di bawah."
+    "deployingNote": "Penerbitan sedang berjalan. Ikuti prosesnya di log di bawah.",
+    "openLive": "Buka situs live",
+    "redirects": "Juga bisa dibuka di {names} (dialihkan)",
+    "previewVersion": "Versi di preview",
+    "liveVersion": "Versi live",
+    "db": "database",
+    "settingsTitle": "Akses dan variabel",
+    "deployingLiveNote": "Penerbitan ke live sedang berjalan. Ikuti prosesnya di log di bawah.",
+    "dangerHelpLive": "Menghapus berarti aplikasi dicabut dari servernya, baik preview maupun situs live, beserta file dan database-nya, lalu dari Workforce OS. Hanya Owner yang bisa: dengan situs live dihentikan, domainnya diketik, serta password dan kode autentikator.",
+    "deleteConfirmLive": "Hapus {name} beserta situs live-nya di {domain}? Kedua lingkungan dicabut dari servernya beserta file dan database-nya. Tindakan ini tidak bisa dibatalkan.",
+    "deleteNeedsOwner": "Aplikasi ini punya situs live, jadi hanya Owner yang bisa menghapusnya."
   },
   "actions": {
     "deploy": "Terbitkan",
@@ -129,7 +137,9 @@
     "stopping": "Menghentikan {name}.",
     "starting": "Menjalankan {name}.",
     "deployQueued": "Penerbitan masuk antrean.",
-    "rollbackQueued": "Pengembalian versi masuk antrean."
+    "rollbackQueued": "Pengembalian versi masuk antrean.",
+    "stopLiveConfirm": "Hentikan situs live {name}? Pengunjung {domain} akan melihat galat sampai dijalankan lagi.",
+    "rollbackLiveConfirm": "Kembalikan {commit} di situs live? Versi ini berjalan sebagai rilis live baru. Database live tidak dipulihkan: datanya tetap seperti sekarang."
   },
   "deploy": {
     "title": "Terbitkan {name}",
@@ -152,7 +162,11 @@
     "rotate": "Password baru",
     "rotateConfirm": "Buat password baru? Preview yang sedang jalan berganti ke password baru dalam semenit, dan password lama tidak berlaku lagi.",
     "rotated": "Password baru dibuat. Preview yang sedang jalan berganti ke password ini dalam semenit.",
-    "audited": "Setiap kali ditampilkan, log audit mencatat siapa yang melihat."
+    "audited": "Setiap kali ditampilkan, log audit mencatat siapa yang melihat.",
+    "liveTitle": "Password situs live",
+    "liveDescription": "Situs live meminta ini sebelum menampilkan apa pun. Berguna sebelum peluncuran; ubah ke publik di pengaturan live saat klien resmi tayang.",
+    "livePublic": "Situs live ini publik: siapa saja bisa membukanya, dan mesin pencari boleh mengindeksnya.",
+    "liveOwnerOnly": "Hanya Owner yang bisa melihat atau mengganti password live."
   },
   "env": {
     "title": "Variabel lingkungan",
@@ -172,7 +186,10 @@
     "nameInvalid": "Pakai HURUF_BESAR, angka, dan garis bawah, diawali huruf.",
     "nameReserved": "{name} diisi oleh platform.",
     "nameDuplicate": "{name} tercantum dua kali.",
-    "readOnly": "Hanya Admin yang bisa mengubah variabel. Nama yang terpasang:"
+    "readOnly": "Hanya Admin yang bisa mengubah variabel. Nama yang terpasang:",
+    "liveTitle": "Variabel lingkungan live",
+    "liveDescription": "Pengaturan khusus situs live: SMTP sungguhan, kunci pembayaran, dan sejenisnya. Tidak pernah dibagi dengan preview, disimpan terenkripsi, dan tidak pernah ditampilkan lagi; berlaku pada penerbitan ke live berikutnya.",
+    "liveReadOnly": "Hanya Owner yang bisa mengubah variabel live. Nama yang terpasang:"
   },
   "releases": {
     "title": "Rilis",
@@ -244,7 +261,10 @@
     "byTask": "<b>{employee}</b> lewat <task>{title}</task>",
     "unknownEmployee": "Seorang karyawan",
     "approvedBy": "disetujui oleh {name}",
-    "viewApproval": "lihat persetujuannya"
+    "viewApproval": "lihat persetujuannya",
+    "filter": "Tampilkan rilis dari",
+    "filterAll": "Semua",
+    "promoted": "Ke live"
   },
   "taskPreviews": {
     "title": "Preview",
@@ -252,5 +272,103 @@
     "waiting": "Tugas menunggu di sini sampai platform melaporkan hasil penerbitan; karyawan belum melanjutkan sebelum itu.",
     "openApp": "Buka halaman aplikasi",
     "approval": "Persetujuan"
+  },
+  "environments": {
+    "preview": "Preview",
+    "live": "Live"
+  },
+  "live": {
+    "emptyTitle": "Belum ada situs live",
+    "emptyLead": "Begitu klien siap, aplikasi tayang di domain milik klien, di server pilihan Anda, dengan variabel dan database sendiri. Preview tidak pernah menyentuh data live.",
+    "setup": "Siapkan live",
+    "ownerOnly": "Hanya Owner yang bisa menyiapkan situs live.",
+    "setupTitle": "Situs live untuk {name}",
+    "setupDescription": "Pilih server dan domain klien. Belum ada yang diterbitkan: arahkan dulu domainnya ke server, lalu terbitkan versi yang sudah berjalan di preview.",
+    "serverLive": "{name} (server live)",
+    "serverDev": "{name} (server dev)",
+    "serverHelp": "Server live: memang untuk situs klien.",
+    "serverDevHelp": "Ini server dev. Boleh untuk uji coba; untuk situs klien yang sesungguhnya, pilih server dengan peran live.",
+    "domain": "Domain",
+    "domainPlaceholder": "bukutamu.contoh.co.id",
+    "domainHelp": "Alamat yang diketik pengunjung klien, misalnya app.klien.com. DNS klien harus mengarahkannya ke server.",
+    "domainInvalid": "Pakai domain seperti app.contoh.com: huruf kecil, angka, tanda hubung, dan titik.",
+    "domainPreview": "{domain} adalah alamat preview. Situs live butuh domain sendiri.",
+    "domainDuplicate": "{domain} tercantum dua kali.",
+    "aliases": "Juga bisa dibuka di",
+    "aliasesHelp": "Paling banyak {max} nama tambahan yang dialihkan ke domain, misalnya www. Masing-masing butuh record DNS yang sama.",
+    "aliasLabel": "Nama tambahan {n}",
+    "aliasRemove": "Hapus {name}",
+    "aliasAdd": "Nama lain",
+    "setupNoteSeparate": "Variabel, password, dan database sendiri: tidak ada yang disalin dari preview.",
+    "setupNotePublic": "Bawaannya publik dan terlihat oleh mesin pencari; Anda bisa memasang password di pengaturan live.",
+    "setupNoteDns": "Berikutnya: buat record DNS yang tampil di halaman aplikasi, lalu periksa DNS.",
+    "setupConfirm": "Siapkan live",
+    "created": "Situs live disiapkan. Arahkan domainnya ke server, lalu periksa DNS.",
+    "settings": "Pengaturan live",
+    "editTitle": "Pengaturan live",
+    "editDescription": "Domain atau nama baru diperiksa lagi di DNS sebelum penerbitan ke live berikutnya.",
+    "editRunning": "Situs live sedang berjalan: hentikan dulu untuk mengubah domain atau namanya. Akses bisa diubah sekarang.",
+    "accessPublic": "Publik",
+    "accessPublicHelp": "Siapa saja bisa membukanya; mesin pencari boleh mengindeksnya. Biasa untuk situs yang sudah diluncurkan.",
+    "accessPasswordHelp": "Pengunjung butuh username dan password. Berguna sebelum peluncuran.",
+    "namesResetDns": "Mengubah nama langsung memeriksa DNS lagi; penerbitan ke live menunggu sampai hasilnya oke.",
+    "saved": "Pengaturan live tersimpan.",
+    "dnsPending": "Domainnya belum mengarah ke server. Buat record DNS di bawah, lalu periksa DNS.",
+    "release": "Terbitkan ke live",
+    "releaseTitle": "Terbitkan {name} ke live",
+    "releaseDescription": "Pilih versi yang sudah berjalan di preview. Commit itu persis yang dibangun di server live dan dinyalakan di {domain}; kalau ada langkah yang gagal, versi live yang sekarang tetap berjalan.",
+    "releasePick": "Versi yang sudah berjalan di preview, terbaru dulu",
+    "releaseRan": "berjalan di preview {ago}",
+    "releaseInPreview": "sedang di preview",
+    "releaseIsLive": "sedang live",
+    "releaseNone": "Belum ada versi yang berjalan di preview. Terbitkan preview dulu dan periksa di sana.",
+    "releaseDnsFirst": "Domainnya belum mengarah ke server. Periksa DNS dulu: penerbitan ke live menunggu sampai hasilnya oke.",
+    "releaseAudited": "Anda mengonfirmasi dengan password dan kode autentikator. Penerbitannya dicatat di log audit.",
+    "releaseConfirm": "Terbitkan ke live",
+    "releaseQueued": "Penerbitan ke live masuk antrean.",
+    "remove": "Hapus situs live",
+    "removeHelp": "Mencabut situs live di {domain} dari servernya beserta file dan database-nya. Preview tetap ada.",
+    "removeConfirm": "Hapus situs live di {domain}? File dan database-nya dihapus dari server. Preview tetap ada. Tindakan ini tidak bisa dibatalkan.",
+    "removing": "Situs live sedang dihapus dari servernya…",
+    "releaseEnvChanged": "{count, plural, other {# variabel live ini berubah}} sejak versi yang live sekarang. Penerbitan ini membawa nilai barunya:",
+    "removeDump": "Dump terakhir database live disimpan di server selama 30 hari.",
+    "removeType": "Ketik <b>{domain}</b> untuk mengonfirmasi",
+    "removeFinal": "Hapus permanen",
+    "stopFirst": "Hentikan situs live dulu."
+  },
+  "dns": {
+    "title": "Domain dan DNS",
+    "help": "Di penyedia DNS klien, buat record ini untuk setiap nama, lalu periksa. Perlu beberapa menit, kadang berjam-jam, sampai DNS publik melihat perubahannya.",
+    "okHelp": "Semua nama sudah mengarah ke server. Situs live bisa diterbitkan.",
+    "check": "Periksa DNS",
+    "checking": "Memeriksa…",
+    "checkedAgo": "diperiksa {ago}",
+    "okToast": "DNS oke: semua nama mengarah ke server.",
+    "summary": {
+      "ok": "DNS oke.",
+      "wrong": "Ada nama yang mengarah ke alamat lain. Perbaiki record-nya lalu periksa lagi.",
+      "missing": "Ada nama yang belum punya record. Buat dulu, lalu periksa lagi beberapa menit kemudian.",
+      "error": "DNS publik tidak menjawab. Coba lagi sebentar lagi."
+    },
+    "status": {
+      "ok": "Mengarah ke sini",
+      "wrong": "Mengarah ke tempat lain",
+      "missing": "Belum ada record",
+      "error": "Tidak ada jawaban",
+      "unchecked": "Belum diperiksa"
+    },
+    "columns": {
+      "type": "Tipe",
+      "name": "Nama",
+      "value": "Mengarah ke",
+      "now": "Sekarang"
+    },
+    "copyName": "Salin {name}",
+    "copyValue": "Salin {value}",
+    "found": "ditemukan {addresses}",
+    "notChecked": "Belum diperiksa. Periksa DNS untuk melihat alamat server dan jawaban tiap nama.",
+    "noServerAddress": "Alamat server sendiri tidak ditemukan di DNS publik. Periksa host server di Pengaturan → Server, lalu periksa lagi.",
+    "certificate": "Saat penerbitan ke live yang pertama, Let's Encrypt menerbitkan sertifikat untuk {domain}. Syaratnya DNS sudah oke.",
+    "certificateWithAliases": "Saat penerbitan ke live yang pertama, Let's Encrypt menerbitkan satu sertifikat untuk {domain} dan {aliases}; nama-nama itu dialihkan ke {domain}. Syaratnya DNS sudah oke."
   }
 }

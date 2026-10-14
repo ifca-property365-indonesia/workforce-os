@@ -8,7 +8,7 @@
 #     [--max-apps 20] [--dry-run]
 #
 # What it does (each step skips what is already in place):
-#   - apt: nginx, certbot (+ nginx plugin), PostgreSQL, nftables, jq, git, rsync, build-essential
+#   - apt: nginx, certbot (+ nginx plugin), openssl, PostgreSQL, nftables, jq, git, rsync, build-essential
 #   - Node.js <node-major> from NodeSource's signed apt repository when node is missing or another major; pnpm
 #     <pnpm-version> prepared by
 #     corepack into /opt/wfos-apps/corepack (shared, read-only for the apps: no download at run time)
@@ -16,6 +16,7 @@
 #   - a system user (default wfos-apps) without sudo rights, its ~/incoming upload folder, and the workspace's public
 #     key in its authorized_keys (no agent / port / X11 forwarding, no pty)
 #   - /srv/wfos-apps (the apps), /etc/wfos-apps/{env,start,htpasswd} (root-owned app config), /var/lib/wfos-apps
+#     (+ domains/, removed/: the helper's records and kept database dumps)
 #   - a separate PostgreSQL cluster "apps" on <pg-port>, reachable only through its socket in /run/wfos-apps-pg (no
 #     TCP at all); each app gets its own role and database later (the helper's db-create)
 #   - the app firewall: nftables table inet wfos_apps (only that table, nothing else is flushed), loaded now and at
@@ -189,6 +190,8 @@ done
 # these may come from elsewhere (a snap certbot, a PostgreSQL major already installed): keep what is there
 command -v nginx > /dev/null || missing+=(nginx)
 command -v nft > /dev/null || missing+=(nftables)
+# the helper reads which names a live site's certificate covers (openssl x509)
+command -v openssl > /dev/null || missing+=(openssl)
 certbot_path="$(command -v certbot || true)"
 [[ -n "$certbot_path" ]] || missing+=(certbot)
 [[ "$certbot_path" == /snap/* ]] || installed python3-certbot-nginx || missing+=(python3-certbot-nginx)
@@ -300,6 +303,12 @@ done
 # APPS_ROOT holds every app's root-owned structure; nobody else may write it
 run install -d -m 0755 -o root -g root "$APPS_ROOT" "$ETC_APPS" "$ETC_APPS/start"
 run install -d -m 0700 -o root -g root "$ETC_APPS/env" "$STATE_DIR"
+# the helper's own records: domains/ (the live domain each instance published, for its certificate) and removed/
+# (database dumps kept by app-remove --keep-db-dump, 30 days)
+for d in "$STATE_DIR/domains" "$STATE_DIR/removed"; do
+  [[ ! -L "$d" ]] || fail "$d is a symlink; remove it first"
+done
+run install -d -m 0700 -o root -g root "$STATE_DIR/domains" "$STATE_DIR/removed"
 # nginx workers (www-data) read the preview passwords
 run install -d -m 0750 -o root -g www-data "$ETC_APPS/htpasswd"
 
@@ -580,19 +589,20 @@ map \$http_upgrade \$wfos_connection_upgrade {
     default upgrade;
     '' close;
 }"
-# app names like <slug>.preview.<company domain> are longer than nginx's default hash bucket (64) holds ("could not
-# build server_names_hash"): raise it, unless the main config already sets it (twice is an error)
+# app names like <slug>.preview.<company domain> and live domains (up to 253 characters) are longer than nginx's
+# default hash bucket (64) holds ("could not build server_names_hash"): raise it, unless the main config already sets
+# it (twice is an error). A name needs about its length + 18 bytes, so 512 holds every valid host name.
 hash_elsewhere=0
 for f in /etc/nginx/nginx.conf /etc/nginx/conf.d/*.conf; do
   [[ "$f" != "$NGX_MAP" && -f "$f" ]] || continue
   if grep -qsE '^[[:space:]]*server_names_hash_bucket_size[[:space:]]' "$f"; then hash_elsewhere=1; fi
 done
 if ((hash_elsewhere)); then
-  warn "server_names_hash_bucket_size is set elsewhere in nginx; make sure it is at least 128 for long app names"
+  warn "server_names_hash_bucket_size is set elsewhere in nginx; make sure it is at least 128 (512 for live domains over 110 characters)"
 else
   map_content+="
-# long app names (<slug>.<preview domain>) need more than the default 64
-server_names_hash_bucket_size 128;"
+# long app names (<slug>.<preview domain>, live domains up to 253 characters) need more than the default 64
+server_names_hash_bucket_size 512;"
 fi
 if ! fresh_test && [[ -f "$NGX_MAP" && "$(cat "$NGX_MAP")" == "$map_content" ]]; then
   echo "nginx settings for apps present"
@@ -685,7 +695,7 @@ if [[ "$DRY" == 0 ]]; then
     COREPACK_ENABLE_NETWORK=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 pnpm -v 2> /dev/null | head -1 || true)"
   [[ "$got" == "$PNPM_VERSION" ]] || warn "pnpm -v as $USER_NAME prints ${got:-nothing}, expected $PNPM_VERSION"
 fi
-echo "DNS: *.$DOMAIN must point at this server (apps are served at <slug>.$DOMAIN)"
+echo "DNS: *.$DOMAIN must point at this server (previews are served at <slug>.$DOMAIN; a live domain and its aliases need their own A/AAAA records)"
 
 echo
 echo "SSH host key of this server (compare with the fingerprint Workforce OS shows before you confirm):"

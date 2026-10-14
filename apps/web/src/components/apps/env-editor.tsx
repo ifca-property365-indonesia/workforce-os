@@ -5,12 +5,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Plus, Undo2, X } from "lucide-react";
-import { APP_ENV_NAME_RE, APP_RESERVED_ENV, isForbiddenAppEnv, type AppDTO } from "@wfos/shared";
+import { APP_ENV_NAME_RE, APP_RESERVED_ENV, isForbiddenAppEnv, type AppDTO, type AppEnvironmentDTO } from "@wfos/shared";
+import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { invalidateApp } from "./shared";
+import { envQuery, invalidateApp } from "./shared";
 
 type Added = { key: number; name: string; value: string };
 
@@ -19,12 +20,14 @@ const NAME_EXAMPLE = "SMTP_HOST";
 
 /**
  * Write-only env: the names that exist are listed with their values hidden (the browser never has them). A new
- * value replaces one, an empty field keeps it; names can be removed or added. Saved as a merge (set + remove).
+ * value replaces one, an empty field keeps it; names can be removed or added. Saved as a merge (set + remove). One
+ * environment at a time: the preview and the live environment never share values.
  */
-export function EnvEditor({ app, admin }: { app: AppDTO; admin: boolean }) {
+export function EnvEditor({ app, env, admin }: { app: Pick<AppDTO, "id">; env: AppEnvironmentDTO; admin: boolean }) {
   const t = useTranslations("apps");
   const qc = useQueryClient();
   const uid = useId();
+  const withStepUp = useStepUp();
   const [values, setValues] = useState<Record<string, string>>({});
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Added[]>([]);
@@ -34,7 +37,7 @@ export function EnvEditor({ app, admin }: { app: AppDTO; admin: boolean }) {
     if (!name) return null;
     if (!APP_ENV_NAME_RE.test(name)) return t("env.nameInvalid");
     if (isForbiddenAppEnv(name)) return t("env.nameReserved", { name });
-    if (app.envKeys.includes(name) && !removed.has(name)) return t("env.nameDuplicate", { name });
+    if (env.envKeys.includes(name) && !removed.has(name)) return t("env.nameDuplicate", { name });
     if (added.filter((b) => b.name.trim() === name).length > 1) return t("env.nameDuplicate", { name });
     return null;
   });
@@ -45,8 +48,13 @@ export function EnvEditor({ app, admin }: { app: AppDTO; admin: boolean }) {
   const valid = problems.every((p) => !p);
 
   const save = useMutation({
-    mutationFn: () => api.put<{ envKeys: string[] }>(`/api/apps/${app.id}/env`, { set, remove: [...removed] }),
-    onSuccess: () => {
+    mutationFn: () => {
+      const put = () => api.put<{ envKeys: string[] }>(`/api/apps/${app.id}/env${envQuery(env.kind)}`, { set, remove: [...removed] });
+      // live values are the Owner's, confirmed with a step-up
+      return env.kind === "live" ? withStepUp(put) : put();
+    },
+    onSuccess: (r) => {
+      if (!r) return;
       setValues({});
       setRemoved(new Set());
       setAdded([]);
@@ -59,15 +67,15 @@ export function EnvEditor({ app, admin }: { app: AppDTO; admin: boolean }) {
   return (
     <section className="space-y-3 rounded-xl border bg-card p-4">
       <div className="space-y-1">
-        <h2 className="text-sm font-semibold">{t("env.title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("env.description")}</p>
+        <h2 className="text-sm font-semibold">{t(env.kind === "live" ? "env.liveTitle" : "env.title")}</h2>
+        <p className="text-sm text-muted-foreground">{t(env.kind === "live" ? "env.liveDescription" : "env.description")}</p>
       </div>
       {!admin ? (
-        app.envKeys.length ? (
+        env.envKeys.length ? (
           <div className="space-y-1.5">
-            <p className="text-xs text-muted-foreground">{t("env.readOnly")}</p>
+            <p className="text-xs text-muted-foreground">{t(env.kind === "live" ? "env.liveReadOnly" : "env.readOnly")}</p>
             <ul className="flex flex-wrap gap-1.5">
-              {app.envKeys.map((k) => (
+              {env.envKeys.map((k) => (
                 <li key={k}>
                   <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{k}</code>
                 </li>
@@ -85,10 +93,10 @@ export function EnvEditor({ app, admin }: { app: AppDTO; admin: boolean }) {
             if (dirty && valid) save.mutate();
           }}
         >
-          {!app.envKeys.length && !added.length && <p className="text-sm text-muted-foreground">{t("env.empty")}</p>}
-          {!!app.envKeys.length && (
+          {!env.envKeys.length && !added.length && <p className="text-sm text-muted-foreground">{t("env.empty")}</p>}
+          {!!env.envKeys.length && (
             <ul className="divide-y rounded-lg border">
-              {app.envKeys.map((k) => {
+              {env.envKeys.map((k) => {
                 const gone = removed.has(k);
                 return (
                   <li key={k} className={cn("grid items-center gap-2 p-2 sm:grid-cols-[minmax(0,14rem)_1fr_auto]", gone && "bg-destructive/5")}>

@@ -139,7 +139,7 @@
   "helper_outdated": "The helper on the server is too old. Run the latest setup script on it again.",
   "ssh_failed": "The SSH connection failed. Try again in a moment.",
   "prepare_script_missing": "The setup scripts are missing from this installation.",
-  "server_has_apps": "{count, plural, one {An app still runs on this server} other {# apps still run on this server}}. Delete them in Apps first.",
+  "server_has_apps": "{count, plural, one {An app environment still runs on this server} other {# app environments still run on this server}}. Delete them in Apps first.",
   "app_not_found": "App not found.",
   "app_name_taken": "An app with this name already exists.",
   "app_slug_taken": "This address is already taken. Choose another name for the subdomain.",
@@ -159,5 +159,18 @@
   "app_already_running": "The app is already running.",
   "app_removing": "This app is already being deleted.",
   "repository_url_invalid": "This is not a clone URL of a repository at that provider, e.g. https://github.com/owner/repository.git.",
-  "repository_url_is_preview": "That is an app preview address, not a repository. Use the repository's clone URL, e.g. https://github.com/owner/repository.git."
+  "repository_url_is_preview": "That is an app preview address, not a repository. Use the repository's clone URL, e.g. https://github.com/owner/repository.git.",
+  "unknown_environment": "Unknown environment: use preview or live.",
+  "live_not_found": "This app has no live site.",
+  "live_exists": "This app already has a live site.",
+  "live_instance_taken": "That server already runs an app under this name. Choose another server.",
+  "domain_taken": "{domain} is already used by an app.",
+  "domain_is_preview": "{domain} is a preview address. A live site needs a domain of its own.",
+  "domain_duplicate": "A name is listed twice.",
+  "live_running_domain": "Stop the live site before changing its domain or names.",
+  "live_needs_preview_release": "Only a version that ran in the preview can go live.",
+  "live_dns_not_ok": "The domain does not point at the server yet. Check DNS first.",
+  "domain_reserved": "{domain} belongs to the platform or one of its servers. Choose a domain of the client's own.",
+  "confirm_mismatch": "Type the live domain exactly to confirm.",
+  "live_running": "Stop the live site first."
 }

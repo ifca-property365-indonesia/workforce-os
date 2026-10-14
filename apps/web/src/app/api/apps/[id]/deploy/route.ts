@@ -1,37 +1,79 @@
-import { eq } from "drizzle-orm";
-import { appReleases, apps, audit, db, servers } from "@wfos/db";
+import { and, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
+import { appEnvironments, appReleases, audit, db } from "@wfos/db";
 import { appDeploySchema } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
-import { activeRelease, assertDeploysAllowed, loadApp, releaseDTO } from "@/lib/server/apps";
+import {
+  activeRelease,
+  assertDeploysAllowed,
+  assertNotRemoving,
+  assertServerReady,
+  isUuid,
+  loadAppEnv,
+  loadEnv,
+  releaseDTO,
+  requireLiveOwner,
+  ROLLBACK_SOURCE_STATUSES,
+} from "@/lib/server/apps";
 import { publish, q } from "@/lib/server/queue";
 import { body, route } from "@/lib/server/route";
 
+/** live: the preview release whose commit goes live (it must have run in this app's preview) */
+const liveDeploySchema = z.object({ fromReleaseId: z.string() }).strict();
+
 /**
- * Manual deploy by an Admin or Owner: a queued release of the given branch (its head when the worker starts) or
- * exact commit, else the app's branch. One release per app at a time. The click itself is the human decision.
+ * Manual deploy. `?env=preview` (default), Admin or Owner: a queued release of the given branch (its head when the
+ * worker starts) or exact commit, else the app's branch. `?env=live`, Owner with a fresh step-up: `{ fromReleaseId }`
+ * names a preview release that ran (deployed or superseded); its exact commit goes live, and only once the live
+ * domain's DNS check is ok (the worker checks again before it publishes). One release per environment at a time.
+ * The click itself is the human decision.
  */
 export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params }) => {
-  const a = await loadApp(session.workspaceId, params.id);
-  const input = await body(req, appDeploySchema);
+  const { app: a, env } = await loadAppEnv(session.workspaceId, params.id, req);
+  if (env.kind === "live") await requireLiveOwner(session);
   await assertDeploysAllowed(session.workspaceId);
+  await assertNotRemoving(a.id);
   if (!a.repositoryId) throw new HttpError(409, "The app's repository was removed", { code: "app_no_repository" });
-  const [server] = await db.select({ status: servers.status }).from(servers).where(eq(servers.id, a.serverId));
-  if (server?.status !== "ready") throw new HttpError(409, "The server is not ready", { code: "server_not_ready" });
+
+  let values: Omit<typeof appReleases.$inferInsert, "appId" | "workspaceId" | "environmentId" | "status" | "createdBy">;
+  let promotedFrom: string | null = null;
+  if (env.kind === "live") {
+    const { fromReleaseId } = await body(req, liveDeploySchema);
+    const preview = await loadEnv(session.workspaceId, a.id, "preview");
+    const [src] = isUuid(fromReleaseId)
+      ? await db
+          .select()
+          .from(appReleases)
+          .where(and(eq(appReleases.id, fromReleaseId), eq(appReleases.environmentId, preview.id), eq(appReleases.workspaceId, session.workspaceId)))
+      : [];
+    if (!src) throw new HttpError(404, "Release not found", { code: "release_not_found" });
+    if (!(ROLLBACK_SOURCE_STATUSES as readonly string[]).includes(src.status) || !src.commit) {
+      throw new HttpError(409, "Only a commit that ran in the preview can go live", { code: "live_needs_preview_release" });
+    }
+    if (env.dnsCheck?.status !== "ok") throw new HttpError(409, "The domain does not point at the server yet", { code: "live_dns_not_ok" });
+    promotedFrom = src.id;
+    values = { commit: src.commit, branch: src.branch, commitSubject: src.commitSubject, manifest: src.manifest, trigger: "manual", promotedFromReleaseId: src.id };
+  } else {
+    const input = await body(req, appDeploySchema);
+    values = { commit: input.commit ?? "", branch: input.branch ?? a.branch, trigger: "manual" };
+  }
+  await assertServerReady(env.serverId);
+
   const release = await db.transaction(async (tx) => {
-    // the app row is the lock: two clicks at once cannot both see "nothing running"
-    await tx.select({ id: apps.id }).from(apps).where(eq(apps.id, a.id)).for("update");
-    if (await activeRelease(a.id, tx)) throw new HttpError(409, "A deploy of this app is already running", { code: "app_deploy_running" });
+    // the environment row is the lock: two clicks at once cannot both see "nothing running"
+    await tx.select({ id: appEnvironments.id }).from(appEnvironments).where(eq(appEnvironments.id, env.id)).for("update");
+    if (await activeRelease(env.id, tx)) throw new HttpError(409, "A deploy of this app is already running", { code: "app_deploy_running" });
+    if (promotedFrom) {
+      // still a release that ran in the preview (an app removal could race this)
+      const [still] = await tx
+        .select({ id: appReleases.id })
+        .from(appReleases)
+        .where(and(eq(appReleases.id, promotedFrom), inArray(appReleases.status, [...ROLLBACK_SOURCE_STATUSES])));
+      if (!still) throw new HttpError(409, "Only a commit that ran in the preview can go live", { code: "live_needs_preview_release" });
+    }
     const [r] = await tx
       .insert(appReleases)
-      .values({
-        appId: a.id,
-        workspaceId: session.workspaceId,
-        commit: input.commit ?? "",
-        branch: input.branch ?? a.branch,
-        status: "queued",
-        trigger: "manual",
-        createdBy: session.userId,
-      })
+      .values({ ...values, appId: a.id, workspaceId: session.workspaceId, environmentId: env.id, status: "queued", createdBy: session.userId })
       .returning();
     return r!;
   });
@@ -40,11 +82,19 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
     workspaceId: session.workspaceId,
     actorUserId: session.userId,
     actorLabel: session.email,
-    action: "app.deploy_requested",
+    action: env.kind === "live" ? "app.live_deploy_requested" : "app.deploy_requested",
     targetType: "app",
     targetId: a.id,
-    details: { name: a.name, releaseId: release.id, branch: release.branch, commit: release.commit || null },
+    details: {
+      name: a.name,
+      environment: env.kind,
+      environmentId: env.id,
+      releaseId: release.id,
+      branch: release.branch,
+      commit: release.commit || null,
+      ...(promotedFrom && { promotedFromReleaseId: promotedFrom, domain: env.domain }),
+    },
   });
   await publish(session.workspaceId, { type: "release.updated", releaseId: release.id, appId: a.id, status: release.status, step: null });
-  return { release: releaseDTO(release, session.name) };
+  return { release: releaseDTO(release, session.name, env.kind) };
 });
