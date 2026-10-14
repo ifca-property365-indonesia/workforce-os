@@ -599,7 +599,7 @@ export type RealtimeEvent =
   | { type: "outbox.updated"; emailId: string | null; status: OutboxStatus }
   | { type: "invoice.updated"; invoiceId: string; clientId: string; status: InvoiceStatus }
   | { type: "server.updated"; serverId: string; status: ServerStatus }
-  | { type: "app.updated"; appId: string; status: AppStatus }
+  | { type: "app.updated"; appId: string; status: AppStatus; environmentId?: string }
   | { type: "release.updated"; releaseId: string; appId: string; status: ReleaseStatus; step: ReleaseStep | null };
 
 export interface StepDTO {
@@ -768,7 +768,8 @@ export type DeployJob =
   /** run this queued release (a deploy, or a rollback: trigger "rollback") */
   | { kind: "release"; releaseId: string; workspaceId: string }
   /** republish = write the nginx site again (new preview password / access mode) on a running app, no restart */
-  | { kind: "app_action"; appId: string; workspaceId: string; action: "stop" | "start" | "remove" | "republish"; userId: string | null; reason?: string };
+  /** environmentId: the environment to act on; remove without it removes the whole app (every environment) */
+  | { kind: "app_action"; appId: string; workspaceId: string; environmentId?: string; action: "stop" | "start" | "remove" | "republish"; userId: string | null; reason?: string };
 export type IngestJob = { kind: "ingest"; documentId: string; workspaceId: string };
 export type MiscJob =
   | { kind: "replay"; replayId: string; workspaceId: string }
@@ -1197,7 +1198,7 @@ export const SERVER_STATUSES = ["pending", "ready", "error"] as const;
 export type ServerStatus = (typeof SERVER_STATUSES)[number];
 
 /** The helper version this platform needs on a server; an older one asks the Owner to re-run prepare.sh. */
-export const WFOS_HELPER_VERSION = 2;
+export const WFOS_HELPER_VERSION = 3;
 
 /** What `wfos-app-helper info` reports (JSON on stdout). */
 export const serverInfoSchema = z.object({
@@ -1388,6 +1389,48 @@ export const requestPreviewPayloadSchema = z.object({
   summary: z.string().max(2000),
 });
 export type RequestPreviewPayload = z.infer<typeof requestPreviewPayloadSchema>;
+// ---- environments (Phase B: live) ----
+export const APP_ENVIRONMENT_KINDS = ["preview", "live"] as const;
+export type AppEnvironmentKind = (typeof APP_ENVIRONMENT_KINDS)[number];
+/** the helper's instance name of an environment: the slug for the preview, <slug>-live for the live one */
+export function appInstanceName(slug: string, kind: AppEnvironmentKind): string {
+  return kind === "preview" ? slug : `${slug}-live`;
+}
+/** instance names the helper accepts: an app slug, optionally with the -live suffix */
+export const APP_INSTANCE_RE = /^[a-z][a-z0-9-]{0,33}[a-z0-9]$/;
+
+/** a public hostname a client owns (lower case, at least two labels, no IP literal, no wildcard) */
+const FQDN_RE = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/;
+export const customDomainSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(FQDN_RE, "Use a domain like app.example.com");
+/** live environment of an app: the client's server and domain (+ up to 3 names that redirect to it, e.g. www.) */
+export const liveEnvironmentInputSchema = z.object({
+  serverId: z.uuid(),
+  domain: customDomainSchema,
+  extraDomains: z.array(customDomainSchema).max(3).default([]),
+  memoryMb: z.number().int().min(256).max(2048).optional(),
+});
+export const liveEnvironmentUpdateSchema = z.object({
+  domain: customDomainSchema.optional(),
+  extraDomains: z.array(customDomainSchema).max(3).optional(),
+  accessMode: z.enum(APP_ACCESS_MODES).optional(),
+});
+
+/** whether a domain points at the environment's server (public DNS, A/AAAA) */
+export const DOMAIN_CHECK_STATUSES = ["ok", "wrong", "missing", "error"] as const;
+export type DomainCheckStatus = (typeof DOMAIN_CHECK_STATUSES)[number];
+export interface DomainCheck {
+  status: DomainCheckStatus;
+  /** the addresses the domain(s) should resolve to (the server's) */
+  expected: string[];
+  /** per name: what public DNS answered */
+  names: { name: string; status: DomainCheckStatus; found: string[] }[];
+  checkedAt: string;
+}
+
 /** a task waits for at most this many failed previews before it fails instead of being sent back again */
 export const PREVIEW_MAX_FAILED_ATTEMPTS = 3;
 

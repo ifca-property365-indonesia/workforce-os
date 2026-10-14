@@ -197,6 +197,13 @@
       "when": 1791920000000,
       "tag": "0027_apps",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791930000000,
+      "tag": "0028_app_environments",
+      "breakpoints": true
     }
   ]
 }

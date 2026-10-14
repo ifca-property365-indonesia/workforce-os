@@ -59,6 +59,8 @@ import type {
   ReleaseStep,
   ReleaseWarning,
   ReleaseCheckpoint,
+  AppEnvironmentKind,
+  DomainCheck,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -998,20 +1000,20 @@ export const apps = pgTable(
   {
     id: id(),
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
-    /** a server with apps cannot be deleted (remove the apps first) */
-    serverId: uuid("server_id").notNull().references(() => servers.id, { onDelete: "restrict" }),
+    /** @deprecated since 0028: the preview environment's server (app_environments); kept for a rollback, not maintained */
+    serverId: uuid("server_id").references(() => servers.id, { onDelete: "restrict" }),
     clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     repositoryId: uuid("repository_id").references(() => repositories.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     /** subdomain and name on the server; fixed once created */
     slug: text("slug").notNull(),
-    /** <slug>.<server baseDomain>, globally unique */
-    domain: text("domain").notNull(),
+    /** @deprecated since 0028 (app_environments.domain) */
+    domain: text("domain"),
     /** branch a manual deploy takes by default */
     branch: text("branch").notNull().default("main"),
-    /** 127.0.0.1 port on the server, APP_PORT_MIN..APP_PORT_MAX, unique per server */
-    port: integer("port").notNull(),
+    /** @deprecated since 0028 (app_environments.port) */
+    port: integer("port"),
     status: text("status").$type<AppStatus>().notNull().default("new"),
     statusMessage: text("status_message"),
     currentReleaseId: uuid("current_release_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
@@ -1034,9 +1036,7 @@ export const apps = pgTable(
   },
   (t) => [
     uniqueIndex("apps_ws_name").on(t.workspaceId, t.name),
-    uniqueIndex("apps_server_slug").on(t.serverId, t.slug),
-    uniqueIndex("apps_server_port").on(t.serverId, t.port),
-    uniqueIndex("apps_domain").on(t.domain),
+    uniqueIndex("apps_ws_slug").on(t.workspaceId, t.slug),
   ],
 );
 
@@ -1064,6 +1064,12 @@ export const appReleases = pgTable(
     dbBackup: text("db_backup"),
     /** how far the pipeline got (so a release cut off by a restart can be undone like a failure) */
     checkpoint: jsonb("checkpoint").$type<ReleaseCheckpoint>(),
+    /** the environment (preview / live) this release runs in */
+    environmentId: uuid("environment_id")
+      .notNull()
+      .references((): AnyPgColumn => appEnvironments.id, { onDelete: "cascade" }),
+    /** live: the preview release whose commit this release brings to live */
+    promotedFromReleaseId: uuid("promoted_from_release_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
     /** rollback: the release whose commit is brought back */
     rollbackOfId: uuid("rollback_of_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
     approvalId: uuid("approval_id").references(() => approvals.id, { onDelete: "set null" }),
@@ -1073,5 +1079,59 @@ export const appReleases = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("app_releases_app").on(t.appId, t.createdAt), index("app_releases_ws_status").on(t.workspaceId, t.status)],
+  (t) => [
+    index("app_releases_app").on(t.appId, t.createdAt),
+    index("app_releases_ws_status").on(t.workspaceId, t.status),
+    index("app_releases_env").on(t.environmentId, t.createdAt),
+  ],
+);
+
+/**
+ * Where an app runs (Phase B): its preview on the workspace's dev server, and (optionally) its live environment on a
+ * client's server at the client's own domain. Each has its own server instance, port, domain, env, database and
+ * releases. Created for every app's preview by migration 0028 from the fields that used to live on `apps`.
+ */
+export const appEnvironments = pgTable(
+  "app_environments",
+  {
+    id: id(),
+    appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<AppEnvironmentKind>().notNull(),
+    /** a server with environments cannot be deleted (remove them first) */
+    serverId: uuid("server_id").notNull().references(() => servers.id, { onDelete: "restrict" }),
+    /** the helper's name for it on the server (user wa-<name>, /srv/wfos-apps/<name>, unit wfos-app-<name>, db app_<name>) */
+    instanceName: text("instance_name").notNull(),
+    /** preview: <slug>.<server baseDomain>; live: the client's domain. Globally unique */
+    domain: text("domain").notNull(),
+    /** live: more names that redirect to `domain` (e.g. www.<domain>) */
+    extraDomains: jsonb("extra_domains").$type<string[]>().notNull().default([]),
+    /** live: whether the domain(s) point at the server (checked before a certificate is asked for) */
+    dnsCheck: jsonb("dns_check").$type<DomainCheck>(),
+    port: integer("port").notNull(),
+    status: text("status").$type<AppStatus>().notNull().default("new"),
+    statusMessage: text("status_message"),
+    currentReleaseId: uuid("current_release_id").references((): AnyPgColumn => appReleases.id, { onDelete: "set null" }),
+    /** preview: password (default); live: public (default) */
+    accessMode: text("access_mode").$type<AppAccessMode>().notNull().default("password"),
+    accessPasswordEnc: text("access_password_enc"),
+    /** extra env of THIS environment (live and preview never share values), encrypted */
+    envEnc: text("env_enc"),
+    appSecretEnc: text("app_secret_enc"),
+    dbPasswordEnc: text("db_password_enc"),
+    memoryMb: integer("memory_mb").notNull().default(512),
+    healthy: boolean("healthy"),
+    lastHealthAt: timestamp("last_health_at", { withTimezone: true }),
+    lastDeployedAt: timestamp("last_deployed_at", { withTimezone: true }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("app_env_app_kind").on(t.appId, t.kind),
+    uniqueIndex("app_env_server_instance").on(t.serverId, t.instanceName),
+    uniqueIndex("app_env_server_port").on(t.serverId, t.port),
+    uniqueIndex("app_env_domain").on(t.domain),
+    index("app_env_ws").on(t.workspaceId),
+  ],
 );
