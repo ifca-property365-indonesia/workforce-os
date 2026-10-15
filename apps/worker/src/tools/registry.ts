@@ -372,6 +372,8 @@ export async function createApproval(
   guardFindings: unknown[],
   /** the gate rule that asked for this approval (recorded on the approval_requested step) */
   rule?: GateRule,
+  /** hold the notice this long (email, Telegram, push): one withdrawn or decided meanwhile is never sent (notify) */
+  notifyDelayMs = 0,
 ): Promise<string> {
   const messageId = ctx.conversationId ? (ctx.messageId ?? null) : null;
   // A reply whose message was edited or regenerated away while it was still running must not leave an actionable
@@ -421,7 +423,7 @@ export async function createApproval(
     text: msg(locale, "notify.approvalNeededText", { employee: ctx.employee.name, role: ctx.employee.role, tool: toolName, reason }),
     link: approvalLink(a!.id, ctx),
     approvalId: a!.id,
-  });
+  }, notifyDelayMs > 0 ? { delay: notifyDelayMs } : undefined);
   return a!.id;
 }
 

@@ -10,6 +10,11 @@ const FREE_TOOLS = new Set(["TodoWrite", "Task", "Agent", "Skill", "ExitPlanMode
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 /** Claude Code's subagent tool (Task, or Agent in newer CLIs) */
 const SUBAGENT_TOOLS = new Set(["Task", "Agent"]);
+/**
+ * A subagent's escalated command is withdrawn when the subagent finishes, often within a minute (it reaches the
+ * result another way): its notice waits this long so the owner is not emailed about a request that is already gone.
+ */
+export const SUBAGENT_APPROVAL_NOTIFY_DELAY_MS = 90_000;
 
 /** Absolute path inside the task workspace (or the run's private /tmp), and not git internals. */
 export function writablePath(file: unknown, workspaceDir: string): { ok: true } | { ok: false; reason: string } {
@@ -93,6 +98,7 @@ export function workspacePermissions(d: WorkspacePermissionDeps): CanUseTool {
         }
         leadReview = { decision: r.decision, reason: r.reason, reviewer: reviewer.name };
       }
+      const withdrawable = !!(agentId && opts?.toolUseID);
       const id = await createApproval(
         ctx,
         "bash",
@@ -100,8 +106,10 @@ export function workspacePermissions(d: WorkspacePermissionDeps): CanUseTool {
         c.reasons.join("; ") || `${c.category} command`,
         { command, category: c.category, reasons: c.reasons, commands: c.commands, hooksDisabled: c.hooksDisabled, ...(leadReview ? { leadReview } : {}) },
         [],
+        undefined,
+        withdrawable ? SUBAGENT_APPROVAL_NOTIFY_DELAY_MS : 0,
       );
-      if (agentId && opts?.toolUseID) {
+      if (withdrawable && opts?.toolUseID) {
         d.onSubagentApproval?.(opts.toolUseID, id);
         return {
           behavior: "deny",

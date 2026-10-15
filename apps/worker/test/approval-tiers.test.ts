@@ -17,6 +17,7 @@ import {
   type LeadReviewModelCall,
 } from "../src/runner/workspace/lead-review";
 import { handleRejection, instructiveFeedback } from "../src/runner/approvals";
+import { SUBAGENT_APPROVAL_NOTIFY_DELAY_MS } from "../src/runner/workspace/permissions";
 import { makeDivision, makeEmployee, makeTask, makeWorkspace, runContext } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 
@@ -82,6 +83,9 @@ async function delivery() {
 const row = async (id: string) => (await db.select().from(tasks).where(eq(tasks.id, id)))[0]!;
 const approvalsOf = (taskId: string) => db.select().from(approvals).where(eq(approvals.taskId, taskId));
 const stepsNamed = (taskId: string, name: string) => db.select().from(steps).where(and(eq(steps.taskId, taskId), eq(steps.name, name)));
+/** The queue options of each notify job about this approval (undefined: sent at once). */
+const approvalNotices = (approvalId: string) =>
+  transport.queued.filter((q) => q.name === "notify" && (q.data as { approvalId?: string }).approvalId === approvalId).map((q) => q.opts);
 const enqueuedRuns = (taskId: string) => transport.queued.filter((q) => q.queue === "runs" && (q.data as { taskId: string }).taskId === taskId);
 
 /** The code lead starts a subagent (Task tool use `toolu_task`) whose calls carry parent_tool_use_id. */
@@ -381,6 +385,8 @@ describe("second trial (2026-10-15): stale and needless owner approvals", () => 
     expect(a!.feedback).toContain("Citra finished without this command");
     const [withdrawn] = await stepsNamed(w.build.id, "approvals_withdrawn");
     expect(withdrawn).toMatchObject({ actorEmployeeId: w.citra.id, status: "expired", input: { approvalIds: [a!.id] } });
+    // its notice is held, so a request withdrawn within the delay never reaches the owner's email (notify skips it)
+    expect(approvalNotices(a!.id)).toEqual([{ delay: SUBAGENT_APPROVAL_NOTIFY_DELAY_MS }]);
     // nothing left for the owner: the build finishes instead of waiting on a dead command
     expect((await row(w.build.id)).status).toBe("DONE");
   });
@@ -393,6 +399,7 @@ describe("second trial (2026-10-15): stale and needless owner approvals", () => 
     await runTask(w.build.id);
     const [a] = await approvalsOf(w.build.id);
     expect(a?.status).toBe("PENDING");
+    expect(approvalNotices(a!.id)).toEqual([undefined]); // the owner hears at once
     const p = mock.calls[0]!.permission;
     expect(p.behavior === "deny" && p.message).toContain("you get its output in a follow-up");
   });

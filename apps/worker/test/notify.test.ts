@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { db, members, notificationPrefs, notifications, pushSubscriptions, users, workspaces } from "@wfos/db";
+import { approvals, db, members, notificationPrefs, notifications, pushSubscriptions, users, workspaces } from "@wfos/db";
 import type { NotificationChannelPrefs, NotifyJob } from "@wfos/shared";
 import { setTelegramFetch } from "@wfos/shared/telegram";
 import { channelRecipients, notify, recipientsOrFallback } from "../src/lib/notify";
@@ -162,5 +162,25 @@ describe("per-user notifications", () => {
     expect(await recipientsOrFallback(ws.id, "push", {}, broken)).toBeNull();
     // the lookup working: its answer as is (preferences applied)
     expect(await recipientsOrFallback(ws.id, "telegram", { notificationKind: "approval" })).toEqual([b.user.id]);
+  });
+
+  it("third trial (2026-10-15): an approval withdrawn before its notice goes out is not sent anywhere; a pending one is", async () => {
+    const ws = await makeWorkspace({ notifyEmail: "ops@test.local" });
+    const m = await member(ws.id);
+    const approval = async (status: "PENDING" | "EXPIRED") =>
+      (await db.insert(approvals).values({ workspaceId: ws.id, toolName: "bash", title: "$ kill 2304604", payload: { command: "kill 2304604" }, status }).returning())[0]!;
+
+    const gone = await approval("EXPIRED");
+    await notify(job(ws.id, { notificationKind: "approval", approvalId: gone.id }));
+    expect(transport.mails).toEqual([]);
+    expect(telegramTo).toEqual([]);
+    expect(pushTo).toEqual([]);
+    expect(await db.select().from(notifications).where(eq(notifications.workspaceId, ws.id))).toEqual([]);
+
+    const live = await approval("PENDING");
+    await notify(job(ws.id, { notificationKind: "approval", approvalId: live.id }));
+    expect(transport.mails.map((x) => x.mail.to[0]).sort()).toEqual(["ops@test.local", m.user.email].sort());
+    expect(telegramTo).toEqual([m.chatId]);
+    expect(pushTo).toEqual([m.endpoint]);
   });
 });

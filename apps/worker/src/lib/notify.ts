@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { db, members, notificationPrefs, notifications, users } from "@wfos/db";
+import { approvals, db, members, notificationPrefs, notifications, users } from "@wfos/db";
 import { notificationEnabled, type NotificationChannel, type NotifyJob } from "@wfos/shared";
 import { sendMail } from "@wfos/shared/mail";
 import { withRetry } from "@wfos/shared/server";
@@ -71,6 +71,14 @@ export async function recipientsOrFallback(
  */
 export async function notify(n: NotifyInput): Promise<void> {
   const { workspaceId, subject, text, link, approvalId } = n;
+  // an approval notice that is no longer actionable (withdrawn, expired or decided before it went out) is not sent
+  if (approvalId) {
+    const [a] = await db.select({ status: approvals.status }).from(approvals).where(eq(approvals.id, approvalId));
+    if (a && a.status !== "PENDING") {
+      log.info({ approvalId, status: a.status }, "notify: approval no longer pending; notice not sent");
+      return;
+    }
+  }
   await db.insert(notifications).values({
     workspaceId,
     userId: n.userId ?? null,
