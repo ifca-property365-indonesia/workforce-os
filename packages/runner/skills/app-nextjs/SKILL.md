@@ -86,6 +86,11 @@ Then change it into what the task asks for. Keep the structure below.
   (the release folder, /tmp of other apps, the home directory) is read-only or not there.
 - The app cannot reach private networks or services on the server (localhost, 10.x, 192.168.x, cloud metadata …):
   only its own database socket and the public internet. Do not build features that call internal hosts.
+- Fonts and other assets ship with the app. Your sandbox reaches only the package registries, so `next/font/google`,
+  Google Fonts `<link>`s and CDN files fail there (the build breaks, or the page silently falls back to another font).
+  Use the system font stack, a font package from npm (`@fontsource-variable/<name>`, imported once in
+  `app/layout.tsx`; a new dependency, so it goes to approval), or font files committed to the repository with
+  `next/font/local`.
 - Variables the platform sets (do not set them yourself, do not commit `.env` files): `PORT`, `HOST` (127.0.0.1),
   `NODE_ENV` (production), `APP_URL` (the preview URL), `APP_SECRET` (random, stable: sign cookies/tokens with it),
   `APP_VERSION` (the commit), `APP_DATA_DIR`, and `DATABASE_URL` when `database` is true.

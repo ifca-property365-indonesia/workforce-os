@@ -336,7 +336,7 @@ describe("taint that arises during a run is persisted", () => {
     await db.insert(steps).values({ workspaceId: ws.id, taskId: task.id, employeeId: emp.id, kind: "guard", name: "input_guard", status: "flagged" });
     const [a] = await db
       .insert(approvals)
-      .values({ workspaceId: ws.id, taskId: task.id, employeeId: emp.id, toolName: "send_email", title: "Injected title", payload: email, status: "REJECTED", feedback: "No" })
+      .values({ workspaceId: ws.id, taskId: task.id, employeeId: emp.id, toolName: "send_email", title: "Injected title", payload: email, status: "REJECTED", feedback: "No emails today" })
       .returning();
     await handleRejection(a!.id);
     const [mem] = await db.select().from(memories).where(and(eq(memories.employeeId, emp.id), eq(memories.source, "rejection")));

@@ -156,7 +156,10 @@ const BUILTIN_TMP_RE = /^\.[a-z0-9][a-z0-9-]{0,63}\.[0-9a-f]{12}\.tmp$/;
  * one of them was seeded by the platform and is upgraded; an unmarked copy matching none was edited and is left
  * alone. When a built-in changes, add its previous version here (homes seeded before this change carry no marker).
  */
-export const PREVIOUS_BUILTIN_VERSIONS: Readonly<Record<string, readonly string[]>> = {};
+export const PREVIOUS_BUILTIN_VERSIONS: Readonly<Record<string, readonly string[]>> = {
+  // before the fonts rule (2026-10-15)
+  "app-nextjs": ["c8cbdeffd0b644142c292edd55dabecf4e3101c03c5265b08f2ae257503f2685"],
+};
 /** a directory without the marker is compared with the built-in only up to this size (then it is not ours) */
 const ADOPT_MAX_BYTES = 8 * 1024 * 1024;
 

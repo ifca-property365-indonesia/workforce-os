@@ -31,6 +31,8 @@ export interface WorkspacePermissionDeps {
   gateExternal: (toolName: string, input: Record<string, unknown>, toolUseID?: string) => Promise<PermissionResult>;
   /** workspace root as the sandbox sees it */
   workspaceDir: string;
+  /** a subagent's command became an owner approval: withdrawn when that subagent finishes (SubagentTracker) */
+  onSubagentApproval?: (toolUseId: string, approvalId: string) => void;
 }
 
 /**
@@ -99,6 +101,16 @@ export function workspacePermissions(d: WorkspacePermissionDeps): CanUseTool {
         { command, category: c.category, reasons: c.reasons, commands: c.commands, hooksDisabled: c.hooksDisabled, ...(leadReview ? { leadReview } : {}) },
         [],
       );
+      if (agentId && opts?.toolUseID) {
+        d.onSubagentApproval?.(opts.toolUseID, id);
+        return {
+          behavior: "deny",
+          message:
+            `Queued for human approval (id ${id}): ${c.reasons.join("; ")}. The command was NOT run. ` +
+            "You are a subagent: the request is withdrawn when you finish, so it will never run after you. Do not retry it. " +
+            "If the same result can be reached without it (file changes with Write or Edit, a local command), do that; otherwise say in your report what you needed and why.",
+        };
+      }
       return {
         behavior: "deny",
         message:

@@ -117,6 +117,8 @@ export const NAMED_STEPS: ReadonlySet<string> = new Set([
   "waiting_for_prd_decision",
   "waiting_for_preview",
   "preview_deployed",
+  "preview_checked",
+  "approvals_withdrawn",
   "waiting_for_live",
   "live_deployed",
   "team_review_accepted",
@@ -187,6 +189,11 @@ export function describeReceipt(s: { kind: string; name: string; status?: string
   // the platform's own preview steps (A3): waiting for a deploy, and the preview that went live
   if (s.name === "waiting_for_preview") return { key: "waiting_for_preview", values: {} };
   if (s.name === "preview_deployed") return { key: "preview_deployed", values: { url: isObj(s.output) && typeof s.output.url === "string" ? clip(s.output.url) : "" } };
+  if (s.name === "preview_checked") {
+    const pages = isObj(s.output) && Array.isArray(s.output.pages) ? s.output.pages : [];
+    return { key: "preview_checked", values: { pages: String(pages.length), problems: String(pages.filter((p) => isObj(p) && p.problem).length) } };
+  }
+  if (s.name === "approvals_withdrawn") return { key: "approvals_withdrawn", values: {} };
   if (s.name === "waiting_for_live") return { key: "waiting_for_live", values: {} };
   if (s.name === "live_deployed") return { key: "live_deployed", values: { url: isObj(s.output) && typeof s.output.url === "string" ? clip(s.output.url) : "" } };
   return { key: "other", values: { name: clip(s.name) } };

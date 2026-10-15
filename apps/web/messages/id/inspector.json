@@ -166,6 +166,8 @@
       "waiting_for_prd_decision": "Menunggu keputusan PRD",
       "waiting_for_preview": "Menunggu preview diterbitkan",
       "preview_deployed": "Preview terbit",
+      "preview_checked": "Halaman preview dicek",
+      "approvals_withdrawn": "Approval ditarik",
       "waiting_for_live": "Menunggu rilis LIVE",
       "live_deployed": "Rilis LIVE selesai",
       "team_review_accepted": "Review diterima",

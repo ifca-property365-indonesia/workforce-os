@@ -11,6 +11,7 @@ import { appInstanceName, WFOS_HELPER_VERSION, type DomainCheck, type ServerInfo
 import { encryptSecret } from "@wfos/shared/server";
 import * as ssh from "@wfos/shared/ssh";
 import { deployDeps, deployTiming } from "../src/deploy/common";
+import { previewCheckDeps } from "../src/deploy/preview-check";
 import { makeWorkspace } from "./fixtures";
 
 // The test files vi.mock("@wfos/shared/ssh") with sshExec / sftpPut as vi.fn(); FakeServer answers them like the
@@ -466,7 +467,14 @@ export function fastDeploys() {
     publicCalls.push({ url, headers });
     return status;
   };
-  return { publicCalls, setPublicStatus: (s: number) => (status = s) };
+  // the page check after a preview deploys: a plain page unless a test sets its own
+  const pageCalls: { url: string; headers: Record<string, string> }[] = [];
+  let pages: Record<string, { status: number; body: string }> = {};
+  previewCheckDeps.fetchPage = async (url, headers) => {
+    pageCalls.push({ url, headers });
+    return pages[new URL(url).pathname] ?? { status: 200, body: "<html><head><title>App</title></head><body>ok</body></html>" };
+  };
+  return { publicCalls, setPublicStatus: (s: number) => (status = s), pageCalls, setPages: (p: typeof pages) => (pages = p) };
 }
 
 /** Another app with an environment on `serverId` in `status` (for the per-server running limit). */

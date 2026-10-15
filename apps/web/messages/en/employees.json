@@ -370,6 +370,8 @@
       "request_preview": "Asked to publish a preview",
       "waiting_for_preview": "Waiting for the platform to deploy the approved preview",
       "preview_deployed": "Preview is live at {url}",
+      "preview_checked": "Opened the preview's pages: {pages} checked, {problems} with problems",
+      "approvals_withdrawn": "Withdrew the approval requests of a finished subagent",
       "request_release": "Proposed a release to live",
       "waiting_for_live": "Waiting for the platform to release the approved version to LIVE",
       "live_deployed": "LIVE now runs the new version at {url}",

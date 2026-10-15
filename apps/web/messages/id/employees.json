@@ -370,6 +370,8 @@
       "request_preview": "Meminta preview diterbitkan",
       "waiting_for_preview": "Menunggu platform menerbitkan preview yang sudah disetujui",
       "preview_deployed": "Preview sudah jalan di {url}",
+      "preview_checked": "Membuka halaman preview: {pages} dicek, {problems} bermasalah",
+      "approvals_withdrawn": "Menarik permintaan approval dari subagent yang sudah selesai",
       "request_release": "Mengusulkan penerbitan ke live",
       "waiting_for_live": "Menunggu platform merilis versi yang disetujui ke LIVE",
       "live_deployed": "LIVE sekarang menjalankan versi baru di {url}",

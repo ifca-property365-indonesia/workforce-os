@@ -27,11 +27,12 @@ vi.mock("@wfos/shared/ssh", async (importOriginal) => {
 });
 
 let srv: FakeServer;
+let deploys: ReturnType<typeof fastDeploys>;
 beforeEach(() => {
   resetTransport();
   srv = new FakeServer();
   srv.install();
-  fastDeploys();
+  deploys = fastDeploys();
 });
 
 const gitEnv = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
@@ -299,6 +300,39 @@ describe("request_preview (approved)", () => {
     // a second hand-back (retry, recovery) adds nothing
     await afterReleaseSettled(rel!.id);
     expect((await taskRow(s.task.id)).deliverables.filter((d) => d.title === `Preview: ${url}`)).toHaveLength(1);
+  });
+
+  it("deployed: the platform opens the preview's pages and puts what it saw on the task for the review", async () => {
+    const s = await setup();
+    const sha = s.agentCommit({ "src/notes.tsx": "export const n = 1;\n" }, "Notes page");
+    await s.pushed(sha);
+    deploys.setPages({
+      "/": { status: 200, body: '<title>Buku Tamu</title><a href="/tentang">Tentang</a> <a href="/_next/x.js">x</a> <a href="/api/health">h</a> <a href="/logo.png">l</a> <a href="/rusak/">r</a> <a href="/tentang">again</a>' },
+      "/tentang": { status: 200, body: "<title>Tentang &amp; versi</title>" },
+      "/rusak": { status: 200, body: '<html id="__next_error__"><title>Error</title></html>' },
+    });
+    const a = await requestAndApprove(s);
+    await executeApproval(a.id);
+    const [rel] = await releasesOf(s.task.id);
+    expect(await runRelease(rel!.id, s.ws.id)).toBe("deployed");
+
+    const url = `https://${s.preview.domain}`;
+    expect(deploys.pageCalls.map((c) => c.url)).toEqual([`${url}/`, `${url}/tentang`, `${url}/rusak`]);
+    const t = await taskRow(s.task.id);
+    const checks = t.deliverables.filter((d) => d.title === `Preview check: ${url}`);
+    expect(checks).toEqual([expect.objectContaining({ kind: "review", meta: expect.objectContaining({ releaseId: rel!.id, pages: 3, problems: 1 }) })]);
+    expect(checks[0]!.content).toContain("1 of 3 page(s)");
+    expect(checks[0]!.content).toContain("| /tentang | 200 |");
+    expect(checks[0]!.content).toContain("Tentang & versi");
+    expect(checks[0]!.content).toContain("| /rusak | 200 |");
+    expect(checks[0]!.content).toContain("Next.js error page");
+    expect(checks[0]!.content).toContain("Not checked: how it looks");
+    const [step] = await db.select().from(steps).where(and(eq(steps.taskId, s.task.id), eq(steps.name, "preview_checked")));
+    expect(step).toMatchObject({ status: "flagged" });
+    // a second hand-back checks nothing again
+    await afterReleaseSettled(rel!.id);
+    expect(deploys.pageCalls).toHaveLength(3);
+    expect((await taskRow(s.task.id)).deliverables.filter((d) => d.title === `Preview check: ${url}`)).toHaveLength(1);
   });
 
   it("failed: the task goes back to the Developer with the step, the error and the redacted log tail", async () => {

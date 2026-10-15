@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { approvals, auditLog, db, employees, steps, tasks } from "@wfos/db";
+import { approvals, auditLog, db, employees, memories, steps, tasks } from "@wfos/db";
 import { ROLE_TEMPLATES } from "@wfos/templates";
 import { runTask } from "../src/runner/task";
 import { setQueryImpl, setWorkspaceQueryFactory, type QueryFn } from "../src/runner/sdk";
@@ -10,11 +10,13 @@ import {
   LEAD_REVIEW_CATEGORIES,
   leadReviewable,
   parseLeadReview,
+  reviewerPrompt,
   reviewSandboxCommand,
   setLeadReviewModelCall,
   setLeadReviewTimeoutMs,
   type LeadReviewModelCall,
 } from "../src/runner/workspace/lead-review";
+import { handleRejection, instructiveFeedback } from "../src/runner/approvals";
 import { makeDivision, makeEmployee, makeTask, makeWorkspace, runContext } from "./fixtures";
 import { resetTransport, transport } from "./transport";
 
@@ -338,5 +340,92 @@ describe("the code lead delegates implementation", () => {
     expect(t.instructions).toMatch(/Implementation always goes to your subagents/);
     expect(t.instructions).toMatch(/Do not build features yourself\. Your own edits are small glue only/);
     expect(t.instructions).toMatch(/QA engineer reviews the combined diff/);
+  });
+});
+
+/** The code lead's Task tool_use `toolu_task` returns: the subagent finished (main thread, no parent). */
+function subagentEnd(report: string): MockStep {
+  return {
+    event: {
+      type: "user",
+      parent_tool_use_id: null,
+      session_id: "s",
+      message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_task", content: report, is_error: false }] },
+    },
+  };
+}
+
+describe("second trial (2026-10-15): stale and needless owner approvals", () => {
+  it("a subagent's escalated command is withdrawn when the subagent finishes, so it can never overwrite its newer work", async () => {
+    const w = await delivery();
+    setLeadReviewModelCall(reviewModel(verdict("escalate", "Unsure about the inline python.")));
+    const key = subagentKey(w.citra.name, w.citra.role);
+    const repo = `/var/lib/private/wfos/ws/${w.ws.id}/${w.build.id}/repo`;
+    const mock = mockRunner([
+      subagentStart(key),
+      { tool: "Bash", input: { command: `cd ${repo}\ncurl -s https://example.com/theme.css > app/globals.css` }, parentToolUseId: "toolu_task", toolUseId: "toolu_citra_bash" },
+      // Citra reaches the same result another way
+      { tool: "Write", input: { file_path: `${repo}/app/globals.css`, content: ":root{}" }, parentToolUseId: "toolu_task" },
+      subagentEnd("Restyle done with Write and Edit."),
+      { result: "Built." },
+    ]);
+    setWorkspaceQueryFactory(() => mock.query as QueryFn);
+    await runTask(w.build.id);
+
+    const denied = mock.calls[0]!.permission;
+    expect(denied.behavior).toBe("deny");
+    expect(denied.behavior === "deny" && denied.message).toContain("withdrawn when you finish");
+    expect(mock.calls[1]!.permission.behavior).toBe("allow");
+    const [a] = await approvalsOf(w.build.id);
+    expect(a).toMatchObject({ status: "EXPIRED", toolName: "bash", executionResult: { ok: false } });
+    expect(a!.feedback).toContain("Citra finished without this command");
+    const [withdrawn] = await stepsNamed(w.build.id, "approvals_withdrawn");
+    expect(withdrawn).toMatchObject({ actorEmployeeId: w.citra.id, status: "expired", input: { approvalIds: [a!.id] } });
+    // nothing left for the owner: the build finishes instead of waiting on a dead command
+    expect((await row(w.build.id)).status).toBe("DONE");
+  });
+
+  it("the code lead's own escalated command still waits for the owner (it is told the output follows)", async () => {
+    const w = await delivery();
+    setLeadReviewModelCall(reviewModel(verdict("escalate", "A new dependency.")));
+    const mock = mockRunner([{ tool: "Bash", input: { command: "pnpm add zod" } }, subagentEnd("unrelated"), { result: "Waiting." }]);
+    setWorkspaceQueryFactory(() => mock.query as QueryFn);
+    await runTask(w.build.id);
+    const [a] = await approvalsOf(w.build.id);
+    expect(a?.status).toBe("PENDING");
+    const p = mock.calls[0]!.permission;
+    expect(p.behavior === "deny" && p.message).toContain("you get its output in a follow-up");
+  });
+
+  it("the reviewer sees the trial's whole 13.6k-character command and both spellings of the workspace", () => {
+    const files = Array.from({ length: 200 }, (_, i) => `  --token-${i}: #${(i * 4099).toString(16).padStart(6, "0")};`).join("\n");
+    const python = "python3 - <<'EOF'\np='app/page.tsx'\ns=open(p).read()\nopen(p,'w').write(s.replace('<main>','<>'))\nEOF";
+    const command = [`cat > app/globals.css <<'EOF'\n:root {\n${files}\n}\nEOF`, `cat > app/a.css <<'EOF'\n${files}\nEOF`, `cat > app/b.css <<'EOF'\n${files}\nEOF`, python, "pnpm exec tsc --noEmit"].join("\n");
+    expect(command.length).toBeGreaterThan(13_000);
+    const prompt = reviewerPrompt({ command, category: "interpreter", reasons: ["python3 reads code from standard input"], by: "subagent", task: { title: "t", brief: "b" }, workspaceDir: "/var/lib/wfos/ws/w1/t1/repo", egress: [] });
+    expect(prompt).toContain("open(p,'w').write(s.replace('<main>','<>'))");
+    expect(prompt).toContain("pnpm exec tsc --noEmit");
+    expect(prompt).not.toContain("[truncated");
+    expect(prompt).toContain("/var/lib/wfos/ws/w1/t1/repo");
+    expect(prompt).toContain("/var/lib/private/wfos/ws/w1/t1/repo");
+    // a command too long to show is marked, and the reviewer is told to escalate it
+    const huge = reviewerPrompt({ command: "x".repeat(40_000), category: "unknown", reasons: [], by: "self", task: { title: "t", brief: "b" }, workspaceDir: "/w", egress: [] });
+    expect(huge).toContain("[truncated: 8000 more characters not shown]");
+  });
+
+  it("a bare verdict as rejection feedback is not written to the employee's memory; a reason is", () => {
+    for (const f of ["cant approve", "Can't approve.", "no", "Tolak", "ga bisa approve", "", "  ", null]) expect(instructiveFeedback(f)).toBe(false);
+    for (const f of ["Terlalu formal", "Too early", "Not now.", "jangan pakai python", "No emails today"]) expect(instructiveFeedback(f)).toBe(true);
+  });
+
+  it("the trial's rejection ('cant approve') leaves no memory and no memory step", async () => {
+    const w = await delivery();
+    const [a] = await db
+      .insert(approvals)
+      .values({ workspaceId: w.ws.id, taskId: w.build.id, employeeId: w.arif.id, toolName: "bash", title: "$ cd repo", payload: { command: "cd repo" }, status: "REJECTED", feedback: "cant approve" })
+      .returning();
+    await handleRejection(a!.id);
+    expect(await db.select().from(memories).where(eq(memories.employeeId, w.arif.id))).toHaveLength(0);
+    expect(await stepsNamed(w.build.id, "feedback_written_to_memory")).toHaveLength(0);
   });
 });

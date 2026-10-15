@@ -166,6 +166,8 @@
       "waiting_for_prd_decision": "Waiting for the PRD decision",
       "waiting_for_preview": "Waiting for the preview deploy",
       "preview_deployed": "Preview deployed",
+      "preview_checked": "Preview pages checked",
+      "approvals_withdrawn": "Approvals withdrawn",
       "waiting_for_live": "Waiting for the LIVE release",
       "live_deployed": "Released to LIVE",
       "team_review_accepted": "Review accepted",

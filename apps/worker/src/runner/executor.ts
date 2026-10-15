@@ -22,9 +22,11 @@ import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
 import { sandboxAvailable } from "./workspace/gc";
 import { recordRateLimit, syncUsageFromQuery, usageSyncDue } from "../lib/limits";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, normalizeMcpName, roundCredits, type ToolClass, type ToolPermission } from "@wfos/shared";
-import { resolveClaudeCredential } from "@wfos/db";
+import { approvals, db, resolveClaudeCredential } from "@wfos/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { agentEnv, env } from "../lib/env";
 import { log } from "../lib/logger";
+import { publish } from "../lib/redis";
 import { priceFor } from "../lib/pricing";
 import { recordStep, type StepRecord } from "../lib/steps";
 import { getExternalMcpServers } from "../lib/settings";
@@ -461,6 +463,10 @@ export class SubagentTracker {
   private invocations = new Map<string, { id: string; name: string; key: string; startedAt: number }>();
   /** a subagent's tool_use id → its call, until its result comes back */
   private calls = new Map<string, { name: string; input: unknown; actorId: string; startedAt: number }>();
+  /** a subagent's tool_use id → the Task tool_use id of its invocation (kept until the invocation ends) */
+  private callInvocation = new Map<string, string>();
+  /** a subagent's tool_use id → the owner approval its command became */
+  private approvals = new Map<string, string>();
 
   constructor(
     private ctx: RunContext,
@@ -482,6 +488,41 @@ export class SubagentTracker {
     );
   }
 
+  /** A subagent's command became an owner approval (workspacePermissions). */
+  noteApproval(toolUseId: string, approvalId: string): void {
+    this.approvals.set(toolUseId, approvalId);
+  }
+
+  /**
+   * A subagent finished: its owner approvals still PENDING are withdrawn (EXPIRED). The subagent has moved on (it
+   * often reaches the same result another way), so running its old command later could overwrite newer work.
+   */
+  private async withdrawApprovals(invocationId: string, inv: { id: string; name: string }): Promise<void> {
+    const ids: string[] = [];
+    for (const [toolUseId, approvalId] of this.approvals) {
+      if (this.callInvocation.get(toolUseId) !== invocationId) continue;
+      ids.push(approvalId);
+      this.approvals.delete(toolUseId);
+    }
+    for (const [toolUseId, parent] of this.callInvocation) if (parent === invocationId) this.callInvocation.delete(toolUseId);
+    if (!ids.length) return;
+    const summary = `Withdrawn: ${inv.name} finished without this command, so it no longer runs.`;
+    const expired = await db
+      .update(approvals)
+      .set({ status: "EXPIRED", decidedAt: new Date(), feedback: summary, executionResult: { ok: false, summary } })
+      .where(and(inArray(approvals.id, ids), eq(approvals.status, "PENDING")))
+      .returning({ id: approvals.id })
+      .catch((e: unknown) => {
+        log.warn({ err: e, runId: this.ctx.runId }, "subagent approvals not withdrawn");
+        return [] as { id: string }[];
+      });
+    if (!expired.length) return;
+    const gone = new Set(expired.map((x) => x.id));
+    this.ctx.pendingApprovalIds = this.ctx.pendingApprovalIds.filter((x) => !gone.has(x));
+    for (const x of expired) await publish(this.ctx.workspaceId, { type: "approval.updated", approvalId: x.id, status: "EXPIRED" }).catch(() => {});
+    await this.step({ kind: "approval", name: "approvals_withdrawn", actorEmployeeId: inv.id, status: "expired", input: { approvalIds: [...gone] }, output: summary });
+  }
+
   /** An assistant message: the code lead starting a subagent, or a subagent calling a tool. */
   async onAssistant(parentToolUseId: string | null, content: unknown): Promise<void> {
     if (!Array.isArray(content)) return;
@@ -501,6 +542,7 @@ export class SubagentTracker {
         });
         continue;
       }
+      if (this.invocations.has(parentToolUseId)) this.callInvocation.set(b.id, parentToolUseId);
       const actorId = this.actorOf(parentToolUseId);
       if (actorId && !this.calls.has(b.id)) this.calls.set(b.id, { name: b.name ?? "tool", input: b.input ?? {}, actorId, startedAt: Date.now() });
     }
@@ -523,6 +565,7 @@ export class SubagentTracker {
           input: { subagent: inv.key },
           output: redactSecrets(toolResultText(b.content)).slice(0, 4000),
         });
+        await this.withdrawApprovals(b.tool_use_id, inv);
         continue;
       }
       const call = this.calls.get(b.tool_use_id);
@@ -757,6 +800,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
       allowedPlatformTools: allowed,
       gateExternal: (n, i, id) => gateExternalTool(ctx, n, i, id),
       workspaceDir: runLayout(host, { runId: ctx.runId, workspaceId: ctx.workspaceId, taskId: ctx.taskId! }).sandboxRepoDir,
+      onSubagentApproval: (toolUseId, approvalId) => subagents.noteApproval(toolUseId, approvalId),
     });
   }
 

@@ -10,6 +10,7 @@ import { executeAction } from "../tools/actions";
 import { PREVIEW_MAX_FAILED_ATTEMPTS, TERMINAL_STATUSES, TOOL_BY_NAME } from "@wfos/shared";
 import { ACTIVE_RELEASE_STATUSES, FAILED_RELEASE_STATUSES } from "../deploy/preview";
 import { appUrl, sha8 } from "../deploy/common";
+import { checkPreviewPages, previewCheckReport } from "../deploy/preview-check";
 import { afterTerminal, doneProgress, failTask } from "./task-status";
 import { errorMessage } from "../lib/errors";
 import { sql } from "drizzle-orm";
@@ -152,11 +153,29 @@ export async function executeApproval(approvalId: string): Promise<void> {
   if (a.taskId) await afterApprovalResolved(a.taskId);
 }
 
-/** Rejection feedback is written to the employee's memory, then the task continues. */
+/**
+ * Whether rejection feedback teaches the employee something worth keeping. A bare verdict ("cant approve", "no",
+ * "tolak") says only that this one action was refused, and as a permanent memory it would make the employee wary of
+ * whatever the action looked like, right or wrong.
+ */
+export function instructiveFeedback(feedback: string | null | undefined): boolean {
+  const t = (feedback ?? "").toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").replace(/\s+/g, " ").trim();
+  return !!t && !BARE_VERDICTS.has(t.replace(/'/g, ""));
+}
+
+const BARE_VERDICTS = new Set(
+  [
+    "no", "nope", "nah", "reject", "rejected", "denied", "deny", "declined", "not approved", "cant approve", "cannot approve", "can not approve",
+    "dont approve", "wont approve", "tidak", "nggak", "ngga", "ga", "gak", "enggak", "tolak", "ditolak", "saya tolak", "tidak disetujui",
+    "ga disetujui", "gak disetujui", "tidak bisa approve", "ga bisa approve", "gak bisa approve", "ga approve", "gak approve", "batal", "skip",
+  ],
+);
+
+/** Rejection feedback that explains something is written to the employee's memory, then the task continues. */
 export async function handleRejection(approvalId: string): Promise<void> {
   const [a] = await db.select().from(approvals).where(eq(approvals.id, approvalId));
   if (!a || a.status !== "REJECTED") return;
-  if (a.feedback && a.employeeId) {
+  if (a.feedback && a.employeeId && instructiveFeedback(a.feedback)) {
     // the reviewer's feedback is trusted human input; the title was written by the run: when that run handled
     // untrusted content it is left out, so a trusted feedback memory cannot carry an injection
     const content = (await approvalTainted(a))
@@ -579,8 +598,39 @@ export async function afterReleaseSettled(releaseId: string): Promise<void> {
     };
     await db.update(tasks).set({ deliverables: sql`${tasks.deliverables} || ${JSON.stringify([d])}::jsonb` }).where(eq(tasks.id, task.id));
     await recordStep({ workspaceId: task.workspaceId, taskId: task.id, kind: "system", name: live ? "live_deployed" : "preview_deployed", output: { releaseId: rel.id, url, commit: rel.commit } }).catch(() => {});
+    if (!live) await checkDeployedPreview(task, rel, url).catch((e: unknown) => log.warn({ err: e, releaseId: rel.id }, "preview check failed"));
   }
   await afterApprovalResolved(rel.taskId);
+}
+
+/**
+ * The platform opens the deployed preview's pages once (deploy/preview-check.ts) and puts what it saw on the task as a
+ * review deliverable, so the head's review knows whether the pages render (members cannot run the app in the sandbox).
+ */
+async function checkDeployedPreview(task: { id: string; workspaceId: string }, rel: ReleaseRow, url: string): Promise<void> {
+  const [e] = await db.select().from(appEnvironments).where(eq(appEnvironments.id, rel.environmentId));
+  if (!e) return;
+  const started = Date.now();
+  const checks = await checkPreviewPages(e);
+  const problems = checks.filter((c) => c.problem).length;
+  const d: Deliverable = {
+    id: crypto.randomUUID(),
+    kind: "review",
+    title: `Preview check: ${url}`,
+    content: previewCheckReport(url, checks),
+    meta: { url, releaseId: rel.id, commit: rel.commit, pages: checks.length, problems },
+    createdAt: new Date().toISOString(),
+  };
+  await db.update(tasks).set({ deliverables: sql`${tasks.deliverables} || ${JSON.stringify([d])}::jsonb` }).where(eq(tasks.id, task.id));
+  await recordStep({
+    workspaceId: task.workspaceId,
+    taskId: task.id,
+    kind: "system",
+    name: "preview_checked",
+    status: problems ? "flagged" : "ok",
+    latencyMs: Date.now() - started,
+    output: { url, releaseId: rel.id, pages: checks.map((c) => ({ path: c.path, status: c.status, problem: c.problem })) },
+  }).catch(() => {});
 }
 
 /** A settled release is handed back by the reaper when it ended at least this long ago and its approval still lacks it. */
