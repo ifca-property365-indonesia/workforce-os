@@ -44,6 +44,10 @@ export function unitProperties(host: SandboxHost, layout: RunLayout, limits: Uni
     `User=${layout.userName}`,
     `StateDirectory=${layout.stateRel}`,
     "StateDirectoryMode=0700",
+    // systemd ≥ 258 mounts a DynamicUser state directory noexec: node_modules/.bin shims (tsc, next) then fail with
+    // "Permission denied" and native addons (@next/swc) cannot load. Running what the agent wrote there adds no power
+    // (it can already run any file with node); nosuid stays, and NoNewPrivileges / no capabilities apply as before.
+    `ExecPaths=${layout.sandboxStateDir}`,
     // "-": a workspace the agent emptied must not stop the unit (root never recreates paths inside it)
     `WorkingDirectory=-${workDir}`,
     "UMask=0077",

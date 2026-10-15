@@ -46,6 +46,8 @@ describe("unit properties", () => {
       "NoNewPrivileges=yes", "CapabilityBoundingSet=", "PrivateNetwork=yes", "RestrictNamespaces=yes", "MemorySwapMax=0", "KillMode=control-group",
       `InaccessiblePaths=-${h.runtimeDir}`, "InaccessiblePaths=-/run/postgresql", "InaccessiblePaths=-/run/redis", "TemporaryFileSystem=/mnt",
     ]) expect(props, p).toContain(p);
+    // the task's own workspace may run its scripts (pnpm build, node_modules/.bin): systemd mounts it noexec otherwise
+    expect(props).toContain(`ExecPaths=${l.sandboxStateDir}`);
     expect(props.some((p) => p.startsWith("MemoryMax="))).toBe(true);
     expect(props.some((p) => p.startsWith("RuntimeMaxSec="))).toBe(true);
   });
