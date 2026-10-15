@@ -318,7 +318,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
         </section>
       )}
 
-      {dialog === "deploy" && <DeployDialog app={app} onClose={() => setDialog(null)} />}
+      {dialog === "deploy" && <DeployDialog app={app} releases={releases} origins={data.origins} onClose={() => setDialog(null)} />}
       {dialog === "edit" && <EditAppDialog app={app} onClose={() => setDialog(null)} />}
       {dialog === "setupLive" && <SetupLiveDialog app={app} onClose={() => setDialog(null)} onCreated={() => setTab("live")} />}
       {dialog === "editLive" && live && <EditLiveDialog app={app} env={live} onClose={() => setDialog(null)} />}

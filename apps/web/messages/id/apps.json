@@ -160,7 +160,15 @@
     "commitPlaceholder": "Hash commit 40 karakter",
     "commitInvalid": "Commit terdiri dari 40 karakter heksadesimal.",
     "confirm": "Terbitkan sekarang",
-    "audited": "Klik Anda adalah keputusannya: dicatat di log audit."
+    "audited": "Klik Anda adalah keputusannya: dicatat di log audit.",
+    "recentBranches": "Branch terbaru",
+    "recentCommits": "Commit yang pernah jalan di preview",
+    "defaultBranch": "default",
+    "runningNow": "di preview sekarang",
+    "neverDeployed": "Belum pernah naik ke preview",
+    "byTask": "{employee} lewat {title}",
+    "replaces": "Preview sekarang menjalankan {branch} ({commit}: {subject}); deploy ini menggantikannya.",
+    "notMerged": "Pekerjaan agent tetap di branch-nya sendiri sampai di-merge, jadi {branch} mungkin belum berisi pekerjaan itu."
   },
   "access": {
     "title": "Password preview",

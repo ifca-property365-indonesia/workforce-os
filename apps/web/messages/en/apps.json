@@ -160,7 +160,15 @@
     "commitPlaceholder": "40-character commit hash",
     "commitInvalid": "A commit is 40 hexadecimal characters.",
     "confirm": "Deploy now",
-    "audited": "Your click is the decision: it is recorded in the audit log."
+    "audited": "Your click is the decision: it is recorded in the audit log.",
+    "recentBranches": "Recent branches",
+    "recentCommits": "Commits that ran in the preview",
+    "defaultBranch": "default",
+    "runningNow": "in preview now",
+    "neverDeployed": "Not deployed to the preview yet",
+    "byTask": "{employee} via {title}",
+    "replaces": "The preview now runs {branch} ({commit}: {subject}); this deploy replaces it.",
+    "notMerged": "An agent's work stays on its own branch until it is merged, so {branch} may not have it yet."
   },
   "access": {
     "title": "Preview password",
