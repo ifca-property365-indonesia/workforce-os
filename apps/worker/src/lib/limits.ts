@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { audit, claudeLimits, db, workspaces } from "@wfos/db";
+import { audit, claudeLimits, db, recordUsageCalibration, workspaces } from "@wfos/db";
 import { newWarning, normalizeRateLimit, sameWindow, usageStatus, usageWindows, type LimitStatus, type RawRateLimitInfo } from "@wfos/shared/limits";
 import { msg } from "@wfos/shared/messages";
 import { miscQueue, publish } from "./redis";
@@ -46,6 +46,8 @@ export async function recordRateLimit(
     .insert(claudeLimits)
     .values({ workspaceId: run.workspaceId, credentialSource: run.credentialSource, rateLimitType: w.type, ...values })
     .onConflictDoUpdate({ target: [claudeLimits.workspaceId, claudeLimits.credentialSource, claudeLimits.rateLimitType], set: values });
+  // a real utilization calibrates the estimated meter (display only: never pauses or warns)
+  if (w.utilization !== null) await recordUsageCalibration(run.workspaceId, run.credentialSource, w.type, w.utilization, w.resetsAt);
   await publish(run.workspaceId, { type: "limits.updated", windows: await limitWindows(run.workspaceId, run.credentialSource) });
 
   const locale = await localeOf(run.workspaceId);
@@ -130,6 +132,8 @@ export async function recordUsageWindows(workspaceId: string, credentialSource: 
       .values({ workspaceId, credentialSource, rateLimitType: w.type, ...values })
       .onConflictDoUpdate({ target: [claudeLimits.workspaceId, claudeLimits.credentialSource, claudeLimits.rateLimitType], set: values });
     if (threshold && status !== "rejected") await warnLimit(workspaceId, { ...w, utilization }, threshold, locale);
+    // only a value reported now calibrates the estimated meter (not one carried over from an earlier report)
+    if (w.utilization !== null) await recordUsageCalibration(workspaceId, credentialSource, w.type, w.utilization, w.resetsAt);
   }
   await publish(workspaceId, { type: "limits.updated", windows: await limitWindows(workspaceId, credentialSource) });
   return windows.length;

@@ -207,5 +207,26 @@
     "openOutbox": "Open the outbox",
     "pausedToast": "Outgoing email paused",
     "savedToast": "Email policy saved"
+  },
+  "usageBudget": {
+    "title": "Estimated Claude usage",
+    "description": "A Claude subscription token does not report its plan usage, so the dashboard estimates it from the spend of workforce-os runs. Display only: the estimate never pauses work or sends warnings.",
+    "weekly": "Weekly budget (USD)",
+    "fiveHour": "5-hour budget (USD)",
+    "budgetHelp": "The API-equivalent spend you treat as 100% of the window. Used until Claude reports a real value to calibrate from. Leave empty for none.",
+    "resetDay": "Weekly reset day",
+    "resetHour": "Reset hour",
+    "timezone": "Time zone",
+    "automatic": "Automatic",
+    "workspaceTz": "Workspace ({tz})",
+    "inEffect": "In effect: {day} {hour} ({tz}), {source}.",
+    "source": {
+      "custom": "your schedule",
+      "claude": "from Claude's last weekly reset",
+      "default": "default until Claude reports a weekly reset"
+    },
+    "scheduleHelp": "Used when Claude has not reported the current weekly reset time. Set both day and hour, or leave both automatic.",
+    "savedToast": "Usage budget saved",
+    "invalid": "Enter a positive amount, or leave it empty."
   }
 }

@@ -13,6 +13,8 @@ import { useMe } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
 import { MODEL_WINDOW_PREFIX } from "@wfos/shared/limits";
+import type { ResetSchedule, UsageBudget, UsageState, WindowMeter } from "@wfos/shared/usage-meter";
+import { Link } from "@/lib/nav";
 
 export interface Limits {
   subscription: boolean;
@@ -23,6 +25,8 @@ export interface Limits {
   syncedAt?: string | null;
   paused: { until: string; reason: string | null } | null;
   usdThisMonth: number;
+  /** estimated 5-hour and weekly usage (workforce-os runs only, display only); null without a subscription */
+  meter?: { scope: "workforce_os_only"; budget: UsageBudget; schedule: ResetSchedule; windows: WindowMeter[] } | null;
 }
 
 const KNOWN = ["five_hour", "seven_day", "seven_day_oauth_apps", "seven_day_opus", "seven_day_sonnet"];
@@ -40,9 +44,14 @@ export function LimitsCard() {
   const t = useTranslations("dashboard");
   const f = useFormat();
   const { data } = useLimits();
+  const { data: me } = useMe();
+  const admin = me?.role === "OWNER" || me?.role === "ADMIN";
   if (!data?.subscription) return null;
   const label = (type: string) =>
     KNOWN.includes(type) ? t(`limits.window.${type}`) : type.startsWith(MODEL_WINDOW_PREFIX) ? t("limits.window.model", { name: type.slice(MODEL_WINDOW_PREFIX.length) }) : type;
+  const metered = new Set<string>(data.meter?.windows.map((w) => w.type) ?? []);
+  // the 5-hour and weekly rows are part of the meter (with Claude's value when reported); the other windows as before
+  const others = data.windows.filter((w) => !metered.has(w.type));
   return (
     <Card>
       <CardHeader>
@@ -52,8 +61,9 @@ export function LimitsCard() {
         <CardDescription>{data.source === "instance" ? t("limits.sharedFallback") : t("limits.description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {!data.windows.length && <p className="text-sm text-muted-foreground">{t("limits.noData")}</p>}
-        {data.windows.map((w) => {
+        {data.meter?.windows.map((w) => <MeterRow key={w.type} w={w} label={label(w.type)} />)}
+        {!data.meter && !data.windows.length && <p className="text-sm text-muted-foreground">{t("limits.noData")}</p>}
+        {others.map((w) => {
           const pct = Math.round((w.utilization ?? 0) * 100);
           return (
             <div key={w.type} className="space-y-1">
@@ -83,8 +93,80 @@ export function LimitsCard() {
         })}
         {data.syncedAt && <p className="text-xs text-muted-foreground">{t("limits.syncedAt", { time: f.dateTime(data.syncedAt) })}</p>}
         <p className="text-xs text-muted-foreground">{t("limits.usd", { usd: f.money(data.usdThisMonth, "USD") })}</p>
+        {data.meter && <p className="text-xs text-muted-foreground">{t("limits.meter.scope")}</p>}
+        {data.meter && admin && (
+          <Link href="/settings?tab=general" className="inline-block text-xs font-semibold underline underline-offset-2">
+            {t("limits.meter.setBudget")}
+          </Link>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+/** Tint pills (10–15 %, coloured text): warning is a budget/quota state here, never the solid approval amber. */
+const STATE_PILL: Record<UsageState, string> = {
+  safe: "bg-success/15 text-success",
+  watch: "bg-warning/15 text-warning",
+  near: "bg-destructive/15 text-destructive",
+  unknown: "bg-muted text-muted-foreground",
+};
+
+/** One window of the estimated meter: the percentage (Claude's fresh value, else the estimate), its basis, spend, projection and reset. */
+export function MeterRow({ w, label }: { w: WindowMeter; label: string }) {
+  const t = useTranslations("dashboard");
+  const f = useFormat();
+  const pct = w.utilization === null ? null : Math.round(w.utilization * 100);
+  const estimated = w.basis === "calibrated" || w.basis === "budget";
+  const basisText =
+    w.basis === "reported" && w.reported
+      ? t("limits.meter.basis.reported", { time: f.dateTime(w.reported.at) })
+      : w.basis === "calibrated" && w.estimate?.calibratedAt
+        ? t("limits.meter.basis.calibrated", { time: f.dateTime(w.estimate.calibratedAt) })
+        : w.basis === "budget" && w.estimate?.budgetUsd
+          ? t("limits.meter.basis.budget", { usd: f.money(w.estimate.budgetUsd, "USD") })
+          : t("limits.meter.noBasis");
+  const projectedPct = w.projectedUtilization === null ? null : Math.round(w.projectedUtilization * 100);
+  return (
+    <div className="space-y-1" data-testid={`meter-${w.type}`}>
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span className="font-medium">{label}</span>
+        <span className="flex items-center gap-2">
+          <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", STATE_PILL[w.state])}>{t(`limits.meter.state.${w.state}`)}</span>
+          <span className={cn("tabular-nums", w.state === "near" ? "text-destructive" : w.state === "watch" ? "text-warning" : "text-muted-foreground")}>
+            {pct === null ? "—" : estimated ? `≈ ${t("limits.used", { pct })}` : t("limits.used", { pct })}
+          </span>
+        </span>
+      </div>
+      <Progress
+        value={Math.min(100, pct ?? 0)}
+        aria-label={label}
+        className={cn(
+          "h-2",
+          // an estimate is drawn lighter than a value Claude reported
+          estimated && "[&>div]:opacity-60",
+          w.state === "near" && "[&>div]:bg-destructive",
+          w.state === "watch" && "[&>div]:bg-warning",
+        )}
+      />
+      <div className="space-y-0.5 text-xs text-muted-foreground">
+        <p>
+          {pct !== null && <span className="font-semibold uppercase tracking-wide">{estimated ? t("limits.meter.estimateLabel") : t("limits.meter.reportedLabel")} · </span>}
+          {basisText}
+        </p>
+        {w.start === null ? (
+          <p>{t("limits.meter.notOpen")}</p>
+        ) : (
+          <p>
+            {t("limits.meter.spend", { usd: f.money(w.spendUsd, "USD") })}
+            {w.projectedUsd !== null &&
+              ` · ${projectedPct !== null ? t("limits.meter.projectedPct", { usd: f.money(w.projectedUsd, "USD"), pct: projectedPct }) : t("limits.meter.projected", { usd: f.money(w.projectedUsd, "USD") })}`}
+          </p>
+        )}
+        {w.reported && w.basis !== "reported" && <p>{t("limits.meter.lastReported", { pct: Math.round(w.reported.utilization * 100), time: f.dateTime(w.reported.at) })}</p>}
+        {w.resetsAt && w.windowSource && <p>{t("limits.meter.resetsAt", { time: f.dateTime(w.resetsAt), source: t(`limits.meter.windowSource.${w.windowSource}`) })}</p>}
+      </div>
+    </div>
   );
 }
 

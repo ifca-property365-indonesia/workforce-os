@@ -34,6 +34,37 @@
       "seven_day_opus": "Mingguan · Opus",
       "seven_day_sonnet": "Mingguan · Sonnet",
       "model": "Mingguan · {name}"
+    },
+    "meter": {
+      "estimateLabel": "Perkiraan",
+      "reportedLabel": "Dilaporkan",
+      "basis": {
+        "reported": "Dilaporkan Claude pukul {time}",
+        "calibrated": "Dikalibrasi dari laporan Claude pukul {time}",
+        "budget": "Terhadap anggaran Anda {usd}"
+      },
+      "noBasis": "Belum ada perkiraan: Claude belum melaporkan nilai untuk kalibrasi, dan anggaran belum diatur.",
+      "spend": "Terpakai {usd} di jendela ini",
+      "projected": "Dengan laju ini: {usd} saat reset",
+      "projectedPct": "Dengan laju ini: {usd} (sekitar {pct}%) saat reset",
+      "lastReported": "Laporan terakhir Claude {pct}% pukul {time}",
+      "notOpen": "Belum ada jendela 5 jam yang berjalan: run berikutnya akan memulainya.",
+      "resetsAt": "Direset {time} ({source})",
+      "windowSource": {
+        "claude": "dilaporkan Claude",
+        "custom": "jadwal Anda",
+        "claude_schedule": "jadwal mingguan Claude",
+        "default": "jadwal bawaan",
+        "activity": "diperkirakan dari run"
+      },
+      "state": {
+        "safe": "Aman",
+        "watch": "Waspada",
+        "near": "Hampir batas",
+        "unknown": "Belum ada perkiraan"
+      },
+      "scope": "Perkiraan hanya menghitung run workforce-os. Pemakaian lain dari akun Claude yang sama, misalnya Claude Code Anda sendiri, tidak termasuk.",
+      "setBudget": "Anggaran dan jadwal reset"
     }
   },
   "incidents": {

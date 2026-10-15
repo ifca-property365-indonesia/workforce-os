@@ -34,6 +34,37 @@
       "seven_day_opus": "Weekly · Opus",
       "seven_day_sonnet": "Weekly · Sonnet",
       "model": "Weekly · {name}"
+    },
+    "meter": {
+      "estimateLabel": "Estimate",
+      "reportedLabel": "Reported",
+      "basis": {
+        "reported": "Reported by Claude at {time}",
+        "calibrated": "Calibrated from Claude's report at {time}",
+        "budget": "Against your budget of {usd}"
+      },
+      "noBasis": "No estimate yet: Claude has not reported a value to calibrate from, and no budget is set.",
+      "spend": "Spent {usd} in this window",
+      "projected": "At this pace: {usd} by the reset",
+      "projectedPct": "At this pace: {usd} (about {pct}%) by the reset",
+      "lastReported": "Claude last reported {pct}% at {time}",
+      "notOpen": "No 5-hour window is open: the next run starts one.",
+      "resetsAt": "Resets {time} ({source})",
+      "windowSource": {
+        "claude": "reported by Claude",
+        "custom": "your schedule",
+        "claude_schedule": "Claude's weekly schedule",
+        "default": "default schedule",
+        "activity": "estimated from runs"
+      },
+      "state": {
+        "safe": "Safe",
+        "watch": "Watch",
+        "near": "Near the limit",
+        "unknown": "No estimate"
+      },
+      "scope": "Estimates count workforce-os runs only. Other use of the same Claude account, such as your own Claude Code, is not included.",
+      "setBudget": "Budget and reset schedule"
     }
   },
   "incidents": {

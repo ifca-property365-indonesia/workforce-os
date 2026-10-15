@@ -16,6 +16,7 @@
     "./messages": "./src/messages.ts",
     "./bash-classifier": "./src/bash-classifier.ts",
     "./limits": "./src/limits.ts",
+    "./usage-meter": "./src/usage-meter.ts",
     "./health": "./src/health.ts",
     "./telegram": "./src/telegram.ts",
     "./push": "./src/push.ts",

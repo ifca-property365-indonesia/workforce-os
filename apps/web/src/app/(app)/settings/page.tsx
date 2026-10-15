@@ -6,6 +6,7 @@ import { ServersSettings } from "@/components/settings/servers";
 import { ApiTokensSettings } from "@/components/settings/api-tokens";
 import { SkillsSettings } from "@/components/settings/skills";
 import { CompanyProfileSettings } from "@/components/settings/company-profile";
+import { UsageBudgetSettings } from "@/components/settings/usage-budget";
 import { EmailPolicySettings, SmtpPresetPicker, useSmtpUserHint } from "@/components/settings/email-policy";
 import { mcpToolsQueryKey, type McpTool } from "@/components/employees/tool-permissions";
 
@@ -266,6 +267,7 @@ function General({ s, owner, admin }: { s: Settings; owner: boolean; admin: bool
         </CardContent>
       </Card>
       {admin && <ClaudeCredential owner={owner} />}
+      {admin && <UsageBudgetSettings />}
     </div>
   );
 }

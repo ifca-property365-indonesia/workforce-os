@@ -207,5 +207,26 @@
     "openOutbox": "Buka kotak keluar",
     "pausedToast": "Email keluar dijeda",
     "savedToast": "Kebijakan email disimpan"
+  },
+  "usageBudget": {
+    "title": "Perkiraan pemakaian Claude",
+    "description": "Token langganan Claude tidak melaporkan pemakaian paketnya, jadi dasbor memperkirakannya dari biaya run workforce-os. Hanya tampilan: perkiraan ini tidak pernah menjeda pekerjaan atau mengirim peringatan.",
+    "weekly": "Anggaran mingguan (USD)",
+    "fiveHour": "Anggaran 5 jam (USD)",
+    "budgetHelp": "Biaya setara API yang Anda anggap 100% dari jendela. Dipakai sampai Claude melaporkan nilai nyata untuk kalibrasi. Kosongkan jika tidak ada.",
+    "resetDay": "Hari reset mingguan",
+    "resetHour": "Jam reset",
+    "timezone": "Zona waktu",
+    "automatic": "Otomatis",
+    "workspaceTz": "Workspace ({tz})",
+    "inEffect": "Berlaku: {day} {hour} ({tz}), {source}.",
+    "source": {
+      "custom": "jadwal Anda",
+      "claude": "dari reset mingguan Claude terakhir",
+      "default": "bawaan sampai Claude melaporkan reset mingguan"
+    },
+    "scheduleHelp": "Dipakai saat Claude belum melaporkan waktu reset mingguan saat ini. Isi hari dan jam sekaligus, atau biarkan keduanya otomatis.",
+    "savedToast": "Anggaran pemakaian disimpan",
+    "invalid": "Isi jumlah positif, atau kosongkan."
   }
 }
