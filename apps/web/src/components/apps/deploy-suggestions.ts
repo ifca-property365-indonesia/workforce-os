@@ -23,7 +23,8 @@ export interface DeploySuggestions {
  * trial: a manual deploy of main brought back v5 over the agent's v2).
  */
 export function deploySuggestions(releases: ReleaseDTO[], defaultBranch: string, maxBranches = 4, maxCommits = 6): DeploySuggestions {
-  const preview = releases.filter((r) => r.environmentKind === "preview").sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  // a failed release ran nothing (a refused deploy of the running commit, a broken build): it suggests nothing
+  const preview = releases.filter((r) => r.environmentKind === "preview" && r.status !== "failed").sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
   const byBranch = new Map<string, ReleaseDTO>();
   for (const r of preview) if (r.branch && !byBranch.has(r.branch)) byBranch.set(r.branch, r);
   let branches: BranchSuggestion[] = [...byBranch].map(([branch, latest]) => ({ branch, latest, isDefault: branch === defaultBranch }));

@@ -141,6 +141,11 @@ export function DeployDialog({ app, releases, origins = {}, onClose }: { app: Ap
               </div>
             </div>
           )}
+          {mode === "branch" && current && current.branch === chosenBranch && suggestions.branches.length > 1 && (
+            <p role="note" className="text-xs text-muted-foreground">
+              {t("deploy.sameBranch", { branch: current.branch, commit: shortSha(current.commit) })}
+            </p>
+          )}
           {replaces && current && (
             <div role="note" className="flex gap-2 rounded-md border border-warning/50 bg-warning/10 p-2 text-xs text-warning">
               <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />

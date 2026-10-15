@@ -168,7 +168,8 @@
     "neverDeployed": "Belum pernah naik ke preview",
     "byTask": "{employee} lewat {title}",
     "replaces": "Preview sekarang menjalankan {branch} ({commit}: {subject}); deploy ini menggantikannya.",
-    "notMerged": "Pekerjaan agent tetap di branch-nya sendiri sampai di-merge, jadi {branch} mungkin belum berisi pekerjaan itu."
+    "notMerged": "Pekerjaan agent tetap di branch-nya sendiri sampai di-merge, jadi {branch} mungkin belum berisi pekerjaan itu.",
+    "sameBranch": "Preview sudah menjalankan {branch} di {commit}. Tanpa commit baru di branch ini, deploy akan ditolak; pilih branch lain di atas untuk menaikkan pekerjaannya."
   },
   "access": {
     "title": "Password preview",

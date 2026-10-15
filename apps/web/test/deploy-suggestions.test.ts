@@ -56,6 +56,22 @@ describe("Deploy dialog suggestions", () => {
     expect(s.commits.map((r) => r.commit)).toEqual([sha("7"), sha("1")]);
   });
 
+  it("the trial's refused deploys of main (failed, no commit) do not count: main stays where its last real release was", () => {
+    const s = deploySuggestions(
+      [
+        release({ branch: "agent/aaff3449", commit: sha("8"), createdAt: "2026-10-15T09:41:00Z", taskId: "t1" }),
+        release({ branch: "main", commit: "", createdAt: "2026-10-15T10:25:25Z", status: "failed", error: "Commit 7543ad71 is the version running now" }),
+        release({ branch: "main", commit: "", createdAt: "2026-10-15T10:27:32Z", status: "failed" }),
+      ],
+      "main",
+    );
+    expect(s.initialBranch).toBe("agent/aaff3449");
+    expect(s.branches.map((b) => [b.branch, b.latest?.commit ?? null])).toEqual([
+      ["agent/aaff3449", sha("8")],
+      ["main", null],
+    ]);
+  });
+
   it("no releases yet: the app's branch alone; many branches: the newest ones and the default always kept", () => {
     expect(deploySuggestions([], "main")).toEqual({ initialBranch: "main", branches: [{ branch: "main", latest: null, isDefault: true }], commits: [] });
     const many = ["a", "b", "c", "d", "e"].map((x, i) => release({ branch: `agent/${x}`, commit: sha(String(i)), createdAt: `2026-10-15T0${i + 1}:00:00Z` }));
