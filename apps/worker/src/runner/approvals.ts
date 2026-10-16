@@ -343,7 +343,8 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
   const outcome = await db.transaction(async (tx) => {
     const [task] = await tx.select().from(tasks).where(eq(tasks.id, taskId)).for("update");
     if (!task || task.status !== "AWAITING_APPROVAL") return null;
-    const all = await tx.select().from(approvals).where(eq(approvals.taskId, taskId));
+    // a merge into the default branch is a person's step on finished work: its outcome (a conflict) is never the run's
+    const all = (await tx.select().from(approvals).where(eq(approvals.taskId, taskId))).filter((x) => x.toolName !== MERGE_TOOL);
     if (all.some((x) => x.status === "PENDING" || x.status === "APPROVED" || x.status === "EXECUTING")) return null;
     // handed back to the employee already, or a failed preview request replaced by a later one
     const settled = (x: ApprovalRow) => consumed(x) || supersededPreview(x, all);

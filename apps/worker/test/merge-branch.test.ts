@@ -4,9 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { agentWorkOnRepository, approvals, db, MERGE_TOOL, repositories } from "@wfos/db";
+import { agentWorkOnRepository, approvals, db, MERGE_TOOL, repositories, tasks } from "@wfos/db";
 import { executeAction } from "../src/tools/actions";
-import { executeApproval } from "../src/runner/approvals";
+import { afterApprovalResolved, executeApproval } from "../src/runner/approvals";
 import { unmergedWork, unmergedWorkNote } from "../src/runner/merge-scan";
 import { mirrorPath, syncMirror, type RepoRef } from "../src/runner/workspace/git";
 import { makeEmployee, makeTask, makeWorkspace } from "./fixtures";
@@ -134,6 +134,19 @@ describe("merge_branch", () => {
     expect(note).toContain("not in main yet");
     expect(note).toContain('"conflicting README"');
     expect(note).not.toContain("feature B");
+  });
+
+  it("a failed merge does not fail the task when its later actions resolve", async () => {
+    // the conflict-fix flow: merge failed, the task went back to the employee, who pushed again and now waits
+    const t = await makeTask(ws.id, emp.id, { repositoryId: repo.id, status: "AWAITING_APPROVAL" });
+    await db.insert(approvals).values([
+      { workspaceId: ws.id, taskId: t.id, employeeId: emp.id, toolName: MERGE_TOOL, title: "merge", payload: { repositoryId: repo.id, head: "x" }, status: "FAILED", executionResult: { ok: false, summary: "conflicts" } },
+      { workspaceId: ws.id, taskId: t.id, employeeId: emp.id, toolName: "send_email", title: "mail", payload: {}, status: "EXECUTED", executionResult: { ok: true, summary: "sent" } },
+    ]);
+    await afterApprovalResolved(t.id);
+    const [row] = await db.select().from(tasks).where(eq(tasks.id, t.id));
+    expect(row!.status).toBe("DONE");
+    expect(row!.result).not.toContain("conflicts");
   });
 
   it("a skipped version no longer counts as waiting", async () => {
