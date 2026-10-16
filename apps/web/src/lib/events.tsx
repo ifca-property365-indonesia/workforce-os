@@ -56,6 +56,8 @@ export function EventsProvider({ children }: { children: ReactNode }) {
             invalidate("dashboard");
             invalidate("incidents");
             invalidate("client");
+            // a run that ended brings the task's held approvals into the inbox (and its count)
+            invalidate("approvals");
             break;
           case "step.created":
             invalidate("steps");

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { approvals, db, members, notificationPrefs, notifications, pushSubscriptions, users, workspaces } from "@wfos/db";
+import { approvals, db, members, notificationPrefs, notifications, pushSubscriptions, tasks, users, workspaces } from "@wfos/db";
 import type { NotificationChannelPrefs, NotifyJob } from "@wfos/shared";
 import { setTelegramFetch } from "@wfos/shared/telegram";
-import { channelRecipients, notify, recipientsOrFallback } from "../src/lib/notify";
+import { APPROVAL_NOTICE_MAX_HOLD_MS, APPROVAL_NOTICE_RECHECK_MS, channelRecipients, notify, recipientsOrFallback } from "../src/lib/notify";
 import { setPushSender } from "../src/lib/push";
 import { notifyFinished } from "../src/runner/task-status";
 import { makeEmployee, makeTask, makeWorkspace } from "./fixtures";
@@ -182,5 +182,35 @@ describe("per-user notifications", () => {
     expect(transport.mails.map((x) => x.mail.to[0]).sort()).toEqual(["ops@test.local", m.user.email].sort());
     expect(telegramTo).toEqual([m.chatId]);
     expect(pushTo).toEqual([m.endpoint]);
+  });
+
+  it("fourth trial (2026-10-16): a notice about an approval the owner cannot decide yet (employee still running) waits for the run to end", async () => {
+    const ws = await makeWorkspace({ notifyEmail: "ops@test.local" });
+    const m = await member(ws.id);
+    const emp = await makeEmployee(ws.id);
+    const task = await makeTask(ws.id, emp.id, { status: "RUNNING" });
+    const [a] = await db.insert(approvals).values({ workspaceId: ws.id, taskId: task.id, employeeId: emp.id, toolName: "bash", title: "$ git fetch upstream", payload: { command: "git fetch upstream" }, status: "PENDING" }).returning();
+    const heldJobs = () => transport.queued.filter((q) => q.name === "notify");
+
+    await notify(job(ws.id, { notificationKind: "approval", approvalId: a!.id }));
+    expect(transport.mails).toEqual([]);
+    expect(telegramTo).toEqual([]);
+    expect(await db.select().from(notifications).where(eq(notifications.workspaceId, ws.id))).toEqual([]);
+    expect(heldJobs()).toHaveLength(1);
+    const held = heldJobs()[0]!;
+    expect(held.opts?.delay).toBe(APPROVAL_NOTICE_RECHECK_MS);
+    expect((held.data as NotifyJob).heldSince).toBeTypeOf("number");
+
+    // the run ended: the task waits for the owner, the held notice goes out
+    await db.update(tasks).set({ status: "AWAITING_APPROVAL" }).where(eq(tasks.id, task.id));
+    await notify(held.data as NotifyJob);
+    expect(transport.mails.map((x) => x.mail.to[0]).sort()).toEqual(["ops@test.local", m.user.email].sort());
+    expect(telegramTo).toEqual([m.chatId]);
+
+    // never held forever
+    transport.mails.length = 0;
+    await db.update(tasks).set({ status: "RUNNING" }).where(eq(tasks.id, task.id));
+    await notify({ ...(held.data as NotifyJob), heldSince: Date.now() - APPROVAL_NOTICE_MAX_HOLD_MS - 1 });
+    expect(transport.mails).not.toEqual([]);
   });
 });

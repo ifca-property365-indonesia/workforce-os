@@ -498,6 +498,8 @@
       "unmerged": "not merged",
       "pending": "merging",
       "failed": "merge failed"
-    }
+    },
+    "others": "After one of these is merged, the others usually need the employee to bring them up to date first (they were built on an older {base}).",
+    "by": "by {name}"
   }
 }

@@ -166,5 +166,6 @@
     "howItRuns": "Jika disetujui, tepat commit {commit} yang dibangun di server live, dimigrasi seperti di atas, lalu lalu lintas dialihkan setelah lolos pemeriksaan kesehatan; kalau ada langkah yang gagal, versi live yang sekarang tetap berjalan. Rollback tetap bisa dilakukan.",
     "stale": "Live sudah berubah sejak permintaan ini: permintaan dibuat untuk versi live yang lain. Tolak dan minta Developer mengusulkan rilisnya lagi.",
     "expired": "Permintaan ini sudah lebih dari 24 jam: tolak dan minta Developer mengusulkannya lagi."
-  }
+  },
+  "waitingForRun": "{count} permintaan lagi akan muncul di sini setelah karyawannya selesai dengan run saat ini: selama masih bekerja, permintaan itu belum bisa diputuskan."
 }

@@ -823,7 +823,12 @@ export type NotifyJob = {
   notificationKind?: NotificationKind;
   employeeId?: string | null;
   userId?: string | null;
+  /** approval notices: when the notice was first held because the employee was still working (ms since epoch) */
+  heldSince?: number;
 };
+
+/** Task statuses in which a pending approval of the task cannot be decided yet: the employee is still working. */
+export const APPROVAL_UNDECIDABLE_TASK_STATUSES = ["RUNNING", "QUEUED"] as const;
 
 // ---------------------------------------------------------------------------
 // API input schemas (shared by web route handlers and UI forms)

@@ -15,16 +15,18 @@ function Inbox() {
   const focus = sp.get("focus");
   const t = useTranslations("approvals");
   const [tab, setTab] = useState("PENDING");
-  const { data } = useQuery({
+  const { data: res } = useQuery({
     queryKey: ["approvals", tab],
-    queryFn: () => api.get<{ approvals: Approval[] }>(`/api/approvals${tab === "ALL" ? "" : `?status=${tab}`}`).then((r) => r.approvals),
+    queryFn: () => api.get<{ approvals: Approval[]; waiting?: number }>(`/api/approvals${tab === "ALL" ? "" : `?status=${tab}`}`),
   });
+  const items = res?.approvals;
+  const waiting = res?.waiting ?? 0;
   useEffect(() => {
-    if (!focus || !data) return;
+    if (!focus || !items) return;
     // a link to a decided approval (a task's preview, an app's release) finds it under All
-    if (tab === "PENDING" && !data.some((a) => a.id === focus)) setTab("ALL");
+    if (tab === "PENDING" && !items.some((a) => a.id === focus)) setTab("ALL");
     else document.getElementById(focus)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [focus, data, tab]);
+  }, [focus, items, tab]);
   return (
     <div>
       <PageHeader title={t("title")} description={t("description")} />
@@ -36,9 +38,10 @@ function Inbox() {
           <TabsTrigger value="ALL">{t("tabs.all")}</TabsTrigger>
         </TabsList>
       </Tabs>
-      {!data?.length && <EmptyState icon={<ShieldCheck className="size-8" />} title={tab === "PENDING" ? t("empty.pendingTitle") : t("empty.title")} description={t("empty.description")} />}
+      {tab === "PENDING" && waiting > 0 && <p className="mb-4 text-sm text-muted-foreground">{t("waitingForRun", { count: waiting })}</p>}
+      {!items?.length && <EmptyState icon={<ShieldCheck className="size-8" />} title={tab === "PENDING" ? t("empty.pendingTitle") : t("empty.title")} description={t("empty.description")} />}
       <div className="space-y-4">
-        {data?.map((a) => (
+        {items?.map((a) => (
           <ApprovalCard key={a.id} a={a} focused={a.id === focus} />
         ))}
       </div>

@@ -25,7 +25,7 @@ export interface MergeInfo {
 function conflictFeedback(base: string, files: string[]): string {
   return (
     `Your branch conflicts with ${base}${files.length ? ` in ${files.join(", ")}` : ""}, so it could not be merged. ` +
-    `Bring it up to date: git fetch upstream, then git merge upstream/${base}. Resolve each conflict keeping what is already in ${base} ` +
+    `Bring it up to date: git merge upstream/${base} (upstream/${base} in your checkout is already the latest ${base}; do not fetch). Resolve each conflict keeping what is already in ${base} ` +
     "and adding your change on top (do not undo earlier work), run the tests, commit, and propose the push again."
   );
 }
@@ -60,12 +60,11 @@ export function MergeBox({ taskId, taskStatus, base, merge, resumable }: { taskI
     },
     onError: (e) => toast.error((e as Error).message),
   });
-  const sha = merge.head.slice(0, 8);
   const done = taskStatus === "DONE";
   const busy = decide.isPending || fix.isPending;
 
   return (
-    <div className="space-y-2 rounded-lg border p-3" aria-live="polite">
+    <div className="space-y-2 rounded-lg border p-3" aria-live="polite" title={`${merge.branch} · commit ${merge.head}`}>
       <div className="flex items-center gap-2 text-sm font-medium">
         <GitMerge className="size-4" aria-hidden /> {t("title", { base })}
       </div>
@@ -73,7 +72,7 @@ export function MergeBox({ taskId, taskStatus, base, merge, resumable }: { taskI
         <p className="flex items-start gap-1.5 text-sm">
           <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
           <span>
-            {merge.detected ? t("detected", { base, sha }) : t("merged", { base, sha, commit: (merge.commit ?? merge.head).slice(0, 8) })}
+            {merge.detected ? t("detected", { base }) : t("merged", { base })}
             {merge.decidedAt && <span className="text-muted-foreground"> · {f.ago(merge.decidedAt)}</span>}
           </span>
         </p>
@@ -83,7 +82,7 @@ export function MergeBox({ taskId, taskStatus, base, merge, resumable }: { taskI
           <Loader2 className="size-4 animate-spin" aria-hidden /> {t("pending", { base })}
         </p>
       )}
-      {merge.state === "skipped" && <p className="text-sm text-muted-foreground">{t("skipped", { base, sha })}</p>}
+      {merge.state === "skipped" && <p className="text-sm text-muted-foreground">{t("skipped", { base })}</p>}
       {merge.state === "failed" && (
         <div className="space-y-1 rounded-md bg-destructive/10 px-2 py-1.5 text-sm">
           <p className="flex items-start gap-1.5">
@@ -101,7 +100,7 @@ export function MergeBox({ taskId, taskStatus, base, merge, resumable }: { taskI
           )}
         </div>
       )}
-      {merge.state === "unmerged" && <p className="text-sm">{done ? t("unmerged", { base, sha }) : t("notDone", { base })}</p>}
+      {merge.state === "unmerged" && <p className="text-sm">{done ? t("unmerged", { base }) : t("notDone", { base })}</p>}
 
       {admin && done && merge.state !== "merged" && merge.state !== "pending" && (
         <div className="flex flex-wrap gap-2">
@@ -110,7 +109,7 @@ export function MergeBox({ taskId, taskStatus, base, merge, resumable }: { taskI
               {t("askFix")}
             </Button>
           ) : (
-            <Button size="sm" className="gap-1.5" disabled={busy} onClick={() => confirm(t("confirm", { base, sha })) && decide.mutate("merge")}>
+            <Button size="sm" className="gap-1.5" disabled={busy} onClick={() => confirm(t("confirm", { base })) && decide.mutate("merge")}>
               <GitMerge className="size-4" aria-hidden /> {merge.state === "failed" ? t("retry") : t("merge", { base })}
             </Button>
           )}

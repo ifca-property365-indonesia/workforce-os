@@ -498,6 +498,8 @@
       "unmerged": "belum digabung",
       "pending": "sedang digabung",
       "failed": "gagal digabung"
-    }
+    },
+    "others": "Setelah salah satu digabung, yang lain biasanya perlu disesuaikan dulu oleh karyawannya (dibuat dari {base} yang lebih lama).",
+    "by": "oleh {name}"
   }
 }

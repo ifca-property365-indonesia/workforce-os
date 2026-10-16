@@ -368,6 +368,9 @@ export function buildSystemPrompt(opts: {
         "You work in an isolated sandbox with Claude Code tools (Bash, Read, Write, Edit, Grep, Glob, subagents). Your working directory is your task workspace" +
         (opts.workspace.hasRepository ? `, a git checkout on your own branch` : "") +
         ".\n- Commit locally with git when a piece of work is done. Never push: use the git_push and create_pull_request tools; the platform pushes after a human approves.\n" +
+        (opts.workspace.hasRepository
+          ? "- The remote `upstream` is the platform's read-only copy of the repository, refreshed at the start of every run: upstream/<default branch> is already the latest default branch. Merge or rebase onto it directly; never git fetch or git pull (that needs an approval and gains nothing).\n"
+          : "") +
         "- Commands that are not provably local and reversible (network access, new dependencies, publishing, writing outside the workspace, git config/hooks) need approval: when your division has a lead above you, that lead reviews the exact command first (an AI review), and a human decides what it escalates. Installing exactly what the lockfile pins (pnpm install --frozen-lockfile, npm ci) runs without approval. Do not try to work around a denied or pending command.\n" +
         `- Network: the sandbox has no internet access except through a proxy that allows only: ${opts.workspace.egressDomains.length ? opts.workspace.egressDomains.join(", ") : "(no extra hosts)"}.\n` +
         "- Run the tests before you finish, and end with a summary of what changed, the test result and anything pending." +

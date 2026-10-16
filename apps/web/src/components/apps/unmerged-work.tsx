@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 interface UnmergedItem {
   taskId: string;
   title: string;
+  employee: string | null;
   branch: string;
   head: string;
   pushedAt: string;
@@ -40,12 +41,12 @@ export function UnmergedWork({ repositoryId }: { repositoryId: string }) {
       </header>
       <ul className="divide-y divide-warning/20">
         {data.work.map((w) => (
-          <li key={w.taskId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
+          <li key={w.taskId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm" title={`${w.branch} · commit ${w.head}`}>
             <GitBranch className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <Link href={`/tasks/${w.taskId}`} className="min-w-0 flex-1 truncate font-medium underline-offset-2 hover:underline">
               {w.title}
             </Link>
-            <code className="text-xs text-muted-foreground">{w.head.slice(0, 8)}</code>
+            {w.employee && <span className="text-xs text-muted-foreground">{t("by", { name: w.employee })}</span>}
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -60,6 +61,7 @@ export function UnmergedWork({ repositoryId }: { repositoryId: string }) {
           </li>
         ))}
       </ul>
+      {data.work.length > 1 && <p className="border-t border-warning/30 px-4 py-2 text-xs text-muted-foreground">{t("others", { base })}</p>}
     </section>
   );
 }

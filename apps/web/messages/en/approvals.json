@@ -166,5 +166,6 @@
     "howItRuns": "Approving builds exactly commit {commit} on the live server, migrates as shown and switches traffic over once it answers its health check; if a step fails, the version live now keeps running. Rollbacks stay possible.",
     "stale": "LIVE changed since this request: it was made against another live version. Reject it and ask the Developer to propose the release again.",
     "expired": "This request is older than 24 hours: reject it and ask the Developer again."
-  }
+  },
+  "waitingForRun": "{count, plural, one {# more request appears} other {# more requests appear}} here once the employee finishes the current run: it cannot be decided while they are still working."
 }

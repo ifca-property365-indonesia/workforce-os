@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { approvals, db, members, notificationPrefs, notifications, users } from "@wfos/db";
-import { notificationEnabled, type NotificationChannel, type NotifyJob } from "@wfos/shared";
+import { approvals, db, members, notificationPrefs, notifications, tasks, users } from "@wfos/db";
+import { APPROVAL_UNDECIDABLE_TASK_STATUSES, notificationEnabled, type NotificationChannel, type NotifyJob } from "@wfos/shared";
 import { sendMail } from "@wfos/shared/mail";
 import { withRetry } from "@wfos/shared/server";
 import { env } from "./env";
@@ -9,6 +9,7 @@ import { msg } from "@wfos/shared/messages";
 import { log } from "./logger";
 import { telegramNotify } from "./telegram";
 import { pushNotify } from "./push";
+import { miscQueue } from "./redis";
 
 export type NotifyInput = Omit<NotifyJob, "kind">;
 
@@ -69,13 +70,25 @@ export async function recipientsOrFallback(
  * preferences allow this kind on that channel and who have not muted the employee (see channelRecipients); email
  * also goes to the workspace's shared notify address when one is set. The webhook is workspace-level.
  */
+/** how often a held approval notice checks whether the employee's run has ended */
+export const APPROVAL_NOTICE_RECHECK_MS = 30_000;
+/** a notice is never held longer than this, however long the task keeps running */
+export const APPROVAL_NOTICE_MAX_HOLD_MS = 6 * 3_600_000;
+
 export async function notify(n: NotifyInput): Promise<void> {
   const { workspaceId, subject, text, link, approvalId } = n;
   // an approval notice that is no longer actionable (withdrawn, expired or decided before it went out) is not sent
   if (approvalId) {
-    const [a] = await db.select({ status: approvals.status }).from(approvals).where(eq(approvals.id, approvalId));
+    const [a] = await db.select({ status: approvals.status, taskStatus: tasks.status }).from(approvals).leftJoin(tasks, eq(tasks.id, approvals.taskId)).where(eq(approvals.id, approvalId));
     if (a && a.status !== "PENDING") {
       log.info({ approvalId, status: a.status }, "notify: approval no longer pending; notice not sent");
+      return;
+    }
+    // the employee is still working: the approval cannot be decided until the run ends, so the notice (and its
+    // Telegram buttons) waits for that; after APPROVAL_NOTICE_MAX_HOLD_MS it goes out anyway
+    const heldSince = n.heldSince ?? Date.now();
+    if (a?.taskStatus && (APPROVAL_UNDECIDABLE_TASK_STATUSES as readonly string[]).includes(a.taskStatus) && Date.now() - heldSince < APPROVAL_NOTICE_MAX_HOLD_MS) {
+      await miscQueue.add("notify", { ...n, kind: "notify", heldSince }, { delay: APPROVAL_NOTICE_RECHECK_MS });
       return;
     }
   }
