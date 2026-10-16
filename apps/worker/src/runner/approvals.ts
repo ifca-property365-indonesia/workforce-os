@@ -1,6 +1,6 @@
 import { memorySnapshot, recordMemoryEvent } from "../lib/memory-journal";
 import { and, eq, inArray } from "drizzle-orm";
-import { appEnvironments, approvals, apps, appReleases, audit, db, employees, memories, messages, steps, tasks, workspaces } from "@wfos/db";
+import { appEnvironments, approvals, apps, appReleases, audit, db, employees, MERGE_TOOL, memories, messages, steps, tasks, workspaces } from "@wfos/db";
 import type { Deliverable } from "@wfos/db";
 import { recordStep } from "../lib/steps";
 import { enqueueTask, publish } from "../lib/redis";
@@ -126,7 +126,8 @@ export async function executeApproval(approvalId: string): Promise<void> {
     kind: "tool",
     name: simulated ? `simulated:${a.toolName}` : a.toolName,
     latencyMs: Date.now() - started,
-    credits: result.ok && !simulated ? (TOOL_BY_NAME[a.toolName]?.credits ?? 0.5) : 0,
+    // a merge is a person's action on finished work, not the employee's: never charged to them
+    credits: result.ok && !simulated && a.toolName !== MERGE_TOOL ? (TOOL_BY_NAME[a.toolName]?.credits ?? 0.5) : 0,
     input: payload,
     output: result,
     status: simulated ? "simulated" : result.ok ? "ok" : "error",

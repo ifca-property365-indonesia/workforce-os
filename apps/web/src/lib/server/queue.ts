@@ -58,6 +58,9 @@ export const q = {
   action: (job: ActionJob) => queues().actions.add(job.kind, job, { jobId: `${job.kind}-${job.approvalId}` }),
   ingest: (documentId: string, workspaceId: string) => queues().ingest.add("ingest", { kind: "ingest", documentId, workspaceId }),
   misc: (job: MiscJob) => queues().misc.add(job.kind, job),
+  /** at most one scan per repository per minute (the job id), however often its work is shown */
+  mergeScan: (workspaceId: string, repositoryId: string) =>
+    queues().misc.add("merge_scan", { kind: "merge_scan", workspaceId, repositoryId }, { jobId: `merge-scan-${repositoryId}-${Math.floor(Date.now() / 60_000)}`, attempts: 1 }),
   /** a release runs as job <releaseId>; an app action as app-<id>-<action>-<ts>; a backup / restore as <kind>-<env>-<ts> */
   deploy: (job: DeployJob) => queues().deploys.add(job.kind, job, { jobId: deployJobId(job) }),
 };

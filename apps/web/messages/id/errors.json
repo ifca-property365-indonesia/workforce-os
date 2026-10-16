@@ -199,5 +199,11 @@
   "project_client_mismatch": "Proyek ini milik klien lain.",
   "invalid_dependency": "Subtugas hanya bisa menunggu subtugas lain dari tugas induk yang sama.",
   "client_code_taken": "Kode {clientCode} sudah dipakai klien lain.",
-  "approval_task_running": "Karyawan masih mengerjakan tugas ini. Putuskan setelah run-nya selesai: tugas lalu menunggu persetujuan Anda."
+  "approval_task_running": "Karyawan masih mengerjakan tugas ini. Putuskan setelah run-nya selesai: tugas lalu menunggu persetujuan Anda.",
+  "merge_no_repository": "Tugas ini tidak punya repositori.",
+  "merge_task_not_done": "Hanya pekerjaan yang sudah selesai yang bisa digabung.",
+  "merge_nothing_pushed": "Belum ada yang di-push dari tugas ini.",
+  "merge_head_changed": "Tugas ini sudah mem-push versi yang lebih baru. Muat ulang dan periksa dulu.",
+  "merge_already_done": "Versi ini sudah digabung.",
+  "merge_in_progress": "Versi ini sedang digabung."
 }

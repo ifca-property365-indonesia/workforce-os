@@ -23,7 +23,8 @@
     "create_routine": "Buat rutinitas",
     "list_apps": "Lihat daftar aplikasi",
     "request_preview": "Terbitkan preview",
-    "request_release": "Usulkan rilis LIVE"
+    "request_release": "Usulkan rilis LIVE",
+    "merge_branch": "Gabung ke branch utama"
   },
   "email": {
     "to": "Kepada:",

@@ -805,6 +805,8 @@ export type MiscJob =
   | { kind: "routine_run"; routineId: string; workspaceId: string; userId?: string }
   /** a person retries a failed outbox email: the worker sends its stored payload again (policy still applies) */
   | { kind: "outbox_resend"; emailId: string; workspaceId: string; userId: string }
+  /** refresh a repository's mirror and record pushed agent work found already in its default branch */
+  | { kind: "merge_scan"; workspaceId: string; repositoryId: string }
   | NotifyJob;
 
 /**

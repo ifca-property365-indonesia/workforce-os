@@ -23,7 +23,8 @@
     "create_routine": "Create routine",
     "list_apps": "List apps",
     "request_preview": "Publish preview",
-    "request_release": "Propose LIVE release"
+    "request_release": "Propose LIVE release",
+    "merge_branch": "Merge into main branch"
   },
   "email": {
     "to": "To:",

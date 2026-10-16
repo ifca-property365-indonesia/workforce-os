@@ -490,5 +490,14 @@
     "noIncidents": "Tidak ada gangguan dalam 30 hari terakhir.",
     "incidentDown": "{minutes, plural, other {Mati # menit}}",
     "incidentOngoing": "{minutes, plural, other {Sudah mati # menit}}"
+  },
+  "unmerged": {
+    "title": "Belum ada di {base} ({count})",
+    "hint": "Hasil kerja yang tidak ikut saat deploy dari {base} dan tidak jadi dasar tugas berikutnya. Buka tugasnya untuk menggabungkan atau mengabaikannya.",
+    "state": {
+      "unmerged": "belum digabung",
+      "pending": "sedang digabung",
+      "failed": "gagal digabung"
+    }
   }
 }

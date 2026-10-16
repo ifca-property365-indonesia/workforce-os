@@ -25,6 +25,7 @@ import { persistRunTaint, untrustedLineage } from "./taint";
 import { errorMessage } from "../lib/errors";
 import { scriptedTaskRun } from "../simulation/demo";
 import { loadAssignedSkills } from "./skills";
+import { repoRef, unmergedWorkNote } from "./merge-scan";
 
 type Task = typeof tasks.$inferSelect;
 
@@ -313,6 +314,11 @@ async function runStarted(
 
   // memories and recent work lead the user message (data, not instructions): the system prompt stays stable across runs
   const promptParts = [memoryNotesBlock(mem), `# Task: ${task.title}`, task.brief, context && `## Context\n${context}`, await dependencyContext(task), recent];
+  // a first run on a repository (the head planning, or the build): earlier tasks' pushed work the checkout lacks
+  if (task.repositoryId && !resumeNote && !task.agentSessionId && !(team?.role === "lead" && team.phase === "review")) {
+    const ref = repository ?? (await repoRef(ws.id, task.repositoryId).catch(() => null));
+    if (ref) promptParts.push(await unmergedWorkNote(ws.id, ref, task.id));
+  }
   if (inbox.length) promptParts.push(inboxSection(inbox));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));

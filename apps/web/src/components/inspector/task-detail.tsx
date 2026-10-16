@@ -356,6 +356,9 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
   });
   if (!data) return <p className="text-sm text-muted-foreground">{tc("loading")}</p>;
   const { task, children, approvals, messages, parent, origin, dependsOn = [] } = data;
+  // a team task's code lives on its build subtask: the Code tab (and the merge) shows the latest one
+  const hasCode = (x: TaskFull) => x.deliverables.some((d) => d.kind === "code" && d.meta && "branch" in d.meta);
+  const codeTask = hasCode(task) ? task : [...children].reverse().find(hasCode);
   const emp = new Map(data.employees.map((e) => [e.id, e]));
   const assignee = task.assigneeId ? emp.get(task.assigneeId) : undefined;
 
@@ -523,7 +526,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
             <TabsList>
               <TabsTrigger value="activity">{t("task.activityTab", { count: stepsData?.steps.length ?? 0 })}</TabsTrigger>
               <TabsTrigger value="deliverables">{t("task.deliverablesTab", { count: task.deliverables.length + children.reduce((s, c) => s + c.deliverables.length, 0) })}</TabsTrigger>
-              {task.deliverables.some((d) => d.kind === "code" && d.meta && "branch" in d.meta) && <TabsTrigger value="code">{t("code.tab")}</TabsTrigger>}
+              {codeTask && <TabsTrigger value="code">{t("code.tab")}</TabsTrigger>}
             </TabsList>
             <TabsContent value="activity" className="mt-3">
               <StepTimeline steps={stepsData?.steps ?? []} employees={emp} />
@@ -532,7 +535,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
               <Deliverables items={[...children.flatMap((c) => c.deliverables), ...task.deliverables]} />
             </TabsContent>
             <TabsContent value="code" className="mt-3">
-              <CodePanel taskId={task.id} />
+              {codeTask && <CodePanel taskId={codeTask.id} fromSubtask={codeTask.id === task.id ? undefined : codeTask.title} />}
             </TabsContent>
           </Tabs>
         </div>

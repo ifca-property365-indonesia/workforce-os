@@ -11,9 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useFormat } from "@/lib/use-format";
 import { CodeDiff } from "./code-view";
+import { MergeBox, type MergeInfo } from "./merge-box";
 
 interface CodeInfo {
-  task: { id: string; status: string; workspaceStatus: string | null; resumable: boolean };
+  task: { id: string; title: string; status: string; workspaceStatus: string | null; resumable: boolean };
+  merge: MergeInfo | null;
   repository: { name: string; url: string; defaultBranch: string } | null;
   code: { branch: string; head: string; commits: { sha: string; subject: string }[]; diff: string; diffTruncated?: boolean } | null;
   lastTest: { command: string; output: unknown; ok: boolean; at: string } | null;
@@ -21,7 +23,7 @@ interface CodeInfo {
 }
 
 /** Code deliverable of a Workspace-mode task: diff, test output, and the delivery decisions. */
-export function CodePanel({ taskId }: { taskId: string }) {
+export function CodePanel({ taskId, fromSubtask }: { taskId: string; fromSubtask?: string }) {
   const t = useTranslations("inspector");
   const tc = useTranslations("common");
   const f = useFormat();
@@ -71,6 +73,15 @@ export function CodePanel({ taskId }: { taskId: string }) {
   const testOutput = typeof data.lastTest?.output === "string" ? data.lastTest.output : JSON.stringify(data.lastTest?.output ?? "", null, 2);
   return (
     <div className="space-y-4">
+      {fromSubtask && (
+        <p className="text-xs text-muted-foreground">
+          {t("code.fromSubtask")}{" "}
+          <Link href={`/tasks/${taskId}`} className="font-medium text-foreground underline-offset-2 hover:underline">
+            {fromSubtask}
+          </Link>
+        </p>
+      )}
+      {data.merge && data.repository && <MergeBox taskId={taskId} taskStatus={data.task.status} base={data.repository.defaultBranch} merge={data.merge} resumable={data.task.resumable} />}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <span className="flex items-center gap-1 font-mono">
           <GitBranch className="size-4" /> {data.code.branch}

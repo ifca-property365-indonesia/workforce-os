@@ -133,7 +133,29 @@
     "previewPending": "Preview dari branch ini sedang menunggu persetujuan.",
     "reviewPreview": "Tinjau preview",
     "releasePending": "Penerbitan pekerjaan ini ke live menunggu persetujuan Owner.",
-    "reviewRelease": "Tinjau rilis LIVE"
+    "reviewRelease": "Tinjau rilis LIVE",
+    "merge": {
+      "title": "Gabungkan ke {base}",
+      "unmerged": "Versi {sha} belum ada di {base}. Gabungkan supaya deploy dari {base} dan tugas berikutnya memuatnya.",
+      "notDone": "Bisa digabung ke {base} setelah tugas selesai.",
+      "merge": "Gabungkan ke {base}",
+      "retry": "Coba lagi",
+      "skip": "Jangan digabung",
+      "confirm": "Gabungkan {sha} ke {base} dan push? Platform melakukan fast-forward atau membuat merge commit, tidak pernah force-push.",
+      "skipConfirm": "Jangan gabungkan versi ini ke {base}? Versi ini tidak lagi tampil sebagai menunggu; nanti tetap bisa digabung.",
+      "merging": "Sedang digabung: platform mem-push ke repositori",
+      "skippedToast": "Tidak digabung ke branch utama",
+      "pending": "Sedang digabung ke {base}…",
+      "merged": "{sha} sudah ada di {base} (commit {commit}).",
+      "detected": "{sha} sudah ada di {base} (digabung di luar Workforce OS).",
+      "skipped": "Tidak digabung ke {base}: {sha} dibiarkan di branch-nya.",
+      "conflicts": "Bentrok dengan {base} di berkas berikut; tidak ada yang digabung:",
+      "failed": "Penggabungan gagal; tidak ada yang berubah.",
+      "askFix": "Minta karyawan menyesuaikan dengan main",
+      "fixRequested": "Dikembalikan: karyawan menggabungkan branch utama terbaru lalu mengusulkan push lagi",
+      "adminOnly": "Admin atau Owner yang menggabungkan."
+    },
+    "fromSubtask": "Kode dari subtugas"
   },
   "gateRule": {
     "not_granted": "tidak diizinkan",

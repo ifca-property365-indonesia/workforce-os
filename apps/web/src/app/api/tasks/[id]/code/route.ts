@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
-import { approvals, db, repositories, steps, tasks } from "@wfos/db";
+import { agentWorkOnRepository, approvals, db, repositories, steps, tasks } from "@wfos/db";
 import { notFound, route } from "@/lib/server/route";
+import { q } from "@/lib/server/queue";
 
 const TEST_COMMAND = /\b(test|vitest|jest|pytest|mocha|go test|cargo test|phpunit|rspec)\b|\.test\.|\bspec\b/;
 
@@ -22,8 +23,25 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
     .from(approvals)
     .where(and(eq(approvals.taskId, t.id), inArray(approvals.toolName, ["git_push", "create_pull_request", "request_preview", "request_release", "bash"])))
     .orderBy(approvals.createdAt);
+  // the latest pushed version and what was decided about merging it into the default branch
+  const [work] = t.repositoryId ? await agentWorkOnRepository(session.workspaceId, t.repositoryId, { taskIds: [t.id] }) : [];
+  if (work && (work.state === "unmerged" || work.state === "failed")) await q.mergeScan(session.workspaceId, t.repositoryId!).catch(() => {});
   return {
-    task: { id: t.id, status: t.status, workspaceStatus: t.workspaceStatus, resumable: !!t.agentSessionId },
+    task: { id: t.id, title: t.title, status: t.status, workspaceStatus: t.workspaceStatus, resumable: !!t.agentSessionId },
+    merge: work
+      ? {
+          branch: work.branch,
+          head: work.head,
+          pushedAt: work.pushedAt,
+          state: work.state,
+          decidedBy: work.decision?.decidedBy ?? null,
+          decidedAt: work.decision?.decidedAt ?? null,
+          summary: work.decision?.summary ?? null,
+          commit: work.decision?.commit ?? null,
+          conflicts: work.decision?.conflicts ?? [],
+          detected: work.decision?.detected ?? false,
+        }
+      : null,
     repository: repo ?? null,
     code: code ? { ...code.meta, diff: code.content, createdAt: code.createdAt } : null,
     lastTest: lastTest ? { command: (lastTest.input as { command?: string }).command, output: lastTest.output, ok: lastTest.status === "ok", at: lastTest.createdAt } : null,

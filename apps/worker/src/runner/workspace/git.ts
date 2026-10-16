@@ -215,7 +215,89 @@ export async function pushAgentBranch(repo: RepoRef, taskId: string, approvedHea
   }
 }
 
-export type ProviderFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+const SHA = /^[0-9a-f]{40}$/;
+
+/** git's exit status 1 is "no"; anything else (unknown commit, broken mirror) is also not a yes */
+async function isAncestor(mirror: string, ancestor: string, of: string): Promise<boolean> {
+  return rootGit(["-C", mirror, "merge-base", "--is-ancestor", ancestor, of]).then(
+    () => true,
+    () => false,
+  );
+}
+
+/** Whether `commit` is already in the default branch as the mirror last saw it (syncMirror first for the remote's view). */
+export async function inDefaultBranch(repo: RepoRef, commit: string): Promise<boolean> {
+  if (!SHA.test(commit) || !SAFE_REF.test(repo.defaultBranch)) return false;
+  return isAncestor(mirrorPath(repo.id), commit, `refs/heads/${repo.defaultBranch}`);
+}
+
+export interface MergeResult {
+  ok: boolean;
+  summary: string;
+  /** the default branch's new head: the merge commit, or the pushed head itself after a fast-forward */
+  commit?: string;
+  fastForward?: boolean;
+  /** already in the default branch: nothing was pushed */
+  alreadyMerged?: boolean;
+  conflicts?: string[];
+}
+
+/**
+ * Merge a task's pushed commit into the default branch: refresh the mirror, then fast-forward when the default
+ * branch has not moved since the agent branched, else write a merge commit in the mirror (no checkout, nothing of
+ * the repository runs) and push it with the platform's token. Never forced: if the default branch moved on the remote
+ * meanwhile, the push is refused and nothing changes. A conflict is reported with its files, never resolved here.
+ */
+export async function mergeAgentBranch(repo: RepoRef, p: { taskId: string; head: string; message: string; author: { name: string; email: string } }): Promise<MergeResult> {
+  if (!SHA.test(p.head)) return { ok: false, summary: "invalid commit id" };
+  if (!SAFE_REF.test(repo.defaultBranch)) return { ok: false, summary: "invalid default branch name" };
+  const mirror = await syncMirror(repo);
+  const def = `refs/heads/${repo.defaultBranch}`;
+  const known = await rootGit(["-C", mirror, "cat-file", "-e", `${p.head}^{commit}`]).then(
+    () => true,
+    () => false,
+  );
+  if (!known) return { ok: false, summary: `commit ${p.head.slice(0, 8)} is not in the platform's copy of the repository; push it again first` };
+  const base = (await rootGit(["-C", mirror, "rev-parse", "--verify", `${def}^{commit}`])).trim();
+  if (await isAncestor(mirror, p.head, base)) {
+    return { ok: true, summary: `${agentBranch(p.taskId)} (${p.head.slice(0, 8)}) is already in ${repo.defaultBranch}`, commit: base, alreadyMerged: true };
+  }
+  let next = p.head;
+  const fastForward = await isAncestor(mirror, base, p.head);
+  if (!fastForward) {
+    let tree: string;
+    try {
+      tree = (await rootGit(["-C", mirror, "merge-tree", "--write-tree", "--name-only", "--no-messages", base, p.head])).trim().split("\n")[0]!;
+    } catch (e) {
+      const conflicts = String((e as { stdout?: string }).stdout ?? "")
+        .trim()
+        .split("\n")
+        .slice(1)
+        .filter(Boolean);
+      return { ok: false, summary: `${agentBranch(p.taskId)} conflicts with ${repo.defaultBranch}${conflicts.length ? ` in ${conflicts.join(", ")}` : ""}; nothing was merged`, conflicts };
+    }
+    const who = { GIT_AUTHOR_NAME: p.author.name, GIT_AUTHOR_EMAIL: p.author.email, GIT_COMMITTER_NAME: p.author.name, GIT_COMMITTER_EMAIL: p.author.email };
+    next = (await rootGit(["-C", mirror, "commit-tree", tree, "-p", base, "-p", p.head, "-m", p.message], { env: who })).trim();
+  }
+  try {
+    // no "+": refused when the remote's default branch is no longer `base`
+    await rootGit(["-C", mirror, "push", "--quiet", repo.url, `${next}:${def}`], { env: authEnv(repo) });
+  } catch (e) {
+    const msg = String((e as { stderr?: string }).stderr ?? (e as Error).message).replace(/Authorization: [^\s]+ [^\s]+/g, "Authorization: ***");
+    return { ok: false, summary: `push to ${repo.defaultBranch} failed (nothing was merged): ${msg.trim().slice(-500)}` };
+  }
+  await rootGit(["-C", mirror, "update-ref", def, next, base]);
+  return {
+    ok: true,
+    summary: fastForward
+      ? `${repo.defaultBranch} fast-forwarded to ${p.head.slice(0, 8)} from ${agentBranch(p.taskId)}`
+      : `Merged ${agentBranch(p.taskId)} (${p.head.slice(0, 8)}) into ${repo.defaultBranch} as ${next.slice(0, 8)}`,
+    commit: next,
+    fastForward,
+  };
+}
+
+export type ProviderFetch =(url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 /** Open a pull/merge request from agent/<task> into the default branch with the platform's token. */
 export async function createPullRequest(

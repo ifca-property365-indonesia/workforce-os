@@ -18,6 +18,7 @@ import { EnvEditor } from "@/components/apps/env-editor";
 import { EnvironmentPanel, LiveSlot } from "@/components/apps/environment-panel";
 import { ReleaseWindowNote, releaseWindowState, useNow } from "@/components/apps/release-window";
 import { UptimeBlock } from "@/components/apps/uptime";
+import { UnmergedWork } from "@/components/apps/unmerged-work";
 import { ConfirmLiveRemovalDialog, EditLiveDialog, ReleaseToLiveDialog, SetupLiveDialog } from "@/components/apps/live-dialogs";
 import { ReleasesTable } from "@/components/apps/releases";
 import { AppSign, EnvPlate, appColors, appSignStatus, appsQueryKey, envQuery, invalidateApp, isActiveRelease, useApp, useApps, useAppRights } from "@/components/apps/shared";
@@ -168,6 +169,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
           {liveBusy ? t("detail.deployingLiveNote") : t("detail.deployingNote")}
         </p>
       )}
+
+      {app.repositoryId && <UnmergedWork repositoryId={app.repositoryId} />}
 
       {/* the two shopfronts: the preview everyone tries, and the client's live site */}
       <div className="grid gap-4 lg:grid-cols-2">

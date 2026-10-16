@@ -69,6 +69,9 @@ export function EventsProvider({ children }: { children: ReactNode }) {
           case "approval.updated":
             invalidate("approvals");
             invalidate("task");
+            // a push or a merge decision changes a task's Code tab and its app's "not in main yet" list
+            invalidate("task-code");
+            invalidate("repo-unmerged");
             invalidate("notifications");
             // email proposals are listed in the outbox until the worker writes their attempt
             invalidate("outbox");

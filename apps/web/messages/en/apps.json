@@ -490,5 +490,14 @@
     "noIncidents": "No incidents in the last 30 days.",
     "incidentDown": "{minutes, plural, one {Down # minute} other {Down # minutes}}",
     "incidentOngoing": "{minutes, plural, one {Down for # minute so far} other {Down for # minutes so far}}"
+  },
+  "unmerged": {
+    "title": "Not in {base} yet ({count})",
+    "hint": "Finished work that a deploy of {base} does not include and the next task does not start from. Open a task to merge it or leave it out.",
+    "state": {
+      "unmerged": "not merged",
+      "pending": "merging",
+      "failed": "merge failed"
+    }
   }
 }

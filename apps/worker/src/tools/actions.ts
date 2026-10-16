@@ -2,7 +2,7 @@ import { approvals, audit, createTask, db, employees, employeeSkills, repositori
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
-import { createPullRequest, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
+import { agentBranch, createPullRequest, mergeAgentBranch, pushAgentBranch, type ProviderFetch, type RepoRef } from "../runner/workspace/git";
 import { runApprovedCommand } from "../runner/workspace/exec";
 import { queuePreviewRelease } from "../deploy/preview";
 import { queueLiveRelease } from "../deploy/live-request";
@@ -351,6 +351,21 @@ async function doGitPush(workspaceId: string, p: Record<string, unknown>, contex
   return { ok: r.ok, summary: r.summary, details: { branch: p.branch, head: p.head } };
 }
 
+/**
+ * A person's decision to merge a task's pushed commit (payload.head) into the default branch. Never an agent tool:
+ * the web creates this approval already approved. The commit message names who merged it.
+ */
+async function doMergeBranch(workspaceId: string, p: Record<string, unknown>, context: { taskId?: string | null; approvalId?: string | null }): Promise<ActionResult> {
+  const repo = await repoFor(workspaceId, p.repositoryId);
+  if (!repo || !context.taskId) return { ok: false, summary: "Repository not found" };
+  const [a] = context.approvalId ? await db.select({ decidedBy: approvals.decidedBy }).from(approvals).where(eq(approvals.id, context.approvalId)) : [];
+  const [u] = a?.decidedBy ? await db.select({ email: users.email, name: users.name }).from(users).where(eq(users.id, a.decidedBy)) : [];
+  const title = String(p.title ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const message = `Merge ${agentBranch(context.taskId)}${title ? `: ${title}` : ""}\n\nMerged in Workforce OS${u ? ` by ${u.email}` : ""}.`;
+  const r = await mergeAgentBranch(repo, { taskId: context.taskId, head: String(p.head ?? ""), message, author: { name: u?.name || "Workforce OS", email: u?.email ?? "noreply@workforce-os.local" } });
+  return { ok: r.ok, summary: r.summary, details: { commit: r.commit ?? null, fastForward: r.fastForward ?? false, alreadyMerged: r.alreadyMerged ?? false, conflicts: r.conflicts ?? [] } };
+}
+
 async function doCreatePullRequest(workspaceId: string, p: Record<string, unknown>): Promise<ActionResult> {
   const repo = await repoFor(workspaceId, p.repositoryId);
   if (!repo) return { ok: false, summary: "Repository not found" };
@@ -425,6 +440,8 @@ export async function executeAction(
       return doGitPush(workspaceId, payload, context);
     case "create_pull_request":
       return doCreatePullRequest(workspaceId, payload);
+    case "merge_branch":
+      return doMergeBranch(workspaceId, payload, context);
     case "request_preview":
       return queuePreviewRelease(workspaceId, payload, context);
     case "request_release":

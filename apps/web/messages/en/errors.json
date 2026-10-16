@@ -199,5 +199,11 @@
   "project_client_mismatch": "This project belongs to another client.",
   "invalid_dependency": "A subtask can only wait for other subtasks of the same parent task.",
   "client_code_taken": "Another client already uses the code {clientCode}.",
-  "approval_task_running": "The employee is still working on this task. Decide once its run has ended: the task then waits for your approval."
+  "approval_task_running": "The employee is still working on this task. Decide once its run has ended: the task then waits for your approval.",
+  "merge_no_repository": "This task has no repository.",
+  "merge_task_not_done": "Only finished work can be merged.",
+  "merge_nothing_pushed": "Nothing of this task was pushed yet.",
+  "merge_head_changed": "The task pushed a newer version meanwhile. Reload and check it first.",
+  "merge_already_done": "This version is already merged.",
+  "merge_in_progress": "A merge of this version is under way."
 }

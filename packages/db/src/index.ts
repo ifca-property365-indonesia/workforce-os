@@ -10,6 +10,7 @@ export * from "./claude";
 export { llmSpendUsd, firstLlmStepAt, usageMeter, recordUsageCalibration, scheduleFor, type UsageMeter } from "./usage-meter";
 export { employeeDivision, divisionSubagents, workspaceDivisions, type DivisionRow } from "./divisions";
 export { getOrCreateWorkspaceSshKey, workspaceSshPrivateKey, type WorkspaceSshKey } from "./ssh-key";
+export { agentWorkOnRepository, MERGE_TOOL, type AgentWork, type MergeDecision, type MergeState } from "./agent-work";
 export { createTask, TaskInputError, TASK_INPUT_ERROR_CODES, type CreateTaskInput, type TaskInputErrorCode, type TaskRow } from "./tasks";
 
 export type DB = PostgresJsDatabase<typeof schema>;

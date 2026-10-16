@@ -16,6 +16,7 @@ import { runDemoLifecycle } from "./simulation/demo";
 import { backfillMemoryEmbeddings, runRoutineJob, tickRoutines } from "./scheduler/routines";
 import { tickBilling } from "./scheduler/billing";
 import { resendOutbound } from "./lib/outbox";
+import { runMergeScan } from "./runner/merge-scan";
 import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { acquireRunLeases } from "./runner/run-lease";
 import { handleRunJobFailed } from "./runner/task-status";
@@ -77,6 +78,9 @@ const workers = [
           return;
         case "outbox_resend":
           await resendOutbound(d.emailId, d.workspaceId, d.userId);
+          return;
+        case "merge_scan":
+          await runMergeScan(d.workspaceId, d.repositoryId);
           return;
       }
     },

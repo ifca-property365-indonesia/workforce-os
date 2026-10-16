@@ -133,7 +133,29 @@
     "previewPending": "A preview of this branch is waiting for approval.",
     "reviewPreview": "Review the preview",
     "releasePending": "A release of this work to live is waiting for the Owner's approval.",
-    "reviewRelease": "Review the LIVE release"
+    "reviewRelease": "Review the LIVE release",
+    "merge": {
+      "title": "Merge into {base}",
+      "unmerged": "Version {sha} is not in {base} yet. Merge it so a deploy of {base} and the next task include it.",
+      "notDone": "Can be merged into {base} once the task is done.",
+      "merge": "Merge into {base}",
+      "retry": "Try again",
+      "skip": "Leave out",
+      "confirm": "Merge {sha} into {base} and push it? The platform fast-forwards or writes a merge commit; it never force-pushes.",
+      "skipConfirm": "Leave this version out of {base}? It stops showing as waiting; you can still merge it later.",
+      "merging": "Merging: the platform is pushing to the repository",
+      "skippedToast": "Left out of the default branch",
+      "pending": "Merging into {base}…",
+      "merged": "{sha} is in {base} (commit {commit}).",
+      "detected": "{sha} is already in {base} (merged outside Workforce OS).",
+      "skipped": "Left out of {base}: {sha} was not merged.",
+      "conflicts": "Conflicts with {base} in these files; nothing was merged:",
+      "failed": "The merge failed; nothing was changed.",
+      "askFix": "Ask the employee to bring it up to date",
+      "fixRequested": "Sent back: the employee merges the latest default branch and proposes the push again",
+      "adminOnly": "An Admin or the Owner merges it."
+    },
+    "fromSubtask": "Code from the subtask"
   },
   "gateRule": {
     "not_granted": "not granted",
