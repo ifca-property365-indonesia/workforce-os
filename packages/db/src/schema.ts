@@ -1267,6 +1267,47 @@ export const appTests = pgTable(
   (t) => [index("app_tests_app").on(t.appId, t.createdAt), uniqueIndex("app_tests_task").on(t.taskId), index("app_tests_ws_status").on(t.workspaceId, t.status)],
 );
 
+/** C9: the kinds of an app's documents */
+export const APP_DOCUMENT_KINDS = ["prd", "flow", "test_guide", "deck"] as const;
+export type AppDocumentKind = (typeof APP_DOCUMENT_KINDS)[number];
+export type AppDocumentStatus = "draft" | "approved" | "superseded" | "rejected";
+
+/** C9: one version of an app's document; a new version is a draft next to the approved one. */
+export const appDocuments = pgTable(
+  "app_documents",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<AppDocumentKind>().notNull(),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    status: text("status").$type<AppDocumentStatus>().notNull().default("draft"),
+    basedOnVersion: integer("based_on_version"),
+    note: text("note").notNull().default(""),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    authorEmployeeId: uuid("author_employee_id").references(() => employees.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    testId: uuid("test_id").references(() => appTests.id, { onDelete: "set null" }),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("app_documents_version").on(t.appId, t.kind, t.version), index("app_documents_ws_status").on(t.workspaceId, t.status)],
+);
+
+/** C9: a task asked to write one of an app's documents (save_app_document is granted for that app and kind only) */
+export const appDocumentTasks = pgTable("app_document_tasks", {
+  taskId: uuid("task_id")
+    .primaryKey()
+    .references(() => tasks.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<AppDocumentKind>().notNull(),
+  createdAt: createdAt(),
+});
+
 /** Database backups of an app environment (B2): taken before a migration, daily (live), by hand, before a restore. */
 export const appBackups = pgTable(
   "app_backups",

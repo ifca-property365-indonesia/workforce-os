@@ -213,5 +213,9 @@
   "preview_not_running": "Preview tidak sedang berjalan: terbitkan dulu.",
   "tester_not_found": "Pilih karyawan di workspace ini sebagai penguji.",
   "app_test_running": "Uji untuk preview ini sedang berjalan.",
-  "app_test_not_found": "Uji aplikasi tidak ditemukan."
+  "app_test_not_found": "Uji aplikasi tidak ditemukan.",
+  "app_document_not_found": "Dokumen tidak ditemukan.",
+  "app_document_not_draft": "Hanya draf yang bisa disetujui atau ditolak.",
+  "writer_not_found": "Pilih karyawan di workspace ini.",
+  "prd_not_found": "PRD tidak ditemukan."
 }

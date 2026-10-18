@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { agentWorkOnRepository, apps, appTests, approvals, db, employees, incidents, repositories, tasks, teams } from "@wfos/db";
+import { agentWorkOnRepository, appDocuments, apps, appTests, approvals, db, employees, incidents, repositories, tasks, teams, type AppDocumentKind } from "@wfos/db";
 import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentStatus, type TaskStatus } from "@wfos/shared";
 
 /**
@@ -12,6 +12,7 @@ import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentSta
  * - employees paused because their budget ran out
  * - finished agent work that is not in its repository's default branch yet (or whose merge failed)
  * - app tests (C3) with findings nobody has dealt with yet
+ * - app document drafts (C9) waiting to be approved or rejected
  */
 
 /** incidents that wait for a person ("handling": a lead is on it; "resolved": done) */
@@ -25,7 +26,8 @@ export type InboxItem =
   | { kind: "held_task"; id: string; at: Date; title: string; employee: Ref; team: Ref }
   | { kind: "paused_employee"; id: string; at: Date; name: string; role: string }
   | { kind: "merge"; id: string; at: Date; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
-  | { kind: "test_findings"; id: string; at: Date; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null };
+  | { kind: "test_findings"; id: string; at: Date; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null }
+  | { kind: "doc_review"; id: string; at: Date; app: { id: string; name: string }; docKind: AppDocumentKind; version: number; title: string; note: string; author: string | null };
 
 export type InboxKind = InboxItem["kind"];
 export interface Inbox {
@@ -40,17 +42,18 @@ export interface Inbox {
 const ref = (id: string | null | undefined, name: string | null | undefined): Ref => (id && name ? { id, name } : null);
 
 export async function inboxFor(workspaceId: string): Promise<Inbox> {
-  const [approvalRows, incidentItems, held, paused, merges, tests] = await Promise.all([
+  const [approvalRows, incidentItems, held, paused, merges, tests, drafts] = await Promise.all([
     pendingApprovals(workspaceId),
     personIncidents(workspaceId),
     heldTasks(workspaceId),
     pausedEmployees(workspaceId),
     unmergedWork(workspaceId),
     testFindings(workspaceId),
+    documentDrafts(workspaceId),
   ]);
-  const items = [...incidentItems, ...held, ...paused, ...merges, ...tests].sort((a, b) => b.at.getTime() - a.at.getTime());
-  const counts = { approval: approvalRows.decidable, incident: incidentItems.length, held_task: held.length, paused_employee: paused.length, merge: merges.length, test_findings: tests.length, total: 0 };
-  counts.total = counts.approval + counts.incident + counts.held_task + counts.paused_employee + counts.merge + counts.test_findings;
+  const items = [...incidentItems, ...held, ...paused, ...merges, ...tests, ...drafts].sort((a, b) => b.at.getTime() - a.at.getTime());
+  const counts = { approval: approvalRows.decidable, incident: incidentItems.length, held_task: held.length, paused_employee: paused.length, merge: merges.length, test_findings: tests.length, doc_review: drafts.length, total: 0 };
+  counts.total = counts.approval + counts.incident + counts.held_task + counts.paused_employee + counts.merge + counts.test_findings + counts.doc_review;
   return { items, approvals: approvalRows.decidable, approvalsWaiting: approvalRows.waiting, counts };
 }
 
@@ -163,5 +166,27 @@ async function testFindings(workspaceId: string): Promise<InboxItem[]> {
     findings: r.findings.length,
     high: r.findings.filter((f) => f.severity === "high").length,
     commit: r.commit,
+  }));
+}
+
+async function documentDrafts(workspaceId: string): Promise<InboxItem[]> {
+  const rows = await db
+    .select({ d: appDocuments, appName: apps.name, author: employees.name })
+    .from(appDocuments)
+    .innerJoin(apps, and(eq(apps.id, appDocuments.appId), eq(apps.workspaceId, workspaceId)))
+    .leftJoin(employees, eq(employees.id, appDocuments.authorEmployeeId))
+    .where(and(eq(appDocuments.workspaceId, workspaceId), eq(appDocuments.status, "draft")))
+    .orderBy(desc(appDocuments.createdAt))
+    .limit(PER_KIND);
+  return rows.map((r) => ({
+    kind: "doc_review" as const,
+    id: r.d.id,
+    at: r.d.createdAt,
+    app: { id: r.d.appId, name: r.appName },
+    docKind: r.d.kind,
+    version: r.d.version,
+    title: r.d.title,
+    note: r.d.note,
+    author: r.author,
   }));
 }

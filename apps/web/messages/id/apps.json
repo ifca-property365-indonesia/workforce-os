@@ -576,5 +576,56 @@
     "fixFrom": "Ditemukan oleh uji aplikasi {app} (commit {commit}).",
     "markHandled": "Tandai sudah ditangani",
     "handledAt": "Ditangani {when}"
+  },
+  "docs": {
+    "title": "Dokumen",
+    "kind": {
+      "prd": "PRD",
+      "flow": "Alur bisnis",
+      "test_guide": "Panduan uji",
+      "deck": "Presentasi"
+    },
+    "askFirst": "Minta {doc}",
+    "askUpdate": "Minta {doc} baru",
+    "importPrd": "Impor PRD dari tugas",
+    "prdStale": "{count, plural, other {# rilis preview sejak PRD ini disetujui: mungkin sudah tidak sesuai.}}",
+    "empty": {
+      "prd": "Belum ada PRD. Impor PRD yang ditulis di tugas, atau minta karyawan menulisnya.",
+      "flow": "Belum ada alur bisnis: proses untuk orang bisnis, dengan diagram per proses.",
+      "test_guide": "Belum ada panduan uji: langkah mencoba tiap peran di preview.",
+      "deck": "Belum ada presentasi: slide untuk prospek, dengan tangkapan layar uji aplikasi terakhir."
+    },
+    "version": "Versi",
+    "versionOption": "Versi {version} ({status})",
+    "status": {
+      "draft": "draf",
+      "approved": "disetujui",
+      "superseded": "diganti",
+      "rejected": "ditolak"
+    },
+    "basedOn": "memperbarui v{version}",
+    "openTask": "Buka tugas",
+    "compare": "Bandingkan dengan v{version}",
+    "present": "Presentasikan",
+    "note": "Yang berubah: {note}",
+    "approve": "Setujui versi {version}",
+    "approved": "Disetujui: versi ini yang menjadi acuan",
+    "reject": "Tolak",
+    "rejected": "Ditolak",
+    "rejectConfirm": "Tolak draf ini? Versi yang disetujui tetap.",
+    "print": "Cetak / PDF",
+    "askTitle": "{doc} {app}",
+    "askExplain": {
+      "prd": "Menyelaraskan PRD dengan aplikasi: yang sudah dibangun sejak versi disetujui, perubahan yang diminta, dan yang masih terbuka. Hasilnya draf di samping PRD yang disetujui.",
+      "flow": "Proses untuk orang bisnis, dengan diagram per proses, dari PRD yang disetujui.",
+      "test_guide": "Langkah pemeriksaan per peran untuk orang yang mencoba preview, dari PRD dan akun uji.",
+      "deck": "Slide untuk prospek berdasarkan alur bisnis, dengan tangkapan layar uji aplikasi terakhir (jalankan uji dulu agar ada tangkapan layar)."
+    },
+    "writer": "Penulis",
+    "askNote": "Catatan untuk penulis (opsional)",
+    "askNow": "Minta",
+    "asked": "Diminta: tugasnya sudah di papan",
+    "imported": "Diimpor sebagai versi {version} (draf)",
+    "noCandidates": "Belum ada PRD yang ditulis di tugas workspace ini."
   }
 }

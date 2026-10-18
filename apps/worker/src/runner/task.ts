@@ -28,6 +28,7 @@ import { scriptedTaskRun } from "../simulation/demo";
 import { loadAssignedSkills } from "./skills";
 import { repoRef, unmergedWorkNote } from "./merge-scan";
 import { appTestContext, appTestPrompt } from "../qa/app-test";
+import { appDocContext, appDocPrompt } from "../docs/app-docs";
 import { closeBrowserSession } from "../qa/browser";
 
 type Task = typeof tasks.$inferSelect;
@@ -269,6 +270,8 @@ async function runStarted(
 
   // C3: an app test task drives the preview's browser (tools granted by ctx.appTest)
   const appTest = await appTestContext(task.id);
+  // C9: a task asked to write an app document gets save_app_document for that app and kind
+  const appDoc = await appDocContext(task.id);
   const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
   const division = await runDivision(emp, ws, lang, { workspaceMode });
 
@@ -293,6 +296,7 @@ async function runStarted(
     // client isolation: knowledge, memory, recent work and client lookups of this client (plus general ones) only
     clientId: task.clientId,
     ...(appTest ? { appTest } : {}),
+    ...(appDoc ? { appDoc } : {}),
     ...(workspaceMode
       ? {
           workspace: {
@@ -335,6 +339,7 @@ async function runStarted(
   }
   if (inbox.length) promptParts.push(inboxSection(inbox));
   if (appTest) promptParts.push(appTestPrompt(appTest));
+  if (appDoc) promptParts.push(appDocPrompt(appDoc));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);

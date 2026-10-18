@@ -213,5 +213,9 @@
   "preview_not_running": "The preview is not running: publish it first.",
   "tester_not_found": "Choose an employee of this workspace as the tester.",
   "app_test_running": "A test of this preview is already running.",
-  "app_test_not_found": "App test not found."
+  "app_test_not_found": "App test not found.",
+  "app_document_not_found": "Document not found.",
+  "app_document_not_draft": "Only a draft can be approved or rejected.",
+  "writer_not_found": "Choose an employee of this workspace.",
+  "prd_not_found": "PRD not found."
 }

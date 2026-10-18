@@ -186,7 +186,8 @@
       "merge": "Belum masuk {branch}",
       "mergeFailed": "Merge gagal",
       "testFindings": "{count, plural, other {Uji aplikasi: # temuan}}",
-      "testFindingsHigh": "Uji aplikasi: {count} temuan, {high} tinggi"
+      "testFindingsHigh": "Uji aplikasi: {count} temuan, {high} tinggi",
+      "docReview": "{doc} v{version} perlu ditinjau"
     },
     "incidentStatus": {
       "escalated": "menunggu Anda",
@@ -207,7 +208,8 @@
       "openEmployee": "Buka karyawan",
       "reviewMerge": "Tinjau & merge",
       "openTest": "Lihat temuan",
-      "handled": "Tandai sudah ditangani"
+      "handled": "Tandai sudah ditangani",
+      "reviewDoc": "Tinjau"
     },
     "done": {
       "start": "Tugas dimulai",
@@ -215,6 +217,12 @@
       "retry": "Tugas diantrekan lagi",
       "resolved": "Ditutup",
       "handled": "Ditandai sudah ditangani"
+    },
+    "docKind": {
+      "prd": "PRD",
+      "flow": "Alur bisnis",
+      "test_guide": "Panduan uji",
+      "deck": "Presentasi"
     }
   }
 }

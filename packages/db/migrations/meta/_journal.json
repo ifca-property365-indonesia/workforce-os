@@ -253,6 +253,13 @@
       "when": 1792305600000,
       "tag": "0035_app_tests",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792392000000,
+      "tag": "0036_app_documents",
+      "breakpoints": true
     }
   ]
 }

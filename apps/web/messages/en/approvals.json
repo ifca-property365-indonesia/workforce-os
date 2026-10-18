@@ -186,7 +186,8 @@
       "merge": "Not in {branch} yet",
       "mergeFailed": "Merge failed",
       "testFindings": "{count, plural, one {App test: # finding} other {App test: # findings}}",
-      "testFindingsHigh": "App test: {count} findings, {high} high"
+      "testFindingsHigh": "App test: {count} findings, {high} high",
+      "docReview": "{doc} v{version} to review"
     },
     "incidentStatus": {
       "escalated": "asks you",
@@ -207,7 +208,8 @@
       "openEmployee": "Open employee",
       "reviewMerge": "Review & merge",
       "openTest": "See the findings",
-      "handled": "Mark as handled"
+      "handled": "Mark as handled",
+      "reviewDoc": "Review"
     },
     "done": {
       "start": "Task started",
@@ -215,6 +217,12 @@
       "retry": "Task queued again",
       "resolved": "Closed",
       "handled": "Marked as handled"
+    },
+    "docKind": {
+      "prd": "PRD",
+      "flow": "Business flow",
+      "test_guide": "Test guide",
+      "deck": "Presentation"
     }
   }
 }

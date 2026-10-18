@@ -199,3 +199,23 @@
 
 /* The desktop (components/desktop): until it mounts, the classic layout the server rendered stays hidden */
 html[data-view="desktop"] [data-shell="classic"] { visibility: hidden; }
+
+/* C9: a presentation prints alone, one slide per page (Apps → the app → Documents → Present → Print / PDF) */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .print-deck,
+  .print-deck * {
+    visibility: visible !important;
+  }
+  .print-deck {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
+  .deck-slide {
+    break-after: page;
+    border: 0 !important;
+  }
+}

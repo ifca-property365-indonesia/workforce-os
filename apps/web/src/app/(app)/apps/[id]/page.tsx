@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/layout/common";
 import { AccessCard } from "@/components/apps/access-card";
 import { TestUsersCard } from "@/components/apps/test-users-card";
 import { AppTestsPanel } from "@/components/apps/app-tests-panel";
+import { AppDocumentsPanel } from "@/components/apps/app-documents-panel";
 import { BackupsPanel } from "@/components/apps/backups-panel";
 import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
 import { DnsPanel } from "@/components/apps/dns-panel";
@@ -277,6 +278,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
 
       {/* C3: browser tests of the preview (members start one; findings become fix tasks) */}
       {logs && <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} />}
+      {/* C9: PRD, business flow, test guide and presentation, versioned (drafts approved by an Admin) */}
+      {logs && <AppDocumentsPanel app={app} admin={admin} member={logs} />}
 
       <section className="space-y-3">
         <h2 className="font-display text-[1.7rem] leading-none">{t("releases.title")}</h2>

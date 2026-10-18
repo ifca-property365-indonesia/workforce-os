@@ -80,7 +80,8 @@ import { formatMoney } from "@wfos/shared/invoice";
 import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadText, SKILL_SLUG_MAX, type AssignedSkill } from "../runner/skills";
 import { browserAct, browserLook, browserOpen, viewText, type ActStep } from "../qa/browser";
 import { recordAppTestReport, type AppTestContext } from "../qa/app-test";
-import { appTestReportSchema } from "@wfos/shared";
+import { DOC_KIND_NAME, saveAppDocument, type AppDocContext } from "../docs/app-docs";
+import { APP_DOCUMENT_MAX, appTestReportSchema } from "@wfos/shared";
 
 export const WFOS_SERVER = "wfos";
 /** skill_propose: proposals accepted per run (each is a human approval) */
@@ -189,6 +190,8 @@ export interface RunContext {
   };
   /** C3: the task is an app test: the browser tools act on this preview (implicitly granted) */
   appTest?: AppTestContext;
+  /** C9: the task writes one of an app's documents: save_app_document for that app and kind (implicitly granted) */
+  appDoc?: AppDocContext;
   /**
    * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the
    * system prompt (untrusted ones by slug only); in Workspace mode the trusted ones are synced as SKILL.md files by
@@ -231,6 +234,7 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
   if (ctx.appTest) {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "app_test" && !perms.some((p) => p.tool === t.name && p.enabled)) perms.push({ tool: t.name, enabled: true });
   }
+  if (ctx.appDoc && !perms.some((p) => p.tool === "save_app_document" && p.enabled)) perms.push({ tool: "save_app_document", enabled: true });
   // tools every task run has (report_progress), unless an explicit entry says otherwise
   if (ctx.taskId) {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "task" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
@@ -1017,6 +1021,30 @@ export function buildTools(ctx: RunContext) {
       }),
     ),
   );
+
+  // C9: an app document task saves new draft versions of exactly its document
+  const doc = ctx.appDoc;
+  if (doc) {
+    add(
+      "save_app_document",
+      tool(
+        "save_app_document",
+        `Save a new version of the ${DOC_KIND_NAME[doc.kind]} of ${doc.appName} (markdown). It is a draft next to the approved version; a person approves it. note: one line on what changed.`,
+        { title: z.string().min(3).max(200), content: z.string().min(50).max(APP_DOCUMENT_MAX), note: z.string().max(500).optional() },
+        wrap(ctx, "save_app_document", async (input: { title: string; content: string; note?: string }) => {
+          if (!ctx.taskId) return err("App documents are saved from their task only.");
+          // validated here too: the handler never relies on the caller having checked the schema
+          const parsed = z.object({ title: z.string().trim().min(3).max(200), content: z.string().min(50).max(APP_DOCUMENT_MAX), note: z.string().max(500).optional() }).safeParse(input);
+          if (!parsed.success) return err(`Invalid document: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+          const a = parsed.data;
+          // the same output guard as draft_document (secrets, personal data)
+          const { text } = await guardOutput(ctx.guard, "save_app_document", a.content);
+          const r = await saveAppDocument(doc, { title: a.title, content: text, note: a.note ?? "" }, { taskId: ctx.taskId, employeeId: ctx.employee.id, workspaceId: ctx.workspaceId });
+          return ok(`Saved version ${r.version} of the ${DOC_KIND_NAME[doc.kind]} as a draft. A person reviews and approves it on the app's Documents.`);
+        }),
+      ),
+    );
+  }
 
   // C3: the browser of an app test (only while ctx.appTest is set: effectivePermissions grants them then)
   const test = ctx.appTest;

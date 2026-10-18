@@ -305,8 +305,8 @@ export function ToolPermissionsEditor({
   /** builtin tool metadata is English data; translate by tool name when a catalog entry exists */
   const rows: ToolMeta[] = [
     ...tools
-      // app-test browser tools exist only in an app test's run (C3): never granted here
-      .filter((x) => !IMPLICIT_TOOLS.has(x.name) && x.implicit !== "app_test")
+      // app-test (C3) and app-document (C9) tools exist only in those tasks' runs: never granted here
+      .filter((x) => !IMPLICIT_TOOLS.has(x.name) && x.implicit !== "app_test" && x.implicit !== "app_doc")
       .map((x) => ({
         ...x,
         label: t.has(`tools.${x.name}.label`) ? t(`tools.${x.name}.label`) : x.label,

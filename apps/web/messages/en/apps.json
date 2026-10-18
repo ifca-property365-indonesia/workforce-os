@@ -576,5 +576,56 @@
     "fixFrom": "Found by the app test of {app} (commit {commit}).",
     "markHandled": "Mark as handled",
     "handledAt": "Handled {when}"
+  },
+  "docs": {
+    "title": "Documents",
+    "kind": {
+      "prd": "PRD",
+      "flow": "Business flow",
+      "test_guide": "Test guide",
+      "deck": "Presentation"
+    },
+    "askFirst": "Ask for the {doc}",
+    "askUpdate": "Ask for a new {doc}",
+    "importPrd": "Import a PRD from a task",
+    "prdStale": "{count, plural, one {# preview release since this PRD was approved: it may be out of date.} other {# preview releases since this PRD was approved: it may be out of date.}}",
+    "empty": {
+      "prd": "No PRD yet. Import one written in a task, or ask an employee to write it.",
+      "flow": "No business flow yet: the process for business people, with a diagram per process.",
+      "test_guide": "No test guide yet: the steps to try each role on the preview.",
+      "deck": "No presentation yet: slides for a prospect, with screenshots of the latest app test."
+    },
+    "version": "Version",
+    "versionOption": "Version {version} ({status})",
+    "status": {
+      "draft": "draft",
+      "approved": "approved",
+      "superseded": "replaced",
+      "rejected": "rejected"
+    },
+    "basedOn": "updates v{version}",
+    "openTask": "Open the task",
+    "compare": "Compare with v{version}",
+    "present": "Present",
+    "note": "What changed: {note}",
+    "approve": "Approve version {version}",
+    "approved": "Approved: this is the version people work from",
+    "reject": "Reject",
+    "rejected": "Rejected",
+    "rejectConfirm": "Reject this draft? The approved version stays.",
+    "print": "Print / PDF",
+    "askTitle": "{doc} of {app}",
+    "askExplain": {
+      "prd": "Brings the PRD in line with the app: what was built since the approved version, changes asked for, what is still open. It becomes a draft next to the approved PRD.",
+      "flow": "The process for business people, with a diagram per process, from the approved PRD.",
+      "test_guide": "Step-by-step checks per role for the people who try the preview, from the PRD and the test accounts.",
+      "deck": "Slides for a prospect, built on the business flow, with screenshots of the latest app test (run one first for screenshots)."
+    },
+    "writer": "Who writes it",
+    "askNote": "Note for the writer (optional)",
+    "askNow": "Ask",
+    "asked": "Asked: the task is on the board",
+    "imported": "Imported as version {version} (draft)",
+    "noCandidates": "No PRD has been written in a task of this workspace yet."
   }
 }
