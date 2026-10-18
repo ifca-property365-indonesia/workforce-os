@@ -1,6 +1,6 @@
 {
-  "title": "Kotak masuk persetujuan",
-  "description": "Setiap tindakan yang tidak dapat dibatalkan berhenti di sini, satu per satu, beserta payload persis yang akan dijalankan.",
+  "title": "Butuh keputusan",
+  "description": "Semua yang menunggu seseorang: tindakan yang perlu disetujui beserta payload persisnya, masalah yang tidak bisa diselesaikan tim, usulan tugas, karyawan yang dijeda, dan hasil kerja yang belum di-merge.",
   "tabs": {
     "pending": "Menunggu",
     "approved": "Disetujui",
@@ -167,5 +167,40 @@
     "stale": "Live sudah berubah sejak permintaan ini: permintaan dibuat untuk versi live yang lain. Tolak dan minta Developer mengusulkan rilisnya lagi.",
     "expired": "Permintaan ini sudah lebih dari 24 jam: tolak dan minta Developer mengusulkannya lagi."
   },
-  "waitingForRun": "{count} permintaan lagi akan muncul di sini setelah karyawannya selesai dengan run saat ini: selama masih bekerja, permintaan itu belum bisa diputuskan."
+  "waitingForRun": "{count} permintaan lagi akan muncul di sini setelah karyawannya selesai dengan run saat ini: selama masih bekerja, permintaan itu belum bisa diputuskan.",
+  "inbox": {
+    "approvalsHeading": "{count, plural, other {# persetujuan}}",
+    "othersHeading": "{count, plural, other {# hal lain}}",
+    "kind": {
+      "held_task": "Usulan tugas",
+      "paused_employee": "Dijeda: budget habis",
+      "merge": "Belum masuk {branch}",
+      "mergeFailed": "Merge gagal"
+    },
+    "incidentStatus": {
+      "escalated": "menunggu Anda",
+      "open": "tidak ada lead yang menangani",
+      "muted": "dibisukan"
+    },
+    "incidentNoTask": "Sebuah rutinitas gagal",
+    "heldExplain": "Seorang karyawan mengusulkan tugas ini. Tugas baru berjalan setelah ada yang memulainya.",
+    "pausedExplain": "Budget hariannya habis sehingga berhenti bekerja. Naikkan budget atau lanjutkan dari halamannya.",
+    "mergeExplain": "Hasil kerja yang sudah selesai di branch-nya sendiri. Tinjau lalu merge ke {branch}, atau biarkan.",
+    "conflicts": "Konflik di: {files}",
+    "actions": {
+      "openTask": "Buka tugas",
+      "retry": "Jalankan ulang",
+      "close": "Tutup",
+      "start": "Mulai",
+      "cancel": "Batalkan tugas",
+      "openEmployee": "Buka karyawan",
+      "reviewMerge": "Tinjau & merge"
+    },
+    "done": {
+      "start": "Tugas dimulai",
+      "cancel": "Tugas dibatalkan",
+      "retry": "Tugas diantrekan lagi",
+      "resolved": "Ditutup"
+    }
+  }
 }

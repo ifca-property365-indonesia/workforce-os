@@ -1,6 +1,6 @@
 {
-  "title": "Approvals inbox",
-  "description": "Every irreversible action stops here, per action, with the exact payload that will be executed.",
+  "title": "Needs a decision",
+  "description": "Everything that waits for a person: actions to approve with their exact payload, problems the team could not solve, proposed tasks, paused employees and finished work not merged yet.",
   "tabs": {
     "pending": "Pending",
     "approved": "Approved",
@@ -167,5 +167,40 @@
     "stale": "LIVE changed since this request: it was made against another live version. Reject it and ask the Developer to propose the release again.",
     "expired": "This request is older than 24 hours: reject it and ask the Developer again."
   },
-  "waitingForRun": "{count, plural, one {# more request appears} other {# more requests appear}} here once the employee finishes the current run: it cannot be decided while they are still working."
+  "waitingForRun": "{count, plural, one {# more request appears} other {# more requests appear}} here once the employee finishes the current run: it cannot be decided while they are still working.",
+  "inbox": {
+    "approvalsHeading": "{count, plural, one {# approval} other {# approvals}}",
+    "othersHeading": "{count, plural, one {# other thing} other {# other things}}",
+    "kind": {
+      "held_task": "Proposed task",
+      "paused_employee": "Paused: budget used up",
+      "merge": "Not in {branch} yet",
+      "mergeFailed": "Merge failed"
+    },
+    "incidentStatus": {
+      "escalated": "asks you",
+      "open": "no lead on it",
+      "muted": "muted"
+    },
+    "incidentNoTask": "A routine run failed",
+    "heldExplain": "An employee proposed this task. It starts only when someone starts it.",
+    "pausedExplain": "Its daily budget ran out, so it stopped working. Raise the budget or resume it on its page.",
+    "mergeExplain": "Finished work on its own branch. Review it and merge it into {branch}, or leave it out.",
+    "conflicts": "Conflicts in: {files}",
+    "actions": {
+      "openTask": "Open task",
+      "retry": "Retry",
+      "close": "Close",
+      "start": "Start",
+      "cancel": "Cancel task",
+      "openEmployee": "Open employee",
+      "reviewMerge": "Review & merge"
+    },
+    "done": {
+      "start": "Task started",
+      "cancel": "Task cancelled",
+      "retry": "Task queued again",
+      "resolved": "Closed"
+    }
+  }
 }

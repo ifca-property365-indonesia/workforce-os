@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "@/lib/nav";
+import Link, { useSearchParams } from "@/lib/nav";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -327,6 +327,8 @@ export function Deliverables({ items }: { items: Deliverable[] }) {
 }
 
 export function TaskDetail({ taskId, compact = false }: { taskId: string; compact?: boolean }) {
+  // ?tab=code: a link to the merge (Needs a decision) opens the Code tab
+  const openTab = useSearchParams().get("tab");
   const t = useTranslations("inspector");
   const tc = useTranslations("common");
   const ts = useTranslations("status");
@@ -528,7 +530,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
           )}
         </div>
         <div className={cn("min-w-0", !compact && "lg:col-span-3")}>
-          <Tabs defaultValue="activity">
+          <Tabs defaultValue={openTab === "code" && codeTask ? "code" : "activity"}>
             <TabsList>
               <TabsTrigger value="activity">{t("task.activityTab", { count: stepsData?.steps.length ?? 0 })}</TabsTrigger>
               <TabsTrigger value="deliverables">{t("task.deliverablesTab", { count: task.deliverables.length + children.reduce((s, c) => s + c.deliverables.length, 0) })}</TabsTrigger>

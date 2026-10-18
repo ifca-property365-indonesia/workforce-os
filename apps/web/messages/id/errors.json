@@ -59,6 +59,7 @@
   "task_needs_assignee": "Tugaskan tugas ini ke divisi atau karyawan.",
   "webhook_one_target": "Webhook membuat tugas untuk satu karyawan atau satu divisi, bukan keduanya.",
   "task_not_found": "Tugas tidak ditemukan.",
+  "incident_not_found": "Insiden tidak ditemukan, atau tidak lagi menunggu seseorang.",
   "task_not_queued": "Hanya tugas dalam antrean yang bisa dimulai.",
   "team_has_no_lead": "Divisi ini belum punya kepala.",
   "too_many_attempts": "Terlalu banyak percobaan. Coba lagi dalam {minutes} menit.",

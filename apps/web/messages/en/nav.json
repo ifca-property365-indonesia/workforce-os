@@ -7,7 +7,7 @@
     "chat": "Chat",
     "tasks": "Task board",
     "routines": "Routines",
-    "approvals": "Approvals",
+    "approvals": "Needs a decision",
     "clients": "Clients",
     "knowledge": "Knowledge base",
     "settings": "Settings",
@@ -70,7 +70,7 @@
     "chat": "Chat",
     "tasks": "Tasks",
     "routines": "Routines",
-    "approvals": "Approvals",
+    "approvals": "Decisions",
     "clients": "Clients",
     "knowledge": "Knowledge",
     "settings": "Settings",
@@ -78,5 +78,27 @@
     "apps": "Apps"
   },
   "demoChip": "Demo",
-  "desktopView": "Desktop view"
+  "desktopView": "Desktop view",
+  "search": {
+    "open": "Search (Ctrl+K)",
+    "title": "Search and commands",
+    "description": "Find a page, task, employee, division, client, app or document, or start a new task.",
+    "placeholder": "Search tasks, people, clients, apps… or type a new task",
+    "searching": "Searching…",
+    "nothingFound": "Nothing in this workspace matches.",
+    "keys": "↑ ↓ to move · Enter to open · Esc to close",
+    "newTask": "New task",
+    "newTaskWith": "New task: “{text}”",
+    "decisions": "{count, plural, one {# thing needs a decision} other {# things need a decision}}",
+    "groups": {
+      "actions": "Actions",
+      "pages": "Pages",
+      "tasks": "Tasks",
+      "employees": "Employees",
+      "divisions": "Divisions",
+      "clients": "Clients",
+      "apps": "Apps",
+      "documents": "Documents"
+    }
+  }
 }

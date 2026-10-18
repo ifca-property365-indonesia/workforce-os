@@ -21,6 +21,7 @@ import type {
   TeamResponderMode,
 } from "@wfos/shared";
 import type { RoleTemplate } from "@wfos/templates";
+import type { InboxResponse } from "@/components/approvals/decision-items";
 import { api } from "./api";
 
 export interface Me {
@@ -227,6 +228,13 @@ export type Division = Team;
 export const divisionMemberIds = (t: Pick<Team, "leadId" | "members">) => [...new Set([...(t.leadId ? [t.leadId] : []), ...t.members.map((m) => m.employeeId)])];
 
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: () => api.get<Me>("/api/me") });
+/**
+ * "Needs a decision" (GET /api/inbox): what waits for a person besides approval cards, and the counts. Under the
+ * "approvals" key, so every event that refreshes approvals (decisions, task runs ending, employees) refreshes it too.
+ */
+export const useInbox = () => useQuery({ queryKey: ["approvals", "inbox"], queryFn: () => api.get<InboxResponse>("/api/inbox"), refetchInterval: 60_000 });
+/** the one number the menu bar, the dock and the rail show: everything that waits for a person */
+export const useDecisionCount = () => useInbox().data?.counts.total ?? 0;
 export const useEmployees = () =>
   useQuery({ queryKey: ["employees"], queryFn: () => api.get<{ employees: Employee[] }>("/api/employees").then((r) => r.employees) });
 export const useTemplates = (enabled = true) =>

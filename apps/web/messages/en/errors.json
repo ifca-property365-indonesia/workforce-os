@@ -59,6 +59,7 @@
   "task_needs_assignee": "Assign the task to a division or an employee.",
   "webhook_one_target": "A webhook creates tasks for one employee or one division, not both.",
   "task_not_found": "Task not found.",
+  "incident_not_found": "Incident not found, or it is no longer waiting for a person.",
   "task_not_queued": "Only queued tasks can be started.",
   "team_has_no_lead": "This division has no head yet.",
   "too_many_attempts": "Too many attempts. Try again in {minutes} minutes.",

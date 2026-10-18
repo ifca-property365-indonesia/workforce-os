@@ -1,19 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { useTranslations } from "next-intl";
-import { useQuery } from "@tanstack/react-query";
 import { Armchair, LayoutGrid, Monitor, Plus, UserPlus } from "lucide-react";
 import { AccountMenu, Banners, KillSwitch, Notifications, ThemeToggle } from "@/components/layout/app-shell";
 import { useOffice, type OfficePerson, type OfficeState } from "@/components/office/use-office";
 import type { Office3DProps } from "@/components/office/office-3d";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
+import { CommandPalette, useCommandPaletteShortcut } from "@/components/layout/command-palette";
 import { BotAvatar, type BotMood } from "@/components/ui/bot-avatar";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api } from "@/lib/api";
 import { useRealtimeStatus } from "@/lib/events";
-import { useEmployees, useMe } from "@/lib/hooks";
+import { useDecisionCount, useEmployees, useMe } from "@/lib/hooks";
 import { employeeLooks, signVars } from "@/lib/sign";
 import { cn } from "@/lib/utils";
 import { APPS, routeOf, type AppGroup, type DesktopApp } from "./routes";
@@ -39,14 +38,6 @@ function useReducedMotion(): boolean {
     return () => mq.removeEventListener("change", on);
   }, []);
   return reduced;
-}
-
-function usePendingApprovals(): number {
-  const { data } = useQuery({
-    queryKey: ["approvals", "pending-count"],
-    queryFn: () => api.get<{ approvals: unknown[] }>("/api/approvals?status=PENDING").then((r) => r.approvals.length),
-  });
-  return data ?? 0;
 }
 
 /**
@@ -92,17 +83,16 @@ function Screen({ topRef, onClassic }: { topRef: RefObject<HTMLDivElement | null
   const [officeOk, setOfficeOk] = useState(true);
   const [launcher, setLauncher] = useState(false);
   const [newTask, setNewTask] = useState(false);
-
-  // Ctrl/⌘ K: a new task from anywhere on the desktop
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setNewTask(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+  // what the palette's "New task: …" typed in, and a key per prefill (the dialog reads it when it mounts)
+  const [prefill, setPrefill] = useState<{ title: string; n: number }>({ title: "", n: 0 });
+  const [palette, setPalette] = useState(false);
+  // Ctrl/⌘ K: search and commands from anywhere on the desktop
+  const openPalette = useCallback(() => setPalette(true), []);
+  useCommandPaletteShortcut(openPalette);
+  // every way in starts a fresh dialog: empty, or with what was typed in the palette
+  const startNewTask = useCallback((title = "") => {
+    setPrefill((p) => ({ title, n: p.n + 1 }));
+    setNewTask(true);
   }, []);
 
   const flyTo = (id: string) => setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }));
@@ -146,7 +136,7 @@ function Screen({ topRef, onClassic }: { topRef: RefObject<HTMLDivElement | null
       </p>
 
       <div ref={topRef} className="fixed inset-x-0 top-0 z-40">
-        <MenuBar state={state} people={people} onLauncher={() => setLauncher(true)} onNewTask={() => setNewTask(true)} onShowOffice={showOffice} onFly={flyTo} onClassic={onClassic} />
+        <MenuBar state={state} people={people} onLauncher={() => setLauncher(true)} onNewTask={() => startNewTask()} onSearch={openPalette} onShowOffice={showOffice} onFly={flyTo} onClassic={onClassic} />
         <Banners />
       </div>
 
@@ -190,7 +180,7 @@ function Screen({ topRef, onClassic }: { topRef: RefObject<HTMLDivElement | null
                 kbd="Ctrl K"
                 onClick={() => {
                   setLauncher(false);
-                  setNewTask(true);
+                  startNewTask();
                 }}
               />
               <QuickAction
@@ -206,7 +196,8 @@ function Screen({ topRef, onClassic }: { topRef: RefObject<HTMLDivElement | null
           </div>
         </DialogContent>
       </Dialog>
-      <NewTaskDialog open={newTask} onOpenChange={setNewTask} />
+      <NewTaskDialog key={prefill.n} open={newTask} onOpenChange={setNewTask} initial={prefill.title ? { title: prefill.title } : undefined} />
+      <CommandPalette open={palette} onOpenChange={setPalette} onNewTask={startNewTask} />
     </div>
   );
 }
@@ -238,6 +229,7 @@ function MenuBar({
   people,
   onLauncher,
   onNewTask,
+  onSearch,
   onShowOffice,
   onFly,
   onClassic,
@@ -246,6 +238,7 @@ function MenuBar({
   people: OfficePerson[];
   onLauncher: () => void;
   onNewTask: () => void;
+  onSearch: () => void;
   onShowOffice: () => void;
   onFly: (id: string) => void;
   onClassic: () => void;
@@ -257,7 +250,7 @@ function MenuBar({
   const live = useRealtimeStatus();
   const { data: me } = useMe();
   const { data: emps } = useEmployees();
-  const pending = usePendingApprovals();
+  const pending = useDecisionCount();
   const deck = useMemo(() => employeeLooks(emps ?? []), [emps]);
   const focused = wm.wins.find((w) => w.id === wm.focusedId && !w.min);
   const app = focused ? routeOf(current(focused))?.app : undefined;
@@ -282,6 +275,9 @@ function MenuBar({
         </button>
         <button type="button" className={menuBtn} onClick={onNewTask}>
           {t("menubar.command")}
+        </button>
+        <button type="button" className={menuBtn} onClick={onSearch} aria-keyshortcuts="Control+K Meta+K">
+          {t("menubar.search")}
         </button>
         <button type="button" className={menuBtn} onClick={onShowOffice}>
           {t("menubar.showOffice")}
@@ -325,7 +321,7 @@ function Dock({ onLauncher, onShowOffice }: { onLauncher: () => void; onShowOffi
   const t = useTranslations("desktop");
   const tn = useTranslations("nav.items");
   const wm = useWindows();
-  const pending = usePendingApprovals();
+  const pending = useDecisionCount();
   const windowOf = (a: DesktopApp) => wm.wins.find((w) => routeOf(current(w))?.app.key === a.key);
   // a dock tile raises its app's window as it was left; clicking the front window's tile minimizes it
   const click = (a: DesktopApp) => {

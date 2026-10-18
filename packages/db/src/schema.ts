@@ -372,6 +372,8 @@ export const tasks = pgTable(
   (t) => [
     index("tasks_ws_status").on(t.workspaceId, t.status),
     index("tasks_parent").on(t.parentTaskId),
+    // Ctrl+K search (migration 0033): the search API must use exactly this expression (taskSearchVector)
+    index("tasks_search").using("gin", sql`to_tsvector('simple', coalesce(${t.title}, '') || ' ' || coalesce(${t.brief}, ''))`),
     index("tasks_assignee").on(t.assigneeId),
   ],
 );

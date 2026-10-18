@@ -2,7 +2,7 @@
 
 import Link, { useOpen, usePathname, useRouter } from "@/lib/nav";
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -17,6 +17,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Search,
   Monitor,
   Languages,
   Send,
@@ -31,6 +32,8 @@ import {
   UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CommandPalette, useCommandPaletteShortcut } from "@/components/layout/command-palette";
+import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -45,7 +48,7 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { EventsProvider, useRealtime, useRealtimeStatus } from "@/lib/events";
-import { useMe } from "@/lib/hooks";
+import { useDecisionCount, useMe } from "@/lib/hooks";
 import { useFormat } from "@/lib/use-format";
 import { QuotaBanner } from "@/components/inspector/limits-card";
 import { useTranslations } from "next-intl";
@@ -75,15 +78,12 @@ const NAV = [
 
 /**
  * `rail`: the desktop icon rail (icon over a short label, like the shop signs' row); `list`: the phone menu.
- * The approvals count is the one number the rail always shows.
+ * The "Needs a decision" count is the one number the rail always shows.
  */
 function Nav({ onNavigate, layout }: { onNavigate?: () => void; layout: "rail" | "list" }) {
   const t = useTranslations("nav");
   const path = usePathname();
-  const { data } = useQuery({
-    queryKey: ["approvals", "pending-count"],
-    queryFn: () => api.get<{ approvals: unknown[] }>("/api/approvals?status=PENDING").then((r) => r.approvals.length),
-  });
+  const data = useDecisionCount();
   return (
     <nav className={layout === "rail" ? "flex flex-col items-center gap-1" : "space-y-0.5"}>
       {NAV.map((n) => {
@@ -396,6 +396,12 @@ function Shell({ children, onDesktop }: { children: ReactNode; onDesktop?: () =>
   const { data: me } = useMe();
   const live = useRealtimeStatus();
   const [mobile, setMobile] = useState(false);
+  // Ctrl/⌘ K (or the search button): search and commands; "New task: …" opens the new-task dialog with that title
+  const [palette, setPalette] = useState(false);
+  const [newTask, setNewTask] = useState<{ open: boolean; title: string; n: number }>({ open: false, title: "", n: 0 });
+  const openPalette = useCallback(() => setPalette(true), []);
+  useCommandPaletteShortcut(openPalette);
+  const startNewTask = useCallback((title: string) => setNewTask((x) => ({ open: true, title, n: x.n + 1 })), []);
   // full-height pages (chat) size themselves to the viewport minus this: the header plus whatever banners show
   const chrome = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -463,6 +469,9 @@ function Shell({ children, onDesktop }: { children: ReactNode; onDesktop?: () =>
           <div className="lg:hidden">
             <KillSwitch placement="header" />
           </div>
+          <Button size="icon" variant="ghost" onClick={openPalette} aria-label={t("search.open")} title={t("search.open")} aria-keyshortcuts="Control+K Meta+K">
+            <Search className="size-5" />
+          </Button>
           <Notifications />
           <ThemeToggle />
           <AccountMenu view={onDesktop ? { label: t("desktopView"), onSelect: onDesktop } : undefined} />
@@ -471,6 +480,8 @@ function Shell({ children, onDesktop }: { children: ReactNode; onDesktop?: () =>
         </div>
         <main className="mx-auto w-full min-w-0 max-w-[1520px] flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">{children}</main>
       </div>
+      <CommandPalette open={palette} onOpenChange={setPalette} onNewTask={startNewTask} />
+      <NewTaskDialog key={newTask.n} open={newTask.open} onOpenChange={(open) => setNewTask((x) => ({ ...x, open }))} initial={newTask.title ? { title: newTask.title } : undefined} />
     </div>
   );
 }

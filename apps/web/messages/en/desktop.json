@@ -3,10 +3,11 @@
     "office": "Office",
     "apps": "Apps",
     "command": "New task",
+    "search": "Search ⌘K",
     "showOffice": "Show the office",
     "staff": "Employees in the office",
     "staffMore": "+{count} more",
-    "approvals": "{count, plural, =0 {No approvals} one {# approval} other {# approvals}}",
+    "approvals": "{count, plural, =0 {Nothing waiting} one {# needs a decision} other {# need a decision}}",
     "classic": "Classic view",
     "desktop": "Desktop view"
   },

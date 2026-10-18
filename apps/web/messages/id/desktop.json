@@ -3,10 +3,11 @@
     "office": "Kantor",
     "apps": "Aplikasi",
     "command": "Tugas baru",
+    "search": "Cari ⌘K",
     "showOffice": "Tampilkan kantor",
     "staff": "Karyawan di kantor",
     "staffMore": "+{count} lagi",
-    "approvals": "{count, plural, =0 {Tidak ada persetujuan} other {# persetujuan}}",
+    "approvals": "{count, plural, =0 {Tidak ada yang menunggu} other {# butuh keputusan}}",
     "classic": "Tampilan klasik",
     "desktop": "Tampilan desktop"
   },

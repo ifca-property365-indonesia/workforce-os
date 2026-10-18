@@ -7,7 +7,7 @@
     "chat": "Obrolan",
     "tasks": "Papan tugas",
     "routines": "Rutinitas",
-    "approvals": "Persetujuan",
+    "approvals": "Butuh keputusan",
     "clients": "Klien",
     "knowledge": "Basis pengetahuan",
     "settings": "Pengaturan",
@@ -70,7 +70,7 @@
     "chat": "Obrolan",
     "tasks": "Tugas",
     "routines": "Rutinitas",
-    "approvals": "Persetujuan",
+    "approvals": "Keputusan",
     "clients": "Klien",
     "knowledge": "Pengetahuan",
     "settings": "Pengaturan",
@@ -78,5 +78,27 @@
     "apps": "Aplikasi"
   },
   "demoChip": "Demo",
-  "desktopView": "Tampilan desktop"
+  "desktopView": "Tampilan desktop",
+  "search": {
+    "open": "Cari (Ctrl+K)",
+    "title": "Cari dan perintah",
+    "description": "Cari halaman, tugas, karyawan, divisi, klien, aplikasi atau dokumen, atau mulai tugas baru.",
+    "placeholder": "Cari tugas, orang, klien, aplikasi… atau ketik tugas baru",
+    "searching": "Mencari…",
+    "nothingFound": "Tidak ada yang cocok di workspace ini.",
+    "keys": "↑ ↓ untuk pindah · Enter untuk membuka · Esc untuk menutup",
+    "newTask": "Tugas baru",
+    "newTaskWith": "Tugas baru: “{text}”",
+    "decisions": "{count, plural, other {# hal butuh keputusan}}",
+    "groups": {
+      "actions": "Tindakan",
+      "pages": "Halaman",
+      "tasks": "Tugas",
+      "employees": "Karyawan",
+      "divisions": "Divisi",
+      "clients": "Klien",
+      "apps": "Aplikasi",
+      "documents": "Dokumen"
+    }
+  }
 }

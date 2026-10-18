@@ -91,6 +91,8 @@ export function EventsProvider({ children }: { children: ReactNode }) {
             break;
           case "employee.updated":
             invalidate("employees");
+            // a budget pause (or its end) is listed under "Needs a decision"
+            invalidate("approvals");
             break;
           case "app.updated":
             // ["apps"] list, ["app", id] page

@@ -175,6 +175,11 @@ The UI is available in **Bahasa Indonesia** and **English**. Each user picks a l
 
 A task that fails, stalls, loops or cannot start, or a routine run that fails, opens an **incident** (Dashboard card, Inspector). For a team subtask the lead gets it in its review (as data, never as instructions) and may `retry_subtask` or `reassign_subtask` at most twice per piece of work; otherwise a person is notified once. More than 5 incidents per workspace per hour are muted. A reaper fails runs that died, wakes leads whose subtasks all ended, resumes tasks whose approvals were all decided and re-queues lost work.
 
+## Needs a decision and Ctrl+K
+
+- **Needs a decision** (`/approvals`, the menu bar and dock count): everything that waits for a person in one place. Approval cards (with their exact payload) first; then incidents a person was asked to handle or that no lead is handling (Retry, Close), tasks an employee proposed that wait to be started (Start, Cancel), employees paused because their budget ran out, and finished agent work that is not in its repository's default branch yet or whose merge failed (Review & merge). One endpoint, `GET /api/inbox`, scoped to the workspace; viewers see it, members and up act on it.
+- **Ctrl/⌘ K** (desktop and classic layout): search pages, tasks, employees, divisions, clients, apps and documents of the workspace, or start a new task with what was typed. Tasks use Postgres full-text search (prefix words, `simple` configuration) on a GIN index (migration 0033); the small tables match names. `GET /api/search?q=`.
+
 ## Integrations
 
 - **Inbound webhooks** (Settings → Webhooks): `POST /api/hooks/<id>` with `Authorization: Bearer <secret>` (shown once; only its sha256 is stored) creates a task for an employee or a team. 256 KB body cap, per-IP and per-trigger rate limits, `Idempotency-Key` support, delivery log with redacted excerpts (kept 30 days). The payload is fenced as data in the brief and the task starts tainted, so nothing irreversible runs without a person.
