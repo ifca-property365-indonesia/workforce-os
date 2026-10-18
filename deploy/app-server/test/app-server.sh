@@ -111,16 +111,16 @@ upload() {
 # --- version / info --------------------------------------------------------
 helper version
 code 0 "version"
-[[ "$(cat "$WORK/out")" == 4 ]] || fail "version prints 4"
-pass "version prints 4"
+[[ "$(cat "$WORK/out")" == 5 ]] || fail "version prints 5"
+pass "version prints 5"
 
 helper info
 code 0 "info"
 json="$(tail -1 "$WORK/out")"
 if command -v node > /dev/null; then
-  node -e 'const j = JSON.parse(process.argv[1]); const ok = j.helperVersion === 4 && j.portMin === 4100 && j.portMax === 4899 && j.baseDomain === "preview.example.com" && typeof j.nginx === "boolean" && typeof j.certbot === "boolean" && typeof j.diskFreeMb === "number" && typeof j.memTotalMb === "number" && typeof j.memAvailableMb === "number" && typeof j.os === "string" && typeof j.node === "string" && typeof j.pnpm === "string" && ("postgresPort" in j) && typeof j.systemd === "number" && j.firewall === false && typeof j.appsRoot === "string"; if (!ok) process.exit(1)' "$json" || fail "info JSON shape: $json"
+  node -e 'const j = JSON.parse(process.argv[1]); const ok = j.helperVersion === 5 && j.portMin === 4100 && j.portMax === 4899 && j.baseDomain === "preview.example.com" && typeof j.nginx === "boolean" && typeof j.certbot === "boolean" && typeof j.diskFreeMb === "number" && typeof j.memTotalMb === "number" && typeof j.memAvailableMb === "number" && typeof j.os === "string" && typeof j.node === "string" && typeof j.pnpm === "string" && ("postgresPort" in j) && typeof j.systemd === "number" && j.firewall === false && typeof j.appsRoot === "string"; if (!ok) process.exit(1)' "$json" || fail "info JSON shape: $json"
 elif command -v jq > /dev/null; then
-  jq -e '.helperVersion == 4 and .portMax == 4899 and .baseDomain == "preview.example.com" and (.nginx | type == "boolean") and (.systemd | type == "number") and .firewall == false' <<< "$json" > /dev/null || fail "info JSON shape: $json"
+  jq -e '.helperVersion == 5 and .portMax == 4899 and .baseDomain == "preview.example.com" and (.nginx | type == "boolean") and (.systemd | type == "number") and .firewall == false' <<< "$json" > /dev/null || fail "info JSON shape: $json"
 fi
 pass "info prints one JSON line (helperVersion 4, the A1 fields, systemd, firewall, port range)"
 
@@ -435,6 +435,12 @@ helper_in 'pnpm prisma migrate deploy' build-run shop "$SHA" migrate 300 1024
 code 0 "build-run migrate"
 has "-p BindReadOnlyPaths=/run/wfos-apps-pg" "build-run migrate"
 hasnt "env -u NODE_ENV" "build-run migrate"
+helper_in 'node scripts/test-users.mjs' build-run shop "$SHA" test-users 180 1024
+code 0 "build-run test-users"
+has "-p BindReadOnlyPaths=/run/wfos-apps-pg" "build-run test-users (database like migrate)"
+hasnt "env -u NODE_ENV" "build-run test-users"
+helper_in 'true' build-run shop "$SHA" seed 180 1024
+code 2 "build-run with an unknown step"
 SD=256 helper_in "pnpm build" build-run shop "$SHA" build 1200 1536
 hasnt "PrivatePIDs" "build-run on systemd 256"
 has "--expand-environment=no" "build-run on systemd 256"

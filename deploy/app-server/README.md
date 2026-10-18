@@ -8,7 +8,7 @@ employees build are previewed (`https://<app>.<your domain>`) and, once released
   domain, or to upgrade an earlier install in place).
 - `wfos-app-helper` — installed by `prepare.sh` as `/usr/local/sbin/wfos-app-helper`. It is the only thing
   Workforce OS may run as root. It checks every argument and every stdin payload (instance name, commit, port,
-  memory, domain names, env lines, password hash) before doing anything. This is helper version 4 (`version`,
+  memory, domain names, env lines, password hash) before doing anything. This is helper version 5 (`version`,
   `info.helperVersion`); Workforce OS shows a server with an older helper as outdated until you re-run `prepare.sh`.
 
 Workforce OS never sees a root password. It logs in as an ordinary user (`wfos-apps`) with the workspace's own SSH
@@ -94,6 +94,13 @@ Removing an instance (`app-remove <name> [--drop-db] [--keep-db-dump]`) also del
 `/var/lib/wfos-apps/domains/<name>`), so certbot never keeps renewing a site that is gone. A certificate another
 instance records or another nginx site still serves is kept. Publishing a live environment under a new domain
 deletes the old domain's certificate the same way, once the new site is in place.
+
+## Test accounts on previews (helper v5)
+
+`build-run <name> <sha> test-users …` runs the app's `testUsers` command (wfos-app.json) in the release folder with
+the database, like `migrate`, on preview releases only. The command reads the shared password from
+`$WFOS_TEST_PASSWORD` (in the env file) and prints the accounts as one JSON line; the platform stores them and never
+writes that output to the release log. Servers on v4 keep deploying: the platform skips this step with a warning.
 
 ## Live releases without downtime (helper v4)
 

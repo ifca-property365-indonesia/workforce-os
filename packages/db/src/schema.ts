@@ -1167,6 +1167,11 @@ export const appEnvironments = pgTable(
     envEnc: text("env_enc"),
     appSecretEnc: text("app_secret_enc"),
     dbPasswordEnc: text("db_password_enc"),
+    /** C10: shared password of the test accounts (preview only; WFOS_TEST_PASSWORD in the env file), encrypted */
+    testPasswordEnc: text("test_password_enc"),
+    /** when the testUsers script last ran, and what it said (or why it failed) */
+    testUsersAt: timestamp("test_users_at", { withTimezone: true }),
+    testUsersNote: text("test_users_note"),
     memoryMb: integer("memory_mb").notNull().default(512),
     healthy: boolean("healthy"),
     lastHealthAt: timestamp("last_health_at", { withTimezone: true }),
@@ -1197,6 +1202,32 @@ export const appEnvironments = pgTable(
     uniqueIndex("app_env_domain").on(t.domain),
     index("app_env_ws").on(t.workspaceId),
   ],
+);
+
+/**
+ * C10: a test account per role on an environment (preview), for the browser tester and for people trying the app.
+ * auto rows come from the app's testUsers script and are replaced on every preview release; manual rows are kept.
+ */
+export const appTestUsers = pgTable(
+  "app_test_users",
+  {
+    id: id(),
+    environmentId: uuid("environment_id").notNull().references(() => appEnvironments.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    label: text("label").notNull(),
+    username: text("username").notNull(),
+    /** null: the environment's shared test password */
+    passwordEnc: text("password_enc"),
+    totpEnc: text("totp_enc"),
+    loginPath: text("login_path").notNull().default("/"),
+    source: text("source").$type<"auto" | "manual">().notNull().default("auto"),
+    viewAll: boolean("view_all").notNull().default(false),
+    note: text("note").notNull().default(""),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("app_test_users_env_role").on(t.environmentId, t.role), index("app_test_users_ws").on(t.workspaceId)],
 );
 
 /** Database backups of an app environment (B2): taken before a migration, daily (live), by hand, before a restore. */

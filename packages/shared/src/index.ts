@@ -1423,13 +1423,66 @@ export const appManifestSchema = z
      * A release that claims "expand" but whose migration files drop/rename/narrow anything is refused.
      */
     migrations: z.enum(["expand", "breaking"]).default("breaking"),
+    /**
+     * C10: makes (or updates) one test account per role on the PREVIEW after each release, with the shared password
+     * in $WFOS_TEST_PASSWORD, and prints them as JSON on its last line (see testUsersOutputSchema). Never runs on live.
+     */
+    testUsers: manifestCommand.optional(),
   })
   .strict();
 export type AppManifest = z.infer<typeof appManifestSchema>;
+
+/** at most this many test accounts per environment */
+export const TEST_USERS_MAX = 20;
+/** one test account as the app's testUsers script prints it (no password: the shared one, or a manual row's own) */
+export const testUserSchema = z
+  .object({
+    /** stable key of the role in the app (admin, requester, approver…) */
+    role: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/),
+    label: z.string().trim().min(1).max(80),
+    username: z.string().trim().min(1).max(200),
+    /** base32 TOTP key when the account has two-factor on */
+    totp: z
+      .string()
+      .transform((v) => v.replace(/\s+/g, "").toUpperCase())
+      .pipe(z.string().regex(/^[A-Z2-7]{16,128}=*$/))
+      .optional(),
+    /** where its sign-in page is */
+    loginPath: z.string().regex(/^\/[A-Za-z0-9._~\/?=&%-]{0,200}$/).default("/"),
+    /** this account sees everything (a tour, a deck) */
+    viewAll: z.boolean().default(false),
+    note: z.string().max(500).default(""),
+  })
+  .strict();
+export type TestUser = z.infer<typeof testUserSchema>;
+export const testUsersOutputSchema = z.object({ users: z.array(testUserSchema).min(1).max(TEST_USERS_MAX), note: z.string().max(500).optional() }).strict();
+export type TestUsersOutput = z.infer<typeof testUsersOutputSchema>;
+
+/**
+ * The accounts in a testUsers run's output: the LAST line that is a JSON object (the script may log before it).
+ * Roles must be unique. The raw output is never logged (it carries TOTP keys).
+ */
+export function parseTestUsersOutput(out: string): { ok: true; value: TestUsersOutput } | { ok: false; error: string } {
+  const lines = out.split("\n").map((l) => l.trim()).filter((l) => l.startsWith("{") && l.endsWith("}"));
+  const last = lines.at(-1);
+  if (!last) return { ok: false, error: "the testUsers command printed no JSON line ({\"users\": [...]})" };
+  let json: unknown;
+  try {
+    json = JSON.parse(last);
+  } catch {
+    return { ok: false, error: "the last JSON line of testUsers is not valid JSON" };
+  }
+  const parsed = testUsersOutputSchema.safeParse(json);
+  if (!parsed.success) return { ok: false, error: `testUsers output: ${parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`).join("; ").slice(0, 400)}` };
+  const roles = parsed.data.users.map((u) => u.role);
+  const dup = roles.find((r, i) => roles.indexOf(r) !== i);
+  if (dup) return { ok: false, error: `testUsers output: role "${dup}" appears twice` };
+  return { ok: true, value: parsed.data };
+}
 export const APP_MANIFEST_FILE = "wfos-app.json";
 
 /** env names the platform sets itself (a person cannot override them) */
-export const APP_RESERVED_ENV = ["PORT", "HOST", "NODE_ENV", "APP_URL", "APP_SECRET", "APP_VERSION", "APP_DATA_DIR", "DATABASE_URL"] as const;
+export const APP_RESERVED_ENV = ["PORT", "HOST", "NODE_ENV", "APP_URL", "APP_SECRET", "APP_VERSION", "APP_DATA_DIR", "DATABASE_URL", "WFOS_TEST_PASSWORD"] as const;
 /** names the server's helper refuses (they would steer the sandbox or the build): never accepted from a person */
 export function isForbiddenAppEnv(name: string): boolean {
   return (APP_RESERVED_ENV as readonly string[]).includes(name) || ["HOME", "PATH", "NPM_CONFIG_STORE_DIR", "XDG_CACHE_HOME"].includes(name) || /^(LD_|COREPACK_)/.test(name);

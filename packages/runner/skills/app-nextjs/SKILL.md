@@ -93,10 +93,28 @@ Then change it into what the task asks for. Keep the structure below.
   `next/font/local`.
 - Variables the platform sets (do not set them yourself, do not commit `.env` files): `PORT`, `HOST` (127.0.0.1),
   `NODE_ENV` (production), `APP_URL` (the preview URL), `APP_SECRET` (random, stable: sign cookies/tokens with it),
-  `APP_VERSION` (the commit), `APP_DATA_DIR`, and `DATABASE_URL` when `database` is true.
+  `APP_VERSION` (the commit), `APP_DATA_DIR`, `DATABASE_URL` when `database` is true, and on previews of apps with a
+  `testUsers` command `WFOS_TEST_PASSWORD` (see Test accounts).
 - Other settings (API keys, SMTP …): read them from `process.env.NAME` with a safe default, list them in README.md,
   and tell the person in your summary which names an Admin must add (Apps → the app → Environment variables). Never put a
   secret in the repository.
+
+## Test accounts (apps with a sign-in)
+
+When the app has users and roles, add a `testUsers` command to wfos-app.json (e.g. `"testUsers": "node scripts/test-users.mjs"`).
+It runs on the PREVIEW after each release's migration (never on LIVE), with `DATABASE_URL` and the shared password in
+`$WFOS_TEST_PASSWORD`. It must:
+
+- create or update ONE account per role (idempotent: running it twice changes nothing), all with `$WFOS_TEST_PASSWORD`;
+  with two-factor on, give the account a fixed TOTP key;
+- print, as its LAST line, one JSON object: `{"users":[{"role":"admin","label":"Admin","username":"admin@test.local",
+  "loginPath":"/login","viewAll":true},{"role":"approver","label":"Approver","username":"approver@test.local",
+  "totp":"JBSWY3DPEHPK3PXP"}],"note":"optional"}` (role: letters, digits, `-`, `_`; at most 20 accounts; never a
+  password in it);
+- never touch real users, and do nothing when `$WFOS_TEST_PASSWORD` is empty.
+
+The platform stores the accounts (Apps → the app → Test accounts) and the browser tester signs in with them. Mark one
+account `"viewAll": true` when a role sees every screen.
 
 ## Publishing
 

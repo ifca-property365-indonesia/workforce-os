@@ -206,5 +206,8 @@
   "merge_nothing_pushed": "Belum ada yang di-push dari tugas ini.",
   "merge_head_changed": "Tugas ini sudah mem-push versi yang lebih baru. Muat ulang dan periksa dulu.",
   "merge_already_done": "Versi ini sudah digabung.",
-  "merge_in_progress": "Versi ini sedang digabung."
+  "merge_in_progress": "Versi ini sedang digabung.",
+  "test_user_not_found": "Akun uji tidak ditemukan.",
+  "test_password_missing": "Akun uji ini belum punya sandi.",
+  "test_password_required": "Preview ini belum punya sandi uji bersama: beri akun ini sandinya sendiri."
 }

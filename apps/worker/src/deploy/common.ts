@@ -260,7 +260,7 @@ export async function environmentOf(appId: string, kind: Environment["kind"]): P
 
 // ---- secrets of an environment (generated once, stored encrypted; preview and live never share one) ----
 
-type SecretColumn = "appSecretEnc" | "dbPasswordEnc" | "accessPasswordEnc";
+type SecretColumn = "appSecretEnc" | "dbPasswordEnc" | "accessPasswordEnc" | "testPasswordEnc";
 
 /**
  * The decrypted secret in `column`, generated and stored first when missing. The store only happens while the column
@@ -328,6 +328,11 @@ export async function appEnvFile(e: Environment, sha: string, manifest: AppManif
     APP_VERSION: sha,
     APP_DATA_DIR: `${APP_ROOT}/${e.instanceName}/data`,
   };
+  // C10: the shared password of the preview's test accounts (the testUsers command reads it); never on live
+  if (manifest.testUsers && e.kind !== "live") {
+    platform.WFOS_TEST_PASSWORD = await ensureAppSecret(e, "testPasswordEnc", generatePreviewPassword);
+    redactor.add(platform.WFOS_TEST_PASSWORD);
+  }
   if (manifest.database) {
     const pw = await ensureAppSecret(e, "dbPasswordEnc", hexSecret(32));
     const name = dbName(e.instanceName);
@@ -351,7 +356,7 @@ export function seedRedactor(e: Environment, redactor: Redactor): void {
   } catch {
     // unreadable env: the step that needs it fails with its own message
   }
-  for (const col of ["appSecretEnc", "dbPasswordEnc", "accessPasswordEnc"] as const) {
+  for (const col of ["appSecretEnc", "dbPasswordEnc", "accessPasswordEnc", "testPasswordEnc"] as const) {
     const enc = e[col];
     if (!enc) continue;
     // the database password also covers DATABASE_URL (it contains it)

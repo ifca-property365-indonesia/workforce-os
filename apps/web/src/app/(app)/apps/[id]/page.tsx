@@ -11,6 +11,7 @@ import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/common";
 import { AccessCard } from "@/components/apps/access-card";
+import { TestUsersCard } from "@/components/apps/test-users-card";
 import { BackupsPanel } from "@/components/apps/backups-panel";
 import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
 import { DnsPanel } from "@/components/apps/dns-panel";
@@ -257,6 +258,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
             <AccessCard key={`access-${shownEnv.id}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
             <EnvEditor key={`${shownEnv.id}-${shownEnv.envKeys.join(",")}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
           </div>
+          {/* C10: the preview's test accounts per role (members see them; showing a password is an Admin's, audited) */}
+          {shownEnv.kind === "preview" && logs && <TestUsersCard key={`test-users-${shownEnv.id}`} app={app} admin={admin} />}
           {/* the database's backups: Admins see them; backing up live and every restore are the Owner's */}
           {admin && shownEnv.hasDatabase && (
             <BackupsPanel

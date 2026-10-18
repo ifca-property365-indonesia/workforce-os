@@ -77,7 +77,7 @@ export LC_ALL=C
 cd /
 
 # keep in step with WFOS_HELPER_VERSION in packages/shared
-HELPER_VERSION=4
+HELPER_VERSION=5
 # same list as RESERVED_APP_SLUGS in packages/shared (refused as instance names too)
 RESERVED_SLUGS=" www api app apps admin mail preview static assets cdn status "
 RUN_GROUP=wfos-app-run
@@ -390,7 +390,8 @@ check_timeout() {
   local t="${1:-}"
   is_uint "$t" && ((t >= 10 && t <= 3600)) || usage "invalid timeout ${t@Q} s (allowed 10..3600)"
 }
-check_step() { [[ "${1:-}" == install || "${1:-}" == build || "${1:-}" == migrate ]] || usage "invalid step ${1@Q} (install, build or migrate)"; }
+# test-users (v5): the app's testUsers command on a preview release, with the database like migrate
+check_step() { [[ "${1:-}" == install || "${1:-}" == build || "${1:-}" == migrate || "${1:-}" == test-users ]] || usage "invalid step ${1@Q} (install, build, migrate or test-users)"; }
 BACKUP_RE='^[0-9A-Za-z_-]{1,64}$'
 check_backup_name() { [[ "${1:-}" =~ $BACKUP_RE ]] || usage "invalid backup name ${1@Q} (1 to 64 of 0-9, A-Z, a-z, _, -)"; }
 # --keep-kind <prefix> <n>: the backup's own name starts with the prefix; 1..KEEP_KIND_MAX dumps of it are kept
@@ -988,7 +989,7 @@ cmd_build_run() {
   dir="$(app_dir "$slug")"
   rel="$dir/releases/$sha"
   unit="$(build_unit "$slug")"
-  [[ "$step" != migrate ]] || db=1
+  [[ "$step" != migrate && "$step" != test-users ]] || db=1
   check_app_dirs "$slug"
   safe_dir "$dir/data"
   safe_dir "$dir/cache"

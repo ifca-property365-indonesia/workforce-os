@@ -501,5 +501,38 @@
     },
     "others": "After one of these is merged, the others usually need the employee to bring them up to date first (they were built on an older {base}).",
     "by": "by {name}"
+  },
+  "testUsers": {
+    "title": "Test accounts",
+    "description": "One account per role on this preview, made by the app's testUsers command (wfos-app.json) after each preview release, or added here. The browser tester signs in with them.",
+    "lastRun": "Last updated {when}",
+    "empty": "No test accounts yet. Add a testUsers command to wfos-app.json (it gets the shared password in $WFOS_TEST_PASSWORD and prints the accounts as JSON), or add one here.",
+    "viewAll": "sees everything",
+    "twoFactor": "2FA",
+    "source": {
+      "auto": "from the app",
+      "manual": "added by hand"
+    },
+    "password": "Password",
+    "code": "2FA code",
+    "codeValid": "valid {seconds} s",
+    "reveal": "Show password",
+    "hide": "Hide",
+    "remove": "Remove",
+    "removeConfirm": "Remove the test account {label}?",
+    "removeAutoConfirm": "Remove {label}? The app makes it again on its next preview release while its testUsers command still does.",
+    "add": "Add a test account",
+    "added": "Test account saved",
+    "save": "Save",
+    "fields": {
+      "role": "Role key",
+      "label": "Name",
+      "username": "Username",
+      "loginPath": "Sign-in page",
+      "password": "Password",
+      "passwordShared": "Empty: the preview's shared test password.",
+      "passwordNeeded": "This preview has no shared test password yet: give this account its own."
+    },
+    "audited": "Every password shown is recorded in the audit log."
   }
 }

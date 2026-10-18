@@ -61,6 +61,7 @@ import { GRACE_MS, queueGraceStop } from "./slots";
 import { appMsg } from "./messages";
 import { outsideWindowMessage } from "./window";
 import { afterReleaseSettled } from "../runner/approvals";
+import { applyTestUsersOutput, recordTestUsersFailure, TEST_USERS_HELPER_VERSION, TEST_USERS_TIMEOUT_SEC } from "./test-users";
 
 /** git archive of a release, at most */
 const MAX_ARCHIVE_BYTES = 200 * 1024 * 1024;
@@ -532,7 +533,46 @@ async function buildAndActivate(c: Ctx): Promise<void> {
       await buildRun(c, "migrate", MIGRATE_TIMEOUT_SEC, buildMemory(c.server, MIGRATE_MEMORY_MB), cmd);
     });
   }
+  if (m.testUsers) await testUsers(c, m.testUsers);
   await step(c, "activate", () => activate(c));
+}
+
+const withoutJsonLines = (t: string) =>
+  t
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("{"))
+    .join(" ")
+    .trim();
+
+/**
+ * C10: the preview's test accounts (buildAndActivate runs for previews only), after the migration and before the
+ * release is activated (the helper never builds in a running release). Never a reason to fail the release: a failure
+ * is a warning in the log and on the app. Its output (TOTP keys) is not written to the log.
+ */
+async function testUsers(c: Ctx, cmd: string): Promise<void> {
+  if ((c.server.info?.helperVersion ?? 0) < TEST_USERS_HELPER_VERSION) {
+    c.log.line(`warning: test accounts skipped: ${c.server.name} runs wfos-app-helper ${c.server.info?.helperVersion ?? "?"}, version ${TEST_USERS_HELPER_VERSION} is needed (re-run prepare.sh)`);
+    await recordTestUsersFailure(c.env.id, `the server's helper is older than version ${TEST_USERS_HELPER_VERSION}`);
+    return;
+  }
+  c.log.line(`$ ${cmd}   (test accounts; output not logged)`);
+  const fail = async (why: string) => {
+    const safe = c.redactor.apply(why).slice(-300);
+    c.log.line(`warning: test accounts not updated: ${safe}`);
+    await recordTestUsersFailure(c.env.id, safe).catch(() => {});
+  };
+  try {
+    // helperCall, not run(): the output must not reach the log, and an error message must not carry its JSON line
+    const r = await helperCall(c.target, "build-run", [c.env.instanceName, c.sha, "test-users", TEST_USERS_TIMEOUT_SEC, buildMemory(c.server, MIGRATE_MEMORY_MB)], {
+      stdin: `${cmd}\n`,
+      timeoutMs: (TEST_USERS_TIMEOUT_SEC + 120) * 1000,
+      maxOutputBytes: 64_000,
+    });
+    if (r.code !== 0) return await fail(`exit ${r.code ?? "?"}: ${withoutJsonLines(`${r.stdout}\n${r.stderr}`)}`);
+    c.log.line(await applyTestUsersOutput(c.env, r.stdout));
+  } catch (e) {
+    await fail(errorMessage(e));
+  }
 }
 
 async function healthStep(c: Ctx, m: AppManifest, unit: SlotUnit | null = null): Promise<void> {

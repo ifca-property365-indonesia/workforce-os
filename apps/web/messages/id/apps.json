@@ -501,5 +501,38 @@
     },
     "others": "Setelah salah satu digabung, yang lain biasanya perlu disesuaikan dulu oleh karyawannya (dibuat dari {base} yang lebih lama).",
     "by": "oleh {name}"
+  },
+  "testUsers": {
+    "title": "Akun uji",
+    "description": "Satu akun per peran di preview ini, dibuat oleh perintah testUsers aplikasi (wfos-app.json) setiap rilis preview, atau ditambahkan di sini. Penguji browser masuk dengan akun-akun ini.",
+    "lastRun": "Terakhir diperbarui {when}",
+    "empty": "Belum ada akun uji. Tambahkan perintah testUsers di wfos-app.json (sandi bersama ada di $WFOS_TEST_PASSWORD, akun dicetak sebagai JSON), atau tambahkan di sini.",
+    "viewAll": "melihat semua",
+    "twoFactor": "2FA",
+    "source": {
+      "auto": "dari aplikasi",
+      "manual": "ditambahkan manual"
+    },
+    "password": "Sandi",
+    "code": "Kode 2FA",
+    "codeValid": "berlaku {seconds} dtk",
+    "reveal": "Tampilkan sandi",
+    "hide": "Sembunyikan",
+    "remove": "Hapus",
+    "removeConfirm": "Hapus akun uji {label}?",
+    "removeAutoConfirm": "Hapus {label}? Aplikasi akan membuatnya lagi pada rilis preview berikutnya selama perintah testUsers-nya masih membuatnya.",
+    "add": "Tambah akun uji",
+    "added": "Akun uji disimpan",
+    "save": "Simpan",
+    "fields": {
+      "role": "Kunci peran",
+      "label": "Nama",
+      "username": "Nama pengguna",
+      "loginPath": "Halaman masuk",
+      "password": "Sandi",
+      "passwordShared": "Kosongkan: memakai sandi uji bersama preview ini.",
+      "passwordNeeded": "Preview ini belum punya sandi uji bersama: beri akun ini sandinya sendiri."
+    },
+    "audited": "Setiap sandi yang ditampilkan tercatat di audit log."
   }
 }
