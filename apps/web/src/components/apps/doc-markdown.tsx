@@ -28,7 +28,7 @@ function inline(text: string, shot?: (n: number) => string | null): ReactNode[] 
       out.push(
         src ? (
           <figure key={k++} className="my-2">
-            {/* eslint-disable-next-line @next/next/no-img-element -- an authenticated API image, not a static asset */}
+            {/* an authenticated API image (the test's screenshot), not a static asset */}
             <img src={src} alt={m[2] ?? ""} className="max-h-80 rounded-lg border" loading="lazy" />
             {m[2] && <figcaption className="mt-1 text-xs text-muted-foreground">{m[2]}</figcaption>}
           </figure>
