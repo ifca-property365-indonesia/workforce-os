@@ -217,5 +217,6 @@
   "app_document_not_found": "Document not found.",
   "app_document_not_draft": "Only a draft can be approved or rejected.",
   "writer_not_found": "Choose an employee of this workspace.",
-  "prd_not_found": "PRD not found."
+  "prd_not_found": "PRD not found.",
+  "reviewer_not_found": "Choose another employee of this workspace as the reviewer."
 }

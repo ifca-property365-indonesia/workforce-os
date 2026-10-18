@@ -44,3 +44,4 @@ export const db: DB = new Proxy({} as DB, {
     return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(real) : v;
   },
 });
+export { employeeMetrics, metricScore, ACTIVE_GAP_MIN, MIN_TASKS_FOR_SCORE } from "./hr-metrics";

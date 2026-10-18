@@ -23,7 +23,8 @@
       "instructions": "Instruksi & replay",
       "tools": "Tool & otonomi",
       "memory": "Memori",
-      "activity": "Aktivitas"
+      "activity": "Aktivitas",
+      "hr": "HR"
     },
     "spentToday": "Terpakai hari ini",
     "budgetOf": "/ {budget} kredit",
@@ -476,5 +477,66 @@
   "division": {
     "none": "Belum ada divisi",
     "badge": "{division}, {role}: buka halaman Divisi"
+  },
+  "hr": {
+    "metricsTitle": "Kinerja terukur",
+    "period": "Periode",
+    "periodDays": "{days} hari terakhir",
+    "start": "Review HR",
+    "metric": {
+      "success": "Keberhasilan",
+      "tasks": "Tugas",
+      "tasksValue": "{done} selesai · {failed} gagal",
+      "incidents": "Insiden",
+      "approvals": "Persetujuan",
+      "approvalsValue": "{rejected} ditolak · {edited} diedit dari {total}",
+      "changes": "Minta perubahan",
+      "credits": "Biaya",
+      "active": "Aktif",
+      "activeValue": "{hours} j {minutes} mnt",
+      "score": "Skor platform",
+      "noScore": "pekerjaan terlalu sedikit"
+    },
+    "costliest": "Termahal:",
+    "exactNote": "Dihitung dari catatan platform sendiri (setiap langkah, persetujuan, dan insiden): angka pasti, bukan perkiraan.",
+    "reviewsTitle": "Review HR",
+    "empty": "Belum ada review HR.",
+    "scoreLine": "Skor {score} / 5 (platform: {metric})",
+    "status": {
+      "running": "Sedang direview…",
+      "error": "Selesai tanpa review",
+      "done": "Selesai"
+    },
+    "openTask": "Buka tugas",
+    "strengths": "Kekuatan",
+    "issues": "Masalah",
+    "recType": {
+      "model": "model",
+      "tools": "tools",
+      "skill": "skill",
+      "workload": "beban kerja",
+      "other": "lainnya"
+    },
+    "proposal": {
+      "replaying": "Instruksi baru diusulkan: tugas terakhir sedang diulang…",
+      "judging": "Instruksi baru: sedang dinilai…",
+      "applied": "Instruksi baru diterapkan otomatis: replay lolos (tidak ada tugas yang memburuk, minimal satu membaik).",
+      "waiting": "Instruksi baru tidak lolos replay: Anda yang memutuskan.",
+      "promoted": "Instruksi baru diterapkan oleh seseorang.",
+      "discarded": "Instruksi baru dibuang.",
+      "failed": "Replay gagal: instruksi tidak diubah.",
+      "promote": "Tetap terapkan",
+      "discard": "Buang"
+    },
+    "verdict": {
+      "better": "Lebih baik",
+      "same": "Sama",
+      "worse": "Lebih buruk"
+    },
+    "started": "Review HR dimulai: reviewer sedang mengerjakannya",
+    "startTitle": "Review HR",
+    "startExplain": "Angka {days} hari terakhir diukur sekarang; karyawan HR menilainya. Instruksi baru yang diusulkannya hanya berlaku setelah lolos replay.",
+    "reviewer": "Reviewer",
+    "startNow": "Mulai review"
   }
 }

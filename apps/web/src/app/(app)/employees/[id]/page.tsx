@@ -1,8 +1,9 @@
 "use client";
 
+import { HrPanel } from "@/components/employees/hr-panel";
 import { useStepUp } from "@/components/account/step-up";
 
-import Link from "@/lib/nav";
+import Link, { useSearchParams } from "@/lib/nav";
 import { use, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -361,6 +362,8 @@ export default function EmployeePage({ params }: P) {
   const ts = useTranslations("status");
   const f = useFormat();
   const { id } = use(params);
+  // ?tab=hr: a link from Needs a decision opens the HR tab
+  const tabParam = useSearchParams().get("tab");
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["employee", id], queryFn: () => api.get<{ employee: Employee }>(`/api/employees/${id}`).then((r) => r.employee) });
   const { data: tasks } = useQuery({ queryKey: ["tasks", "employee", id], queryFn: () => api.get<{ tasks: TaskRow[] }>(`/api/tasks?employeeId=${id}&limit=20`).then((r) => r.tasks) });
@@ -415,13 +418,14 @@ export default function EmployeePage({ params }: P) {
           {t("detail.pausedBudget")}
         </div>
       )}
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue={tabParam === "hr" ? "hr" : "overview"}>
         <TabsList>
           <TabsTrigger value="overview">{t("detail.tabs.overview")}</TabsTrigger>
           <TabsTrigger value="instructions">{t("detail.tabs.instructions")}</TabsTrigger>
           <TabsTrigger value="tools">{t("detail.tabs.tools")}</TabsTrigger>
           <TabsTrigger value="memory">{t("detail.tabs.memory")}</TabsTrigger>
           <TabsTrigger value="activity">{t("detail.tabs.activity")}</TabsTrigger>
+          {me && hasRole(me.role, "MEMBER") && <TabsTrigger value="hr">{t("detail.tabs.hr")}</TabsTrigger>}
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-4">
           <OutputLanguageCard e={e} />
@@ -482,6 +486,11 @@ export default function EmployeePage({ params }: P) {
         <TabsContent value="memory" className="mt-4">
           <MemoryPanel employeeId={e.id} />
         </TabsContent>
+        {me && hasRole(me.role, "MEMBER") && (
+          <TabsContent value="hr" className="mt-4">
+            <HrPanel employeeId={e.id} admin={hasRole(me.role, "ADMIN")} />
+          </TabsContent>
+        )}
         <TabsContent value="activity" className="mt-4">
           <ActivityTab employeeId={e.id} />
         </TabsContent>

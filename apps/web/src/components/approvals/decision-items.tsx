@@ -4,7 +4,7 @@ import Link from "@/lib/nav";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, FileText, FlaskConical, GitMerge, PauseCircle, PlayCircle, type LucideIcon } from "lucide-react";
+import { AlertTriangle, FileText, FlaskConical, GitMerge, PauseCircle, PlayCircle, UserCog, type LucideIcon } from "lucide-react";
 import { hasRole, type IncidentKind, type IncidentStatus, type TaskStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -21,16 +21,17 @@ export type DecisionItem =
   | { kind: "paused_employee"; id: string; at: string; name: string; role: string }
   | { kind: "merge"; id: string; at: string; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
   | { kind: "test_findings"; id: string; at: string; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null }
-  | { kind: "doc_review"; id: string; at: string; app: { id: string; name: string }; docKind: "prd" | "flow" | "test_guide" | "deck"; version: number; title: string; note: string; author: string | null };
+  | { kind: "doc_review"; id: string; at: string; app: { id: string; name: string }; docKind: "prd" | "flow" | "test_guide" | "deck"; version: number; title: string; note: string; author: string | null }
+  | { kind: "hr_proposal"; id: string; at: string; employee: { id: string; name: string }; verdicts: string[]; judgeError: string | null };
 
 export interface InboxResponse {
   items: DecisionItem[];
   approvals: number;
   approvalsWaiting: number;
-  counts: { approval: number; incident: number; held_task: number; paused_employee: number; merge: number; test_findings: number; doc_review: number; total: number };
+  counts: { approval: number; incident: number; held_task: number; paused_employee: number; merge: number; test_findings: number; doc_review: number; hr_proposal: number; total: number };
 }
 
-const KIND_ICON: Record<DecisionItem["kind"], LucideIcon> = { incident: AlertTriangle, held_task: PlayCircle, paused_employee: PauseCircle, merge: GitMerge, test_findings: FlaskConical, doc_review: FileText };
+const KIND_ICON: Record<DecisionItem["kind"], LucideIcon> = { incident: AlertTriangle, held_task: PlayCircle, paused_employee: PauseCircle, merge: GitMerge, test_findings: FlaskConical, doc_review: FileText, hr_proposal: UserCog };
 const KIND_TONE: Record<DecisionItem["kind"], string> = {
   incident: "border-destructive/40",
   held_task: "border-[var(--sign-biru)]/40",
@@ -38,6 +39,7 @@ const KIND_TONE: Record<DecisionItem["kind"], string> = {
   merge: "border-warning/50",
   test_findings: "border-destructive/40",
   doc_review: "border-[var(--sign-biru)]/40",
+  hr_proposal: "border-[var(--sign-ungu)]/40",
 };
 const ICON_TONE: Record<DecisionItem["kind"], string> = {
   incident: "text-destructive",
@@ -46,6 +48,7 @@ const ICON_TONE: Record<DecisionItem["kind"], string> = {
   merge: "text-warning",
   test_findings: "text-destructive",
   doc_review: "text-[var(--sign-biru)]",
+  hr_proposal: "text-[var(--sign-ungu)]",
 };
 
 /** One thing that waits for a person besides an approval: what it is, who it concerns, and what can be done now. */
@@ -162,6 +165,16 @@ export function DecisionItemCard({ item }: { item: DecisionItem }) {
             </Button>
           )}
         </>
+      );
+      break;
+    case "hr_proposal":
+      label = t("kind.hrProposal");
+      title = item.employee.name;
+      body = item.judgeError ? t("hrJudgeError") : t("hrVerdicts", { better: item.verdicts.filter((v) => v === "better").length, same: item.verdicts.filter((v) => v === "same").length, worse: item.verdicts.filter((v) => v === "worse").length });
+      actions = (
+        <Button asChild size="sm" variant="outline">
+          <Link href={`/employees/${item.employee.id}?tab=hr`}>{t("actions.reviewHr")}</Link>
+        </Button>
       );
       break;
     case "doc_review":

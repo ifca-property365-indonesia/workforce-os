@@ -187,7 +187,8 @@
       "mergeFailed": "Merge failed",
       "testFindings": "{count, plural, one {App test: # finding} other {App test: # findings}}",
       "testFindingsHigh": "App test: {count} findings, {high} high",
-      "docReview": "{doc} v{version} to review"
+      "docReview": "{doc} v{version} to review",
+      "hrProposal": "HR: new instructions to decide"
     },
     "incidentStatus": {
       "escalated": "asks you",
@@ -209,7 +210,8 @@
       "reviewMerge": "Review & merge",
       "openTest": "See the findings",
       "handled": "Mark as handled",
-      "reviewDoc": "Review"
+      "reviewDoc": "Review",
+      "reviewHr": "Review"
     },
     "done": {
       "start": "Task started",
@@ -223,6 +225,8 @@
       "flow": "Business flow",
       "test_guide": "Test guide",
       "deck": "Presentation"
-    }
+    },
+    "hrVerdicts": "Replay: {better} better, {same} same, {worse} worse",
+    "hrJudgeError": "The judge could not decide: a person decides."
   }
 }

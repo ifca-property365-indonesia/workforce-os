@@ -191,9 +191,10 @@ export interface ToolMeta {
   /**
    * task: granted to every task run without an explicit permission (an explicit disabled entry still wins);
    * app_test: granted only to the run of an app test task (C3), never by a permission;
-   * app_doc: granted only to the run of a task asked to write an app document (C9)
+   * app_doc: granted only to the run of a task asked to write an app document (C9);
+   * hr_review: granted only to the run of an HR review task (C2)
    */
-  implicit?: "task" | "app_test" | "app_doc";
+  implicit?: "task" | "app_test" | "app_doc" | "hr_review";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -231,6 +232,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "browser_act", label: "Use the app (browser)", description: "App test: click, fill in, choose and press on the open page, like a user", class: "reversible", credits: 0.2, category: "code", implicit: "app_test" },
   { name: "browser_look", label: "Look at the page (browser)", description: "App test: what the open page shows (text, fields, buttons, errors) and a screenshot", class: "reversible", credits: 0.1, category: "code", implicit: "app_test" },
   { name: "save_app_document", label: "Save the app document", description: "App documents: save a new version (a draft a person approves) of the PRD, business flow, test guide or presentation you were asked for", class: "reversible", credits: 0, category: "drafting", implicit: "app_doc" },
+  { name: "submit_hr_review", label: "Submit the HR review", description: "HR review: the assessment of one employee from its measured work, recommendations, and optionally new instructions (applied only if a replay passes)", class: "reversible", credits: 0, category: "team", implicit: "hr_review" },
   { name: "report_app_test", label: "Report the app test", description: "App test: the result (passed, or findings with steps to reproduce)", class: "reversible", credits: 0, category: "code", implicit: "app_test" },
   { name: "request_preview", label: "Publish preview", description: "Workspace mode: publish the branch you pushed (git_push) as a preview of an app at its URL (the platform deploys after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "post_webhook", label: "Publish to webhook", description: "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)", class: "irreversible", credits: 0.5, category: "comms" },

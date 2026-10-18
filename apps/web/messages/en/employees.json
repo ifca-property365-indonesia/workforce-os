@@ -23,7 +23,8 @@
       "instructions": "Instructions & replay",
       "tools": "Tools & autonomy",
       "memory": "Memory",
-      "activity": "Activity"
+      "activity": "Activity",
+      "hr": "HR"
     },
     "spentToday": "Spent today",
     "budgetOf": "/ {budget} cr",
@@ -476,5 +477,66 @@
   "division": {
     "none": "No division",
     "badge": "{division}, {role}: open Divisions"
+  },
+  "hr": {
+    "metricsTitle": "Measured work",
+    "period": "Period",
+    "periodDays": "Last {days} days",
+    "start": "HR review",
+    "metric": {
+      "success": "Success",
+      "tasks": "Tasks",
+      "tasksValue": "{done} done · {failed} failed",
+      "incidents": "Incidents",
+      "approvals": "Approvals",
+      "approvalsValue": "{rejected} rejected · {edited} edited of {total}",
+      "changes": "Changes requested",
+      "credits": "Cost",
+      "active": "Active",
+      "activeValue": "{hours} h {minutes} min",
+      "score": "Platform score",
+      "noScore": "too little work"
+    },
+    "costliest": "Costliest:",
+    "exactNote": "Counted from the platform's own records (every step, approval and incident): exact, not estimated.",
+    "reviewsTitle": "HR reviews",
+    "empty": "No HR review yet.",
+    "scoreLine": "Score {score} / 5 (platform: {metric})",
+    "status": {
+      "running": "Reviewing…",
+      "error": "Ended without a review",
+      "done": "Done"
+    },
+    "openTask": "Open the task",
+    "strengths": "Strengths",
+    "issues": "Issues",
+    "recType": {
+      "model": "model",
+      "tools": "tools",
+      "skill": "skill",
+      "workload": "workload",
+      "other": "other"
+    },
+    "proposal": {
+      "replaying": "New instructions proposed: replaying recent tasks…",
+      "judging": "New instructions: being judged…",
+      "applied": "New instructions applied on their own: the replay passed (no task worse, at least one better).",
+      "waiting": "New instructions did not pass the replay: you decide.",
+      "promoted": "New instructions applied by a person.",
+      "discarded": "New instructions discarded.",
+      "failed": "The replay failed: the instructions were not changed.",
+      "promote": "Apply anyway",
+      "discard": "Discard"
+    },
+    "verdict": {
+      "better": "Better",
+      "same": "Same",
+      "worse": "Worse"
+    },
+    "started": "HR review started: the reviewer is on it",
+    "startTitle": "HR review",
+    "startExplain": "The numbers of the last {days} days are measured now; an HR employee assesses them. New instructions it proposes apply only after a passed replay.",
+    "reviewer": "Reviewer",
+    "startNow": "Start the review"
   }
 }

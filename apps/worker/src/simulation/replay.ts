@@ -12,6 +12,7 @@ import { grantedToolNames, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, memoryNotesBlock, recallMemories, taintFromStoredInput, workspaceDirectory } from "../runner/prompt";
 import { loadAssignedSkills } from "../runner/skills";
 import { runAgent } from "../runner/executor";
+import { judgeReplay } from "../hr/judge";
 
 /**
  * Replay: re-run the employee's last N completed tasks with the proposed instructions, in a sandbox
@@ -92,6 +93,8 @@ export async function runReplay(replayId: string): Promise<void> {
     }
     await db.update(replays).set({ status: "done", results, costCredits: total }).where(eq(replays.id, rp.id));
     await publish(ws.id, { type: "replay.updated", replayId: rp.id, status: "done" });
+    // C2: a replay an HR review proposed is judged; it applies on its own only when it passes
+    if (rp.hrReviewId) await judgeReplay(rp.id).catch((e: unknown) => log.warn({ err: e, replayId }, "replay judge failed"));
   } catch (e) {
     log.warn({ err: e, replayId }, "replay failed");
     await db.update(replays).set({ status: "failed", error: (e as Error).message, results, costCredits: total }).where(eq(replays.id, rp.id));

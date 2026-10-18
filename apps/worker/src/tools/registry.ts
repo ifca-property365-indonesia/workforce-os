@@ -81,6 +81,7 @@ import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadT
 import { browserAct, browserLook, browserOpen, viewText, type ActStep } from "../qa/browser";
 import { recordAppTestReport, type AppTestContext } from "../qa/app-test";
 import { DOC_KIND_NAME, saveAppDocument, type AppDocContext } from "../docs/app-docs";
+import { hrReviewSubmitSchema, submitHrReview, type HrReviewContext } from "../hr/review";
 import { APP_DOCUMENT_MAX, appTestReportSchema } from "@wfos/shared";
 
 export const WFOS_SERVER = "wfos";
@@ -192,6 +193,8 @@ export interface RunContext {
   appTest?: AppTestContext;
   /** C9: the task writes one of an app's documents: save_app_document for that app and kind (implicitly granted) */
   appDoc?: AppDocContext;
+  /** C2: the task is an HR review of one employee: submit_hr_review (implicitly granted) */
+  hrReview?: HrReviewContext;
   /**
    * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the
    * system prompt (untrusted ones by slug only); in Workspace mode the trusted ones are synced as SKILL.md files by
@@ -235,6 +238,7 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "app_test" && !perms.some((p) => p.tool === t.name && p.enabled)) perms.push({ tool: t.name, enabled: true });
   }
   if (ctx.appDoc && !perms.some((p) => p.tool === "save_app_document" && p.enabled)) perms.push({ tool: "save_app_document", enabled: true });
+  if (ctx.hrReview && !perms.some((p) => p.tool === "submit_hr_review" && p.enabled)) perms.push({ tool: "submit_hr_review", enabled: true });
   // tools every task run has (report_progress), unless an explicit entry says otherwise
   if (ctx.taskId) {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "task" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
@@ -1021,6 +1025,32 @@ export function buildTools(ctx: RunContext) {
       }),
     ),
   );
+
+  // C2: an HR review task submits its assessment of exactly its employee
+  const review = ctx.hrReview;
+  if (review) {
+    add(
+      "submit_hr_review",
+      tool(
+        "submit_hr_review",
+        `Submit the HR review of ${review.employee.name}: score 1-5, summary, strengths, issues, recommendations (for a person), and optionally newInstructions (full text of persona / instructions / businessContext you change, with the reason; replayed and judged before it applies).`,
+        {
+          score: z.number().int().min(1).max(5),
+          summary: z.string().min(20).max(3000),
+          strengths: z.array(z.string()).max(8).optional(),
+          issues: z.array(z.string()).max(8).optional(),
+          recommendations: z.array(z.object({ type: z.enum(["model", "tools", "skill", "workload", "other"]), text: z.string() })).max(8).optional(),
+          newInstructions: z.object({ persona: z.string().optional(), instructions: z.string().optional(), businessContext: z.string().optional(), reason: z.string() }).optional(),
+        },
+        wrap(ctx, "submit_hr_review", async (input: Record<string, unknown>) => {
+          const parsed = hrReviewSubmitSchema.safeParse(input);
+          if (!parsed.success) return err(`Invalid review: ${parsed.error.issues.map((i) => `${i.path.join(".") || "review"}: ${i.message}`).join("; ")}`);
+          const r = await submitHrReview(review, parsed.data, ctx.workspaceId);
+          return ok(r.replayId ? "Review saved. The proposed instructions are being replayed on recent tasks; they apply only if the judge passes them, else a person decides." : "Review saved.");
+        }),
+      ),
+    );
+  }
 
   // C9: an app document task saves new draft versions of exactly its document
   const doc = ctx.appDoc;

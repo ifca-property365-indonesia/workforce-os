@@ -1,5 +1,6 @@
 import { and, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { settleAppTest } from "../qa/app-test";
+import { settleHrReview } from "../hr/review";
 import { db, tasks } from "@wfos/db";
 import { assertTransition, TASK_STATUSES, canTransition, type RoutineRunStatus, type RunJob, type TaskStatus } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
@@ -44,6 +45,7 @@ export async function afterTerminal(task: Task, status: TerminalStatus, opts: { 
   await bestEffort("incidents resolve", task.id, () => resolveIncidentsOnTerminal(task, status));
   // C3: an app test whose task ended without a report is an error (never left running)
   await bestEffort("app test settle", task.id, () => settleAppTest(task.id, status));
+  await bestEffort("hr review settle", task.id, () => settleHrReview(task.id));
   await bestEffort("publish", task.id, () => publish(task.workspaceId, { type: "task.updated", taskId: task.id, status, employeeId: task.assigneeId, title: task.title }));
   if (status === "DONE") await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
   if (status === "FAILED" && opts.notifyFailure) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.error ?? ""));

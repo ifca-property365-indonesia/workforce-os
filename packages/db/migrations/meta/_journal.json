@@ -260,6 +260,13 @@
       "when": 1792392000000,
       "tag": "0036_app_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792478400000,
+      "tag": "0037_hr_reviews",
+      "breakpoints": true
     }
   ]
 }

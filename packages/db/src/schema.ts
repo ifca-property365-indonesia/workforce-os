@@ -634,7 +634,58 @@ export const replays = pgTable("replays", {
   error: text("error"),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),
+  /** C2: the HR review that proposed these instructions (then a judge decides whether they apply on their own) */
+  hrReviewId: uuid("hr_review_id").references((): AnyPgColumn => hrReviews.id, { onDelete: "set null" }),
+  judge: jsonb("judge").$type<ReplayJudge>(),
+  autoApplied: boolean("auto_applied").notNull().default(false),
 });
+
+/** C2: the judge of a replay proposed by an HR review: per replayed task, is the new output better, the same or worse */
+export interface ReplayJudge {
+  passed: boolean;
+  model: string;
+  verdicts: { taskId: string; verdict: "better" | "same" | "worse"; reason: string }[];
+  /** set when the judge could not decide (no credential, invalid answers): then a person decides */
+  error?: string;
+}
+
+/** C2: the platform's exact metrics of one employee over a period (packages/db/src/hr-metrics.ts) */
+export interface EmployeeMetrics {
+  days: number;
+  tasks: { done: number; failed: number; cancelled: number; total: number };
+  successRate: number | null;
+  incidents: { total: number; byKind: Record<string, number> };
+  approvals: { requested: number; executed: number; rejected: number; edited: number; expired: number };
+  changesRequested: number;
+  credits: number;
+  activeMinutes: number;
+  costliestTasks: { id: string; title: string; credits: number }[];
+}
+
+/** C2: an HR review of one employee: exact metrics, the HR employee's assessment, maybe an instruction proposal. */
+export const hrReviews = pgTable(
+  "hr_reviews",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    reviewerTaskId: uuid("reviewer_task_id").references(() => tasks.id, { onDelete: "set null" }),
+    periodDays: integer("period_days").notNull().default(30),
+    metrics: jsonb("metrics").$type<EmployeeMetrics>().notNull(),
+    metricScore: integer("metric_score"),
+    score: integer("score"),
+    summary: text("summary"),
+    strengths: jsonb("strengths").$type<string[]>().notNull().default([]),
+    issues: jsonb("issues").$type<string[]>().notNull().default([]),
+    recommendations: jsonb("recommendations").$type<{ type: "model" | "tools" | "skill" | "workload" | "other"; text: string }[]>().notNull().default([]),
+    status: text("status").$type<"running" | "done" | "error">().notNull().default("running"),
+    replayId: uuid("replay_id").references((): AnyPgColumn => replays.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("hr_reviews_employee").on(t.employeeId, t.createdAt), uniqueIndex("hr_reviews_task").on(t.reviewerTaskId)],
+);
 
 /** Immutable audit log: UPDATE/DELETE are blocked by a trigger (see migration 0001_audit_immutable). */
 export const auditLog = pgTable(

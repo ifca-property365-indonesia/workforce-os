@@ -1,7 +1,7 @@
 import "server-only";
-import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { agentWorkOnRepository, appDocuments, apps, appTests, approvals, db, employees, incidents, repositories, tasks, teams, type AppDocumentKind } from "@wfos/db";
+import { agentWorkOnRepository, appDocuments, apps, appTests, approvals, db, employees, hrReviews, incidents, replays, repositories, tasks, teams, type AppDocumentKind } from "@wfos/db";
 import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentStatus, type TaskStatus } from "@wfos/shared";
 
 /**
@@ -13,6 +13,7 @@ import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentSta
  * - finished agent work that is not in its repository's default branch yet (or whose merge failed)
  * - app tests (C3) with findings nobody has dealt with yet
  * - app document drafts (C9) waiting to be approved or rejected
+ * - instruction changes an HR review proposed whose replay did not pass the judge (C2): a person promotes or discards
  */
 
 /** incidents that wait for a person ("handling": a lead is on it; "resolved": done) */
@@ -27,7 +28,8 @@ export type InboxItem =
   | { kind: "paused_employee"; id: string; at: Date; name: string; role: string }
   | { kind: "merge"; id: string; at: Date; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
   | { kind: "test_findings"; id: string; at: Date; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null }
-  | { kind: "doc_review"; id: string; at: Date; app: { id: string; name: string }; docKind: AppDocumentKind; version: number; title: string; note: string; author: string | null };
+  | { kind: "doc_review"; id: string; at: Date; app: { id: string; name: string }; docKind: AppDocumentKind; version: number; title: string; note: string; author: string | null }
+  | { kind: "hr_proposal"; id: string; at: Date; employee: { id: string; name: string }; verdicts: string[]; judgeError: string | null };
 
 export type InboxKind = InboxItem["kind"];
 export interface Inbox {
@@ -42,7 +44,7 @@ export interface Inbox {
 const ref = (id: string | null | undefined, name: string | null | undefined): Ref => (id && name ? { id, name } : null);
 
 export async function inboxFor(workspaceId: string): Promise<Inbox> {
-  const [approvalRows, incidentItems, held, paused, merges, tests, drafts] = await Promise.all([
+  const [approvalRows, incidentItems, held, paused, merges, tests, drafts, proposals] = await Promise.all([
     pendingApprovals(workspaceId),
     personIncidents(workspaceId),
     heldTasks(workspaceId),
@@ -50,10 +52,11 @@ export async function inboxFor(workspaceId: string): Promise<Inbox> {
     unmergedWork(workspaceId),
     testFindings(workspaceId),
     documentDrafts(workspaceId),
+    hrProposals(workspaceId),
   ]);
-  const items = [...incidentItems, ...held, ...paused, ...merges, ...tests, ...drafts].sort((a, b) => b.at.getTime() - a.at.getTime());
-  const counts = { approval: approvalRows.decidable, incident: incidentItems.length, held_task: held.length, paused_employee: paused.length, merge: merges.length, test_findings: tests.length, doc_review: drafts.length, total: 0 };
-  counts.total = counts.approval + counts.incident + counts.held_task + counts.paused_employee + counts.merge + counts.test_findings + counts.doc_review;
+  const items = [...incidentItems, ...held, ...paused, ...merges, ...tests, ...drafts, ...proposals].sort((a, b) => b.at.getTime() - a.at.getTime());
+  const counts = { approval: approvalRows.decidable, incident: incidentItems.length, held_task: held.length, paused_employee: paused.length, merge: merges.length, test_findings: tests.length, doc_review: drafts.length, hr_proposal: proposals.length, total: 0 };
+  counts.total = counts.approval + counts.incident + counts.held_task + counts.paused_employee + counts.merge + counts.test_findings + counts.doc_review + counts.hr_proposal;
   return { items, approvals: approvalRows.decidable, approvalsWaiting: approvalRows.waiting, counts };
 }
 
@@ -189,4 +192,19 @@ async function documentDrafts(workspaceId: string): Promise<InboxItem[]> {
     note: r.d.note,
     author: r.author,
   }));
+}
+
+async function hrProposals(workspaceId: string): Promise<InboxItem[]> {
+  const rows = await db
+    .select({ id: replays.id, at: replays.createdAt, judge: replays.judge, employeeId: employees.id, employeeName: employees.name })
+    .from(replays)
+    .innerJoin(hrReviews, eq(hrReviews.id, replays.hrReviewId))
+    .innerJoin(employees, and(eq(employees.id, replays.employeeId), eq(employees.workspaceId, workspaceId)))
+    // judged and not passed (a passed one applied on its own; one still running is not a decision yet)
+    .where(and(eq(replays.workspaceId, workspaceId), eq(replays.status, "done"), isNotNull(replays.judge)))
+    .orderBy(desc(replays.createdAt))
+    .limit(PER_KIND);
+  return rows
+    .filter((r) => !r.judge?.passed)
+    .map((r) => ({ kind: "hr_proposal" as const, id: r.id, at: r.at, employee: { id: r.employeeId, name: r.employeeName }, verdicts: (r.judge?.verdicts ?? []).map((v) => v.verdict), judgeError: r.judge?.error ?? null }));
 }

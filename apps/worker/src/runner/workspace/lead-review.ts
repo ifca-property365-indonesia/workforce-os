@@ -128,8 +128,8 @@ export function parseLeadReview(text: string): LeadReviewResult {
   return { decision: "escalate", reason: "The AI review gave no valid answer; a person decides.", source: "invalid" };
 }
 
-/** Default model call: the Agent SDK with one turn and no tools, on the workspace's own credential. */
-const sdkModelCall: LeadReviewModelCall = async ({ workspaceId, model, system, prompt, signal }) => {
+/** Default model call: the Agent SDK with one turn and no tools, on the workspace's own credential (also the replay judge's). */
+export const sdkModelCall: LeadReviewModelCall = async ({ workspaceId, model, system, prompt, signal }) => {
   const credential = await resolveClaudeCredential(workspaceId);
   if (!credential) throw new Error("no Claude credential");
   const home = path.join(env.storageDir, "agent-home", workspaceId);

@@ -29,6 +29,7 @@ import { loadAssignedSkills } from "./skills";
 import { repoRef, unmergedWorkNote } from "./merge-scan";
 import { appTestContext, appTestPrompt } from "../qa/app-test";
 import { appDocContext, appDocPrompt } from "../docs/app-docs";
+import { hrReviewContext, hrReviewPrompt } from "../hr/review";
 import { closeBrowserSession } from "../qa/browser";
 
 type Task = typeof tasks.$inferSelect;
@@ -272,6 +273,8 @@ async function runStarted(
   const appTest = await appTestContext(task.id);
   // C9: a task asked to write an app document gets save_app_document for that app and kind
   const appDoc = await appDocContext(task.id);
+  // C2: an HR review task gets submit_hr_review for its employee
+  const hrReview = await hrReviewContext(task.id);
   const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
   const division = await runDivision(emp, ws, lang, { workspaceMode });
 
@@ -297,6 +300,7 @@ async function runStarted(
     clientId: task.clientId,
     ...(appTest ? { appTest } : {}),
     ...(appDoc ? { appDoc } : {}),
+    ...(hrReview ? { hrReview } : {}),
     ...(workspaceMode
       ? {
           workspace: {
@@ -340,6 +344,7 @@ async function runStarted(
   if (inbox.length) promptParts.push(inboxSection(inbox));
   if (appTest) promptParts.push(appTestPrompt(appTest));
   if (appDoc) promptParts.push(appDocPrompt(appDoc));
+  if (hrReview) promptParts.push(hrReviewPrompt(hrReview));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);

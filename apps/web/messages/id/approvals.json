@@ -187,7 +187,8 @@
       "mergeFailed": "Merge gagal",
       "testFindings": "{count, plural, other {Uji aplikasi: # temuan}}",
       "testFindingsHigh": "Uji aplikasi: {count} temuan, {high} tinggi",
-      "docReview": "{doc} v{version} perlu ditinjau"
+      "docReview": "{doc} v{version} perlu ditinjau",
+      "hrProposal": "HR: instruksi baru perlu diputuskan"
     },
     "incidentStatus": {
       "escalated": "menunggu Anda",
@@ -209,7 +210,8 @@
       "reviewMerge": "Tinjau & merge",
       "openTest": "Lihat temuan",
       "handled": "Tandai sudah ditangani",
-      "reviewDoc": "Tinjau"
+      "reviewDoc": "Tinjau",
+      "reviewHr": "Tinjau"
     },
     "done": {
       "start": "Tugas dimulai",
@@ -223,6 +225,8 @@
       "flow": "Alur bisnis",
       "test_guide": "Panduan uji",
       "deck": "Presentasi"
-    }
+    },
+    "hrVerdicts": "Replay: {better} lebih baik, {same} sama, {worse} lebih buruk",
+    "hrJudgeError": "Penilai tidak bisa memutuskan: seseorang yang memutuskan."
   }
 }

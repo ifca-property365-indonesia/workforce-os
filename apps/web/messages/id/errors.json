@@ -217,5 +217,6 @@
   "app_document_not_found": "Dokumen tidak ditemukan.",
   "app_document_not_draft": "Hanya draf yang bisa disetujui atau ditolak.",
   "writer_not_found": "Pilih karyawan di workspace ini.",
-  "prd_not_found": "PRD tidak ditemukan."
+  "prd_not_found": "PRD tidak ditemukan.",
+  "reviewer_not_found": "Pilih karyawan lain di workspace ini sebagai reviewer."
 }
