@@ -78,6 +78,9 @@ import { MAX_REVISIONS_PER_SUBTASK, revisionRefusal } from "../orchestration/rev
 import { clientRecipientsFor, invoiceNumberRefusal, invoiceRecipients, listInvoices, nextInvoiceNumber, upsertDraftInvoice, workspaceClient } from "../lib/invoices";
 import { formatMoney } from "@wfos/shared/invoice";
 import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadText, SKILL_SLUG_MAX, type AssignedSkill } from "../runner/skills";
+import { browserAct, browserLook, browserOpen, viewText, type ActStep } from "../qa/browser";
+import { recordAppTestReport, type AppTestContext } from "../qa/app-test";
+import { appTestReportSchema } from "@wfos/shared";
 
 export const WFOS_SERVER = "wfos";
 /** skill_propose: proposals accepted per run (each is a human approval) */
@@ -184,6 +187,8 @@ export interface RunContext {
     /** sandbox time this task has left (WORKSPACE_TASK_MAX_HOURS): the run stops as time_limit when it is used up */
     timeLeftMs?: number;
   };
+  /** C3: the task is an app test: the browser tools act on this preview (implicitly granted) */
+  appTest?: AppTestContext;
   /**
    * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the
    * system prompt (untrusted ones by slug only); in Workspace mode the trusted ones are synced as SKILL.md files by
@@ -222,6 +227,10 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
   if (ctx.skills?.length && !perms.some((p) => p.tool === "skill_read")) perms.push({ tool: "skill_read", enabled: true });
   // in a chat anyone can bring a colleague in (the colleague acts with their own tools and autonomy)
   if (ctx.conversationId && !ctx.taskId && !perms.some((p) => p.tool === "ask_teammate")) perms.push({ tool: "ask_teammate", enabled: true });
+  // an app test's run gets the browser tools (C3), whatever its permissions say: nothing else can use them
+  if (ctx.appTest) {
+    for (const t of BUILTIN_TOOLS) if (t.implicit === "app_test" && !perms.some((p) => p.tool === t.name && p.enabled)) perms.push({ tool: t.name, enabled: true });
+  }
   // tools every task run has (report_progress), unless an explicit entry says otherwise
   if (ctx.taskId) {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "task" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
@@ -1008,6 +1017,100 @@ export function buildTools(ctx: RunContext) {
       }),
     ),
   );
+
+  // C3: the browser of an app test (only while ctx.appTest is set: effectivePermissions grants them then)
+  const test = ctx.appTest;
+  if (test) {
+    const actStep = z.union([
+      z.object({ click: z.string().min(1).max(200) }).strict(),
+      z.object({ fill: z.record(z.string().min(1).max(120), z.string().max(2000)) }).strict(),
+      z.object({ select: z.record(z.string().min(1).max(120), z.string().max(200)) }).strict(),
+      z.object({ check: z.string().min(1).max(200) }).strict(),
+      z.object({ press: z.string().min(1).max(40) }).strict(),
+      z.object({ goto: z.string().regex(/^\/[^\s]{0,300}$/) }).strict(),
+      z.object({ wait: z.number().int().min(0).max(5000) }).strict(),
+    ]);
+    // what the page shows is the app's: untrusted data, guarded like a web page
+    const seen = async (label: string, text: string) => ok(await guardToolResult(ctx.guard, `app under test (${label})`, text));
+    add(
+      "browser_open",
+      tool(
+        "browser_open",
+        `App test: open a page of the preview of ${test.appName} (${test.target.origin}) in the browser and see it. path: the page (e.g. / or /orders). role: sign in as that test role first (${test.target.accounts.map((a) => a.role).join(", ") || "no accounts"}); omit to stay as you are. You never see passwords.`,
+        { path: z.string().min(1).max(300), role: z.string().min(1).max(40).optional() },
+        wrap(ctx, "browser_open", async (a: { path: string; role?: string }) => {
+          try {
+            const r = await browserOpen(test.target, { path: a.path, role: a.role ?? null });
+            return seen(a.path, viewText(r.view, r.login ? [`Signed in as ${a.role}: ${r.login}`] : []));
+          } catch (e) {
+            return err((e as Error).message);
+          }
+        }),
+      ),
+    );
+    add(
+      "browser_act",
+      tool(
+        "browser_act",
+        'App test: do steps on the open page, like a user, then see the result. Steps (up to 15, stops at the first that fails): {"click":"Save"} (button/link text), {"fill":{"Name":"UJI-1","Email":"uji@test.local"}} (field label or placeholder), {"select":{"Status":"Approved"}}, {"check":"I agree"}, {"press":"Enter"}, {"goto":"/orders"}, {"wait":1000}.',
+        { steps: z.array(actStep).min(1).max(15) },
+        wrap(ctx, "browser_act", async (a: { steps: ActStep[] }) => {
+          try {
+            const r = await browserAct(test.target, a.steps);
+            return seen("act", viewText(r.view, [`Steps done: ${r.done} of ${a.steps.length}${r.error ? ` — ${r.error}` : ""}`]));
+          } catch (e) {
+            return err((e as Error).message);
+          }
+        }),
+      ),
+    );
+    add(
+      "browser_look",
+      tool(
+        "browser_look",
+        "App test: what the open page shows now (text, fields, buttons, links, alerts, console errors, failed requests) and a new screenshot number.",
+        {},
+        wrap(ctx, "browser_look", async () => {
+          try {
+            return seen("look", viewText(await browserLook(test.target)));
+          } catch (e) {
+            return err((e as Error).message);
+          }
+        }),
+      ),
+    );
+    add(
+      "report_app_test",
+      tool(
+        "report_app_test",
+        "App test: the result, once you are done. passed = no medium/high findings. Each finding: title, severity (high = broken flow, data loss or a role sees/does what it must not; medium = wrong result or confusing error; low = cosmetic), role, path, steps (exact), expected, actual (mention screenshots as #n).",
+        {
+          passed: z.boolean(),
+          summary: z.string().min(10).max(4000),
+          findings: z
+            .array(
+              z.object({
+                title: z.string().min(3).max(200),
+                severity: z.enum(["high", "medium", "low"]),
+                role: z.string().max(40).nullable().optional(),
+                path: z.string().max(300).nullable().optional(),
+                steps: z.string().min(3).max(2000),
+                expected: z.string().max(1000).optional(),
+                actual: z.string().min(3).max(1000),
+              }),
+            )
+            .max(30)
+            .optional(),
+        },
+        wrap(ctx, "report_app_test", async (a: Record<string, unknown>) => {
+          const parsed = appTestReportSchema.safeParse(a);
+          if (!parsed.success) return err(`Invalid report: ${parsed.error.issues.map((i) => `${i.path.join(".") || "report"}: ${i.message}`).join("; ")}`);
+          const r = await recordAppTestReport(test.testId, parsed.data);
+          return ok(r.status === "passed" ? "Recorded: the test passed." : `Recorded: ${parsed.data.findings.length} finding(s). A person decides what to fix.`);
+        }),
+      ),
+    );
+  }
 
   add(
     "draft_document",

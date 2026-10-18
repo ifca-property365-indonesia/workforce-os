@@ -3,6 +3,7 @@
 #
 #   deploy/setup-ubuntu.sh [--domain ai.example.com --email you@example.com] [--no-firewall]
 #   deploy/setup-ubuntu.sh --toolchain        only the Workspace-mode toolchain
+#   deploy/setup-ubuntu.sh --browser          only the app-test browser (after pnpm install)
 #
 # What it does (each step skips what is already in place):
 #   - Node.js 24, pnpm (corepack), PM2; PostgreSQL (16 on 24.04, 18 on 26.04) + pgvector; Redis 7 with maxmemory-policy noeviction
@@ -13,6 +14,8 @@
 #   - Workspace-mode sandbox prerequisites: checks systemd ≥ 252 and cgroup v2. No runner user is created: every run
 #     is a transient systemd unit with its own dynamic user (docs/upgrade/SPIKE-sandbox.md)
 #   - Workspace-mode toolchain (git, Python 3 + document libraries, LibreOffice headless, pandoc, poppler, qpdf, tesseract)
+#   - App-test browser (C3): the system user wfos-browser and Chromium (headless shell, the worker's playwright-core
+#     version) in /opt/wfos-tools/ms-playwright, world-readable; the worker starts it via deploy/browser/wfos-chromium
 # Do not run it on a host that already serves other apps without reading it first (firewall, Redis password).
 set -euo pipefail
 
@@ -21,10 +24,11 @@ set -euo pipefail
 [ "${ID:-}" = ubuntu ] || echo "warning: tested for Ubuntu 24.04 and 26.04 only (found ${PRETTY_NAME:-unknown})" >&2
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-ONLY_TOOLCHAIN=0 FIREWALL=1 DOMAIN="" EMAIL=""
+ONLY_TOOLCHAIN=0 ONLY_BROWSER=0 FIREWALL=1 DOMAIN="" EMAIL=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --toolchain) ONLY_TOOLCHAIN=1; shift ;;
+    --browser) ONLY_BROWSER=1; shift ;;
     --no-firewall) FIREWALL=0; shift ;;
     --domain) DOMAIN="$2"; shift 2 ;;
     --email) EMAIL="$2"; shift 2 ;;
@@ -34,6 +38,25 @@ done
 [ -z "$DOMAIN" ] || [ -n "$EMAIL" ] || { echo "--domain needs --email (Let's Encrypt account)" >&2; exit 2; }
 export DEBIAN_FRONTEND=noninteractive
 TOOLS=/opt/wfos-tools
+
+# C3: the browser of app tests. Its own unprivileged user; Chromium (the version the worker's playwright-core drives)
+# with its system libraries, readable by that user. Needs the checkout's node_modules (pnpm install first).
+install_browser() {
+  echo "== App-test browser (user wfos-browser, Chromium headless shell in $TOOLS/ms-playwright)"
+  id -u wfos-browser > /dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin wfos-browser
+  if [ ! -d "$APP_DIR/apps/worker/node_modules/playwright-core" ]; then
+    echo "note: run pnpm install first, then: deploy/setup-ubuntu.sh --browser" >&2
+    return 0
+  fi
+  mkdir -p "$TOOLS/ms-playwright"
+  (cd "$APP_DIR/apps/worker" && PLAYWRIGHT_BROWSERS_PATH="$TOOLS/ms-playwright" node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell)
+  chmod -R a+rX,go-w "$TOOLS/ms-playwright"
+  ls -d "$TOOLS"/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell
+}
+if [ "$ONLY_BROWSER" = 1 ]; then
+  install_browser
+  exit 0
+fi
 apt_install() { apt-get install -y --no-install-recommends "$@"; }
 # value of KEY from .env (no shell evaluation of the file)
 envval() { [ -f "$APP_DIR/.env" ] && sed -nE "s/^$1=['\"]?([^'\"]*)['\"]?\s*$/\1/p" "$APP_DIR/.env" | tail -1; }
@@ -137,6 +160,7 @@ fi
 "$TOOLS/venv/bin/pip" install --quiet \
   uv==0.5.11 python-docx==1.1.2 openpyxl==3.1.5 python-pptx==1.0.2 pypdf==5.1.0 pdfplumber==0.11.4 reportlab==4.2.5
 chmod -R a+rX,go-w "$TOOLS"
+install_browser
 
 echo "== checks"
 git --version; soffice --version 2>/dev/null | head -1 || true; pandoc --version | head -1; tesseract --list-langs 2>/dev/null | tr '\n' ' '; echo

@@ -1,7 +1,7 @@
 import "server-only";
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { agentWorkOnRepository, approvals, db, employees, incidents, repositories, tasks, teams } from "@wfos/db";
+import { agentWorkOnRepository, apps, appTests, approvals, db, employees, incidents, repositories, tasks, teams } from "@wfos/db";
 import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentStatus, type TaskStatus } from "@wfos/shared";
 
 /**
@@ -11,6 +11,7 @@ import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentSta
  * - tasks an employee proposed that wait for someone to start them (QUEUED, phase hold)
  * - employees paused because their budget ran out
  * - finished agent work that is not in its repository's default branch yet (or whose merge failed)
+ * - app tests (C3) with findings nobody has dealt with yet
  */
 
 /** incidents that wait for a person ("handling": a lead is on it; "resolved": done) */
@@ -23,7 +24,8 @@ export type InboxItem =
   | { kind: "incident"; id: string; at: Date; incidentKind: IncidentKind; status: IncidentStatus; summary: string; task: { id: string; title: string; status: TaskStatus } | null; employee: Ref }
   | { kind: "held_task"; id: string; at: Date; title: string; employee: Ref; team: Ref }
   | { kind: "paused_employee"; id: string; at: Date; name: string; role: string }
-  | { kind: "merge"; id: string; at: Date; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] };
+  | { kind: "merge"; id: string; at: Date; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
+  | { kind: "test_findings"; id: string; at: Date; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null };
 
 export type InboxKind = InboxItem["kind"];
 export interface Inbox {
@@ -38,16 +40,17 @@ export interface Inbox {
 const ref = (id: string | null | undefined, name: string | null | undefined): Ref => (id && name ? { id, name } : null);
 
 export async function inboxFor(workspaceId: string): Promise<Inbox> {
-  const [approvalRows, incidentItems, held, paused, merges] = await Promise.all([
+  const [approvalRows, incidentItems, held, paused, merges, tests] = await Promise.all([
     pendingApprovals(workspaceId),
     personIncidents(workspaceId),
     heldTasks(workspaceId),
     pausedEmployees(workspaceId),
     unmergedWork(workspaceId),
+    testFindings(workspaceId),
   ]);
-  const items = [...incidentItems, ...held, ...paused, ...merges].sort((a, b) => b.at.getTime() - a.at.getTime());
-  const counts = { approval: approvalRows.decidable, incident: incidentItems.length, held_task: held.length, paused_employee: paused.length, merge: merges.length, total: 0 };
-  counts.total = counts.approval + counts.incident + counts.held_task + counts.paused_employee + counts.merge;
+  const items = [...incidentItems, ...held, ...paused, ...merges, ...tests].sort((a, b) => b.at.getTime() - a.at.getTime());
+  const counts = { approval: approvalRows.decidable, incident: incidentItems.length, held_task: held.length, paused_employee: paused.length, merge: merges.length, test_findings: tests.length, total: 0 };
+  counts.total = counts.approval + counts.incident + counts.held_task + counts.paused_employee + counts.merge + counts.test_findings;
   return { items, approvals: approvalRows.decidable, approvalsWaiting: approvalRows.waiting, counts };
 }
 
@@ -140,5 +143,25 @@ async function unmergedWork(workspaceId: string): Promise<InboxItem[]> {
     repository: repo,
     state: w.state as "unmerged" | "failed",
     conflicts: w.decision?.conflicts ?? [],
+  }));
+}
+
+async function testFindings(workspaceId: string): Promise<InboxItem[]> {
+  const rows = await db
+    .select({ id: appTests.id, at: appTests.finishedAt, created: appTests.createdAt, summary: appTests.summary, findings: appTests.findings, commit: appTests.commit, appId: apps.id, appName: apps.name })
+    .from(appTests)
+    .innerJoin(apps, and(eq(apps.id, appTests.appId), eq(apps.workspaceId, workspaceId)))
+    .where(and(eq(appTests.workspaceId, workspaceId), eq(appTests.status, "findings"), isNull(appTests.handledAt)))
+    .orderBy(desc(appTests.createdAt))
+    .limit(PER_KIND);
+  return rows.map((r) => ({
+    kind: "test_findings" as const,
+    id: r.id,
+    at: r.at ?? r.created,
+    app: { id: r.appId, name: r.appName },
+    summary: r.summary ?? "",
+    findings: r.findings.length,
+    high: r.findings.filter((f) => f.severity === "high").length,
+    commit: r.commit,
   }));
 }

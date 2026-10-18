@@ -534,5 +534,47 @@
       "passwordNeeded": "Preview ini belum punya sandi uji bersama: beri akun ini sandinya sendiri."
     },
     "audited": "Setiap sandi yang ditampilkan tercatat di audit log."
+  },
+  "tests": {
+    "title": "Uji aplikasi",
+    "description": "Karyawan penguji memakai preview di browser sungguhan seperti penggunanya: masuk sebagai tiap peran, menjalankan alurnya, lalu melaporkan temuan beserta langkah dan tangkapan layar. Dimulai oleh orang, tidak otomatis setiap rilis.",
+    "start": "Uji aplikasi",
+    "needsPreview": "Preview harus sedang berjalan",
+    "empty": "Belum ada uji.",
+    "started": "Uji dimulai: penguji sedang mengerjakannya",
+    "startTitle": "Uji {app}",
+    "tester": "Penguji",
+    "focus": "Fokus (opsional)",
+    "focusPlaceholder": "mis. alur permintaan pembelian → persetujuan, dan pemohon tidak bisa menyetujui",
+    "roles": "Peran yang diuji",
+    "rolesHint": "Tidak ada yang dicentang: penguji menguji semua peran.",
+    "noAccounts": "Preview ini belum punya akun uji: penguji hanya bisa memeriksa yang dilihat pengunjung.",
+    "costNote": "Uji berjalan sebagai tugas penguji dan memakai budgetnya.",
+    "startNow": "Mulai uji",
+    "status": {
+      "running": "Sedang diuji…",
+      "passed": "Lolos",
+      "findings": "{count, plural, other {# temuan}}",
+      "error": "Selesai tanpa hasil"
+    },
+    "openTask": "Buka tugas",
+    "focusWas": "Fokus: {focus}",
+    "severity": {
+      "high": "tinggi",
+      "medium": "sedang",
+      "low": "rendah"
+    },
+    "finding": {
+      "role": "Peran",
+      "path": "Halaman",
+      "steps": "Langkah",
+      "expected": "Seharusnya",
+      "actual": "Yang terjadi"
+    },
+    "makeFixTask": "Buat tugas perbaikan",
+    "fixTitle": "Perbaiki: {title}",
+    "fixFrom": "Ditemukan oleh uji aplikasi {app} (commit {commit}).",
+    "markHandled": "Tandai sudah ditangani",
+    "handledAt": "Ditangani {when}"
   }
 }

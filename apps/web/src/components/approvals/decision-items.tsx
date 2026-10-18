@@ -4,7 +4,7 @@ import Link from "@/lib/nav";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertTriangle, GitMerge, PauseCircle, PlayCircle, type LucideIcon } from "lucide-react";
+import { AlertTriangle, FlaskConical, GitMerge, PauseCircle, PlayCircle, type LucideIcon } from "lucide-react";
 import { hasRole, type IncidentKind, type IncidentStatus, type TaskStatus } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
@@ -19,27 +19,30 @@ export type DecisionItem =
   | { kind: "incident"; id: string; at: string; incidentKind: IncidentKind; status: IncidentStatus; summary: string; task: { id: string; title: string; status: TaskStatus } | null; employee: Ref }
   | { kind: "held_task"; id: string; at: string; title: string; employee: Ref; team: Ref }
   | { kind: "paused_employee"; id: string; at: string; name: string; role: string }
-  | { kind: "merge"; id: string; at: string; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] };
+  | { kind: "merge"; id: string; at: string; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
+  | { kind: "test_findings"; id: string; at: string; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null };
 
 export interface InboxResponse {
   items: DecisionItem[];
   approvals: number;
   approvalsWaiting: number;
-  counts: { approval: number; incident: number; held_task: number; paused_employee: number; merge: number; total: number };
+  counts: { approval: number; incident: number; held_task: number; paused_employee: number; merge: number; test_findings: number; total: number };
 }
 
-const KIND_ICON: Record<DecisionItem["kind"], LucideIcon> = { incident: AlertTriangle, held_task: PlayCircle, paused_employee: PauseCircle, merge: GitMerge };
+const KIND_ICON: Record<DecisionItem["kind"], LucideIcon> = { incident: AlertTriangle, held_task: PlayCircle, paused_employee: PauseCircle, merge: GitMerge, test_findings: FlaskConical };
 const KIND_TONE: Record<DecisionItem["kind"], string> = {
   incident: "border-destructive/40",
   held_task: "border-[var(--sign-biru)]/40",
   paused_employee: "border-warning/50",
   merge: "border-warning/50",
+  test_findings: "border-destructive/40",
 };
 const ICON_TONE: Record<DecisionItem["kind"], string> = {
   incident: "text-destructive",
   held_task: "text-[var(--sign-biru)]",
   paused_employee: "text-warning",
   merge: "text-warning",
+  test_findings: "text-destructive",
 };
 
 /** One thing that waits for a person besides an approval: what it is, who it concerns, and what can be done now. */
@@ -67,7 +70,12 @@ export function DecisionItemCard({ item }: { item: DecisionItem }) {
     onSuccess: () => done(t("done.resolved")),
     onError: (e) => toast.error((e as Error).message),
   });
-  const busy = taskAction.isPending || closeIncident.isPending;
+  const handleTest = useMutation({
+    mutationFn: (v: { appId: string; testId: string }) => api.post(`/api/apps/${v.appId}/tests/${v.testId}`, { action: "handled" }),
+    onSuccess: () => done(t("done.handled")),
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const busy = taskAction.isPending || closeIncident.isPending || handleTest.isPending;
   const Icon = KIND_ICON[item.kind];
 
   let label: string;
@@ -133,6 +141,24 @@ export function DecisionItemCard({ item }: { item: DecisionItem }) {
         <Button asChild size="sm" variant="outline">
           <Link href={`/employees/${item.id}`}>{t("actions.openEmployee")}</Link>
         </Button>
+      );
+      break;
+    case "test_findings":
+      label = item.high ? t("kind.testFindingsHigh", { count: item.findings, high: item.high }) : t("kind.testFindings", { count: item.findings });
+      title = item.app.name;
+      meta = [item.commit ? item.commit.slice(0, 8) : ""];
+      body = item.summary || null;
+      actions = (
+        <>
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/apps/${item.app.id}?test=${item.id}`}>{t("actions.openTest")}</Link>
+          </Button>
+          {canAct && (
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => handleTest.mutate({ appId: item.app.id, testId: item.id })}>
+              {t("actions.handled")}
+            </Button>
+          )}
+        </>
       );
       break;
     case "merge":

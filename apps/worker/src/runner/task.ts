@@ -27,6 +27,8 @@ import { errorMessage } from "../lib/errors";
 import { scriptedTaskRun } from "../simulation/demo";
 import { loadAssignedSkills } from "./skills";
 import { repoRef, unmergedWorkNote } from "./merge-scan";
+import { appTestContext, appTestPrompt } from "../qa/app-test";
+import { closeBrowserSession } from "../qa/browser";
 
 type Task = typeof tasks.$inferSelect;
 
@@ -265,6 +267,8 @@ async function runStarted(
   const untrustedKids = team?.role === "lead" ? await untrustedSubtaskIds(task.id) : [];
   if (untrustedKids.length) await recordTaskTaint(task, emp.id, "untrusted_subtask", UNTRUSTED_SUBTASK_NOTE, { taskIds: untrustedKids });
 
+  // C3: an app test task drives the preview's browser (tools granted by ctx.appTest)
+  const appTest = await appTestContext(task.id);
   const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
   const division = await runDivision(emp, ws, lang, { workspaceMode });
 
@@ -288,6 +292,7 @@ async function runStarted(
     division: division.context,
     // client isolation: knowledge, memory, recent work and client lookups of this client (plus general ones) only
     clientId: task.clientId,
+    ...(appTest ? { appTest } : {}),
     ...(workspaceMode
       ? {
           workspace: {
@@ -329,6 +334,7 @@ async function runStarted(
     if (ref) promptParts.push(await unmergedWorkNote(ws.id, ref, task.id));
   }
   if (inbox.length) promptParts.push(inboxSection(inbox));
+  if (appTest) promptParts.push(appTestPrompt(appTest));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);
@@ -366,6 +372,7 @@ async function runStarted(
       return;
     }
     if (workspaceMode) await addSandboxTime(task.id, Date.now() - runStartedAt);
+    if (appTest) await closeBrowserSession(appTest.testId);
     const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${errorMessage(e)}`;
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "runner_error", status: "error", output: msg });
     await failTask(task, msg, { kind: "error" });
@@ -375,6 +382,8 @@ async function runStarted(
   // however the run ended or paused (done, approval, waiting for subtasks, any stop): before the status change
   await persistRunTaint(ctx.guard, task);
   if (workspaceMode) await addSandboxTime(task.id, Date.now() - runStartedAt);
+  // the browser of an app test lives for one run (a later run signs in again)
+  if (appTest) await closeBrowserSession(appTest.testId);
 
   const running = { ...task, status: "RUNNING" as TaskStatus };
 

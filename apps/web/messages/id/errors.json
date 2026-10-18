@@ -209,5 +209,9 @@
   "merge_in_progress": "Versi ini sedang digabung.",
   "test_user_not_found": "Akun uji tidak ditemukan.",
   "test_password_missing": "Akun uji ini belum punya sandi.",
-  "test_password_required": "Preview ini belum punya sandi uji bersama: beri akun ini sandinya sendiri."
+  "test_password_required": "Preview ini belum punya sandi uji bersama: beri akun ini sandinya sendiri.",
+  "preview_not_running": "Preview tidak sedang berjalan: terbitkan dulu.",
+  "tester_not_found": "Pilih karyawan di workspace ini sebagai penguji.",
+  "app_test_running": "Uji untuk preview ini sedang berjalan.",
+  "app_test_not_found": "Uji aplikasi tidak ditemukan."
 }

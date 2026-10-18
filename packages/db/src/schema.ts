@@ -1230,6 +1230,43 @@ export const appTestUsers = pgTable(
   (t) => [uniqueIndex("app_test_users_env_role").on(t.environmentId, t.role), index("app_test_users_ws").on(t.workspaceId)],
 );
 
+/** C3: a finding of a browser test (what the tester saw, so a fix task can be made from it) */
+export interface AppTestFinding {
+  id: string;
+  title: string;
+  severity: "high" | "medium" | "low";
+  role: string | null;
+  path: string | null;
+  steps: string;
+  expected: string;
+  actual: string;
+}
+
+/** C3: a browser test of an app's preview, run as a task of a tester employee. */
+export const appTests = pgTable(
+  "app_tests",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    environmentId: uuid("environment_id").notNull().references(() => appEnvironments.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    /** the preview's commit when the test started */
+    commit: text("commit"),
+    status: text("status").$type<"running" | "passed" | "findings" | "error">().notNull().default("running"),
+    focus: text("focus").notNull().default(""),
+    roles: jsonb("roles").$type<string[]>().notNull().default([]),
+    summary: text("summary"),
+    findings: jsonb("findings").$type<AppTestFinding[]>().notNull().default([]),
+    handledAt: timestamp("handled_at", { withTimezone: true }),
+    handledBy: uuid("handled_by").references(() => users.id, { onDelete: "set null" }),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("app_tests_app").on(t.appId, t.createdAt), uniqueIndex("app_tests_task").on(t.taskId), index("app_tests_ws_status").on(t.workspaceId, t.status)],
+);
+
 /** Database backups of an app environment (B2): taken before a migration, daily (live), by hand, before a restore. */
 export const appBackups = pgTable(
   "app_backups",

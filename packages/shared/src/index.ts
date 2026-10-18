@@ -188,8 +188,11 @@ export interface ToolMeta {
   /** credits charged per call, on top of tokens */
   credits: number;
   category: "knowledge" | "memory" | "clients" | "drafting" | "comms" | "billing" | "team" | "web" | "tasks" | "code" | "routines";
-  /** granted to every task run without an explicit permission (an explicit disabled entry still wins) */
-  implicit?: "task";
+  /**
+   * task: granted to every task run without an explicit permission (an explicit disabled entry still wins);
+   * app_test: granted only to the run of an app test task (C3), never by a permission
+   */
+  implicit?: "task" | "app_test";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -223,6 +226,10 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "create_pull_request", label: "Open pull request", description: "Workspace mode: open a pull/merge request from your branch (after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "list_apps", label: "List apps", description: "Workspace mode: the workspace's apps (preview URL, status, repository, branch, the version that runs) so you know which app to preview", class: "reversible", credits: 0.02, category: "code" },
   { name: "request_release", label: "Propose LIVE release", description: "Workspace mode: propose releasing a preview version that already ran to the app's LIVE site (only an Owner can approve it)", class: "irreversible", credits: 0.5, category: "code" },
+  { name: "browser_open", label: "Open the app (browser)", description: "App test: open a page of the app's preview in a browser, signed in as one of its test roles", class: "reversible", credits: 0.2, category: "code", implicit: "app_test" },
+  { name: "browser_act", label: "Use the app (browser)", description: "App test: click, fill in, choose and press on the open page, like a user", class: "reversible", credits: 0.2, category: "code", implicit: "app_test" },
+  { name: "browser_look", label: "Look at the page (browser)", description: "App test: what the open page shows (text, fields, buttons, errors) and a screenshot", class: "reversible", credits: 0.1, category: "code", implicit: "app_test" },
+  { name: "report_app_test", label: "Report the app test", description: "App test: the result (passed, or findings with steps to reproduce)", class: "reversible", credits: 0, category: "code", implicit: "app_test" },
   { name: "request_preview", label: "Publish preview", description: "Workspace mode: publish the branch you pushed (git_push) as a preview of an app at its URL (the platform deploys after approval)", class: "irreversible", credits: 0.5, category: "code" },
   { name: "post_webhook", label: "Publish to webhook", description: "Publish a message to a configured webhook (Slack/Telegram/WhatsApp gateway)", class: "irreversible", credits: 0.5, category: "comms" },
 ] as const;
@@ -1431,6 +1438,30 @@ export const appManifestSchema = z
   })
   .strict();
 export type AppManifest = z.infer<typeof appManifestSchema>;
+
+/** C3: what a tester reports at the end of an app test (report_app_test) */
+export const APP_TEST_FINDINGS_MAX = 30;
+export const appTestFindingSchema = z
+  .object({
+    title: z.string().trim().min(3).max(200),
+    severity: z.enum(["high", "medium", "low"]),
+    role: z.string().max(40).nullable().default(null),
+    path: z.string().max(300).nullable().default(null),
+    steps: z.string().trim().min(3).max(2000),
+    expected: z.string().trim().max(1000).default(""),
+    actual: z.string().trim().min(3).max(1000),
+  })
+  .strict();
+export const appTestReportSchema = z
+  .object({
+    passed: z.boolean(),
+    summary: z.string().trim().min(10).max(4000),
+    findings: z.array(appTestFindingSchema).max(APP_TEST_FINDINGS_MAX).default([]),
+  })
+  .strict()
+  .refine((r) => !r.passed || r.findings.every((f) => f.severity === "low"), { message: "a test with medium or high findings did not pass" })
+  .refine((r) => r.passed || r.findings.length > 0, { message: "a failed test needs at least one finding" });
+export type AppTestReport = z.infer<typeof appTestReportSchema>;
 
 /** at most this many test accounts per environment */
 export const TEST_USERS_MAX = 20;

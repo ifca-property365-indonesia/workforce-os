@@ -209,5 +209,9 @@
   "merge_in_progress": "A merge of this version is under way.",
   "test_user_not_found": "Test account not found.",
   "test_password_missing": "This test account has no password yet.",
-  "test_password_required": "This preview has no shared test password yet: give the account its own."
+  "test_password_required": "This preview has no shared test password yet: give the account its own.",
+  "preview_not_running": "The preview is not running: publish it first.",
+  "tester_not_found": "Choose an employee of this workspace as the tester.",
+  "app_test_running": "A test of this preview is already running.",
+  "app_test_not_found": "App test not found."
 }

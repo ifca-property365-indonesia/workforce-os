@@ -1,0 +1,28 @@
+#!/bin/bash
+# Chromium for Workforce OS app tests (C3), as Playwright's executablePath. The worker runs as root; the browser must
+# not: it opens untrusted apps. This wrapper (run as root by Playwright) gives the profile folder Playwright made to
+# the browser user, then starts the browser as that user, without privileges, in its own systemd scope with a memory
+# limit, keeping Playwright's pipe (fds 3 and 4: systemd-run --scope and setpriv both exec in place).
+#   WFOS_BROWSER_BIN      the chrome-headless-shell binary (world-readable install, e.g. /opt/wfos-tools/ms-playwright)
+#   WFOS_BROWSER_RUN_AS   the unprivileged user (default wfos-browser; deploy/setup-ubuntu.sh --browser creates it)
+#   WFOS_BROWSER_MEMORY_MB  MemoryMax of the scope (default 1536)
+set -euo pipefail
+bin="${WFOS_BROWSER_BIN:?WFOS_BROWSER_BIN is not set}"
+user="${WFOS_BROWSER_RUN_AS:-wfos-browser}"
+mem="${WFOS_BROWSER_MEMORY_MB:-1536}"
+[[ "$mem" =~ ^[0-9]{3,5}$ ]] || { echo "wfos-chromium: bad WFOS_BROWSER_MEMORY_MB" >&2; exit 2; }
+[[ "$user" =~ ^[a-z_][a-z0-9_-]{0,31}$ && "$user" != root ]] || { echo "wfos-chromium: bad WFOS_BROWSER_RUN_AS" >&2; exit 2; }
+id -u "$user" > /dev/null 2>&1 || { echo "wfos-chromium: user $user does not exist (deploy/setup-ubuntu.sh --browser)" >&2; exit 2; }
+[[ -x "$bin" ]] || { echo "wfos-chromium: $bin is not an executable" >&2; exit 2; }
+for a in "$@"; do
+  case "$a" in
+    --user-data-dir=*)
+      d="${a#--user-data-dir=}"
+      # only the fresh profile folder Playwright made under the temp dir (never follow a link, never anything else)
+      [[ "$d" =~ ^/tmp/playwright_chromiumdev_profile-[A-Za-z0-9]+$ && -d "$d" && ! -L "$d" ]] || { echo "wfos-chromium: unexpected profile folder $d" >&2; exit 2; }
+      chown -R --no-dereference "$user": "$d"
+      ;;
+  esac
+done
+exec systemd-run --scope --quiet --collect -p "MemoryMax=${mem}M" -p MemorySwapMax=0 -p TasksMax=512 -- \
+  setpriv --reuid="$user" --regid="$(id -g "$user")" --clear-groups --no-new-privs -- "$bin" "$@"

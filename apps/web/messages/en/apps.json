@@ -534,5 +534,47 @@
       "passwordNeeded": "This preview has no shared test password yet: give this account its own."
     },
     "audited": "Every password shown is recorded in the audit log."
+  },
+  "tests": {
+    "title": "App tests",
+    "description": "A tester employee uses the preview in a real browser, like its users: signs in as each role, walks the flows, and reports findings with steps and screenshots. Started by a person, never on every release.",
+    "start": "Test the app",
+    "needsPreview": "The preview must be running",
+    "empty": "No tests yet.",
+    "started": "Test started: the tester is on it",
+    "startTitle": "Test {app}",
+    "tester": "Tester",
+    "focus": "Focus (optional)",
+    "focusPlaceholder": "e.g. the purchase request → approval flow, and that a requester cannot approve",
+    "roles": "Roles to cover",
+    "rolesHint": "None ticked: the tester covers every role.",
+    "noAccounts": "This preview has no test accounts: the tester can only check what a visitor sees.",
+    "costNote": "The test runs as a task of the tester and uses its budget.",
+    "startNow": "Start the test",
+    "status": {
+      "running": "Testing…",
+      "passed": "Passed",
+      "findings": "{count, plural, one {# finding} other {# findings}}",
+      "error": "Ended without a result"
+    },
+    "openTask": "Open the task",
+    "focusWas": "Focus: {focus}",
+    "severity": {
+      "high": "high",
+      "medium": "medium",
+      "low": "low"
+    },
+    "finding": {
+      "role": "Role",
+      "path": "Page",
+      "steps": "Steps",
+      "expected": "Expected",
+      "actual": "Actual"
+    },
+    "makeFixTask": "Make a fix task",
+    "fixTitle": "Fix: {title}",
+    "fixFrom": "Found by the app test of {app} (commit {commit}).",
+    "markHandled": "Mark as handled",
+    "handledAt": "Handled {when}"
   }
 }

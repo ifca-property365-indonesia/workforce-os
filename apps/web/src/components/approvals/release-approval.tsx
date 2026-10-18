@@ -2,11 +2,13 @@
 
 import Link from "@/lib/nav";
 import { useTranslations } from "next-intl";
-import { AlertTriangle, ArrowRight, Construction, DatabaseBackup, ExternalLink, FileCode2, GitCommitHorizontal, KeyRound, Sparkles, Zap } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, ArrowRight, Construction, DatabaseBackup, ExternalLink, FileCode2, FlaskConical, GitCommitHorizontal, KeyRound, Sparkles, Zap } from "lucide-react";
 import { requestReleasePayloadSchema, type ReleaseWindow, type RequestReleasePayload } from "@wfos/shared";
 import { ReleaseWindowNote, releaseWindowState, useNow } from "@/components/apps/release-window";
 import { LOUD_WARNINGS } from "@/components/apps/releases";
 import { AppSign, CommitChip, EnvPlate, ReleaseStatusBadge, appColors, useApps } from "@/components/apps/shared";
+import { api } from "@/lib/api";
 import { signVars } from "@/lib/sign";
 import { useFormat } from "@/lib/use-format";
 import { cn } from "@/lib/utils";
@@ -35,6 +37,38 @@ export function useReleaseApprovalWindow(a: Pick<Approval, "toolName" | "payload
   // only once the apps have loaded: an unknown LIVE is not "changed"
   const stale = !!apps && (!live || (live.currentRelease?.commit ?? null) !== parsed.data.currentCommit);
   return { closed, expired, stale, blocked: closed || expired || stale, now, window: w };
+}
+
+/**
+ * C3: the latest browser test of the app's preview, next to a LIVE release decision: passed, findings or never tested,
+ * and whether it tested this very commit.
+ */
+function LastTest({ appId, commit }: { appId: string; commit: string }) {
+  const t = useTranslations("approvals");
+  const f = useFormat();
+  const { data } = useQuery({
+    queryKey: ["app", appId, "tests", "last"],
+    queryFn: () => api.get<{ tests: { id: string; status: string; commit: string | null; findings: unknown[]; finishedAt: string | null; createdAt: string }[] }>(`/api/apps/${appId}/tests?limit=1`),
+    retry: false,
+  });
+  if (!data) return null;
+  const last = data.tests[0];
+  const text = !last
+    ? t("release.testNever")
+    : t(`release.test.${last.status === "passed" || last.status === "findings" || last.status === "running" ? last.status : "error"}`, { count: last.findings.length, when: f.ago(last.finishedAt ?? last.createdAt) });
+  const sameCommit = !!last?.commit && last.commit === commit;
+  return (
+    <p className={cn("flex items-start gap-1.5 rounded-md px-2.5 py-1.5 text-xs", last?.status === "passed" && sameCommit ? "bg-success/10" : "bg-warning/15")}>
+      <FlaskConical className="mt-px size-3.5 shrink-0" aria-hidden />
+      <span>
+        {text}
+        {last?.commit && !sameCommit && ` ${t("release.testOtherCommit", { commit: last.commit.slice(0, 8) })}`}{" "}
+        <Link href={`/apps/${appId}${last ? `?test=${last.id}` : ""}`} className="underline underline-offset-2">
+          {t("release.testOpen")}
+        </Link>
+      </span>
+    </p>
+  );
 }
 
 function PlanRow({ icon: Icon, tone, title, children }: { icon: typeof Zap; tone?: string; title: string; children: string }) {
@@ -258,6 +292,8 @@ export function ReleaseApprovalPreview({ a, payload }: { a: Approval; payload: R
             {t("preview.followOnApp")}
           </Link>
         ) : null}
+
+        <LastTest appId={p.appId} commit={p.commit} />
 
         <p className="rounded-md bg-[color-mix(in_srgb,var(--sign-merah)_9%,transparent)] px-2.5 py-2 text-xs">
           <span className="font-semibold">{t("release.ownerOnly")}</span> {t("release.howItRuns", { commit: p.commit.slice(0, 7) })}

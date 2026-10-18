@@ -165,7 +165,16 @@
     "ownerOnly": "Hanya Owner yang memutuskan, dengan password dan kode autentikator.",
     "howItRuns": "Jika disetujui, tepat commit {commit} yang dibangun di server live, dimigrasi seperti di atas, lalu lalu lintas dialihkan setelah lolos pemeriksaan kesehatan; kalau ada langkah yang gagal, versi live yang sekarang tetap berjalan. Rollback tetap bisa dilakukan.",
     "stale": "Live sudah berubah sejak permintaan ini: permintaan dibuat untuk versi live yang lain. Tolak dan minta Developer mengusulkan rilisnya lagi.",
-    "expired": "Permintaan ini sudah lebih dari 24 jam: tolak dan minta Developer mengusulkannya lagi."
+    "expired": "Permintaan ini sudah lebih dari 24 jam: tolak dan minta Developer mengusulkannya lagi.",
+    "testNever": "Preview aplikasi ini belum pernah diuji di browser.",
+    "test": {
+      "passed": "Uji aplikasi terakhir lolos {when}.",
+      "findings": "{count, plural, other {Uji aplikasi terakhir: # temuan}} ({when}).",
+      "running": "Uji aplikasi sedang berjalan.",
+      "error": "Uji aplikasi terakhir selesai tanpa hasil ({when})."
+    },
+    "testOtherCommit": "Yang diuji commit {commit}, bukan commit ini.",
+    "testOpen": "Lihat uji"
   },
   "waitingForRun": "{count} permintaan lagi akan muncul di sini setelah karyawannya selesai dengan run saat ini: selama masih bekerja, permintaan itu belum bisa diputuskan.",
   "inbox": {
@@ -175,7 +184,9 @@
       "held_task": "Usulan tugas",
       "paused_employee": "Dijeda: budget habis",
       "merge": "Belum masuk {branch}",
-      "mergeFailed": "Merge gagal"
+      "mergeFailed": "Merge gagal",
+      "testFindings": "{count, plural, other {Uji aplikasi: # temuan}}",
+      "testFindingsHigh": "Uji aplikasi: {count} temuan, {high} tinggi"
     },
     "incidentStatus": {
       "escalated": "menunggu Anda",
@@ -194,13 +205,16 @@
       "start": "Mulai",
       "cancel": "Batalkan tugas",
       "openEmployee": "Buka karyawan",
-      "reviewMerge": "Tinjau & merge"
+      "reviewMerge": "Tinjau & merge",
+      "openTest": "Lihat temuan",
+      "handled": "Tandai sudah ditangani"
     },
     "done": {
       "start": "Tugas dimulai",
       "cancel": "Tugas dibatalkan",
       "retry": "Tugas diantrekan lagi",
-      "resolved": "Ditutup"
+      "resolved": "Ditutup",
+      "handled": "Ditandai sudah ditangani"
     }
   }
 }

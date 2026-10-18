@@ -165,7 +165,16 @@
     "ownerOnly": "Only the Owner decides, with password and authenticator code.",
     "howItRuns": "Approving builds exactly commit {commit} on the live server, migrates as shown and switches traffic over once it answers its health check; if a step fails, the version live now keeps running. Rollbacks stay possible.",
     "stale": "LIVE changed since this request: it was made against another live version. Reject it and ask the Developer to propose the release again.",
-    "expired": "This request is older than 24 hours: reject it and ask the Developer again."
+    "expired": "This request is older than 24 hours: reject it and ask the Developer again.",
+    "testNever": "This app's preview was never tested in the browser.",
+    "test": {
+      "passed": "Last app test passed {when}.",
+      "findings": "{count, plural, one {Last app test: # finding} other {Last app test: # findings}} ({when}).",
+      "running": "An app test is running.",
+      "error": "The last app test ended without a result ({when})."
+    },
+    "testOtherCommit": "It tested commit {commit}, not this one.",
+    "testOpen": "See the tests"
   },
   "waitingForRun": "{count, plural, one {# more request appears} other {# more requests appear}} here once the employee finishes the current run: it cannot be decided while they are still working.",
   "inbox": {
@@ -175,7 +184,9 @@
       "held_task": "Proposed task",
       "paused_employee": "Paused: budget used up",
       "merge": "Not in {branch} yet",
-      "mergeFailed": "Merge failed"
+      "mergeFailed": "Merge failed",
+      "testFindings": "{count, plural, one {App test: # finding} other {App test: # findings}}",
+      "testFindingsHigh": "App test: {count} findings, {high} high"
     },
     "incidentStatus": {
       "escalated": "asks you",
@@ -194,13 +205,16 @@
       "start": "Start",
       "cancel": "Cancel task",
       "openEmployee": "Open employee",
-      "reviewMerge": "Review & merge"
+      "reviewMerge": "Review & merge",
+      "openTest": "See the findings",
+      "handled": "Mark as handled"
     },
     "done": {
       "start": "Task started",
       "cancel": "Task cancelled",
       "retry": "Task queued again",
-      "resolved": "Closed"
+      "resolved": "Closed",
+      "handled": "Marked as handled"
     }
   }
 }
