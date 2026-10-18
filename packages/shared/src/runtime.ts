@@ -12,6 +12,15 @@ export function queuePrefix(): string {
   return wfosNamespace() || "bull";
 }
 
+/**
+ * Workspace mode: sandbox hours one task may use across all its runs (WORKSPACE_TASK_MAX_HOURS, default 8), counted
+ * from the last time a person let it go on. Read by the worker (enforces it) and the web (shows it).
+ */
+export function workspaceTaskMaxHours(): number {
+  const v = Number(process.env.WORKSPACE_TASK_MAX_HOURS);
+  return v > 0 ? v : 8;
+}
+
 /** Postgres target without credentials: host:port/database. */
 export function pgTarget(url: string): string {
   const u = new URL(url);

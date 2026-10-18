@@ -33,10 +33,10 @@ type Task = typeof tasks.$inferSelect;
 export type Incident = typeof incidents.$inferSelect;
 
 /** How failTask names the failure (see FailOptions.kind) → the incident kind. */
-export type FailureKind = "error" | "orphaned" | "could_not_start" | "approval_failed" | "stalled" | "loop" | "out_of_memory";
+export type FailureKind = "error" | "orphaned" | "could_not_start" | "approval_failed" | "stalled" | "loop" | "out_of_memory" | "time_limit";
 
 export function incidentKindOf(kind: FailureKind | undefined): IncidentKind {
-  if (kind === "stalled" || kind === "loop" || kind === "could_not_start" || kind === "out_of_memory") return kind;
+  if (kind === "stalled" || kind === "loop" || kind === "could_not_start" || kind === "out_of_memory" || kind === "time_limit") return kind;
   return "failed";
 }
 
@@ -138,6 +138,7 @@ const KIND_LABEL: Record<IncidentKind, MessageKey> = {
   could_not_start: "incident.kind.could_not_start",
   routine_failed: "incident.kind.routine_failed",
   out_of_memory: "incident.kind.out_of_memory",
+  time_limit: "incident.kind.time_limit",
 };
 
 async function notifyIncident(incident: Incident, title: string, muted: boolean): Promise<void> {
@@ -163,7 +164,8 @@ async function notifyIncident(incident: Incident, title: string, muted: boolean)
 export async function openIncident(task: Task, kind: IncidentKind, summary: string): Promise<Incident | null> {
   if (task.source === "replay") return null;
   if (task.routineId && !task.parentTaskId && kind !== "routine_failed") return null;
-  const route = await routeOf(task);
+  // the time limit counts from a person's go-ahead: a lead's automatic retry would stop at once, so a person decides
+  const route = kind === "time_limit" ? { status: "escalated" as const, handler: null, teamId: task.teamId } : await routeOf(task);
   return insertIncident({ workspaceId: task.workspaceId, kind, status: route.status, summary, task, teamId: route.teamId, handler: route.handler, title: task.title });
 }
 

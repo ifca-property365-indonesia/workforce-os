@@ -11,6 +11,7 @@ import { activeQuotaPause } from "../lib/limits";
 import { employeeOutputLocale } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
 import { log } from "../lib/logger";
+import { env } from "../lib/env";
 import { checkBudget, checkDivisionBudget, msUntilNextBudgetDay, pauseForBudget, startOfUtcDay } from "../guards/budget";
 import { grantedToolNames, unreadMessagesFor, type RunContext } from "../tools/registry";
 import { buildSystemPrompt, inboxSection, memoryNotesBlock, recallMemories, recentWorkBrief, taintFromStoredInput, workspaceDirectory } from "./prompt";
@@ -231,6 +232,13 @@ async function runStarted(
   // Workspace mode (not for a head planning or reviewing: that is platform work), with a repository: refresh the
   // platform mirror, then clone/refresh inside the sandbox. A member's subtask (the code lead's build) runs in it too.
   const workspaceMode = emp.executionMode === "workspace" && team?.role !== "lead";
+  // sandbox time across all of this task's runs, counted from the last time a person let it go on
+  const sandboxLimitSec = env.workspaceTaskMaxHours * 3600;
+  const sandboxUsedSec = Math.max(0, task.sandboxSeconds - task.sandboxSecondsBase);
+  if (workspaceMode && sandboxUsedSec >= sandboxLimitSec) {
+    await failTask(task, timeLimitMessage(), { kind: "time_limit", step: true, stepName: "run_time_limit", employeeId: emp.id });
+    return;
+  }
   let repository: (RepoRef & { name: string }) | undefined;
   if (workspaceMode && task.repositoryId) {
     const [r] = await db.select().from(repositories).where(and(eq(repositories.id, task.repositoryId), eq(repositories.workspaceId, ws.id)));
@@ -290,6 +298,7 @@ async function runStarted(
               await db.update(tasks).set({ agentSessionId: sessionId, workspaceStatus: "active" }).where(eq(tasks.id, task.id));
             },
             repository,
+            timeLeftMs: (sandboxLimitSec - sandboxUsedSec) * 1000,
             // approval tiers: the division's AI lead reviews a non-local command before the owner does
             review: { own: division.reviewers?.own ?? null, subagents: division.reviewers?.subagents ?? null, task: { title: task.title, brief: task.brief } },
           },
@@ -344,17 +353,19 @@ async function runStarted(
   });
 
   let out;
+  const runStartedAt = Date.now();
   try {
     out = await runAgent({ ctx, model: emp.model, systemPrompt, prompt: promptParts.filter(Boolean).join("\n\n"), creditBudget, agents, agentEmployees: agents ? division.agentEmployees : undefined });
   } catch (e) {
     await persistRunTaint(ctx.guard, task);
     if (e instanceof WorkspaceBusyError) {
-      // not a failure: wait for a free sandbox slot
+      // not a failure: wait for a free sandbox slot (recorded once, not on every retry)
       if (!(await setTaskStatus({ ...task, status: "RUNNING" }, "QUEUED", { error: null }))) return; // cancelled meanwhile
-      await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "workspace_slot_busy", status: "waiting" });
+      if (e.firstWait) await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "workspace_slot_busy", status: "waiting", output: { reason: e.reason } });
       await enqueueTask(task.id, ws.id, resumeNote, 15_000);
       return;
     }
+    if (workspaceMode) await addSandboxTime(task.id, Date.now() - runStartedAt);
     const msg = e instanceof MissingCredentialError ? e.message : `Runner error: ${errorMessage(e)}`;
     await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "error", name: "runner_error", status: "error", output: msg });
     await failTask(task, msg, { kind: "error" });
@@ -363,6 +374,7 @@ async function runStarted(
 
   // however the run ended or paused (done, approval, waiting for subtasks, any stop): before the status change
   await persistRunTaint(ctx.guard, task);
+  if (workspaceMode) await addSandboxTime(task.id, Date.now() - runStartedAt);
 
   const running = { ...task, status: "RUNNING" as TaskStatus };
 
@@ -383,6 +395,17 @@ async function runStarted(
     const until = out.quotaResetsAt ?? new Date(Date.now() + 3_600_000);
     if (!(await setTaskStatus(running, "QUEUED", { error: `Interrupted by the Claude subscription limit; resumes automatically at ${until.toISOString()}.` }))) return;
     await enqueueTask(task.id, ws.id, resumeNote ?? "You were interrupted by a usage limit. Continue where you left off.", Math.max(1000, until.getTime() - Date.now() + 5000));
+    return;
+  }
+  if (out.stopped === "yield") {
+    // handed the sandbox to a waiting task: not a failure, the same session resumes after it got its turn
+    if (!(await setTaskStatus(running, "QUEUED", { error: null }))) return;
+    await recordStep({ workspaceId: ws.id, taskId, employeeId: emp.id, kind: "system", name: "workspace_yielded", status: "waiting" });
+    await enqueueTask(task.id, ws.id, resumeNote ?? YIELD_NOTE, YIELD_DELAY_MS);
+    return;
+  }
+  if (out.stopped === "time_limit") {
+    await failTask(task, out.error ?? timeLimitMessage(), { kind: "time_limit", step: true, stepName: "run_time_limit", employeeId: emp.id, result: out.text || null });
     return;
   }
   if (out.stopped === "aborted") {
@@ -564,4 +587,25 @@ async function unresolvedReview(
 function leadPhaseAfterRun(team: Team, phase: string | null): string | null {
   if (team?.role !== "lead") return phase;
   return team.phase === "plan" ? "plan" : "review";
+}
+
+/** A run that handed its sandbox over continues with this note (same Claude session, same workspace). */
+const YIELD_NOTE =
+  "You were paused so another task could use the sandbox. Continue where you left off: commands that were running were stopped, so check the state of your files and re-run what did not finish.";
+/** longer than a waiting task's retry interval (15 s), so the waiting task takes the slot first */
+const YIELD_DELAY_MS = 20_000;
+
+function timeLimitMessage(): string {
+  return `The task used up its sandbox time (${env.workspaceTaskMaxHours} h across its runs). A person can let it continue (retry or request changes), or split the work into smaller tasks.`;
+}
+
+/** Adds a Workspace-mode run's wall-clock time to the task (never lost to a failed update: logged instead). */
+async function addSandboxTime(taskId: string, ms: number): Promise<void> {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  if (!sec) return;
+  await db
+    .update(tasks)
+    .set({ sandboxSeconds: sql`${tasks.sandboxSeconds} + ${sec}` })
+    .where(eq(tasks.id, taskId))
+    .catch((e: unknown) => log.error({ err: e, taskId, sec }, "sandbox time not recorded"));
 }

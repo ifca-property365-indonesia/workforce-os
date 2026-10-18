@@ -351,6 +351,10 @@ export const tasks = pgTable(
     repositoryId: uuid("repository_id"),
     /** null | active | archived (workspace files removed after retention; deliverables kept) */
     workspaceStatus: text("workspace_status"),
+    /** Workspace-mode run time of this task, all runs together (only grows) */
+    sandboxSeconds: integer("sandbox_seconds").notNull().default(0),
+    /** sandboxSeconds when a person last let the task go on (retry, request changes): the time limit counts from here */
+    sandboxSecondsBase: integer("sandbox_seconds_base").notNull().default(0),
     /** automatic retries by the team lead after an incident (bounded by INCIDENT_RETRY_LIMIT) */
     retryCount: integer("retry_count").notNull().default(0),
     /** created from untrusted input (webhook payload): the run starts tainted */

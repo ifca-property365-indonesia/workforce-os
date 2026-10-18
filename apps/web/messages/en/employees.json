@@ -398,6 +398,9 @@
       "team_review_no_verdict": "The review ended without a verdict",
       "team_review_unresolved": "The review ended while a subtask had failed and nothing was decided",
       "run_out_of_memory": "The sandbox ran out of memory: the run was stopped",
+      "run_time_limit": "The task used up its sandbox time: the run was stopped",
+      "workspace_yielded": "Paused to let a waiting task use the sandbox; it continues later",
+      "workspace_slot_busy": "Waiting for a free sandbox on this server",
       "run_tools_unavailable": "Its platform tools were unavailable: the run was stopped",
       "tool_unavailable": "Tried a tool that was not available: {tool}"
     },

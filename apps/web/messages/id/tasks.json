@@ -46,5 +46,13 @@
     "derived": "Dihitung dari subtugas yang sudah selesai",
     "notReported": "Sedang dikerjakan — belum ada laporan kemajuan.",
     "reportedAgo": "Dilaporkan {when}"
+  },
+  "sandbox": {
+    "title": "Waktu sandbox",
+    "used": "{used} dari {limit}",
+    "hoursMinutes": "{h} j {m} mnt",
+    "minutes": "{m} mnt",
+    "nearLimit": "Hampir habis: proses berhenti saat waktunya habis, lalu seseorang bisa melanjutkan tugasnya.",
+    "usedUp": "Sudah habis. Jalankan ulang atau minta perubahan untuk melanjutkan tugas."
   }
 }

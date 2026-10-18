@@ -1,6 +1,7 @@
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdirSync } from "node:fs";
+import { workspaceTaskMaxHours } from "@wfos/shared/runtime";
 import { SANDBOX, type RunLayout, type SandboxHost } from "./layout";
 
 const exec = promisify(execFile);
@@ -23,8 +24,14 @@ export const DEFAULT_LIMITS: UnitLimits = {
   memoryMaxMb: Number(process.env.WORKSPACE_MEMORY_MAX_MB || DEFAULT_MEMORY_MAX_MB),
   tasksMax: Number(process.env.WORKSPACE_TASKS_MAX ?? 256),
   cpuQuotaPercent: Number(process.env.WORKSPACE_CPU_QUOTA ?? 100),
-  runtimeMaxSec: Number(process.env.WORKSPACE_RUNTIME_MAX_SEC ?? 3600),
+  runtimeMaxSec: workspaceTaskMaxHours() * 3600 + 600,
 };
+
+/**
+ * RuntimeMaxSec of a task run's unit: only a backstop for a worker that died or hung. The run itself ends at the
+ * task's time limit (executor), so the unit gets that plus a grace period.
+ */
+export const RUNTIME_BACKSTOP_GRACE_SEC = 600;
 
 /**
  * The isolation of a Workspace-mode run, as systemd properties. Pure, so tests can assert every flag.

@@ -11,6 +11,7 @@ export const transport = {
 
 export function resetTransport() {
   zsets.clear();
+  hashes.clear();
   kv.clear();
   transport.mails.length = 0;
   transport.published.length = 0;
@@ -25,19 +26,29 @@ function fakeQueue(queue: string) {
   return q as { add: ReturnType<typeof vi.fn>; getJobs: () => Promise<unknown[]> };
 }
 
-/** In-memory sorted sets: enough Redis for the lease/slot code (zadd, zrem, zcard, zremrangebyscore, multi). */
+/** In-memory sorted sets and hashes: enough Redis for the lease/slot code (zadd, zrem, zrange…, hset, multi). */
 const zsets = new Map<string, Map<string, number>>();
 const z = (k: string) => zsets.get(k) ?? zsets.set(k, new Map()).get(k)!;
+const hashes = new Map<string, Map<string, string>>();
+const h = (k: string) => hashes.get(k) ?? hashes.set(k, new Map()).get(k)!;
+const byScore = (k: string) => [...z(k)].sort((a, b) => a[1] - b[1]);
 const zops = {
   // ZADD key [XX] score member
   zadd: (k: string, ...a: (string | number)[]) => {
     const xx = a[0] === "XX";
     const [score, m] = (xx ? a.slice(1) : a) as [number, string];
     if (xx && !z(k).has(m)) return 0;
+    // like Redis: the number of NEW members (an update returns 0)
+    const added = z(k).has(m) ? 0 : 1;
     z(k).set(m, score);
-    return 1;
+    return added;
   },
-  zrem: (k: string, m: string) => (z(k).delete(m) ? 1 : 0),
+  zrem: (k: string, ...ms: string[]) => ms.filter((m) => z(k).delete(m)).length,
+  zrange: (k: string) => byScore(k).map(([m]) => m),
+  zrangebyscore: (k: string, min: number, max: number) => byScore(k).filter(([, s]) => s >= min && s <= max).map(([m]) => m),
+  hset: (k: string, f: string, v: string) => (h(k).set(f, v), 1),
+  hdel: (k: string, ...fs: string[]) => fs.filter((f) => h(k).delete(f)).length,
+  hmget: (k: string, ...fs: string[]) => fs.map((f) => h(k).get(f) ?? null),
   zcard: (k: string) => z(k).size,
   zremrangebyscore: (k: string, min: number, max: number) => {
     let n = 0;
@@ -74,7 +85,23 @@ async function set(k: string, v: string, ...opts: unknown[]) {
 
 export const redisModule = {
   newRedis: () => ({ subscribe: vi.fn(), on: vi.fn(), disconnect: vi.fn() }),
-  redis: { publish: vi.fn(), disconnect: vi.fn(), multi: fakeMulti, zrem: async (k: string, m: string) => zops.zrem(k, m), zscore: async (k: string, m: string) => z(k).get(m)?.toString() ?? null, set, get: async (k: string) => kv.get(k) ?? null, del: async (k: string) => (kv.delete(k) ? 1 : 0) },
+  redis: {
+    publish: vi.fn(),
+    disconnect: vi.fn(),
+    multi: fakeMulti,
+    zrem: async (k: string, ...ms: string[]) => zops.zrem(k, ...ms),
+    zadd: async (k: string, ...a: (string | number)[]) => zops.zadd(k, ...a),
+    zrange: async (k: string) => zops.zrange(k),
+    zrangebyscore: async (k: string, min: number, max: number) => zops.zrangebyscore(k, min, max),
+    zremrangebyscore: async (k: string, min: number, max: number) => zops.zremrangebyscore(k, min, max),
+    zscore: async (k: string, m: string) => z(k).get(m)?.toString() ?? null,
+    hmget: async (k: string, ...fs: string[]) => zops.hmget(k, ...fs),
+    // only the compare-and-delete script of the slot admission lock
+    eval: async (_script: string, _n: number, k: string, v: string) => (kv.get(k) === v ? (kv.delete(k), 1) : 0),
+    set,
+    get: async (k: string) => kv.get(k) ?? null,
+    del: async (k: string) => (kv.delete(k) ? 1 : 0),
+  },
   connection: { url: "redis://mock" },
   prefix: "wfos-test",
   runsQueue: fakeQueue("runs"),
@@ -84,8 +111,8 @@ export const redisModule = {
   deploysQueue: fakeQueue("deploys"),
   publish: vi.fn(async (workspaceId: string, ev: unknown) => void transport.published.push({ workspaceId, ev })),
   CONTROL_CHANNEL: "wfos-test:wfos:control",
-  enqueueTask: vi.fn(async (taskId: string, workspaceId: string, resumeNote?: string) =>
-    void transport.queued.push({ queue: "runs", name: "task", data: { taskId, workspaceId, resumeNote } }),
+  enqueueTask: vi.fn(async (taskId: string, workspaceId: string, resumeNote?: string, delay?: number) =>
+    void transport.queued.push({ queue: "runs", name: "task", data: { taskId, workspaceId, resumeNote }, ...(delay ? { opts: { delay } } : {}) }),
   ),
 };
 

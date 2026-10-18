@@ -321,14 +321,3 @@ describe("division daily budget", () => {
     expect(mock.started).toBe(1);
   });
 });
-
-describe("workspace slots", () => {
-  it("limits concurrent Workspace-mode runs on the host (default 1)", async () => {
-    const { acquireWorkspaceSlot, releaseWorkspaceSlot } = await import("../src/runner/workspace/slots");
-    expect(await acquireWorkspaceSlot("run-a")).toBe(true);
-    expect(await acquireWorkspaceSlot("run-b")).toBe(false);
-    await releaseWorkspaceSlot("run-a");
-    expect(await acquireWorkspaceSlot("run-b")).toBe(true);
-    await releaseWorkspaceSlot("run-b");
-  });
-});

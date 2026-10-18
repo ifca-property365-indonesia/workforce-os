@@ -3,6 +3,7 @@ import { agentMessages, approvals, db, employees, tasks, teams } from "@wfos/db"
 import { notFound, route } from "@/lib/server/route";
 import { taskPreviews } from "@/lib/server/apps";
 import { progressFromChildren } from "@/lib/server/tasks";
+import { serverEnv } from "@/lib/server/env";
 
 export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) => {
   const [t] = await db.select().from(tasks).where(and(eq(tasks.id, params.id), eq(tasks.workspaceId, session.workspaceId)));
@@ -37,5 +38,6 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
     messages: msgs.filter((m) => m.taskId && ids.includes(m.taskId)),
     employees: emps,
     previews: await taskPreviews(session.workspaceId, t.id),
+    sandboxLimitSec: serverEnv.workspaceTaskMaxHours * 3600,
   };
 });

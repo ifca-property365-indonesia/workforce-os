@@ -82,6 +82,7 @@
       "loop": "Loop",
       "could_not_start": "Could not start",
       "out_of_memory": "Out of memory",
+      "time_limit": "Sandbox time used up",
       "routine_failed": "Routine failed"
     },
     "status": {

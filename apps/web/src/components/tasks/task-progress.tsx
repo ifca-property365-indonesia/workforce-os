@@ -63,6 +63,37 @@ export function TaskProgressInline({ task, showNote = true, className }: { task:
   );
 }
 
+/** "1 h 12 min" / "12 min" from seconds (whole minutes, rounded down). */
+function useHoursMinutes() {
+  const t = useTranslations("tasks");
+  return (sec: number) => {
+    const m = Math.floor(sec / 60);
+    return m >= 60 ? t("sandbox.hoursMinutes", { h: Math.floor(m / 60), m: m % 60 }) : t("sandbox.minutes", { m });
+  };
+}
+
+/**
+ * Workspace mode: how much of the task's sandbox time (WORKSPACE_TASK_MAX_HOURS, across its runs) is used since a
+ * person last let it go on. Nothing before the first run.
+ */
+export function TaskSandboxTime({ usedSec, limitSec }: { usedSec: number; limitSec: number }) {
+  const t = useTranslations("tasks");
+  const hm = useHoursMinutes();
+  if (usedSec <= 0 || limitSec <= 0) return null;
+  const share = Math.min(100, Math.round((usedSec / limitSec) * 100));
+  const usedUp = usedSec >= limitSec;
+  return (
+    <div className="rounded-xl border bg-card/60 px-3 py-2" role="group" aria-label={t("sandbox.title")}>
+      <div className="flex items-baseline justify-between gap-3 text-xs">
+        <span className="font-semibold uppercase tracking-wide text-muted-foreground">{t("sandbox.title")}</span>
+        <span className="tabular-nums">{t("sandbox.used", { used: hm(usedSec), limit: hm(limitSec) })}</span>
+      </div>
+      <Progress value={share} className={cn("mt-1.5 h-1", share >= 80 && "[&>div]:bg-amber-500", usedUp && "[&>div]:bg-destructive")} aria-hidden />
+      {share >= 80 && <p className={cn("mt-1.5 text-xs", usedUp ? "text-destructive" : "text-muted-foreground")}>{usedUp ? t("sandbox.usedUp") : t("sandbox.nearLimit")}</p>}
+    </div>
+  );
+}
+
 /** The task header's progress: bar, percentage, the assignee's note and when it was reported (or that it comes from subtasks). */
 export function TaskProgressHeader({ task }: { task: ProgressFields }) {
   const t = useTranslations("tasks");

@@ -82,6 +82,7 @@
       "loop": "Berulang",
       "could_not_start": "Tidak bisa dimulai",
       "out_of_memory": "Kehabisan memori",
+      "time_limit": "Waktu sandbox habis",
       "routine_failed": "Rutinitas gagal"
     },
     "status": {

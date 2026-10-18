@@ -197,6 +197,9 @@
       "team_review_no_verdict": "Review ended without a verdict",
       "team_review_unresolved": "Review ended with a failed subtask unresolved",
       "run_out_of_memory": "Stopped: the sandbox ran out of memory",
+      "run_time_limit": "Stopped: the task's sandbox time is used up",
+      "workspace_yielded": "Handed the sandbox to a waiting task",
+      "workspace_slot_busy": "Waiting for a free sandbox",
       "run_tools_unavailable": "Stopped: the platform tools were unavailable",
       "tool_unavailable": "Tool not available"
     },
@@ -212,7 +215,8 @@
     "loop": "loop",
     "could_not_start": "could not start",
     "routine_failed": "routine failed",
-    "out_of_memory": "out of memory"
+    "out_of_memory": "out of memory",
+    "time_limit": "sandbox time used up"
   },
   "stoppedTitle": {
     "stalled": "Stopped: the run stalled",

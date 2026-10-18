@@ -29,7 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodePanel } from "./code-panel";
 import { TaskPreviews } from "@/components/apps/task-previews";
-import { TaskProgressHeader } from "@/components/tasks/task-progress";
+import { TaskProgressHeader, TaskSandboxTime } from "@/components/tasks/task-progress";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import type { TaskPreview } from "@/lib/app-previews";
@@ -65,6 +65,9 @@ interface TaskFull {
   progressNote: string | null;
   progressAt: string | null;
   progressDerived?: boolean;
+  /** Workspace mode: sandbox seconds of all runs, and their value when a person last let the task go on */
+  sandboxSeconds?: number;
+  sandboxSecondsBase?: number;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -102,6 +105,8 @@ interface Detail {
   employees: { id: string; name: string; avatar: string }[];
   /** previews this task published (request_preview), newest first */
   previews: TaskPreview[];
+  /** the per-task sandbox time limit (WORKSPACE_TASK_MAX_HOURS) */
+  sandboxLimitSec?: number;
 }
 
 const KIND_ICON: Record<StepKind, typeof Cpu> = {
@@ -420,6 +425,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
       </div>
 
       <TaskProgressHeader task={task} />
+      <TaskSandboxTime usedSec={(task.sandboxSeconds ?? 0) - (task.sandboxSecondsBase ?? 0)} limitSec={data.sandboxLimitSec ?? 0} />
 
       {dependsOn.length > 0 && (
         <div className={cn("rounded-xl border px-3 py-2 text-sm", task.phase === "blocked" && task.status === "QUEUED" && "border-destructive/50 bg-destructive/5")}>

@@ -197,6 +197,9 @@
       "team_review_no_verdict": "Review berakhir tanpa keputusan",
       "team_review_unresolved": "Review berakhir dengan subtugas gagal yang belum diputuskan",
       "run_out_of_memory": "Dihentikan: sandbox kehabisan memori",
+      "run_time_limit": "Dihentikan: waktu sandbox tugas habis",
+      "workspace_yielded": "Sandbox diberikan ke tugas yang menunggu",
+      "workspace_slot_busy": "Menunggu sandbox kosong",
       "run_tools_unavailable": "Dihentikan: tool platform tidak tersedia",
       "tool_unavailable": "Tool tidak tersedia"
     },
@@ -212,7 +215,8 @@
     "loop": "berulang",
     "could_not_start": "tidak bisa dimulai",
     "routine_failed": "rutinitas gagal",
-    "out_of_memory": "kehabisan memori"
+    "out_of_memory": "kehabisan memori",
+    "time_limit": "waktu sandbox habis"
   },
   "stoppedTitle": {
     "stalled": "Dihentikan: proses macet",

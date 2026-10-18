@@ -181,6 +181,8 @@ export interface RunContext {
      * commands (the division head); subagents: its subagents' commands (the code lead itself). null: the owner decides.
      */
     review?: { own: LeadReviewer | null; subagents: LeadReviewer | null; task: { title: string; brief: string } };
+    /** sandbox time this task has left (WORKSPACE_TASK_MAX_HOURS): the run stops as time_limit when it is used up */
+    timeLeftMs?: number;
   };
   /**
    * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the

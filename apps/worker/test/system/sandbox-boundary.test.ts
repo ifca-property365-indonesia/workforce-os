@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runApprovedCommand } from "../../src/runner/workspace/exec";
 import { runLayout } from "../../src/runner/workspace/layout";
-import { launchUnit, stopUnit, unitActive } from "../../src/runner/workspace/unit";
+import { DEFAULT_LIMITS, launchUnit, stopUnit, unitActive } from "../../src/runner/workspace/unit";
 import { isBlockedAddress } from "@wfos/shared/netguard";
 import type { GatewayEvent } from "../../src/runner/workspace/gateway";
 import { cleanupWorkspace, REPO_ROOT, testHost } from "./host";
@@ -159,7 +159,8 @@ describe("sandbox: filesystem", () => {
 
 describe("sandbox: resources and stop", () => {
   it("is killed when it exceeds its memory limit", async () => {
-    const r = await sh("python3 -c 'b = bytearray(1200 * 1024 * 1024); print(\"ALLOCATED\")'");
+    // just past the limit the sandbox runs with (WORKSPACE_MEMORY_MAX_MB, default 2048)
+    const r = await sh(`python3 -c 'b = bytearray(${DEFAULT_LIMITS.memoryMaxMb + 256} * 1024 * 1024); print("ALLOCATED")'`);
     expect(r.output).not.toContain("ALLOCATED");
     expect(r.exitCode).not.toBe(0);
   });

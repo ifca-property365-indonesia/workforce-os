@@ -225,6 +225,13 @@
       "when": 1791960000000,
       "tag": "0031_divisions_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792046400000,
+      "tag": "0032_task_sandbox_time",
+      "breakpoints": true
     }
   ]
 }

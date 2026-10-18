@@ -142,7 +142,7 @@ export const SKILL_BODY_MAX = 64 * 1024;
 export const SKILL_INDEX_MAX = 30;
 
 /** Something went wrong with a run that a person or the team lead should look at. */
-export const INCIDENT_KINDS = ["failed", "stalled", "loop", "could_not_start", "routine_failed", "out_of_memory"] as const;
+export const INCIDENT_KINDS = ["failed", "stalled", "loop", "could_not_start", "routine_failed", "out_of_memory", "time_limit"] as const;
 export type IncidentKind = (typeof INCIDENT_KINDS)[number];
 /** open → handling (the lead got a turn) → resolved; escalated = a person was notified; muted = over the hourly cap */
 export const INCIDENT_STATUSES = ["open", "handling", "resolved", "escalated", "muted"] as const;

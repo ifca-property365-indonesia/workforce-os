@@ -46,5 +46,13 @@
     "derived": "Worked out from the subtasks that are done",
     "notReported": "Working on it — no progress reported yet.",
     "reportedAgo": "Reported {when}"
+  },
+  "sandbox": {
+    "title": "Sandbox time",
+    "used": "{used} of {limit}",
+    "hoursMinutes": "{h} h {m} min",
+    "minutes": "{m} min",
+    "nearLimit": "Close to the limit: the run stops when it is used up, and a person can let the task continue.",
+    "usedUp": "Used up. Retry or request changes to let the task continue."
   }
 }

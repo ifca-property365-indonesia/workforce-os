@@ -126,11 +126,14 @@ export const NAMED_STEPS: ReadonlySet<string> = new Set([
   "team_review_no_verdict",
   "team_review_unresolved",
   "run_out_of_memory",
+  "run_time_limit",
   "run_tools_unavailable",
   "tool_unavailable",
+  "workspace_yielded",
+  "workspace_slot_busy",
 ]);
 /** run failures and refused tool calls with their own wording */
-const FAILURE_STEPS = new Set(["run_out_of_memory", "run_tools_unavailable", "tool_unavailable"]);
+const FAILURE_STEPS = new Set(["run_out_of_memory", "run_time_limit", "run_tools_unavailable", "tool_unavailable"]);
 /** recorded-but-not-run variants: "simulated:send_email", "draft:send_email" */
 const MODE_PREFIX = /^(simulated|simulate|draft|drafted):/;
 

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { approvals, audit, db, tasks } from "@wfos/db";
 import { canTransition } from "@wfos/shared";
@@ -23,7 +23,8 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
     if (!feedback) throw new HttpError(400, "Describe the changes you want", { code: "feedback_required" });
     // pending deliveries of the old version can no longer be approved
     const expired = await db.transaction(async (tx) => {
-      await tx.update(tasks).set({ status: "QUEUED", error: null, completedAt: null }).where(eq(tasks.id, t.id));
+      // a person let the task go on: its sandbox time limit counts from here (sandboxSecondsBase)
+      await tx.update(tasks).set({ status: "QUEUED", error: null, completedAt: null, sandboxSecondsBase: sql`${tasks.sandboxSeconds}` }).where(eq(tasks.id, t.id));
       return tx
         .update(approvals)
         .set({ status: "EXPIRED", decidedBy: session.userId, decidedAt: new Date(), executionResult: { ok: false, summary: "Changes were requested instead." } })
@@ -107,7 +108,10 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
       await q.task(copy.id, session.workspaceId);
       return { taskId: copy.id };
     }
-    await db.update(tasks).set({ status: "QUEUED", error: null, phase: t.teamId && !t.parentTaskId ? null : t.phase }).where(eq(tasks.id, t.id));
+    await db
+      .update(tasks)
+      .set({ status: "QUEUED", error: null, phase: t.teamId && !t.parentTaskId ? null : t.phase, sandboxSecondsBase: sql`${tasks.sandboxSeconds}` })
+      .where(eq(tasks.id, t.id));
     await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "QUEUED" });
     await q.task(t.id, session.workspaceId);
     return { taskId: t.id };

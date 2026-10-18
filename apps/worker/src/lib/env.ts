@@ -1,5 +1,5 @@
 import { config } from "dotenv";
-import { assertNotProductionTarget, wfosNamespace } from "@wfos/shared/runtime";
+import { assertNotProductionTarget, wfosNamespace, workspaceTaskMaxHours } from "@wfos/shared/runtime";
 import { instanceClaudeCredential, type ClaudeCredential } from "@wfos/db/claude";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,15 @@ export const env = {
   logLevel: process.env.LOG_LEVEL ?? "info",
   /** a run with no SDK event (message, stream delta, tool call) for this many minutes is stopped as stalled */
   runIdleTimeoutMin: Number(process.env.RUN_IDLE_TIMEOUT_MIN) > 0 ? Number(process.env.RUN_IDLE_TIMEOUT_MIN) : 20,
+  /**
+   * Workspace mode: sandbox time one task may use across all its runs, counted from the last time a person let it go
+   * on (retry, request changes). Replaces the old per-run wall clock (WORKSPACE_RUNTIME_MAX_SEC).
+   */
+  workspaceTaskMaxHours: workspaceTaskMaxHours(),
+  /** Workspace mode: after this many minutes a run hands its sandbox slot to a waiting task (and resumes later) */
+  workspaceSliceMin: Number(process.env.WORKSPACE_SLICE_MIN) > 0 ? Number(process.env.WORKSPACE_SLICE_MIN) : 60,
+  /** Workspace mode: memory kept free next to every sandbox's limit before another sandbox may start */
+  workspaceMemoryReserveMb: Number(process.env.WORKSPACE_MEMORY_RESERVE_MB) >= 0 && process.env.WORKSPACE_MEMORY_RESERVE_MB ? Number(process.env.WORKSPACE_MEMORY_RESERVE_MB) : 1024,
   namespace: wfosNamespace(),
   /** app servers on private / loopback addresses are allowed (this VPS registers itself as 127.0.0.1) */
   appServersAllowPrivate: process.env.APP_SERVERS_ALLOW_PRIVATE === "true",

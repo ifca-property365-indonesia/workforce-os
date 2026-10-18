@@ -14,11 +14,11 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { agentQuery, workspaceQueryOverride } from "./sdk";
 import { createWorkspaceQuery, type WorkspaceRunConfig } from "./workspace/query";
-import { SandboxOutOfMemoryError } from "./workspace/unit";
+import { DEFAULT_LIMITS, RUNTIME_BACKSTOP_GRACE_SEC, SandboxOutOfMemoryError } from "./workspace/unit";
 import { workspacePermissions } from "./workspace/permissions";
 import { LEAD_REVIEW_TIMEOUT_MS } from "./workspace/lead-review";
 import { defaultSandboxHost, runLayout } from "./workspace/layout";
-import { acquireWorkspaceSlot, releaseWorkspaceSlot } from "./workspace/slots";
+import { LEASE_RENEW_MS, acquireWorkspaceSlot, releaseWorkspaceSlot, renewWorkspaceSlot, tasksWaitingForSlot, type SlotRefusal } from "./workspace/slots";
 import { sandboxAvailable } from "./workspace/gc";
 import { recordRateLimit, syncUsageFromQuery, usageSyncDue } from "../lib/limits";
 import { CREDIT_USD, applyRunSignals, classifyTool, computeLlmCredits, decideGate, normalizeMcpName, roundCredits, type ToolClass, type ToolPermission } from "@wfos/shared";
@@ -79,8 +79,12 @@ async function* promptWithImages(text: string, images: AgentImage[]): AsyncGener
 export interface AgentRunOutput {
   text: string;
   credits: number;
-  /** stalled = no SDK event for RUN_IDLE_TIMEOUT_MIN; loop = the same tool call repeated past the repeat limit */
-  stopped: "completed" | "budget" | "aborted" | "error" | "max_turns" | "quota" | "stalled" | "loop";
+  /**
+   * stalled = no SDK event for RUN_IDLE_TIMEOUT_MIN; loop = the same tool call repeated past the repeat limit;
+   * yield = Workspace mode, the run handed its sandbox slot to a waiting task after WORKSPACE_SLICE_MIN (resumable);
+   * time_limit = Workspace mode, the task used up its sandbox time (WORKSPACE_TASK_MAX_HOURS)
+   */
+  stopped: "completed" | "budget" | "aborted" | "error" | "max_turns" | "quota" | "stalled" | "loop" | "yield" | "time_limit";
   error?: string;
   /**
    * why an "error" run failed, when it is one the platform recognises: out_of_memory (the Workspace-mode sandbox was
@@ -99,10 +103,14 @@ export class MissingCredentialError extends Error {
   }
 }
 
-/** All Workspace-mode slots on this host are taken; the task is retried shortly. */
+/** No Workspace-mode slot on this host (all taken, or not enough free memory); the task is retried shortly. */
 export class WorkspaceBusyError extends Error {
-  constructor() {
-    super("All Workspace-mode slots on this server are busy");
+  constructor(
+    readonly reason: SlotRefusal["reason"] = "slots",
+    /** the task was not waiting already (the caller records the wait once, not on every retry) */
+    readonly firstWait = true,
+  ) {
+    super(reason === "memory" ? "Not enough free memory on this server for another Workspace-mode sandbox" : "All Workspace-mode slots on this server are busy");
   }
 }
 
@@ -221,6 +229,15 @@ export function setRunIdleTimeoutMs(ms: number | null): void {
 }
 function runIdleTimeoutMs(): number {
   return idleTimeoutOverrideMs ?? env.runIdleTimeoutMin * 60_000;
+}
+
+let sliceOverrideMs: number | null = null;
+/** Tests: hand the sandbox slot over after `ms` instead of WORKSPACE_SLICE_MIN (null = back to the env value). */
+export function setWorkspaceSliceMs(ms: number | null): void {
+  sliceOverrideMs = ms;
+}
+function workspaceSliceMs(): number {
+  return sliceOverrideMs ?? env.workspaceSliceMin * 60_000;
 }
 
 /**
@@ -642,7 +659,10 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
   if (ctx.workspace && !workspaceQueryOverride() && !(await sandboxAvailable())) {
     throw new Error("Workspace mode needs the native installation (root + systemd sandbox). It is not available on this server; switch the employee to Tool mode.");
   }
-  if (ctx.workspace && !(await acquireWorkspaceSlot(ctx.runId))) throw new WorkspaceBusyError();
+  if (ctx.workspace) {
+    const slot = await acquireWorkspaceSlot({ runId: ctx.runId, taskId: ctx.taskId!, memoryMaxMb: DEFAULT_LIMITS.memoryMaxMb });
+    if (!slot.ok) throw new WorkspaceBusyError(slot.reason, slot.firstWait);
+  }
   const controller = new AbortController();
   registerRun(ctx.runId, { workspaceId: ctx.workspaceId, taskId: ctx.taskId, conversationId: ctx.conversationId, employeeId: ctx.employee.id, controller });
 
@@ -680,7 +700,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
 
   // Run safety. `safetyStop` survives however the SDK ends after the abort (throw or a final result message);
   // it is only set when nothing else aborted the run first, and never replaces a run that already succeeded.
-  let safetyStop: "stalled" | "loop" | null = null;
+  let safetyStop: "stalled" | "loop" | "yield" | "time_limit" | null = null;
   let safetyError = "";
   /** the platform tools did not reach the model (init check, or a "No such tool available" for one): the run fails */
   let toolsFailure: string | null = null;
@@ -781,6 +801,9 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     const cfg: WorkspaceRunConfig = {
       workspaceId: ctx.workspaceId,
       taskId: ctx.taskId!,
+      runId: ctx.runId,
+      // the run ends at the task's time limit (watchdog below); the unit's RuntimeMaxSec is only the backstop
+      limits: ctx.workspace.timeLeftMs !== undefined ? { ...DEFAULT_LIMITS, runtimeMaxSec: Math.ceil(ctx.workspace.timeLeftMs / 1000) + RUNTIME_BACKSTOP_GRACE_SEC } : undefined,
       credential,
       egressAllow: ctx.workspace.egressDomains,
       gitIdentity: { name: `${ctx.employee.name} (AI)`, email: `agent+${ctx.employee.id.slice(0, 8)}@workforce-os.local` },
@@ -845,11 +868,51 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
     return r;
   };
 
+  // Workspace mode: the task's sandbox time (across runs) ends the run; after a slice the run hands its slot to a
+  // waiting task between tool calls (it resumes the same session later); the slot lease is renewed while it works
+  const runStartedAt = Date.now();
+  const timeLeftMs = ctx.workspace?.timeLeftMs;
+  const sliceMs = workspaceSliceMs();
+  let lastRenewAt = runStartedAt;
+  let checkingWaiters = false;
+  const workspaceClock = () => {
+    const now = Date.now();
+    if (now - lastRenewAt >= LEASE_RENEW_MS) {
+      lastRenewAt = now;
+      void renewWorkspaceSlot(ctx.runId).catch((e: unknown) => log.warn({ err: e, runId: ctx.runId }, "workspace slot renewal failed"));
+    }
+    if (timeLeftMs !== undefined && now - runStartedAt >= timeLeftMs) {
+      safetyStop = "time_limit";
+      safetyError = `The task used up its sandbox time (${env.workspaceTaskMaxHours} h across its runs) — the run was stopped. A person can let it continue (retry or request changes).`;
+      controller.abort(new Error("time_limit"));
+      return;
+    }
+    if (now - runStartedAt < sliceMs || toolsInFlight() > 0 || checkingWaiters) return;
+    checkingWaiters = true;
+    void tasksWaitingForSlot(ctx.taskId ?? undefined)
+      .then((waiting) => {
+        // still between tool calls, and nothing else stopped the run meanwhile
+        if (!waiting || controller.signal.aborted || toolsInFlight() > 0) return;
+        safetyStop = "yield";
+        safetyError = "The run handed its sandbox to a waiting task and continues later.";
+        log.info({ runId: ctx.runId, taskId: ctx.taskId, waiting, ranMs: Date.now() - runStartedAt }, "workspace run yields its slot");
+        controller.abort(new Error("yield"));
+      })
+      .catch((e: unknown) => log.warn({ err: e, runId: ctx.runId }, "workspace waiting check failed"))
+      .finally(() => {
+        checkingWaiters = false;
+      });
+  };
+
   // started right before the try so the finally always clears it
   lastEventAt = Date.now();
   const watchdog = setInterval(
     () => {
       if (controller.signal.aborted) return;
+      if (ctx.workspace) {
+        workspaceClock();
+        if (controller.signal.aborted) return;
+      }
       const busy = toolsInFlight() > 0;
       const idleFor = Date.now() - lastEventAt;
       if (idleFor <= (busy ? toolCapMs : idleMs)) return;
@@ -859,7 +922,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunOutput> {
         : `No activity for ${formatMinutes(idleMs)} minutes — the run was stopped.`;
       controller.abort(new Error("stalled"));
     },
-    Math.max(10, Math.min(30_000, Math.floor(idleMs / 4))),
+    Math.max(10, Math.min(30_000, Math.floor(idleMs / 4), ctx.workspace ? Math.floor(Math.min(sliceMs, timeLeftMs ?? sliceMs) / 4) : Infinity)),
   );
   watchdog.unref();
 

@@ -18,6 +18,8 @@ import { DEFAULT_LIMITS, launchUnit, stopUnit, unitEndResult, unitFailureError, 
 export interface WorkspaceRunConfig {
   workspaceId: string;
   taskId: string;
+  /** the executor's run id: names the unit (wfos-run-<runId>), so the slot admission can read its memory */
+  runId?: string;
   credential: ClaudeCredential;
   egressAllow: string[];
   gitIdentity: { name: string; email: string };
@@ -80,7 +82,7 @@ export function createWorkspaceQuery(cfg: WorkspaceRunConfig): QueryFn {
 async function* run(cfg: WorkspaceRunConfig, params: { prompt: string; options?: Options }): AsyncGenerator<SDKMessage> {
   const o = params.options ?? {};
   const host = cfg.host ?? defaultSandboxHost();
-  const layout = runLayout(host, { runId: randomUUID(), workspaceId: cfg.workspaceId, taskId: cfg.taskId });
+  const layout = runLayout(host, { runId: cfg.runId ?? randomUUID(), workspaceId: cfg.workspaceId, taskId: cfg.taskId });
   cfg.onLayout?.(layout);
   if (!o.canUseTool) throw new Error("Workspace mode needs a permission callback");
   const server = Object.values((o.mcpServers ?? {}) as Record<string, unknown>)[0];

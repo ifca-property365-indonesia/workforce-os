@@ -398,6 +398,9 @@
       "team_review_no_verdict": "Review berakhir tanpa keputusan",
       "team_review_unresolved": "Review berakhir saat ada subtugas gagal dan belum ada keputusan",
       "run_out_of_memory": "Sandbox kehabisan memori: proses dihentikan",
+      "run_time_limit": "Waktu sandbox tugas sudah habis: proses dihentikan",
+      "workspace_yielded": "Dijeda agar tugas yang menunggu bisa memakai sandbox; dilanjutkan nanti",
+      "workspace_slot_busy": "Menunggu sandbox kosong di server ini",
       "run_tools_unavailable": "Tool platformnya tidak tersedia: proses dihentikan",
       "tool_unavailable": "Mencoba tool yang tidak tersedia: {tool}"
     },

@@ -1,5 +1,5 @@
 import "server-only";
-import { assertNotProductionTarget, wfosNamespace } from "@wfos/shared/runtime";
+import { assertNotProductionTarget, wfosNamespace, workspaceTaskMaxHours } from "@wfos/shared/runtime";
 
 assertNotProductionTarget();
 
@@ -8,6 +8,8 @@ export const serverEnv = {
   authSecret: process.env.AUTH_SECRET ?? "",
   redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379/0",
   namespace: wfosNamespace(),
+  /** Workspace mode: the per-task sandbox time limit the worker enforces (shown on the task) */
+  workspaceTaskMaxHours: workspaceTaskMaxHours(),
   storageDir: process.env.STORAGE_DIR ?? "./storage",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",

@@ -11,7 +11,10 @@ try {
 
 // one sandbox slot is enough for sequential tests
 vi.mock("../../src/runner/workspace/slots", () => ({
-  acquireWorkspaceSlot: async () => true,
+  LEASE_RENEW_MS: 60_000,
+  acquireWorkspaceSlot: async () => ({ ok: true }),
   releaseWorkspaceSlot: async () => {},
+  renewWorkspaceSlot: async () => {},
+  tasksWaitingForSlot: async () => 0,
   workspaceConcurrency: () => 1,
 }));
