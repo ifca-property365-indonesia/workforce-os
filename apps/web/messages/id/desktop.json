@@ -44,7 +44,8 @@
       "employee": "Karyawan",
       "hire": "Rekrut",
       "client": "Klien",
-      "app": "Aplikasi"
+      "app": "Aplikasi",
+      "uiTemplates": "Template UI"
     }
   },
   "office": {

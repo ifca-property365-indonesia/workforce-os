@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Check, Copy, OctagonX, Plus, Rocket } from "lucide-react";
+import { Check, Copy, OctagonX, Palette, Plus, Rocket } from "lucide-react";
 import { APP_MANIFEST_FILE, type AppDTO } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/common";
@@ -240,6 +240,11 @@ export default function AppsPage() {
         }
         actions={
           <>
+            <Button asChild variant="outline" className="gap-1.5">
+              <Link href="/apps/templates">
+                <Palette className="size-4" /> {t("templates.open")}
+              </Link>
+            </Button>
             {owner && previewsOn > 0 && (
               <Button variant="outline" className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={stopAll.isPending} onClick={() => confirm(t("stopAllConfirm")) && stopAll.mutate()}>
                 <OctagonX className="size-4" /> {t("stopAll")}

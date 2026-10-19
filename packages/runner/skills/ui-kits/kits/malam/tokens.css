@@ -1,0 +1,45 @@
+/* Dasbor Malam (malam) design tokens. Primary mode: dark. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #0B1020;
+  --ui-surface: #121A2E;
+  --ui-text: #E6EDF7;
+  --ui-muted: #94A3B8;
+  --ui-border: #24304A;
+  --ui-border-soft: #1B2540;
+  --ui-border-width: 1px;
+  --ui-hover: #18223A;
+  --ui-primary: #22D3EE;
+  --ui-primary-text: #04222A;
+  --ui-accent: #A3E635;
+  --ui-link: #67E8F9;
+  --ui-focus: #22D3EE;
+  --ui-focus-ring: rgba(34,211,238,.30);
+  --ui-success: #34D399;
+  --ui-danger: #F87171;
+  --ui-danger-text: #2A0505;
+  --ui-success-soft: rgba(52,211,153,.14);
+  --ui-success-strong: #6EE7B7;
+  --ui-warning-soft: rgba(251,191,36,.14);
+  --ui-warning-strong: #FCD34D;
+  --ui-danger-soft: rgba(248,113,113,.14);
+  --ui-danger-strong: #FCA5A5;
+  --ui-info-soft: rgba(34,211,238,.14);
+  --ui-info-strong: #67E8F9;
+  --ui-radius: 12px;
+  --ui-radius-sm: 8px;
+  --ui-btn-radius: 8px;
+  --ui-shadow: 0 0 0 1px rgba(34,211,238,.04), 0 10px 30px -12px rgba(0,0,0,.6);
+  --ui-shadow-lg: 0 24px 60px -20px rgba(0,0,0,.8);
+  --ui-heading-weight: 700;
+  --ui-heading-tracking: -0.01em;
+  --ui-sidebar-bg: #080C18;
+  --ui-sidebar-text: #C7D2E3;
+  --ui-nav-active-bg: rgba(34,211,238,.12);
+  --ui-nav-active-text: #67E8F9;
+  --ui-chart: #22D3EE;
+  --ui-chart-2: #A3E635;
+  --ui-title-size: 30px;
+  --ui-font-display: "Sora", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

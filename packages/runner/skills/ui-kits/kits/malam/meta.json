@@ -1,0 +1,40 @@
+{
+  "id": "malam",
+  "name": "Dasbor Malam",
+  "mode": "dark",
+  "tags": [
+    "dark",
+    "dashboard",
+    "data"
+  ],
+  "summary": {
+    "id": "Gelap untuk ruang kontrol: navy pekat, angka monospace, aksen cyan dan lime yang menyala. Untuk dasbor monitoring, operasional 24 jam, dan NOC.",
+    "en": "Dark control room: deep navy, monospace numbers, glowing cyan and lime accents. For monitoring dashboards and 24/7 operations."
+  },
+  "fonts": {
+    "display": {
+      "family": "Sora",
+      "package": "@fontsource-variable/sora"
+    },
+    "body": {
+      "family": "Inter",
+      "package": "@fontsource-variable/inter"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "package": "@fontsource-variable/jetbrains-mono"
+    }
+  },
+  "googleFonts": [
+    "Sora:wght@500;600;700;800",
+    "Inter:wght@400;500;600;700",
+    "JetBrains+Mono:wght@400;600;700"
+  ],
+  "colors": [
+    "#22D3EE",
+    "#A3E635",
+    "#0B1020",
+    "#121A2E",
+    "#E6EDF7"
+  ]
+}

@@ -1,0 +1,15 @@
+/* Industri: the personality on top of base.css */
+:root { color-scheme: dark; }
+.ui-title, .ui-card h3, .ui-eyebrow, .ui-btn, .ui-nav a, .ui-table th, .ui-badge, .ui-stat-label { text-transform: uppercase; letter-spacing: .08em; }
+.ui-title { letter-spacing: .02em; }
+.ui-stat-value { font-family: var(--ui-font-mono); font-weight: 600; color: #F5A524; }
+.ui-btn-primary { background: repeating-linear-gradient(-45deg, #F5A524 0 12px, #E8961A 12px 24px); }
+.ui-card { border-left: 3px solid #3A3F4A; }
+.ui-card:hover { border-left-color: #F5A524; }
+.ui-nav a.is-active::before { content: "▸"; color: #F5A524; }
+.ui-table { font-family: var(--ui-font-mono); font-size: 13px; }
+.ui-table tbody tr:nth-child(even) { background: #1A1D23; }
+.ui-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+.ui-badge { background: transparent; border: 1px solid currentColor; }
+.ui-chart span { border-radius: 0; }
+.ui-auth { background: linear-gradient(transparent 0 calc(100% - 6px), #F5A524 0) , repeating-linear-gradient(90deg, #16181D 0 39px, #1C1F25 39px 40px); }

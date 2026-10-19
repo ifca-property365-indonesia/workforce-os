@@ -1,0 +1,45 @@
+/* Editorial (editorial) design tokens. Primary mode: light. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #FAF7F0;
+  --ui-surface: #FFFDF8;
+  --ui-text: #1C1917;
+  --ui-muted: #57534E;
+  --ui-border: #D6D3D1;
+  --ui-border-soft: #E7E5E4;
+  --ui-border-width: 1px;
+  --ui-hover: #F3EEE3;
+  --ui-primary: #7F1D1D;
+  --ui-primary-text: #FFFFFF;
+  --ui-accent: #B45309;
+  --ui-link: #7F1D1D;
+  --ui-focus: #7F1D1D;
+  --ui-focus-ring: rgba(127,29,29,.18);
+  --ui-success: #166534;
+  --ui-danger: #B91C1C;
+  --ui-danger-text: #FFFFFF;
+  --ui-success-soft: #E3F1E6;
+  --ui-success-strong: #14532D;
+  --ui-warning-soft: #FBEFD9;
+  --ui-warning-strong: #78350F;
+  --ui-danger-soft: #F9E1E1;
+  --ui-danger-strong: #7F1D1D;
+  --ui-info-soft: #ECE7DD;
+  --ui-info-strong: #3F3A35;
+  --ui-radius: 4px;
+  --ui-radius-sm: 2px;
+  --ui-btn-radius: 2px;
+  --ui-shadow: none;
+  --ui-shadow-lg: 0 18px 40px -20px rgba(28,25,23,.35);
+  --ui-heading-weight: 600;
+  --ui-heading-tracking: -0.01em;
+  --ui-sidebar-bg: #F3EEE3;
+  --ui-sidebar-text: #1C1917;
+  --ui-nav-active-bg: #FFFDF8;
+  --ui-nav-active-text: #7F1D1D;
+  --ui-chart: #7F1D1D;
+  --ui-chart-2: #D6B98C;
+  --ui-title-size: 44px;
+  --ui-font-display: "Fraunces", ui-serif, Georgia, serif;
+  --ui-font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

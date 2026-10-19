@@ -226,5 +226,11 @@
   "app_module_on_hold": "Modul ini sedang dijeda atau dihentikan.",
   "app_module_no_prd": "Setujui PRD modul ini dulu.",
   "app_module_no_work": "Tugas itu tidak mem-push pekerjaan ke repo aplikasi ini.",
-  "app_module_task_linked": "Tugas itu sudah menjadi bagian sebuah modul."
+  "app_module_task_linked": "Tugas itu sudah menjadi bagian sebuah modul.",
+  "ui_template_not_found": "Template UI tidak ditemukan.",
+  "ui_template_name_taken": "Sudah ada template dengan nama ini.",
+  "ui_template_in_use": "Template ini masih dipakai aplikasi atau klien ({count}).",
+  "app_no_design": "Pilih template UI atau file Figma dulu.",
+  "app_module_busy": "Ada modul aplikasi ini yang sedang dibangun ({task}): coba lagi setelah selesai.",
+  "builder_not_coder": "Hanya karyawan mode Workspace (atau divisi dengan code lead) yang bisa mengubah kode aplikasi."
 }

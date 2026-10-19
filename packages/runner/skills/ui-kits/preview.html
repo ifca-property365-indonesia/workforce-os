@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{NAME}} · pratinjau</title>
+{{FONTS}}
+<style>
+{{BASE_CSS}}
+{{TOKENS_CSS}}
+{{KIT_CSS}}
+.pv-screen + .pv-screen { border-top: 6px solid var(--ui-border); }
+</style>
+</head>
+<body>
+<!--screen:dashboard-->
+<section class="pv-screen ui-app" aria-label="Dasbor">
+  <aside class="ui-sidebar">
+    <div class="ui-brand"><span class="ui-brand-mark">P</span> Property365</div>
+    <nav class="ui-nav" aria-label="Menu">
+      <a class="is-active" href="#">Dasbor</a><a href="#">Unit</a><a href="#">Penghuni</a><a href="#">Tagihan IPL</a><a href="#">Keluhan</a><a href="#">Laporan</a>
+    </nav>
+  </aside>
+  <main class="ui-main">
+    <header class="ui-topbar"><input class="ui-input" placeholder="Cari unit, penghuni, tagihan…" aria-label="Cari"><span class="ui-spacer"></span><button class="ui-btn ui-btn-ghost">Bantuan</button><span class="ui-avatar">RS</span></header>
+    <div class="ui-content">
+      <div class="ui-row"><div><p class="ui-eyebrow">Oktober 2026</p><h1 class="ui-title">Selamat pagi, Rina</h1><p class="ui-sub">Tower A dan B · 412 unit terhuni</p></div><span class="ui-spacer"></span><button class="ui-btn ui-btn-secondary">Unduh laporan</button><button class="ui-btn ui-btn-primary">Buat tagihan</button></div>
+      <div class="ui-grid ui-grid-4">
+        <div class="ui-card ui-stat"><div class="ui-stat-label">Tagihan terbit</div><div class="ui-stat-value">Rp 1,82 M</div><div class="ui-stat-delta up">▲ 4,2% dari September</div></div>
+        <div class="ui-card ui-stat"><div class="ui-stat-label">Sudah dibayar</div><div class="ui-stat-value">87%</div><div class="ui-stat-delta up">▲ 2 poin</div></div>
+        <div class="ui-card ui-stat"><div class="ui-stat-label">Tunggakan &gt; 60 hari</div><div class="ui-stat-value">23 unit</div><div class="ui-stat-delta down">▼ naik 3 unit</div></div>
+        <div class="ui-card ui-stat"><div class="ui-stat-label">Keluhan terbuka</div><div class="ui-stat-value">9</div><div class="ui-stat-delta up">▲ 5 selesai minggu ini</div></div>
+      </div>
+      <div class="ui-grid ui-grid-2">
+        <div class="ui-card"><h3>Pembayaran IPL per bulan</h3><div class="ui-chart" aria-hidden="true"><span style="height:52%"></span><span style="height:61%"></span><span style="height:58%"></span><span style="height:70%"></span><span style="height:66%"></span><span style="height:79%"></span><span style="height:74%"></span><span style="height:88%"></span><span style="height:83%"></span><span style="height:92%"></span></div></div>
+        <div class="ui-card"><h3>Perlu tindakan</h3><div class="ui-grid" style="gap:12px">
+          <div class="ui-alert ui-alert-warn">Lift B2 dijadwalkan servis besok 09.00</div>
+          <div class="ui-row"><span class="ui-badge ui-badge-bad">Tunggakan</span><span>A-12-05 · 3 bulan</span></div>
+          <div class="ui-row"><span class="ui-badge ui-badge-info">Baru</span><span>Keluhan air panas · B-07-11</span></div>
+          <div class="ui-row"><span class="ui-badge ui-badge-ok">Lunas</span><span>A-03-02 · Oktober</span></div>
+        </div></div>
+      </div>
+    </div>
+  </main>
+</section>
+<!--/screen-->
+<!--screen:list-->
+<section class="pv-screen ui-app" aria-label="Daftar tagihan">
+  <aside class="ui-sidebar">
+    <div class="ui-brand"><span class="ui-brand-mark">P</span> Property365</div>
+    <nav class="ui-nav" aria-label="Menu"><a href="#">Dasbor</a><a href="#">Unit</a><a href="#">Penghuni</a><a class="is-active" href="#">Tagihan IPL</a><a href="#">Keluhan</a><a href="#">Laporan</a></nav>
+  </aside>
+  <main class="ui-main">
+    <div class="ui-content">
+      <div class="ui-row"><div><p class="ui-eyebrow">Keuangan</p><h1 class="ui-title">Tagihan IPL</h1></div><span class="ui-spacer"></span><button class="ui-btn ui-btn-primary">Buat tagihan</button></div>
+      <div class="ui-tabs"><a class="is-active" href="#">Semua 412</a><a href="#">Belum bayar 54</a><a href="#">Jatuh tempo 23</a><a href="#">Lunas 335</a></div>
+      <div class="ui-row"><input class="ui-input" style="max-width:280px" placeholder="Cari unit atau penghuni" aria-label="Cari"><select class="ui-select" style="max-width:180px" aria-label="Tower"><option>Semua tower</option><option>Tower A</option></select><span class="ui-spacer"></span><button class="ui-btn ui-btn-ghost">Ekspor Excel</button></div>
+      <div class="ui-table-wrap"><table class="ui-table">
+        <thead><tr><th>Unit</th><th>Penghuni</th><th>Periode</th><th>Jatuh tempo</th><th class="ui-num">Jumlah</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="ui-mono">A-12-05</td><td>Budi Santoso</td><td>Okt 2026</td><td>10 Okt</td><td class="ui-num">Rp 1.450.000</td><td><span class="ui-badge ui-badge-bad">Menunggak</span></td></tr>
+          <tr><td class="ui-mono">A-03-02</td><td>Siti Rahma</td><td>Okt 2026</td><td>10 Okt</td><td class="ui-num">Rp 980.000</td><td><span class="ui-badge ui-badge-ok">Lunas</span></td></tr>
+          <tr><td class="ui-mono">B-07-11</td><td>PT Sinar Abadi</td><td>Okt 2026</td><td>15 Okt</td><td class="ui-num">Rp 3.200.000</td><td><span class="ui-badge ui-badge-warn">Jatuh tempo</span></td></tr>
+          <tr><td class="ui-mono">B-15-01</td><td>Andreas Wijaya</td><td>Okt 2026</td><td>15 Okt</td><td class="ui-num">Rp 1.120.000</td><td><span class="ui-badge ui-badge-info">Terkirim</span></td></tr>
+          <tr><td class="ui-mono">A-21-08</td><td>Maria Lestari</td><td>Okt 2026</td><td>10 Okt</td><td class="ui-num">Rp 1.450.000</td><td><span class="ui-badge ui-badge-ok">Lunas</span></td></tr>
+        </tbody>
+      </table></div>
+      <div class="ui-row"><span class="ui-sub" style="margin:0">Menampilkan 1–5 dari 412</span><span class="ui-spacer"></span><button class="ui-btn ui-btn-secondary">Sebelumnya</button><button class="ui-btn ui-btn-secondary">Berikutnya</button></div>
+    </div>
+  </main>
+</section>
+<!--/screen-->
+<!--screen:form-->
+<section class="pv-screen ui-app" aria-label="Formulir">
+  <aside class="ui-sidebar">
+    <div class="ui-brand"><span class="ui-brand-mark">P</span> Property365</div>
+    <nav class="ui-nav" aria-label="Menu"><a href="#">Dasbor</a><a href="#">Unit</a><a class="is-active" href="#">Penghuni</a><a href="#">Tagihan IPL</a><a href="#">Keluhan</a><a href="#">Laporan</a></nav>
+  </aside>
+  <main class="ui-main">
+    <div class="ui-content" style="max-width:860px">
+      <div><p class="ui-eyebrow">Penghuni</p><h1 class="ui-title">Tambah penghuni</h1><p class="ui-sub">Data dipakai untuk tagihan dan akses kartu.</p></div>
+      <form class="ui-card ui-form" onsubmit="return false">
+        <div class="ui-field"><label class="ui-label" for="f1">Nama lengkap</label><input class="ui-input" id="f1" value="Dewi Anggraini"></div>
+        <div class="ui-field"><label class="ui-label" for="f2">Unit</label><select class="ui-select" id="f2"><option>A-12-05</option></select></div>
+        <div class="ui-field"><label class="ui-label" for="f3">Email</label><input class="ui-input" id="f3" value="dewi@contoh" aria-invalid="true"><span class="ui-error">Email belum lengkap</span></div>
+        <div class="ui-field"><label class="ui-label" for="f4">Nomor HP</label><input class="ui-input" id="f4" placeholder="08…"><span class="ui-help">Untuk pengingat tagihan lewat WhatsApp</span></div>
+        <div class="ui-field ui-wide"><label class="ui-label" for="f5">Catatan</label><textarea class="ui-textarea" id="f5" placeholder="Kendaraan, hewan peliharaan, dll."></textarea></div>
+        <div class="ui-row ui-wide"><span class="ui-spacer"></span><button class="ui-btn ui-btn-ghost" type="button">Batal</button><button class="ui-btn ui-btn-primary">Simpan penghuni</button></div>
+      </form>
+    </div>
+  </main>
+</section>
+<!--/screen-->
+<!--screen:detail-->
+<section class="pv-screen ui-app" aria-label="Detail unit">
+  <aside class="ui-sidebar">
+    <div class="ui-brand"><span class="ui-brand-mark">P</span> Property365</div>
+    <nav class="ui-nav" aria-label="Menu"><a href="#">Dasbor</a><a class="is-active" href="#">Unit</a><a href="#">Penghuni</a><a href="#">Tagihan IPL</a><a href="#">Keluhan</a><a href="#">Laporan</a></nav>
+  </aside>
+  <main class="ui-main">
+    <div class="ui-content">
+      <div class="ui-row"><div><p class="ui-eyebrow">Unit · Tower A</p><h1 class="ui-title">A-12-05</h1><p class="ui-sub">2 kamar · 54 m² · dihuni sejak Maret 2024</p></div><span class="ui-spacer"></span><button class="ui-btn ui-btn-danger">Blokir akses</button><button class="ui-btn ui-btn-primary">Kirim pengingat</button></div>
+      <div class="ui-grid ui-grid-2">
+        <div class="ui-card"><h3>Ringkasan</h3><dl class="ui-dl"><dt>Penghuni</dt><dd>Budi Santoso</dd><dt>Status</dt><dd><span class="ui-badge ui-badge-bad">Menunggak 3 bulan</span></dd><dt>Saldo</dt><dd class="ui-num">Rp 4.350.000</dd><dt>Kartu akses</dt><dd>2 aktif</dd></dl></div>
+        <div class="ui-dialog" role="dialog" aria-label="Konfirmasi"><h3>Kirim pengingat?</h3><p class="ui-sub">Pesan dikirim ke Budi Santoso lewat email dan WhatsApp.</p><div class="ui-row" style="margin-top:16px"><span class="ui-spacer"></span><button class="ui-btn ui-btn-ghost">Batal</button><button class="ui-btn ui-btn-primary">Kirim</button></div></div>
+      </div>
+      <div class="ui-card"><h3>Riwayat</h3><div class="ui-grid" style="gap:10px"><div class="ui-skeleton" style="width:70%"></div><div class="ui-skeleton" style="width:45%"></div><div class="ui-empty">Belum ada keluhan untuk unit ini.</div></div></div>
+    </div>
+  </main>
+</section>
+<!--/screen-->
+<!--screen:login-->
+<section class="pv-screen ui-auth" aria-label="Masuk">
+  <form class="ui-card" onsubmit="return false">
+    <div class="ui-brand" style="padding:0"><span class="ui-brand-mark">P</span> Property365</div>
+    <div><h1 class="ui-title" style="font-size:26px">Masuk</h1><p class="ui-sub">Kelola unit, penghuni, dan tagihan.</p></div>
+    <div class="ui-field"><label class="ui-label" for="l1">Email</label><input class="ui-input" id="l1" type="email" value="rina@property365.co.id"></div>
+    <div class="ui-field"><label class="ui-label" for="l2">Kata sandi</label><input class="ui-input" id="l2" type="password" value="rahasia"></div>
+    <button class="ui-btn ui-btn-primary" style="width:100%">Masuk</button>
+    <p class="ui-help" style="text-align:center">Lupa kata sandi? Hubungi admin gedung.</p>
+  </form>
+</section>
+<!--/screen-->
+</body>
+</html>

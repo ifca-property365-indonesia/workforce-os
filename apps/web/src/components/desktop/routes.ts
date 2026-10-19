@@ -6,7 +6,7 @@ import type { SignColor } from "@/lib/sign";
  * and the size its window opens at. The page modules themselves are loaded in pages.tsx.
  */
 
-export const PAGE_KEYS = ["dashboard", "chat", "tasks", "task", "approvals", "outbox", "employees", "hire", "employee", "teams", "routines", "clients", "client", "apps", "app", "knowledge", "settings", "account"] as const;
+export const PAGE_KEYS = ["dashboard", "chat", "tasks", "task", "approvals", "outbox", "employees", "hire", "employee", "teams", "routines", "clients", "client", "apps", "app", "uiTemplates", "knowledge", "settings", "account"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 export type AppKey = "dashboard" | "chat" | "tasks" | "approvals" | "outbox" | "employees" | "teams" | "routines" | "clients" | "apps" | "knowledge" | "settings" | "account";
@@ -46,7 +46,7 @@ export interface Route {
   app: DesktopApp;
   page: PageKey;
   /** a detail page under the app (task, employee, hire, client, app): named next to the app in the title bar */
-  detail: "task" | "employee" | "hire" | "client" | "app" | null;
+  detail: "task" | "employee" | "hire" | "client" | "app" | "uiTemplates" | null;
   params: Record<string, string>;
 }
 
@@ -65,6 +65,7 @@ const TABLE: { re: RegExp; app: AppKey; page: PageKey; detail?: Route["detail"];
   { re: /^\/clients$/, app: "clients", page: "clients" },
   { re: /^\/clients\/([^/]+)$/, app: "clients", page: "client", detail: "client", param: "id" },
   { re: /^\/apps$/, app: "apps", page: "apps" },
+  { re: /^\/apps\/templates$/, app: "apps", page: "uiTemplates", detail: "uiTemplates" },
   { re: /^\/apps\/([^/]+)$/, app: "apps", page: "app", detail: "app", param: "id" },
   { re: /^\/knowledge$/, app: "knowledge", page: "knowledge" },
   { re: /^\/settings$/, app: "settings", page: "settings" },

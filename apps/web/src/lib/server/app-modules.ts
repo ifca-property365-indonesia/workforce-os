@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
-import { appModules, audit, db, employees, takeQueuedModuleWork, TaskInputError } from "@wfos/db";
+import { appModules, audit, db, employees, takeQueuedModuleWork, TaskInputError, teams } from "@wfos/db";
 import { HttpError } from "./auth";
 import { isUuid } from "./apps";
 import { publish, q } from "./queue";
@@ -22,6 +22,7 @@ export async function unique409<T>(constraint: string, code: string, message: st
     return await fn();
   } catch (e) {
     const pg = ((e as { cause?: unknown })?.cause ?? e) as { code?: string; constraint_name?: string };
+    // i18n-ignore: callers pass codes that have an errors.<code> message (app_module_slug_taken, app_module_task_linked)
     if (pg?.code === "23505" && pg.constraint_name === constraint) throw new HttpError(409, message, { code });
     throw e;
   }
@@ -35,6 +36,23 @@ export async function taskInput400<T>(fn: () => Promise<T>): Promise<T> {
     // i18n-ignore: every TASK_INPUT_ERROR_CODES entry has an errors.<code> message (checked in test/tasks.test.ts)
     if (e instanceof TaskInputError) throw new HttpError(400, e.message, { code: e.code });
     throw e;
+  }
+}
+
+/**
+ * Who can write code on an app's repository: an active employee in Workspace mode (a sandbox with the checkout), or a
+ * division with a code lead (who builds in one). Anyone else would finish the task without touching the code.
+ */
+export async function assertBuilder(workspaceId: string, b: { employeeId?: string; teamId?: string }): Promise<void> {
+  if (b.employeeId) {
+    const [e] = await db.select({ status: employees.status, mode: employees.executionMode }).from(employees).where(and(eq(employees.id, b.employeeId), eq(employees.workspaceId, workspaceId)));
+    if (!e || e.status === "ARCHIVED") throw new HttpError(400, "Choose an employee of this workspace", { code: "writer_not_found" });
+    if (e.mode !== "workspace") throw new HttpError(400, "Only an employee in Workspace mode (or a division with a code lead) can change the app's code", { code: "builder_not_coder" });
+  }
+  if (b.teamId) {
+    const [t] = await db.select({ codeLeadId: teams.codeLeadId }).from(teams).where(and(eq(teams.id, b.teamId), eq(teams.workspaceId, workspaceId)));
+    if (!t) throw new HttpError(400, "Choose a division of this workspace", { code: "unknown_team" });
+    if (!t.codeLeadId) throw new HttpError(400, "Only an employee in Workspace mode (or a division with a code lead) can change the app's code", { code: "builder_not_coder" });
   }
 }
 

@@ -30,6 +30,7 @@ import { repoRef, unmergedWorkNote } from "./merge-scan";
 import { appTestContext, appTestPrompt } from "../qa/app-test";
 import { appDocContext, appDocPrompt } from "../docs/app-docs";
 import { appModuleContext, appModulePrompt } from "../docs/app-module";
+import { uiTemplateContext, uiTemplatePrompt } from "../docs/ui-template";
 import { hrReviewContext, hrReviewPrompt } from "../hr/review";
 import { closeBrowserSession } from "../qa/browser";
 
@@ -276,6 +277,8 @@ async function runStarted(
   const appDoc = await appDocContext(task.id);
   // C8: a build or change of an app module (or a subtask of one) gets the module's PRD and the other modules
   const appModule = await appModuleContext(task);
+  // C5: the look of the app this work is on (its UI template and Figma file)
+  const uiTemplate = await uiTemplateContext(task, appModule?.appId ?? appDoc?.appId);
   // C2: an HR review task gets submit_hr_review for its employee
   const hrReview = await hrReviewContext(task.id);
   const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
@@ -349,6 +352,7 @@ async function runStarted(
   if (appTest) promptParts.push(appTestPrompt(appTest));
   if (appDoc) promptParts.push(appDocPrompt(appDoc));
   if (appModule) promptParts.push(appModulePrompt(appModule));
+  if (uiTemplate) promptParts.push(uiTemplatePrompt(uiTemplate, { builds: workspaceMode && !!task.repositoryId }));
   if (hrReview) promptParts.push(hrReviewPrompt(hrReview));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));

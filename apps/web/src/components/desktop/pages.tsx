@@ -22,6 +22,7 @@ const Pages = {
   client: dynamic(() => import("@/app/(app)/clients/[id]/page")),
   apps: dynamic(() => import("@/app/(app)/apps/page")),
   app: dynamic(() => import("@/app/(app)/apps/[id]/page")),
+  uiTemplates: dynamic(() => import("@/app/(app)/apps/templates/page")),
   knowledge: dynamic(() => import("@/app/(app)/knowledge/page")),
   settings: dynamic(() => import("@/app/(app)/settings/page")),
   account: dynamic(() => import("@/app/(app)/account/page")),

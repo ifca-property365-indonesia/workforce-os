@@ -1,0 +1,11 @@
+/* Korporat: the personality on top of base.css */
+.ui-btn-primary { background: linear-gradient(135deg, #4F46E5, #7C3AED); box-shadow: 0 4px 14px rgba(79,70,229,.30); }
+.ui-btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(79,70,229,.38); }
+.ui-card { transition: transform .2s, box-shadow .2s; border-color: #EEF2F7; }
+.ui-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(79,70,229,.15), 0 8px 10px -6px rgba(79,70,229,.10); }
+.ui-title { background: linear-gradient(90deg, #0F172A 30%, #4F46E5 75%, #7C3AED); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.ui-content { position: relative; isolation: isolate; }
+.ui-content::before { content: ""; position: absolute; z-index: -1; top: -80px; right: -60px; width: 420px; height: 320px; border-radius: 50%; background: radial-gradient(closest-side, rgba(124,58,237,.16), transparent); filter: blur(10px); }
+.ui-brand-mark { background: linear-gradient(135deg, #4F46E5, #7C3AED); box-shadow: 0 0 18px rgba(79,70,229,.45); }
+.ui-stat-value { color: #312E81; }
+.ui-auth { background: radial-gradient(60% 50% at 80% 10%, #E0E7FF, transparent), radial-gradient(50% 50% at 10% 90%, #EDE9FE, transparent), #F8FAFC; }

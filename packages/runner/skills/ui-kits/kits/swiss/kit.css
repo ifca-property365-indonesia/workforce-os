@@ -1,0 +1,16 @@
+/* Swiss Grid: the personality on top of base.css */
+.ui-card { border-width: 1px; border-top-width: 4px; }
+.ui-title { text-transform: none; line-height: 1; }
+.ui-eyebrow { color: #D7000F; letter-spacing: .2em; }
+.ui-table-wrap { border-left: 0; border-right: 0; }
+.ui-table th { border-bottom-width: 2px; color: #111; }
+.ui-btn { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+.ui-btn-secondary { border-color: #111; }
+.ui-badge { border-radius: 0; text-transform: uppercase; letter-spacing: .06em; font-size: 11px; }
+.ui-stat-value { font-size: 40px; letter-spacing: -0.04em; }
+.ui-nav a { border-radius: 0; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
+.ui-brand-mark { background: #D7000F; }
+.ui-chart span { border-radius: 0; }
+.ui-input, .ui-select, .ui-textarea { border-width: 0 0 1px 0; padding-left: 0; padding-right: 0; background: transparent; }
+.ui-input:focus, .ui-select:focus, .ui-textarea:focus { box-shadow: none; border-bottom-width: 2px; }
+.ui-auth { background: linear-gradient(90deg, #111 0 38%, #fff 38%); }

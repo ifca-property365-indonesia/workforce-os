@@ -1,0 +1,40 @@
+{
+  "id": "swiss",
+  "name": "Swiss Grid",
+  "mode": "light",
+  "tags": [
+    "minimal",
+    "grid",
+    "typographic"
+  ],
+  "summary": {
+    "id": "Gaya Swiss: grid ketat, hitam-putih dengan satu merah sinyal, tanpa sudut membulat. Untuk aplikasi data yang harus terasa presisi dan tenang.",
+    "en": "Swiss style: strict grid, black and white with one signal red, no rounded corners. For data apps that must feel precise and calm."
+  },
+  "fonts": {
+    "display": {
+      "family": "Inter Tight",
+      "package": "@fontsource-variable/inter-tight"
+    },
+    "body": {
+      "family": "Inter",
+      "package": "@fontsource-variable/inter"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "package": "@fontsource-variable/jetbrains-mono"
+    }
+  },
+  "googleFonts": [
+    "Inter+Tight:wght@500;600;700;800",
+    "Inter:wght@400;500;600;700",
+    "JetBrains+Mono:wght@400;600"
+  ],
+  "colors": [
+    "#D7000F",
+    "#111111",
+    "#FFFFFF",
+    "#FFFFFF",
+    "#111111"
+  ]
+}

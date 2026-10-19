@@ -24,7 +24,8 @@
     "./ops": "./src/ops.ts",
     "./ssh": "./src/ssh.ts",
     "./ssh-keys": "./src/ssh-keys.ts",
-    "./dns": "./src/dns.ts"
+    "./dns": "./src/dns.ts",
+    "./ui-kits": "./src/ui-kits.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

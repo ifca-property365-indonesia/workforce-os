@@ -543,11 +543,9 @@ function WorkDialog({ app, m, role, onClose, onDone }: { app: Pick<AppDTO, "id">
   const t = useTranslations("apps.modules");
   const { data: employees } = useEmployees();
   const { data: teams } = useTeams();
-  // workspace-mode employees build code: they come first
-  const builders = useMemo(
-    () => [...(employees ?? [])].filter((e) => e.status !== "ARCHIVED").sort((a, b) => Number(b.executionMode === "workspace") - Number(a.executionMode === "workspace") || a.name.localeCompare(b.name)),
-    [employees],
-  );
+  // only who can change code: Workspace-mode employees, divisions with a code lead
+  const builders = useMemo(() => (employees ?? []).filter((e) => e.status !== "ARCHIVED" && e.executionMode === "workspace").sort((a, b) => a.name.localeCompare(b.name)), [employees]);
+  const codeDivisions = (teams ?? []).filter((d) => d.codeLeadId);
   const [who, setWho] = useState("");
   const [note, setNote] = useState("");
   const pick = who || (builders[0] ? `e:${builders[0].id}` : "");
@@ -580,13 +578,12 @@ function WorkDialog({ app, m, role, onClose, onDone }: { app: Pick<AppDTO, "id">
                 {builders.map((e) => (
                   <option key={e.id} value={`e:${e.id}`}>
                     {e.name} — {e.role}
-                    {e.executionMode === "workspace" ? ` · ${t("workspaceMode")}` : ""}
                   </option>
                 ))}
               </optgroup>
-              {!!teams?.length && (
+              {!!codeDivisions.length && (
                 <optgroup label={t("divisions")}>
-                  {teams.map((d) => (
+                  {codeDivisions.map((d) => (
                     <option key={d.id} value={`t:${d.id}`}>
                       {d.name}
                     </option>

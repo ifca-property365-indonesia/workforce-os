@@ -1,0 +1,45 @@
+/* Neo Brutal (brutal) design tokens. Primary mode: light. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #FFF8E7;
+  --ui-surface: #FFFFFF;
+  --ui-text: #000000;
+  --ui-muted: #3D3D3D;
+  --ui-border: #000000;
+  --ui-border-soft: #000000;
+  --ui-border-width: 3px;
+  --ui-hover: #FFF1C2;
+  --ui-primary: #FFD23F;
+  --ui-primary-text: #000000;
+  --ui-accent: #FF6B9A;
+  --ui-link: #000000;
+  --ui-focus: #000000;
+  --ui-focus-ring: rgba(255,107,154,.55);
+  --ui-success: #007A3D;
+  --ui-danger: #D10028;
+  --ui-danger-text: #FFFFFF;
+  --ui-success-soft: #B8F2CF;
+  --ui-success-strong: #00391B;
+  --ui-warning-soft: #FFD23F;
+  --ui-warning-strong: #000000;
+  --ui-danger-soft: #FFB3C4;
+  --ui-danger-strong: #5C0011;
+  --ui-info-soft: #B7E4FF;
+  --ui-info-strong: #002B45;
+  --ui-radius: 8px;
+  --ui-radius-sm: 6px;
+  --ui-btn-radius: 6px;
+  --ui-shadow: 5px 5px 0 #000;
+  --ui-shadow-lg: 8px 8px 0 #000;
+  --ui-heading-weight: 700;
+  --ui-heading-tracking: -0.02em;
+  --ui-sidebar-bg: #000000;
+  --ui-sidebar-text: #FFFFFF;
+  --ui-nav-active-bg: #FFD23F;
+  --ui-nav-active-text: #000000;
+  --ui-chart: #000000;
+  --ui-chart-2: #FF6B9A;
+  --ui-title-size: 36px;
+  --ui-font-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

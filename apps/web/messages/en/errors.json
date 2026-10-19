@@ -226,5 +226,11 @@
   "app_module_on_hold": "This module is paused or dropped.",
   "app_module_no_prd": "Approve the module's PRD first.",
   "app_module_no_work": "That task pushed no work to this app's repository.",
-  "app_module_task_linked": "That task already belongs to a module."
+  "app_module_task_linked": "That task already belongs to a module.",
+  "ui_template_not_found": "UI template not found.",
+  "ui_template_name_taken": "A template with this name exists.",
+  "ui_template_in_use": "Apps or clients still use this template ({count}).",
+  "app_no_design": "Choose a UI template or a Figma file first.",
+  "app_module_busy": "A module of this app is being built ({task}): try again when it is done.",
+  "builder_not_coder": "Only an employee in Workspace mode (or a division with a code lead) can change the app's code."
 }

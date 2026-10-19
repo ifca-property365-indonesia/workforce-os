@@ -164,14 +164,16 @@ describe("app modules (C8)", () => {
     for (const m of [a, b, c]) await prd(s, m.id);
     await callWithParams(work, "POST", at(s.app.id, `/${a.id}/work`), { role: "build", employeeId: s.dev.id }, { id: s.app.id, moduleId: a.id });
     await callWithParams(work, "POST", at(s.app.id, `/${b.id}/work`), { role: "build", employeeId: s.dev.id }, { id: s.app.id, moduleId: b.id });
-    await callWithParams(work, "POST", at(s.app.id, `/${c.id}/work`), { role: "build", employeeId: s.pm.id }, { id: s.app.id, moduleId: c.id });
+    await callWithParams(work, "POST", at(s.app.id, `/${c.id}/work`), { role: "build", employeeId: s.dev.id }, { id: s.app.id, moduleId: c.id });
     // b's request names an employee that no longer exists: createTask refuses it
     await db.update(appModules).set({ pendingWork: { role: "build", employeeId: randomUUID(), teamId: null, note: "", requestedBy: null, requestedAt: new Date(0).toISOString() } }).where(eq(appModules.id, b.id));
     await db.update(tasks).set({ status: "DONE" }).where(eq(tasks.repositoryId, s.repo!.id));
     const r1 = await takeQueuedModuleWork(db, s.ws.id, s.app.id);
     expect(r1).toMatchObject({ task: null, dropped: { moduleId: b.id } });
     const r2 = await takeQueuedModuleWork(db, s.ws.id, s.app.id);
-    expect(r2.task).toMatchObject({ assigneeId: s.pm.id });
+    expect(r2.task).toMatchObject({ assigneeId: s.dev.id });
+    // only who can change code builds: a non-Workspace employee is refused
+    expect((await callWithParams(work, "POST", at(s.app.id, `/${c.id}/work`), { role: "change", employeeId: s.pm.id, note: "tambah filter" }, { id: s.app.id, moduleId: c.id })).json.code).toBe("builder_not_coder");
   });
 
   it("pausing or dropping a module drops its waiting build and refuses new ones; members cannot build", async () => {

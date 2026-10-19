@@ -1,0 +1,13 @@
+/* Dasbor Malam: the personality on top of base.css */
+:root { color-scheme: dark; }
+.ui-stat-value { font-family: var(--ui-font-mono); font-weight: 700; color: #F8FAFC; }
+.ui-card { background: linear-gradient(180deg, #131C31, #10172A); }
+.ui-btn-primary { box-shadow: 0 0 22px rgba(34,211,238,.35); }
+.ui-btn-primary:hover { box-shadow: 0 0 30px rgba(34,211,238,.55); }
+.ui-nav a.is-active { box-shadow: inset 2px 0 0 #22D3EE; }
+.ui-chart span { box-shadow: 0 0 14px rgba(34,211,238,.35); }
+.ui-chart span:nth-child(odd) { box-shadow: 0 0 14px rgba(163,230,53,.30); }
+.ui-badge { font-family: var(--ui-font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.ui-table td.ui-mono, .ui-table td.ui-num { color: #C7D2E3; }
+.ui-brand-mark { box-shadow: 0 0 16px rgba(34,211,238,.5); }
+.ui-auth { background: radial-gradient(50% 40% at 50% 0%, rgba(34,211,238,.18), transparent), #0B1020; }

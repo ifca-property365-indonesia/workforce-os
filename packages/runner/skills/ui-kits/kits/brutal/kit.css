@@ -1,0 +1,18 @@
+/* Neo Brutal: the personality on top of base.css */
+.ui-btn { border: 3px solid #000; box-shadow: 3px 3px 0 #000; }
+.ui-btn:hover { transform: translate(-2px, -2px); box-shadow: 5px 5px 0 #000; }
+.ui-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
+.ui-btn-secondary { background: #FFFFFF; }
+.ui-btn-ghost { border-color: transparent; box-shadow: none; }
+.ui-badge { border: 2px solid #000; border-radius: 6px; }
+.ui-table td { border-bottom: 2px solid #000; }
+.ui-table th { background: #FF6B9A; color: #000; border-bottom: 3px solid #000; }
+.ui-stat:nth-child(2) { background: #FFD23F; }
+.ui-stat:nth-child(3) { background: #FFB3C4; }
+.ui-stat-label, .ui-stat-delta.up, .ui-stat-delta.down { color: #000; }
+.ui-nav a { border: 3px solid transparent; }
+.ui-nav a.is-active { border-color: #FFD23F; }
+.ui-input:focus, .ui-select:focus, .ui-textarea:focus { box-shadow: 4px 4px 0 #FF6B9A; }
+.ui-chart span { border: 2px solid #000; }
+.ui-brand-mark { border: 3px solid #fff; color: #000; }
+.ui-auth { background: #FFD23F; }

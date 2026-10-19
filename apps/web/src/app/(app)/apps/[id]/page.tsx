@@ -15,6 +15,7 @@ import { TestUsersCard } from "@/components/apps/test-users-card";
 import { AppTestsPanel } from "@/components/apps/app-tests-panel";
 import { AppDocumentsPanel } from "@/components/apps/app-documents-panel";
 import { AppModulesPanel, useAppModules } from "@/components/apps/app-modules-panel";
+import { AppDesignCard } from "@/components/apps/ui-templates";
 import { BackupsPanel } from "@/components/apps/backups-panel";
 import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
 import { DnsPanel } from "@/components/apps/dns-panel";
@@ -283,6 +284,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
       {logs && <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} />}
       {/* C8: modules, each with its own PRD, built one at a time in the app's repository */}
       {logs && <AppModulesPanel app={app} admin={admin} member={logs} />}
+      {/* C5: the UI template and Figma file the app follows; "apply the look" as a task */}
+      {logs && <AppDesignCard app={app} admin={admin} />}
       {/* C9: PRD, business flow, test guide and presentation, versioned (drafts approved by an Admin) */}
       {logs && <AppDocumentsPanel app={app} admin={admin} member={logs} />}
 

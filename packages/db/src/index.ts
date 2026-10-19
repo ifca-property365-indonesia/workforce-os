@@ -28,6 +28,7 @@ export {
   type AppModuleView,
   type ModuleWorkInput,
 } from "./app-modules";
+export { appDesign, resolveTemplate, type AppDesign } from "./ui-templates";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 

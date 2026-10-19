@@ -1,0 +1,45 @@
+/* Swiss Grid (swiss) design tokens. Primary mode: light. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #FFFFFF;
+  --ui-surface: #FFFFFF;
+  --ui-text: #111111;
+  --ui-muted: #5C5C5C;
+  --ui-border: #111111;
+  --ui-border-soft: #E5E5E5;
+  --ui-border-width: 1px;
+  --ui-hover: #F4F4F4;
+  --ui-primary: #D7000F;
+  --ui-primary-text: #FFFFFF;
+  --ui-accent: #111111;
+  --ui-link: #D7000F;
+  --ui-focus: #111111;
+  --ui-focus-ring: rgba(17,17,17,.18);
+  --ui-success: #0A7A33;
+  --ui-danger: #D7000F;
+  --ui-danger-text: #FFFFFF;
+  --ui-success-soft: #E7F4EC;
+  --ui-success-strong: #0A5C27;
+  --ui-warning-soft: #FFF4D6;
+  --ui-warning-strong: #7A5300;
+  --ui-danger-soft: #FDE8E9;
+  --ui-danger-strong: #A3000B;
+  --ui-info-soft: #EDEDED;
+  --ui-info-strong: #111111;
+  --ui-radius: 0px;
+  --ui-radius-sm: 0px;
+  --ui-btn-radius: 0px;
+  --ui-shadow: none;
+  --ui-shadow-lg: none;
+  --ui-heading-weight: 800;
+  --ui-heading-tracking: -0.035em;
+  --ui-sidebar-bg: #111111;
+  --ui-sidebar-text: #FFFFFF;
+  --ui-nav-active-bg: #D7000F;
+  --ui-nav-active-text: #FFFFFF;
+  --ui-chart: #111111;
+  --ui-chart-2: #D7000F;
+  --ui-title-size: 40px;
+  --ui-font-display: "Inter Tight", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

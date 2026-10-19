@@ -1,0 +1,45 @@
+/* Industri (industri) design tokens. Primary mode: dark. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #16181D;
+  --ui-surface: #1E2128;
+  --ui-text: #E8E6E3;
+  --ui-muted: #A3A09A;
+  --ui-border: #3A3F4A;
+  --ui-border-soft: #2A2E36;
+  --ui-border-width: 1px;
+  --ui-hover: #252932;
+  --ui-primary: #F5A524;
+  --ui-primary-text: #1A1300;
+  --ui-accent: #4FD1C5;
+  --ui-link: #F5A524;
+  --ui-focus: #F5A524;
+  --ui-focus-ring: rgba(245,165,36,.30);
+  --ui-success: #4ADE80;
+  --ui-danger: #F87171;
+  --ui-danger-text: #1F0606;
+  --ui-success-soft: rgba(74,222,128,.12);
+  --ui-success-strong: #86EFAC;
+  --ui-warning-soft: rgba(245,165,36,.14);
+  --ui-warning-strong: #FCC96B;
+  --ui-danger-soft: rgba(248,113,113,.14);
+  --ui-danger-strong: #FCA5A5;
+  --ui-info-soft: rgba(79,209,197,.14);
+  --ui-info-strong: #81E6D9;
+  --ui-radius: 2px;
+  --ui-radius-sm: 2px;
+  --ui-btn-radius: 2px;
+  --ui-shadow: none;
+  --ui-shadow-lg: 0 20px 50px -20px rgba(0,0,0,.8);
+  --ui-heading-weight: 600;
+  --ui-heading-tracking: 0;
+  --ui-sidebar-bg: #111317;
+  --ui-sidebar-text: #D6D3CE;
+  --ui-nav-active-bg: #252932;
+  --ui-nav-active-text: #F5A524;
+  --ui-chart: #F5A524;
+  --ui-chart-2: #4FD1C5;
+  --ui-title-size: 28px;
+  --ui-font-display: "IBM Plex Mono", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

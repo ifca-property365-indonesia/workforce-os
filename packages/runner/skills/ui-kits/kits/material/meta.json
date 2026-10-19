@@ -1,0 +1,39 @@
+{
+  "id": "material",
+  "name": "Material Lembut",
+  "mode": "light",
+  "tags": [
+    "material",
+    "friendly",
+    "tonal"
+  ],
+  "summary": {
+    "id": "Terinspirasi Material 3: permukaan bertonal teal, tombol pil, elevasi lembut. Familiar untuk pengguna Android; cocok untuk aplikasi operasional harian.",
+    "en": "Material 3 inspired: tonal teal surfaces, pill buttons, soft elevation. Familiar to Android users; for everyday operations apps."
+  },
+  "fonts": {
+    "display": {
+      "family": "Roboto Flex",
+      "package": "@fontsource-variable/roboto-flex"
+    },
+    "body": {
+      "family": "Roboto Flex",
+      "package": "@fontsource-variable/roboto-flex"
+    },
+    "mono": {
+      "family": "Roboto Mono",
+      "package": "@fontsource-variable/roboto-mono"
+    }
+  },
+  "googleFonts": [
+    "Roboto+Flex:opsz,wght@8..144,400;8..144,500;8..144,600;8..144,700",
+    "Roboto+Mono:wght@400;600"
+  ],
+  "colors": [
+    "#00696B",
+    "#4A6363",
+    "#F4F8F7",
+    "#FBFDFC",
+    "#191C1C"
+  ]
+}

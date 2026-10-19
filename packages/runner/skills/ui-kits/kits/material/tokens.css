@@ -1,0 +1,45 @@
+/* Material Lembut (material) design tokens. Primary mode: light. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #F4F8F7;
+  --ui-surface: #FBFDFC;
+  --ui-text: #191C1C;
+  --ui-muted: #3F4948;
+  --ui-border: #BFC8C7;
+  --ui-border-soft: #DCE4E3;
+  --ui-border-width: 1px;
+  --ui-hover: #E6EFEE;
+  --ui-primary: #00696B;
+  --ui-primary-text: #FFFFFF;
+  --ui-accent: #4A6363;
+  --ui-link: #00696B;
+  --ui-focus: #00696B;
+  --ui-focus-ring: rgba(0,105,107,.20);
+  --ui-success: #2E7D32;
+  --ui-danger: #BA1A1A;
+  --ui-danger-text: #FFFFFF;
+  --ui-success-soft: #D7F0D9;
+  --ui-success-strong: #1B5E20;
+  --ui-warning-soft: #FFE7C2;
+  --ui-warning-strong: #6D4C00;
+  --ui-danger-soft: #FFDAD6;
+  --ui-danger-strong: #93000A;
+  --ui-info-soft: #CCE8E7;
+  --ui-info-strong: #002020;
+  --ui-radius: 16px;
+  --ui-radius-sm: 12px;
+  --ui-btn-radius: 999px;
+  --ui-shadow: 0 1px 2px rgba(0,0,0,.08), 0 1px 3px 1px rgba(0,0,0,.05);
+  --ui-shadow-lg: 0 4px 8px 3px rgba(0,0,0,.08), 0 1px 3px rgba(0,0,0,.12);
+  --ui-heading-weight: 600;
+  --ui-heading-tracking: 0;
+  --ui-sidebar-bg: #EEF4F3;
+  --ui-sidebar-text: #191C1C;
+  --ui-nav-active-bg: #CCE8E7;
+  --ui-nav-active-text: #002020;
+  --ui-chart: #00696B;
+  --ui-chart-2: #80D4D5;
+  --ui-title-size: 30px;
+  --ui-font-display: "Roboto Flex", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "Roboto Flex", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

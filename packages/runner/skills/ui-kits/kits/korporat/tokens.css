@@ -1,0 +1,45 @@
+/* Korporat (korporat) design tokens. Primary mode: light. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #F8FAFC;
+  --ui-surface: #FFFFFF;
+  --ui-text: #0F172A;
+  --ui-muted: #5B6478;
+  --ui-border: #E2E8F0;
+  --ui-border-soft: #EEF2F7;
+  --ui-border-width: 1px;
+  --ui-hover: #F1F5F9;
+  --ui-primary: #4F46E5;
+  --ui-primary-text: #FFFFFF;
+  --ui-accent: #7C3AED;
+  --ui-link: #4338CA;
+  --ui-focus: #4F46E5;
+  --ui-focus-ring: rgba(79,70,229,.22);
+  --ui-success: #047857;
+  --ui-danger: #DC2626;
+  --ui-danger-text: #FFFFFF;
+  --ui-success-soft: #D1FAE5;
+  --ui-success-strong: #065F46;
+  --ui-warning-soft: #FEF3C7;
+  --ui-warning-strong: #92400E;
+  --ui-danger-soft: #FEE2E2;
+  --ui-danger-strong: #991B1B;
+  --ui-info-soft: #E0E7FF;
+  --ui-info-strong: #3730A3;
+  --ui-radius: 14px;
+  --ui-radius-sm: 10px;
+  --ui-btn-radius: 999px;
+  --ui-shadow: 0 4px 20px -2px rgba(79,70,229,.10);
+  --ui-shadow-lg: 0 20px 40px -12px rgba(79,70,229,.28);
+  --ui-heading-weight: 800;
+  --ui-heading-tracking: -0.02em;
+  --ui-sidebar-bg: #FFFFFF;
+  --ui-sidebar-text: #0F172A;
+  --ui-nav-active-bg: #EEF2FF;
+  --ui-nav-active-text: #3730A3;
+  --ui-chart: #4F46E5;
+  --ui-chart-2: #A78BFA;
+  --ui-title-size: 32px;
+  --ui-font-display: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

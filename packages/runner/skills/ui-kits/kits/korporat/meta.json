@@ -1,0 +1,39 @@
+{
+  "id": "korporat",
+  "name": "Korporat",
+  "mode": "light",
+  "tags": [
+    "enterprise",
+    "saas",
+    "gradient"
+  ],
+  "summary": {
+    "id": "Enterprise modern yang hangat: indigo ke violet, bayangan berwarna, kartu yang terangkat saat disentuh. Cocok untuk portal pelanggan dan ERP yang ingin terasa premium.",
+    "en": "Warm modern enterprise: indigo-to-violet, tinted shadows, cards that lift. For customer portals and ERPs that should feel premium."
+  },
+  "fonts": {
+    "display": {
+      "family": "Plus Jakarta Sans",
+      "package": "@fontsource-variable/plus-jakarta-sans"
+    },
+    "body": {
+      "family": "Plus Jakarta Sans",
+      "package": "@fontsource-variable/plus-jakarta-sans"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "package": "@fontsource-variable/jetbrains-mono"
+    }
+  },
+  "googleFonts": [
+    "Plus+Jakarta+Sans:wght@400;500;600;700;800",
+    "JetBrains+Mono:wght@400;600"
+  ],
+  "colors": [
+    "#4F46E5",
+    "#7C3AED",
+    "#F8FAFC",
+    "#FFFFFF",
+    "#0F172A"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "id": "editorial",
+  "name": "Editorial",
+  "mode": "light",
+  "tags": [
+    "serif",
+    "editorial",
+    "elegant"
+  ],
+  "summary": {
+    "id": "Gaya majalah: judul serif besar, kertas hangat, aksen burgundy, garis tipis. Untuk aplikasi laporan, legal, dan portal manajemen yang ingin berwibawa.",
+    "en": "Magazine style: large serif headings, warm paper, burgundy accent, hairline rules. For reporting, legal and management portals."
+  },
+  "fonts": {
+    "display": {
+      "family": "Fraunces",
+      "package": "@fontsource-variable/fraunces"
+    },
+    "body": {
+      "family": "Source Sans 3",
+      "package": "@fontsource-variable/source-sans-3"
+    },
+    "mono": {
+      "family": "IBM Plex Mono",
+      "package": "@fontsource/ibm-plex-mono"
+    }
+  },
+  "googleFonts": [
+    "Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700",
+    "Source+Sans+3:wght@400;500;600;700",
+    "IBM+Plex+Mono:wght@400;600"
+  ],
+  "colors": [
+    "#7F1D1D",
+    "#B45309",
+    "#FAF7F0",
+    "#FFFDF8",
+    "#1C1917"
+  ]
+}

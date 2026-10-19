@@ -3,7 +3,7 @@ import { z } from "zod";
 import { appDocuments, appModules, audit, db, requestModuleWork } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { loadApp } from "@/lib/server/apps";
-import { activeEmployee, loadModule, startTask, taskInput400 } from "@/lib/server/app-modules";
+import { assertBuilder, loadModule, startTask, taskInput400 } from "@/lib/server/app-modules";
 import { body, route } from "@/lib/server/route";
 
 const schema = z
@@ -35,7 +35,7 @@ export const POST = route<{ id: string; moduleId: string }>("ADMIN", async ({ se
       .limit(1);
     if (!prd) throw new HttpError(409, "Approve the module's PRD first", { code: "app_module_no_prd" });
   }
-  if (b.employeeId) await activeEmployee(session.workspaceId, b.employeeId);
+  await assertBuilder(session.workspaceId, b);
   const r = await taskInput400(() =>
     db.transaction((tx) =>
       requestModuleWork(tx, {

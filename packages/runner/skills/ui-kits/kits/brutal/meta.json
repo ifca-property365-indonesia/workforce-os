@@ -1,0 +1,39 @@
+{
+  "id": "brutal",
+  "name": "Neo Brutal",
+  "mode": "light",
+  "tags": [
+    "bold",
+    "playful",
+    "brutalism"
+  ],
+  "summary": {
+    "id": "Neo-brutalism: garis hitam tebal, bayangan keras, kuning dan pink berani. Untuk aplikasi internal yang ingin berani dan mudah diingat.",
+    "en": "Neo-brutalism: thick black outlines, hard shadows, bold yellow and pink. For internal apps that want to be loud and memorable."
+  },
+  "fonts": {
+    "display": {
+      "family": "Space Grotesk",
+      "package": "@fontsource-variable/space-grotesk"
+    },
+    "body": {
+      "family": "Space Grotesk",
+      "package": "@fontsource-variable/space-grotesk"
+    },
+    "mono": {
+      "family": "Space Mono",
+      "package": "@fontsource/space-mono"
+    }
+  },
+  "googleFonts": [
+    "Space+Grotesk:wght@500;600;700",
+    "Space+Mono:wght@400;700"
+  ],
+  "colors": [
+    "#FFD23F",
+    "#FF6B9A",
+    "#FFF8E7",
+    "#FFFFFF",
+    "#000000"
+  ]
+}

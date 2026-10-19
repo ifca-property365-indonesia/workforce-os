@@ -1,0 +1,39 @@
+{
+  "id": "industri",
+  "name": "Industri",
+  "mode": "dark",
+  "tags": [
+    "dark",
+    "mono",
+    "technical"
+  ],
+  "summary": {
+    "id": "Industrial/terminal: grafit gelap, aksen amber, huruf monospace kapital, sudut tajam. Untuk aplikasi teknik, gudang, maintenance, dan alat internal developer.",
+    "en": "Industrial/terminal: dark graphite, amber accent, uppercase monospace, sharp corners. For engineering, warehouse, maintenance and developer tools."
+  },
+  "fonts": {
+    "display": {
+      "family": "IBM Plex Mono",
+      "package": "@fontsource/ibm-plex-mono"
+    },
+    "body": {
+      "family": "IBM Plex Sans",
+      "package": "@fontsource/ibm-plex-sans"
+    },
+    "mono": {
+      "family": "IBM Plex Mono",
+      "package": "@fontsource/ibm-plex-mono"
+    }
+  },
+  "googleFonts": [
+    "IBM+Plex+Mono:wght@400;500;600;700",
+    "IBM+Plex+Sans:wght@400;500;600;700"
+  ],
+  "colors": [
+    "#F5A524",
+    "#4FD1C5",
+    "#16181D",
+    "#1E2128",
+    "#E8E6E3"
+  ]
+}

@@ -275,6 +275,10 @@ export const clients = pgTable("clients", {
   taxId: text("tax_id").notNull().default(""),
   address: text("address").notNull().default(""),
   phone: text("phone").notNull().default(""),
+  /** C5: the UI template of this client's apps (built-in kit id or custom:<id>), unless an app sets its own */
+  uiTemplate: text("ui_template"),
+  /** C5: the client's Figma file: the apps follow it (read-only for employees) */
+  figmaUrl: text("figma_url"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [uniqueIndex("clients_ws_code").on(t.workspaceId, t.code).where(sql`code <> ''`)]);
@@ -1126,6 +1130,9 @@ export const apps = pgTable(
     /** password of the app's database role, set when the manifest first asks for a database */
     dbPasswordEnc: text("db_password_enc"),
     memoryMb: integer("memory_mb").notNull().default(512),
+    /** C5: this app's UI template (null: its client's) and Figma file (null: its client's) */
+    uiTemplate: text("ui_template"),
+    figmaUrl: text("figma_url"),
     healthy: boolean("healthy"),
     lastHealthAt: timestamp("last_health_at", { withTimezone: true }),
     lastDeployedAt: timestamp("last_deployed_at", { withTimezone: true }),
@@ -1324,6 +1331,26 @@ export const appTests = pgTable(
 export const APP_DOCUMENT_KINDS = ["prd", "flow", "test_guide", "deck"] as const;
 export type AppDocumentKind = (typeof APP_DOCUMENT_KINDS)[number];
 export type AppDocumentStatus = "draft" | "approved" | "superseded" | "rejected";
+
+/** C5: a workspace's own UI template: a design system a person pasted (and optionally its CSS tokens), next to the built-in kits. */
+export const uiTemplates = pgTable(
+  "ui_templates",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    mode: text("mode").$type<"light" | "dark">().notNull().default("light"),
+    summary: text("summary").notNull().default(""),
+    /** the design system for the builders (markdown or a prompt), given to them as data */
+    design: text("design").notNull(),
+    /** optional :root { --ui-*: … } tokens, for the preview and as the app's variables */
+    tokensCss: text("tokens_css").notNull().default(""),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("ui_templates_ws_name").on(t.workspaceId, t.name)],
+);
 
 /** C8: what a person decided about a module; every other status is derived (tasks, merges, releases) */
 export type AppModuleHold = "paused" | "dropped";

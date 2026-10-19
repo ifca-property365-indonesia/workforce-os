@@ -44,7 +44,8 @@
       "employee": "Employee",
       "hire": "Hire",
       "client": "Client",
-      "app": "App"
+      "app": "App",
+      "uiTemplates": "UI templates"
     }
   },
   "office": {

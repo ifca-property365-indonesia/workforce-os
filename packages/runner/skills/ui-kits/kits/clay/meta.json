@@ -1,0 +1,39 @@
+{
+  "id": "clay",
+  "name": "Clay Ceria",
+  "mode": "light",
+  "tags": [
+    "playful",
+    "pastel",
+    "friendly"
+  ],
+  "summary": {
+    "id": "Claymorphism pastel: sudut sangat membulat, bayangan lembut timbul, warna lavender dan pink. Untuk aplikasi penghuni, pelanggan, dan layanan yang ramah.",
+    "en": "Pastel claymorphism: very round corners, soft raised shadows, lavender and pink. For friendly resident, customer and service apps."
+  },
+  "fonts": {
+    "display": {
+      "family": "Nunito",
+      "package": "@fontsource-variable/nunito"
+    },
+    "body": {
+      "family": "Nunito",
+      "package": "@fontsource-variable/nunito"
+    },
+    "mono": {
+      "family": "JetBrains Mono",
+      "package": "@fontsource-variable/jetbrains-mono"
+    }
+  },
+  "googleFonts": [
+    "Nunito:wght@500;600;700;800;900",
+    "JetBrains+Mono:wght@400;600"
+  ],
+  "colors": [
+    "#6440E6",
+    "#FF7AA2",
+    "#F3EEFF",
+    "#FFFFFF",
+    "#2E2A47"
+  ]
+}

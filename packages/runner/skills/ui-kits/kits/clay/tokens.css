@@ -1,0 +1,45 @@
+/* Clay Ceria (clay) design tokens. Primary mode: light. Copy into the app's global CSS (or map to the Tailwind theme). */
+:root {
+  --ui-bg: #F3EEFF;
+  --ui-surface: #FFFFFF;
+  --ui-text: #2E2A47;
+  --ui-muted: #5F5A7D;
+  --ui-border: #E4DDF7;
+  --ui-border-soft: #EFEAFB;
+  --ui-border-width: 1px;
+  --ui-hover: #F4F0FF;
+  --ui-primary: #6440E6;
+  --ui-primary-text: #FFFFFF;
+  --ui-accent: #FF7AA2;
+  --ui-link: #5A36D9;
+  --ui-focus: #6440E6;
+  --ui-focus-ring: rgba(100,64,230,.25);
+  --ui-success: #13784F;
+  --ui-danger: #C7254E;
+  --ui-danger-text: #FFFFFF;
+  --ui-success-soft: #D8F6E8;
+  --ui-success-strong: #0F5C3C;
+  --ui-warning-soft: #FFEFC9;
+  --ui-warning-strong: #7A4A00;
+  --ui-danger-soft: #FFDDE6;
+  --ui-danger-strong: #8C1235;
+  --ui-info-soft: #E6DEFF;
+  --ui-info-strong: #3B1FA3;
+  --ui-radius: 24px;
+  --ui-radius-sm: 16px;
+  --ui-btn-radius: 999px;
+  --ui-shadow: 10px 10px 24px rgba(108,86,196,.16), -8px -8px 20px rgba(255,255,255,.9);
+  --ui-shadow-lg: 16px 16px 40px rgba(108,86,196,.22), -10px -10px 28px rgba(255,255,255,.9);
+  --ui-heading-weight: 800;
+  --ui-heading-tracking: -0.01em;
+  --ui-sidebar-bg: #EBE3FF;
+  --ui-sidebar-text: #2E2A47;
+  --ui-nav-active-bg: #FFFFFF;
+  --ui-nav-active-text: #4A2BC2;
+  --ui-chart: #6440E6;
+  --ui-chart-2: #FF7AA2;
+  --ui-title-size: 32px;
+  --ui-font-display: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ui-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}

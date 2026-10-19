@@ -1,0 +1,13 @@
+/* Editorial: the personality on top of base.css */
+.ui-title { font-weight: 600; font-variation-settings: "opsz" 144; line-height: 1.02; }
+.ui-content > div:first-child .ui-title, .ui-row .ui-title { padding-bottom: 10px; border-bottom: 3px double #1C1917; }
+.ui-eyebrow { font-variant: small-caps; text-transform: none; letter-spacing: .08em; font-size: 14px; color: #7F1D1D; }
+.ui-card h3 { font-family: var(--ui-font-display); font-weight: 600; font-size: 20px; }
+.ui-stat-value { font-family: var(--ui-font-display); font-weight: 600; }
+.ui-sidebar { border-right: 3px double #D6D3D1; }
+.ui-nav a.is-active { border-left: 3px solid #7F1D1D; }
+.ui-table th { text-transform: none; font-style: italic; letter-spacing: 0; font-size: 13px; }
+.ui-table-wrap { box-shadow: none; }
+.ui-badge { border-radius: 2px; font-size: 13px; letter-spacing: .02em; }
+.ui-btn { letter-spacing: .02em; }
+.ui-auth { background: repeating-linear-gradient(0deg, transparent 0 31px, #ECE7DD 31px 32px), #FAF7F0; }

@@ -1,0 +1,14 @@
+/* Clay Ceria: the personality on top of base.css */
+.ui-card { border: 0; box-shadow: 10px 10px 24px rgba(108,86,196,.16), -8px -8px 20px rgba(255,255,255,.9), inset 2px 2px 6px rgba(255,255,255,.8); }
+.ui-btn { box-shadow: 6px 6px 14px rgba(108,86,196,.22), inset -3px -3px 6px rgba(0,0,0,.08), inset 3px 3px 6px rgba(255,255,255,.35); }
+.ui-btn:hover { transform: translateY(-2px) scale(1.02); }
+.ui-btn-secondary, .ui-btn-ghost { box-shadow: 6px 6px 14px rgba(108,86,196,.12), inset 2px 2px 4px rgba(255,255,255,.9); border-color: transparent; }
+.ui-nav a { border-radius: 999px; }
+.ui-nav a.is-active { box-shadow: 6px 6px 14px rgba(108,86,196,.14); }
+.ui-input, .ui-select, .ui-textarea { border: 0; background: #F6F2FF; box-shadow: inset 4px 4px 8px rgba(108,86,196,.12), inset -4px -4px 8px rgba(255,255,255,.9); }
+.ui-table-wrap { border: 0; }
+.ui-badge { padding: 4px 12px; }
+.ui-chart span { border-radius: 999px 999px 8px 8px; }
+.ui-brand-mark { border-radius: 12px; }
+.ui-avatar { background: linear-gradient(135deg, #6440E6, #FF7AA2); }
+.ui-auth { background: radial-gradient(40% 40% at 20% 20%, #FFD6E4, transparent), radial-gradient(40% 40% at 80% 80%, #D9CCFF, transparent), #F3EEFF; }
