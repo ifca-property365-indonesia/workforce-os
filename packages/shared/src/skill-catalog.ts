@@ -186,12 +186,14 @@ export async function resolveSkill(source: string, skillId: string, opts: { comm
     const base = rel.split("/").pop() ?? "";
     const isText = TEXT_EXT.test(rel) || /^LICEN[CS]E/i.test(base);
     let content: string | null = null;
-    if (opts.withFiles !== false && isText && size <= SKILL_FILE_MAX && total + size <= SKILL_FILES_TOTAL_MAX && fetched < SKILL_FILES_COUNT_MAX) {
+    // the skill's own license file is always read (inspecting without files must still see the license)
+    const isLicense = /^LICEN[CS]E(\.(md|txt))?$/i.test(rel);
+    if ((opts.withFiles !== false || isLicense) && isText && size <= SKILL_FILE_MAX && total + size <= SKILL_FILES_TOTAL_MAX && fetched < SKILL_FILES_COUNT_MAX) {
       content = await getText(rawUrl(source, commit, e.path), SKILL_FILE_MAX);
       total += size;
       fetched += 1;
     }
-    if (/^LICEN[CS]E(\.(md|txt))?$/i.test(rel) && content !== null) licenseFile = { path: rel, content: content.slice(0, 20_000) };
+    if (isLicense && content !== null) licenseFile = { path: rel, content: content.slice(0, 20_000) };
     files.push({ path: rel, size, content });
   }
   const spdx = repo.license?.spdx_id && repo.license.spdx_id !== "NOASSERTION" ? repo.license.spdx_id : null;

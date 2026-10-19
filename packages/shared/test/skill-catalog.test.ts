@@ -77,6 +77,10 @@ describe("skill catalog (C4)", () => {
     expect(withFile.license).toBeNull();
     expect(withFile.licenseFile).toEqual({ path: "LICENSE.txt", content: "Apache License 2.0 ..." });
     expect(hasLicense(withFile)).toBe(true);
+    // also when only inspecting (no files fetched): the license file is still read
+    const inspected = await resolveSkill("acme/skills", "pdf-tools", { withFiles: false });
+    expect(inspected.licenseFile?.path).toBe("LICENSE.txt");
+    expect(inspected.files.find((f) => f.path === "scripts/run.py")!.content).toBeNull();
     const none = await resolveSkill("acme/none", "pdf-tools");
     expect(hasLicense(none)).toBe(false);
   });
