@@ -36,7 +36,9 @@
     "divisionNoHead": "{name} (no head yet)",
     "divisionHelp": "The head decides how it gets done: alone, or by handing parts to members.",
     "toPerson": "Give it to a specific person instead",
-    "toDivision": "Give it to a division instead"
+    "toDivision": "Give it to a division instead",
+    "suggested": "Suggested: {name} ({words}).",
+    "useSuggestion": "Use it"
   },
   "progress": {
     "title": "Progress",

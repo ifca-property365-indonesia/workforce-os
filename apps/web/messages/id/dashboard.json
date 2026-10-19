@@ -108,5 +108,37 @@
     "title": "Sedang dikerjakan",
     "description": "Tugas yang sedang berjalan dan sejauh mana kemajuannya.",
     "empty": "Belum ada tugas yang sedang dikerjakan."
+  },
+  "attention": {
+    "title": "Perlu perhatian",
+    "allGood": "Semua aplikasi sehat; tidak ada yang menunggu.",
+    "spend": "{credits} dalam 7 hari terakhir",
+    "vsLastWeek": "{sign}{pct}% dibanding minggu sebelumnya",
+    "env": {
+      "preview": "preview",
+      "live": "LIVE"
+    },
+    "problem": {
+      "failed": "{env} gagal",
+      "unhealthy": "{env} tidak sehat",
+      "down": "{env} mati",
+      "maintenance": "{env} menampilkan halaman maintenance",
+      "stopped": "{env} dihentikan",
+      "release_failed": "rilis {env} terakhir gagal",
+      "cert_expiring": "sertifikat {env} segera habis"
+    },
+    "prdDrafts": "{count, plural, other {# PRD modul menunggu persetujuan}}",
+    "modulesWaiting": "{count, plural, other {# pembangunan modul antre}} ({building} sedang berjalan)",
+    "findings": "{count, plural, other {# uji aplikasi punya temuan yang belum ditangani}}"
+  },
+  "command": {
+    "title": "Apa yang perlu dikerjakan?",
+    "placeholder": "mis. Buat tagihan IPL Oktober untuk Tower A dan kirim pengingat ke penghuni yang belum bayar",
+    "division": "Divisi",
+    "chooseDivision": "Pilih divisi",
+    "suggested": "Disarankan: {name} ({words})",
+    "maybe": "Mungkin {name} ({words}): pilih untuk memastikan",
+    "send": "Kirim",
+    "sent": "Dikirim ke {division}"
   }
 }

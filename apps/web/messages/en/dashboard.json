@@ -108,5 +108,37 @@
     "title": "Working on now",
     "description": "Running tasks and how far along each one is.",
     "empty": "Nobody is working on a task right now."
+  },
+  "attention": {
+    "title": "Needs attention",
+    "allGood": "All apps are well; nothing waits.",
+    "spend": "{credits} in the last 7 days",
+    "vsLastWeek": "{sign}{pct}% vs the week before",
+    "env": {
+      "preview": "preview",
+      "live": "LIVE"
+    },
+    "problem": {
+      "failed": "{env} failed",
+      "unhealthy": "{env} not healthy",
+      "down": "{env} is down",
+      "maintenance": "{env} shows the maintenance page",
+      "stopped": "{env} is stopped",
+      "release_failed": "last {env} release failed",
+      "cert_expiring": "{env} certificate expires soon"
+    },
+    "prdDrafts": "{count, plural, one {# module PRD waits for approval} other {# module PRDs wait for approval}}",
+    "modulesWaiting": "{count, plural, one {# module build waits} other {# module builds wait}} ({building} running)",
+    "findings": "{count, plural, one {# app test has findings nobody handled} other {# app tests have findings nobody handled}}"
+  },
+  "command": {
+    "title": "What needs doing?",
+    "placeholder": "e.g. Make the October IPL invoices for Tower A and send reminders to residents who have not paid",
+    "division": "Division",
+    "chooseDivision": "Choose a division",
+    "suggested": "Suggested: {name} ({words})",
+    "maybe": "Maybe {name} ({words}): choose to confirm",
+    "send": "Send",
+    "sent": "Sent to {division}"
   }
 }

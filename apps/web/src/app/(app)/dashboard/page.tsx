@@ -13,6 +13,7 @@ import { Avatar, PageHeader, StatusBadge } from "@/components/layout/common";
 import { WeeklySpendChart } from "@/components/inspector/weekly-spend";
 import { LimitsCard } from "@/components/inspector/limits-card";
 import { IncidentsCard } from "@/components/inspector/incidents-card";
+import { AttentionCard, QuickCommand } from "@/components/dashboard/attention";
 import { PendingApprovalsList, usePendingApprovals } from "@/components/approvals/pending-list";
 import { OfficeFacade, useBotMoods } from "@/components/office/employee-sign";
 import { useOffice } from "@/components/office/use-office";
@@ -162,6 +163,12 @@ export default function DashboardPage() {
       />
 
       <OfficeStreet />
+
+      {/* one box for any request (the division is suggested from its words) and what needs a look today */}
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] [&>*]:min-w-0">
+        <QuickCommand />
+        <AttentionCard />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] [&>*]:min-w-0">
         <section aria-labelledby="waiting" className="overflow-hidden rounded-2xl border bg-card">

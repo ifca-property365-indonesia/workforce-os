@@ -36,7 +36,9 @@
     "divisionNoHead": "{name} (belum ada kepala)",
     "divisionHelp": "Kepala divisi yang menentukan caranya: dikerjakan sendiri, atau dibagi ke anggota.",
     "toPerson": "Berikan ke orang tertentu saja",
-    "toDivision": "Berikan ke divisi saja"
+    "toDivision": "Berikan ke divisi saja",
+    "suggested": "Disarankan: {name} ({words}).",
+    "useSuggestion": "Pakai"
   },
   "progress": {
     "title": "Kemajuan",

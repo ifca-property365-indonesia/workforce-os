@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useClients, useEmployees, useTeams } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { useDivisionSuggestion } from "@/components/dashboard/attention";
 
 const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
@@ -75,6 +76,8 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
   });
   // a project with a responsible division can go without an explicit target: the server routes it there
   const projectDivision = allProjects.find((p) => p.id === f.projectId)?.teamId ?? null;
+  // nothing chosen yet: the division the words point to (shown with its words; a pick of the person wins)
+  const suggestion = useDivisionSuggestion(`${f.title}\n${f.brief}`, mode === "division" && !f.assignee && !projectDivision);
   const ready = !!f.title && (!!teamId || !!assigneeId || (mode === "division" && !!projectDivision));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -107,6 +110,14 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
                     </option>
                   ))}
                 </select>
+                {suggestion && !f.assignee && (
+                  <p className="text-xs">
+                    {t("newTask.suggested", { name: suggestion.name, words: suggestion.matched.join(", ") })}{" "}
+                    <button type="button" className="font-semibold underline-offset-2 hover:underline" onClick={() => setF({ ...f, assignee: `t:${suggestion.id}` })}>
+                      {t("newTask.useSuggestion")}
+                    </button>
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">{t("newTask.divisionHelp")}</p>
               </div>
             ) : (
