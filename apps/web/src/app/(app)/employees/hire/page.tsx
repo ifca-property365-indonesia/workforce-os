@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { DEFAULT_MODEL, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type TeamMemberRole, type ToolPermission } from "@wfos/shared";
+import { DEFAULT_DAILY_BUDGET, DEFAULT_MODEL, OUTPUT_LANGUAGES, type AutonomyLevel, type OutputLanguage, type TeamMemberRole, type ToolPermission } from "@wfos/shared";
 import { DIVISION_TEMPLATES, type RoleTemplate } from "@wfos/templates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,7 +59,7 @@ const blank: Draft = {
   model: DEFAULT_MODEL,
   autonomyLevel: "DRAFT",
   toolPermissions: [],
-  dailyBudget: 200,
+  dailyBudget: DEFAULT_DAILY_BUDGET,
   outputLanguage: "inherit",
   executionMode: "tool",
   egressDomains: [],

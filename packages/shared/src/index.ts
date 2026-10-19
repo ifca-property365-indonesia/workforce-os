@@ -564,6 +564,8 @@ export interface ModelPrice {
 }
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
+/** daily credit budget of a newly hired employee (the Owner raised it from 200 on 2026-10-19; division heads get more by hand) */
+export const DEFAULT_DAILY_BUDGET = 1000;
 
 export const DEFAULT_MODEL_PRICES: readonly ModelPrice[] = [
   { model: "claude-opus-5-5", label: "Claude Opus 5.5", inputPer1k: 0.4, outputPer1k: 2.0, cacheReadPer1k: 0.02, cacheWritePer1k: 0.5 },
@@ -870,7 +872,7 @@ export const employeeInputSchema = z.object({
   model: z.string().default(DEFAULT_MODEL),
   autonomyLevel: z.enum(AUTONOMY_LEVELS).default("DRAFT"),
   toolPermissions: z.array(toolPermissionSchema).default([]),
-  dailyBudget: z.number().nonnegative().max(1_000_000).default(200),
+  dailyBudget: z.number().nonnegative().max(1_000_000).default(DEFAULT_DAILY_BUDGET),
   outputLanguage: z.enum(OUTPUT_LANGUAGES).default("inherit"),
   executionMode: z.enum(EXECUTION_MODES).default("tool"),
   /** one line of expertise: how a division head or code lead picks this employee */

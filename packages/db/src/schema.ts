@@ -185,7 +185,7 @@ export const employees = pgTable(
     autonomyLevel: text("autonomy_level").$type<AutonomyLevel>().notNull().default("DRAFT"),
     toolPermissions: jsonb("tool_permissions").$type<ToolPermission[]>().notNull().default([]),
     allowList: jsonb("allow_list").$type<AllowListEntry[]>().notNull().default([]),
-    dailyBudget: doublePrecision("daily_budget").notNull().default(200),
+    dailyBudget: doublePrecision("daily_budget").notNull().default(1000),
     status: text("status").$type<EmployeeStatus>().notNull().default("ACTIVE"),
     instructionsVersion: integer("instructions_version").notNull().default(1),
     /** language of answers and deliverables: inherit (workspace default) | id | en */

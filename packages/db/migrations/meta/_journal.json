@@ -288,6 +288,13 @@
       "when": 1792737600000,
       "tag": "0040_skill_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792824000000,
+      "tag": "0041_default_daily_budget",
+      "breakpoints": true
     }
   ]
 }
