@@ -13,9 +13,35 @@ export const SKILL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const SHA_RE = /^[0-9a-f]{40}$/;
 /** text files kept next to SKILL.md (scripts, references, templates); anything else is listed but not fetched */
 const TEXT_EXT = /\.(md|mdx|txt|py|js|mjs|cjs|ts|sh|bash|json|ya?ml|toml|csv|html|css|xml|sql|ini|cfg)$/i;
-export const SKILL_FILE_MAX = 200 * 1024;
-export const SKILL_FILES_TOTAL_MAX = 1024 * 1024;
-export const SKILL_FILES_COUNT_MAX = 60;
+/** limits of what a skill may carry (larger skills, e.g. with data catalogs, are refused rather than cut) */
+export const SKILL_FILE_MAX = 2 * 1024 * 1024;
+export const SKILL_FILES_TOTAL_MAX = 8 * 1024 * 1024;
+export const SKILL_FILES_COUNT_MAX = 200;
+/** a skill's own test suite is not part of what an employee uses */
+const TEST_DIR = /(^|\/)(tests?|__tests__)\//;
+/** parallel downloads of one skill's files */
+const FETCH_POOL = 6;
+
+/**
+ * A path the runner will write into the sandbox (same rule as safeSkillFilePath in @wfos/runner, which re-checks it):
+ * relative, at most 4 levels, no hidden or odd names. A text file outside it would be silently left out.
+ */
+export function skillFilePathOk(p: string): boolean {
+  if (!p || p.length > 200 || p.startsWith("/") || p.includes("\\") || p.includes("\0")) return false;
+  const parts = p.split("/");
+  return parts.length <= 4 && parts.every((x) => x && x !== "." && x !== ".." && !x.startsWith(".") && /^[A-Za-z0-9._-]+$/.test(x)) && p !== "SKILL.md";
+}
+
+/**
+ * Where a SKILL.md sits, best first: skills/<id> at the root, then the Claude Code copy (.claude/skills/<id>) of
+ * repositories that ship one per agent tool, then other visible folders, then hidden ones, then test fixtures.
+ */
+function placeRank(path: string): number {
+  if (TEST_DIR.test(path)) return 4;
+  if (path.startsWith("skills/")) return 0;
+  if (path.startsWith(".claude/skills/")) return 1;
+  return path.split("/").some((x) => x.startsWith(".")) ? 3 : 2;
+}
 const SKILL_MD_MAX = 64 * 1024;
 const TIMEOUT_MS = 15_000;
 
@@ -47,6 +73,9 @@ export interface ResolvedSkill {
   contentHash: string;
   /** files next to SKILL.md: text ones with their content (within the limits), others listed only */
   files: { path: string; size: number; content: string | null }[];
+  /** text files the skill needs that were NOT fetched (over the limits, or a path the sandbox cannot hold): such a
+   * skill would be installed incomplete, so it is not installed at all */
+  incomplete: string[];
 }
 
 export class SkillCatalogError extends Error {
@@ -151,14 +180,14 @@ export async function resolveSkill(source: string, skillId: string, opts: { comm
   const dirName = (p: string) => p.split("/").slice(-2, -1)[0]?.toLowerCase() ?? "";
   const byDir = candidates
     .filter((e) => dirName(e.path) === want)
-    .sort((a, b) => Number(!a.path.startsWith("skills/")) - Number(!b.path.startsWith("skills/")) || a.path.length - b.path.length);
+    .sort((a, b) => placeRank(a.path) - placeRank(b.path) || a.path.length - b.path.length);
   let skillMd = byDir[0];
   if (!skillMd) {
     // the catalog's id is the frontmatter name, which may differ from the folder (vercel-react-best-practices in
     // react-best-practices/): a root SKILL.md, then folders whose name the id ends with, read and matched by name
     const near = candidates
       .filter((e) => !e.path.includes("/") || (dirName(e.path).length >= 3 && want.endsWith(dirName(e.path))))
-      .sort((a, b) => a.path.length - b.path.length)
+      .sort((a, b) => placeRank(a.path) - placeRank(b.path) || a.path.length - b.path.length)
       .slice(0, 5);
     for (const e of near) {
       const md = await getText(rawUrl(source, commit, e.path), SKILL_MD_MAX);
@@ -175,27 +204,48 @@ export async function resolveSkill(source: string, skillId: string, opts: { comm
   const parsed = parseSkillMd(md);
   const dir = skillMd.path.includes("/") ? skillMd.path.slice(0, skillMd.path.lastIndexOf("/")) : "";
   const prefix = dir ? `${dir}/` : "";
-  const siblings = entries.filter((e) => e.type === "blob" && e.path !== skillMd.path && (dir ? e.path.startsWith(prefix) : !e.path.includes("/")));
-  const files: ResolvedSkill["files"] = [];
+  const siblings = entries.filter(
+    (e) => e.type === "blob" && e.path !== skillMd.path && (dir ? e.path.startsWith(prefix) : !e.path.includes("/")) && !TEST_DIR.test(e.path.slice(prefix.length)),
+  );
+  const withFiles = opts.withFiles !== false;
   let total = 0;
   let fetched = 0;
-  let licenseFile: ResolvedSkill["licenseFile"] = null;
-  for (const e of siblings.slice(0, 200)) {
+  const incomplete: string[] = [];
+  // decide first (in order, so the limits are deterministic), then download in parallel
+  const plan = siblings.slice(0, 1000).map((e) => {
     const rel = e.path.slice(prefix.length);
     const size = e.size ?? 0;
     const base = rel.split("/").pop() ?? "";
     const isText = TEXT_EXT.test(rel) || /^LICEN[CS]E/i.test(base);
-    let content: string | null = null;
     // the skill's own license file is always read (inspecting without files must still see the license)
     const isLicense = /^LICEN[CS]E(\.(md|txt))?$/i.test(rel);
-    if ((opts.withFiles !== false || isLicense) && isText && size <= SKILL_FILE_MAX && total + size <= SKILL_FILES_TOTAL_MAX && fetched < SKILL_FILES_COUNT_MAX) {
-      content = await getText(rawUrl(source, commit, e.path), SKILL_FILE_MAX);
-      total += size;
-      fetched += 1;
+    let fetch = false;
+    if (isText) {
+      // whether it fits is decided the same way when only inspecting, so the reader learns a skill is too large
+      if (skillFilePathOk(rel) && size <= SKILL_FILE_MAX && total + size <= SKILL_FILES_TOTAL_MAX && fetched < SKILL_FILES_COUNT_MAX) {
+        fetch = withFiles || isLicense;
+        total += size;
+        fetched += 1;
+      } else if (!isLicense) {
+        incomplete.push(rel);
+      }
     }
-    if (isLicense && content !== null) licenseFile = { path: rel, content: content.slice(0, 20_000) };
-    files.push({ path: rel, size, content });
+    return { e, rel, size, isLicense, fetch };
+  });
+  if (siblings.length > 1000) incomplete.push(`… ${siblings.length - 1000} more files`);
+  const contents = new Map<string, string>();
+  const todo = plan.filter((x) => x.fetch);
+  for (let i = 0; i < todo.length; i += FETCH_POOL) {
+    const batch = todo.slice(i, i + FETCH_POOL);
+    const got = await Promise.all(batch.map((x) => getText(rawUrl(source, commit, x.e.path), SKILL_FILE_MAX)));
+    batch.forEach((x, j) => contents.set(x.rel, got[j]!));
   }
+  let licenseFile: ResolvedSkill["licenseFile"] = null;
+  const files: ResolvedSkill["files"] = plan.map((x) => {
+    const content = contents.get(x.rel) ?? null;
+    if (x.isLicense && content !== null) licenseFile = { path: x.rel, content: content.slice(0, 20_000) };
+    return { path: x.rel, size: x.size, content };
+  });
   const spdx = repo.license?.spdx_id && repo.license.spdx_id !== "NOASSERTION" ? repo.license.spdx_id : null;
   return {
     source,
@@ -211,6 +261,7 @@ export async function resolveSkill(source: string, skillId: string, opts: { comm
     body: parsed.body,
     contentHash: skillHash(md),
     files,
+    incomplete,
   };
 }
 

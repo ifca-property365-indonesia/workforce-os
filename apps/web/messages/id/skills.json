@@ -90,7 +90,9 @@
     "started": "{name} mulai mengaudit skill tim.",
     "last": "Audit terakhir: {status}",
     "pending": "{count, plural, other {# usulan skill menunggu}}",
-    "note": "Hanya skill berlisensi yang diusulkan. Skrip sebuah skill hanya berjalan di sandbox karyawan (mode Workspace)."
+    "note": "Hanya skill berlisensi yang diusulkan. Skrip sebuah skill hanya berjalan di sandbox karyawan (mode Workspace).",
+    "request": "Permintaan untuk audit ini (opsional)",
+    "requestPlaceholder": "mis. pertimbangkan impeccable dan ui-ux-pro-max untuk Kirana dan Citra"
   },
   "update": {
     "title": "Perbarui {slug}",

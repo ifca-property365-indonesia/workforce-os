@@ -61,6 +61,14 @@ describe("skill audit (C4)", () => {
     expect(t!.assigneeId).toBe(s.dev.id);
   });
 
+  it("an Admin's request goes into the audit's brief", async () => {
+    const s = await setup();
+    const r = await call(startAudit, "POST", "/api/hr/skill-audit", { request: "Look at impeccable and ui-ux-pro-max for Kirana" });
+    const [t] = await db.select().from(tasks).where(eq(tasks.id, r.json.taskId as string));
+    expect(t!.brief).toContain("The Admin asks for this audit: Look at impeccable and ui-ux-pro-max for Kirana");
+    expect(t!.assigneeId).toBe(s.hr.id);
+  });
+
   it("no HR employee: a clear 400", async () => {
     const s = await setup();
     await db.update(employees).set({ role: "Sales" }).where(eq(employees.id, s.hr.id));

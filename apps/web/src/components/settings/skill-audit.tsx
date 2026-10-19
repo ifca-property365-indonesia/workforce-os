@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -10,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { useEmployees } from "@/lib/hooks";
 import { SKILLS_QK, type SkillRow } from "./skills";
@@ -32,6 +34,7 @@ export function SkillAuditCard() {
   const { data } = useQuery({ queryKey: AUDIT_QK, queryFn: () => api.get<AuditState>("/api/hr/skill-audit") });
   const { data: employees } = useEmployees();
   const active = (employees ?? []).filter((e) => e.status !== "ARCHIVED");
+  const [request, setRequest] = useState("");
 
   const save = useMutation({
     mutationFn: (v: Partial<AuditState["settings"]>) => api.put("/api/hr/skill-audit", v),
@@ -39,8 +42,9 @@ export function SkillAuditCard() {
     onError: (e) => toast.error((e as Error).message),
   });
   const start = useMutation({
-    mutationFn: () => api.post<{ taskId: string }>("/api/hr/skill-audit", {}),
+    mutationFn: () => api.post<{ taskId: string }>("/api/hr/skill-audit", request.trim() ? { request: request.trim() } : {}),
     onSuccess: () => {
+      setRequest("");
       toast.success(t("started", { name: data?.hrEmployee?.name ?? "HR" }));
       void qc.invalidateQueries({ queryKey: AUDIT_QK });
     },
@@ -81,6 +85,10 @@ export function SkillAuditCard() {
           </label>
         </div>
         {data && !data.hrEmployee && <p className="text-xs text-warning">{t("noHr")}</p>}
+        <div className="space-y-1.5">
+          <Label htmlFor="skill-audit-request">{t("request")}</Label>
+          <Textarea id="skill-audit-request" rows={2} maxLength={1000} value={request} placeholder={t("requestPlaceholder")} onChange={(e) => setRequest(e.target.value)} />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" className="gap-1.5" disabled={!data?.hrEmployee || running || start.isPending} onClick={() => start.mutate()}>
             <Sparkles className="size-3.5" /> {t("start")}

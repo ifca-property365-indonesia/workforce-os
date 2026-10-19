@@ -90,7 +90,9 @@
     "started": "{name} has started the skill audit.",
     "last": "Last audit: {status}",
     "pending": "{count, plural, one {# skill proposal waiting} other {# skill proposals waiting}}",
-    "note": "Only skills with a license are proposed. A skill's scripts run only inside an employee's sandbox (Workspace mode)."
+    "note": "Only skills with a license are proposed. A skill's scripts run only inside an employee's sandbox (Workspace mode).",
+    "request": "Request for this audit (optional)",
+    "requestPlaceholder": "e.g. look at impeccable and ui-ux-pro-max for Kirana and Citra"
   },
   "update": {
     "title": "Update {slug}",

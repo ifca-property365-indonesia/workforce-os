@@ -163,6 +163,15 @@ describe("skill audit task (C4)", () => {
     expect(await db.select().from(skills).where(eq(skills.workspaceId, ws.id))).toHaveLength(0);
   });
 
+  it("a skill too large to install whole is refused when proposed, and said so when inspected", async () => {
+    const { ctx, dev } = await hrSetup();
+    repo.commits[sha("a")]!["skills/pdf-tools/data/huge.csv"] = "x".repeat(2 * 1024 * 1024 + 1);
+    expect(text(await toolOf(ctx, "skill_inspect")!.handler({ source: "acme/skills", skill: "pdf-tools" }, {}))).toContain("TOO LARGE");
+    const r = await toolOf(ctx, "propose_skill")!.handler({ source: "acme/skills", skill: "pdf-tools", employeeIds: [dev.id], reason: "Bima writes PDF reports" }, {});
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/too large to install whole/);
+  });
+
   it("a newer version keeps the Admin's off switch", async () => {
     const { ws, dev, ctx } = await hrSetup();
     await toolOf(ctx, "propose_skill")!.handler({ source: "acme/skills", skill: "pdf-tools", employeeIds: [dev.id], reason: "Bima writes PDF reports" }, {});

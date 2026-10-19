@@ -63,14 +63,14 @@ export const PUT = route("ADMIN", async ({ session, req }) => {
 
 /** Start an audit now (one at a time). */
 export const POST = route("ADMIN", async ({ session, req }) => {
-  const b = await body(req, z.object({ hrEmployeeId: z.string().uuid().optional() }));
+  const b = await body(req, z.object({ hrEmployeeId: z.string().uuid().optional(), request: z.string().trim().max(1000).optional() }));
   const ws = session.workspaceId;
   const running = await activeSkillAudit(ws);
   if (running) throw new HttpError(409, "A skill audit is still running", { code: "skill_audit_running", taskId: running.taskId });
   const settings = await current(ws);
-  const task = await startSkillAudit({ workspaceId: ws, hrEmployeeId: b.hrEmployeeId ?? settings.hrEmployeeId, trigger: "manual", createdBy: session.userId });
+  const task = await startSkillAudit({ workspaceId: ws, hrEmployeeId: b.hrEmployeeId ?? settings.hrEmployeeId, trigger: "manual", createdBy: session.userId, request: b.request || null });
   if (!task) throw new HttpError(400, "No active HR employee to run the audit", { code: "skill_audit_no_hr" });
-  await audit({ workspaceId: ws, actorUserId: session.userId, actorLabel: session.email, action: "skills.audit_started", targetType: "task", targetId: task.id, details: { assigneeId: task.assigneeId } });
+  await audit({ workspaceId: ws, actorUserId: session.userId, actorLabel: session.email, action: "skills.audit_started", targetType: "task", targetId: task.id, details: { assigneeId: task.assigneeId, request: b.request || null } });
   await publish(ws, { type: "task.created", taskId: task.id, title: task.title, employeeId: task.assigneeId });
   await q.task(task.id, ws);
   return { taskId: task.id };

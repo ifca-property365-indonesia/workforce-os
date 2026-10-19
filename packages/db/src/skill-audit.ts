@@ -44,7 +44,14 @@ export async function activeSkillAudit(workspaceId: string): Promise<{ taskId: s
  * Create the audit task for `hrEmployeeId` (default: hrEmployeeOf) and link it; null when there is no active HR
  * employee. Publishing and enqueueing stay with the caller.
  */
-export async function startSkillAudit(input: { workspaceId: string; hrEmployeeId?: string | null; trigger: SkillAuditTrigger; createdBy?: string | null }): Promise<TaskRow | null> {
+export async function startSkillAudit(input: {
+  workspaceId: string;
+  hrEmployeeId?: string | null;
+  trigger: SkillAuditTrigger;
+  createdBy?: string | null;
+  /** an Admin's request for this audit (skills to look at, people to focus on) */
+  request?: string | null;
+}): Promise<TaskRow | null> {
   const db = getDb();
   const hrId = input.hrEmployeeId ?? (await hrEmployeeOf(input.workspaceId));
   const [hr] = hrId
@@ -60,7 +67,8 @@ export async function startSkillAudit(input: { workspaceId: string; hrEmployeeId
       title: input.trigger === "monthly" ? "Monthly skill audit of the team" : "Skill audit of the team",
       brief:
         "Review every employee's role and recent work, find skills in the open catalog (skills.sh) that would make their work better, " +
-        "and propose them with propose_skill (an Admin approves each). End with a short table of what you proposed and why.",
+        "and propose them with propose_skill (an Admin approves each). End with a short table of what you proposed and why." +
+        (input.request?.trim() ? `\n\nThe Admin asks for this audit: ${input.request.trim().slice(0, 1000)}\nLook at what they name (search for it by name and inspect it) and say in the table what you decided about each, and why.` : ""),
       assigneeId: hr.id,
       source: input.trigger === "monthly" ? "routine" : "board",
       createdBy: input.createdBy ?? null,

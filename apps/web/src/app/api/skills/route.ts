@@ -1,4 +1,4 @@
-import { and, asc, count, eq, ne } from "drizzle-orm";
+import { and, asc, count, eq, getTableColumns, ne, sql } from "drizzle-orm";
 import { audit, db, employees, employeeSkills, skills } from "@wfos/db";
 import { hasRole } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
@@ -9,7 +9,12 @@ import { createSkillSchema, skillFromRequest, skillProvenanceHash, validateSkill
 export const GET = route("VIEWER", async ({ session }) => {
   const admin = hasRole(session.role, "ADMIN");
   const [rows, counts] = await Promise.all([
-    db.select().from(skills).where(eq(skills.workspaceId, session.workspaceId)).orderBy(asc(skills.slug)),
+    // every column but the files (a catalog skill may carry megabytes of scripts and data): their count only
+    db
+      .select({ ...getTableColumns(skills), files: sql<{ path: string; content: string }[]>`'[]'::jsonb`, fileCount: sql<number>`jsonb_array_length(${skills.files})` })
+      .from(skills)
+      .where(eq(skills.workspaceId, session.workspaceId))
+      .orderBy(asc(skills.slug)),
     db
       .select({ skillId: employeeSkills.skillId, n: count() })
       .from(employeeSkills)
@@ -31,7 +36,7 @@ export const GET = route("VIEWER", async ({ session }) => {
       // C4: where a catalog skill came from (repository, commit, license) and whether a newer commit is known
       origin: s.origin ? { source: s.origin.source, path: s.origin.path, commit: s.origin.commit, license: s.origin.license ?? s.origin.licenseFile, url: s.origin.url } : null,
       updateAvailable: s.updateAvailable ? s.updateAvailable.commit : null,
-      fileCount: s.files.length,
+      fileCount: Number(s.fileCount),
       employeeCount: n.get(s.id) ?? 0,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,

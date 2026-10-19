@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { hasLicense, latestSkillCommit, parseSkillMd, resolveSkill, searchSkillsSh, setCatalogFetch, SkillCatalogError, skillHash } from "../src/skill-catalog";
+import { hasLicense, latestSkillCommit, parseSkillMd, resolveSkill, searchSkillsSh, setCatalogFetch, SkillCatalogError, SKILL_FILE_MAX, skillHash } from "../src/skill-catalog";
 import { fakeCatalog, sha, SKILL_MD } from "./fake-catalog";
 
 afterEach(() => setCatalogFetch(null));
@@ -105,6 +105,30 @@ describe("skill catalog (C4)", () => {
     expect(await codeOf(resolveSkill("acme/skills", "pdf-tools"))).toBe("unavailable");
     expect(await codeOf(resolveSkill("acme/..", "pdf-tools"))).toBe("invalid");
     expect(await codeOf(resolveSkill("acme/repo.git", "pdf-tools"))).toBe("invalid");
+  });
+
+  it("of many copies of a skill, takes skills/<id>, else the Claude Code copy; leaves the skill's tests out", async () => {
+    const md2 = SKILL_MD("impeccable", "d", "b");
+    const files = {
+      ".pi/skills/impeccable/SKILL.md": md2,
+      ".claude/skills/impeccable/SKILL.md": md2,
+      ".claude/skills/impeccable/scripts/run.js": "x",
+      ".claude/skills/impeccable/tests/run.test.js": "t",
+      "tests/fixtures/impeccable/SKILL.md": md2,
+    };
+    setCatalogFetch(fakeCatalog({ "p/imp": { head: sha("e"), commits: { [sha("e")]: files } } }).fetchImpl);
+    const r = await resolveSkill("p/imp", "impeccable");
+    expect(r.path).toBe(".claude/skills/impeccable/SKILL.md");
+    expect(r.files.map((f) => f.path)).toEqual(["scripts/run.js"]);
+    expect(r.incomplete).toEqual([]);
+  });
+
+  it("a text file the skill needs that cannot be kept makes it incomplete, also when only inspecting", async () => {
+    const big = "x".repeat(SKILL_FILE_MAX + 1);
+    const files = { "skills/big/SKILL.md": SKILL_MD("big", "d", "b"), "skills/big/data/huge.csv": big, "skills/big/.hidden/conf.json": "{}", "skills/big/logo.png": "PNG" };
+    setCatalogFetch(fakeCatalog({ "p/big": { head: sha("f"), commits: { [sha("f")]: files } } }).fetchImpl);
+    expect((await resolveSkill("p/big", "big")).incomplete.sort()).toEqual([".hidden/conf.json", "data/huge.csv"]);
+    expect((await resolveSkill("p/big", "big", { withFiles: false })).incomplete).toHaveLength(2);
   });
 
   it("parses frontmatter with quotes and without any", () => {
