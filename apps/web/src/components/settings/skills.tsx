@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Eye, Pencil, Plus, ShieldAlert, Trash2, Upload } from "lucide-react";
+import { ArrowUpCircle, ExternalLink, Eye, Pencil, Plus, ShieldAlert, Trash2, Upload } from "lucide-react";
 import { isReservedSkillSlug, SKILL_BODY_MAX, SKILL_DESCRIPTION_MAX, SKILL_SLUG_MAX, SKILL_SLUG_RE, utf8Bytes, type SkillSource } from "@wfos/shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { useDebounced } from "@/components/routines/schedule-preview";
 import { api } from "@/lib/api";
 import { parseSkillMarkdown } from "@/lib/skill-md";
 import { cn } from "@/lib/utils";
+import { SkillAuditCard, SkillUpdateDialog } from "./skill-audit";
 
 export interface SkillRow {
   id: string;
@@ -28,6 +29,11 @@ export interface SkillRow {
   source: SkillSource;
   enabled: boolean;
   untrusted: boolean;
+  /** C4: a catalog skill's repository, commit and license */
+  origin?: { source: string; path: string; commit: string; license: string | null; url: string } | null;
+  /** a newer commit of a catalog skill (applied only by an Admin) */
+  updateAvailable?: string | null;
+  fileCount?: number;
   employeeCount: number;
 }
 
@@ -45,6 +51,7 @@ const SOURCE_TONE: Record<SkillSource, string> = {
   learned: "border-[var(--sign-biru)]/40 text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]",
   import: "border-[var(--sign-ungu)]/40 text-[var(--sign-ungu)] dark:text-[color-mix(in_srgb,var(--sign-ungu)_55%,white)]",
   builtin: "border-success/40 text-success",
+  catalog: "border-[var(--sign-biru)]/40 text-[var(--sign-biru)] dark:text-[color-mix(in_srgb,var(--sign-biru)_60%,white)]",
 };
 
 export function SkillSourceBadge({ source }: { source: SkillSource }) {
@@ -225,6 +232,7 @@ export function SkillsSettings({ admin }: { admin: boolean }) {
   const qc = useQueryClient();
   const { data } = useSkills();
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [updating, setUpdating] = useState<SkillRow | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const toggle = useMutation({
@@ -283,6 +291,7 @@ export function SkillsSettings({ admin }: { admin: boolean }) {
           )}
         </CardContent>
       </Card>
+      {admin && <SkillAuditCard />}
       {data && !data.length && <p className="text-sm text-muted-foreground">{t("empty")}</p>}
       {data?.map((s) => (
         <Card key={s.id} className={cn(!s.enabled && "opacity-70")}>
@@ -292,13 +301,32 @@ export function SkillsSettings({ admin }: { admin: boolean }) {
                 <code className="text-sm font-medium">{s.slug}</code>
                 <SkillSourceBadge source={s.source} />
                 {s.untrusted && <UntrustedBadge />}
+                {s.updateAvailable && (
+                  <Badge variant="outline" className="border-warning/50 text-warning">
+                    <ArrowUpCircle /> {t("updateAvailable")}
+                  </Badge>
+                )}
               </div>
               <p className="break-words text-sm text-muted-foreground">{s.description}</p>
+              {s.origin && (
+                <p className="break-all text-xs text-muted-foreground">
+                  <a href={s.origin.url} target="_blank" rel="noreferrer noopener" className="inline-flex items-center gap-0.5 hover:underline">
+                    {s.origin.source}/{s.origin.path} <ExternalLink className="size-3" />
+                  </a>{" "}
+                  · <code>{s.origin.commit.slice(0, 8)}</code> · {t("licenseLabel", { license: s.origin.license ?? "—" })}
+                  {s.fileCount ? ` · ${t("fileCount", { count: s.fileCount })}` : ""}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {t("assignedCount", { count: s.employeeCount })} · {t("chars", { count: s.bodyChars })}
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {admin && s.updateAvailable && (
+                <Button size="sm" variant="outline" className="gap-1" onClick={() => setUpdating(s)}>
+                  <ArrowUpCircle className="size-3.5" /> {t("reviewUpdate")}
+                </Button>
+              )}
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Switch checked={s.enabled} disabled={!admin || toggle.isPending} aria-label={t("enable", { slug: s.slug })} onCheckedChange={(v) => toggle.mutate({ s, enabled: v })} />
                 {t("enabled")}
@@ -321,6 +349,7 @@ export function SkillsSettings({ admin }: { admin: boolean }) {
           </CardContent>
         </Card>
       ))}
+      {updating && <SkillUpdateDialog key={updating.id} skill={updating} onClose={() => setUpdating(null)} />}
       {editor && <SkillEditor key={editor.kind === "new" ? "new" : editor.skill.id} state={editor} onClose={() => setEditor(null)} />}
     </div>
   );

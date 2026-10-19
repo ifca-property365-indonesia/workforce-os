@@ -118,6 +118,21 @@
     "target": "Untuk {name}",
     "slug": "Nama"
   },
+  "installSkill": {
+    "proposed": "Pasang skill {name}",
+    "source": "Dari",
+    "license": "Lisensi",
+    "for": "Untuk",
+    "reason": "Alasan",
+    "untrusted": "Diusulkan oleh run yang membaca konten dari luar. Periksa apakah skill ini cocok dengan alasannya.",
+    "files": "File di samping SKILL.md ({count})",
+    "filesNote": "Skrip hanya berjalan di sandbox karyawan (mode Workspace), tidak pernah di server.",
+    "pinned": "Menyetujui akan memasang persis versi ini (commit ini). Versi yang lebih baru tampil di Pengaturan → Skill dan hanya diterapkan oleh Admin.",
+    "replaces": "Ini menggantikan skill terpasang {slug} (teks dan filenya). Status aktif/nonaktifnya tetap.",
+    "notShown": "terlalu besar untuk ditampilkan di sini: buka di GitHub pada commit ini",
+    "notInstalled": "tidak dipasang (bukan file teks, atau melebihi batas ukuran)",
+    "size": "{kb} KB"
+  },
   "reasons": {
     "autonomy": "Aksi tidak bisa dibatalkan: butuh persetujuanmu (otonomi {level}).",
     "allowList": "Aksi tidak bisa dibatalkan di luar daftar izin Pemilik: butuh persetujuanmu.",

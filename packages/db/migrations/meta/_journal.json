@@ -281,6 +281,13 @@
       "when": 1792651200000,
       "tag": "0039_ui_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792737600000,
+      "tag": "0040_skill_catalog",
+      "breakpoints": true
     }
   ]
 }

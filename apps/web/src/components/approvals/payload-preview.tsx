@@ -178,6 +178,80 @@ export function SkillApprovalPreview({ p }: { p: Record<string, unknown> }) {
   );
 }
 
+/** install_skill: a catalog skill at one commit, its license and files, and who gets it (approved or rejected as shown). */
+export function InstallSkillApprovalPreview({ p }: { p: Record<string, unknown> }) {
+  const t = useTranslations("approvals");
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const body = str(p.body);
+  const files = Array.isArray(p.files) ? (p.files as { path?: unknown; size?: unknown; content?: unknown; sha256?: unknown }[]) : [];
+  const people = Array.isArray(p.employees) ? (p.employees as { name?: unknown }[]).map((e) => str(e?.name)).filter(Boolean) : [];
+  const license = str(p.license) || str(p.licenseFile);
+  return (
+    <div className="space-y-2 rounded-lg border bg-background p-3 text-sm">
+      <div className="font-medium">{t("installSkill.proposed", { name: str(p.name) })}</div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <dt className="text-muted-foreground">{t("installSkill.source")}</dt>
+        <dd className="break-all">
+          <a href={str(p.url)} target="_blank" rel="noreferrer noopener" className="text-primary hover:underline">
+            {str(p.source)}/{str(p.path)}
+          </a>{" "}
+          <code className="text-muted-foreground">@{str(p.commit).slice(0, 12)}</code>
+        </dd>
+        <dt className="text-muted-foreground">{t("installSkill.license")}</dt>
+        <dd>{license || "—"}</dd>
+        <dt className="text-muted-foreground">{t("installSkill.for")}</dt>
+        <dd>{people.join(", ") || "—"}</dd>
+      </dl>
+      {!!p.untrustedInput && (
+        <div className="flex gap-2 rounded-md border border-warning/50 bg-warning/10 p-2 text-xs text-warning">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+          <span>{t("installSkill.untrusted")}</span>
+        </div>
+      )}
+      {str(p.replaces) && <div className="text-xs text-warning">{t("installSkill.replaces", { slug: str(p.replaces) })}</div>}
+      {str(p.reason) && (
+        <div>
+          <div className="mb-1 text-xs text-muted-foreground">{t("installSkill.reason")}</div>
+          <div className="whitespace-pre-wrap break-words">{str(p.reason)}</div>
+        </div>
+      )}
+      <div>
+        <div className="mb-1 text-xs text-muted-foreground">{t("skill.description")}</div>
+        <div className="whitespace-pre-wrap break-words">{str(p.description)}</div>
+      </div>
+      <details open={body.length <= 1500}>
+        <summary className="cursor-pointer text-xs text-muted-foreground">{t("skill.showBody", { count: body.length })}</summary>
+        <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2 font-mono text-xs">{body}</pre>
+      </details>
+      {files.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-xs text-muted-foreground">{t("installSkill.files", { count: files.length })}</summary>
+          <ul className="mt-1 space-y-1 font-mono text-xs">
+            {files.map((f) => (
+              <li key={str(f.path)}>
+                {typeof f.content === "string" ? (
+                  <details>
+                    <summary className="cursor-pointer">
+                      {str(f.path)} <span className="text-muted-foreground">({t("installSkill.size", { kb: Math.ceil(Number(f.size) / 1024) || 0 })})</span>
+                    </summary>
+                    <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/40 p-2">{f.content}</pre>
+                  </details>
+                ) : (
+                  <>
+                    {str(f.path)} <span className="text-muted-foreground">({t("installSkill.size", { kb: Math.ceil(Number(f.size) / 1024) || 0 })} · {f.sha256 ? t("installSkill.notShown") : t("installSkill.notInstalled")})</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-muted-foreground">{t("installSkill.filesNote")}</p>
+        </details>
+      )}
+      <div className="text-xs text-muted-foreground">{t("installSkill.pinned")}</div>
+    </div>
+  );
+}
+
 /** create_skill in Edit & Approve: the name, description and instructions can be changed before saving. */
 export function SkillApprovalEditor({ p, onChange }: { p: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
   const t = useTranslations("approvals");
@@ -305,6 +379,8 @@ export function PayloadPreview({ a, editing, draft, setDraft }: { a: Approval; e
   // a LIVE release: approved or rejected as proposed (the Owner only), never an editor
   if (a.toolName === "request_release") return <ReleaseApprovalPreview a={a} payload={a.payload} />;
   if (a.toolName === "create_routine" && !editing) return <RoutineApprovalPreview p={p} />;
+  // a catalog skill: approved or rejected for exactly this commit and text, never an editor
+  if (a.toolName === "install_skill") return <InstallSkillApprovalPreview p={a.payload as Record<string, unknown>} />;
   if (a.toolName === "create_skill") return editing ? <SkillApprovalEditor p={p} onChange={setDraft} /> : <SkillApprovalPreview p={p} />;
   if (a.toolName === "post_webhook") {
     return editing ? (

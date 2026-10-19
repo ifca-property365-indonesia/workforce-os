@@ -932,6 +932,13 @@ export const skills = pgTable(
     untrusted: boolean("untrusted").notNull().default(false),
     /** sha256 of slug + description + body as saved, to spot edits of imported/learned skills */
     provenanceHash: text("provenance_hash").notNull(),
+    /** C4: where a catalog skill came from, pinned (GitHub source, path, commit, license, SKILL.md hash) */
+    origin: jsonb("origin").$type<SkillOrigin>(),
+    /** C4: text files next to SKILL.md (scripts, references), installed with it in a sandbox */
+    files: jsonb("files").$type<{ path: string; content: string }[]>().notNull().default([]),
+    /** C4: a newer commit of the catalog skill's folder, found by the weekly check (never applied by itself) */
+    updateAvailable: jsonb("update_available").$type<{ commit: string; checkedAt: string } | null>(),
+    originCheckedAt: timestamp("origin_checked_at", { withTimezone: true }),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1351,6 +1358,33 @@ export const uiTemplates = pgTable(
   },
   (t) => [uniqueIndex("ui_templates_ws_name").on(t.workspaceId, t.name)],
 );
+
+/** C4: a catalog skill's pinned source */
+export interface SkillOrigin {
+  kind: "github";
+  /** owner/repo */
+  source: string;
+  skillId: string;
+  path: string;
+  dir: string;
+  commit: string;
+  license: string | null;
+  licenseFile: string | null;
+  url: string;
+  contentHash: string;
+  installs: number | null;
+}
+
+/** C4: a task in which the HR employee audits the team's skills (skill_search / skill_inspect / propose_skill granted) */
+export const skillAuditTasks = pgTable("skill_audit_tasks", {
+  taskId: uuid("task_id")
+    .primaryKey()
+    .references(() => tasks.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  /** monthly | manual */
+  trigger: text("trigger").notNull().default("manual"),
+  createdAt: createdAt(),
+});
 
 /** C8: what a person decided about a module; every other status is derived (tasks, merges, releases) */
 export type AppModuleHold = "paused" | "dropped";

@@ -575,7 +575,7 @@ describe("Workspace mode: skill files synced by the runner", () => {
 
   it("a Workspace-mode task hands only the TRUSTED skills (with bodies) to the runner and does not start tainted", async () => {
     const { cfg, task, sys } = await workspaceRun();
-    expect(cfg.skills).toEqual([{ slug: "a-trusted", description: "When to use a-trusted", body: "# A\n1. Trusted steps." }]);
+    expect(cfg.skills).toEqual([{ slug: "a-trusted", description: "When to use a-trusted", body: "# A\n1. Trusted steps.", files: [] }]);
     expect(sys).toContain(`- b-learned ${UNTRUSTED_SKILL_INDEX_NOTE}`);
     const flagged = await db.select().from(steps).where(and(eq(steps.taskId, task.id), eq(steps.name, "untrusted_skill")));
     expect(flagged).toHaveLength(0);

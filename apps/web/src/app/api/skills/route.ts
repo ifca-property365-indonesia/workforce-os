@@ -28,6 +28,10 @@ export const GET = route("VIEWER", async ({ session }) => {
       source: s.source,
       enabled: s.enabled,
       untrusted: s.untrusted,
+      // C4: where a catalog skill came from (repository, commit, license) and whether a newer commit is known
+      origin: s.origin ? { source: s.origin.source, path: s.origin.path, commit: s.origin.commit, license: s.origin.license ?? s.origin.licenseFile, url: s.origin.url } : null,
+      updateAvailable: s.updateAvailable ? s.updateAvailable.commit : null,
+      fileCount: s.files.length,
       employeeCount: n.get(s.id) ?? 0,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,

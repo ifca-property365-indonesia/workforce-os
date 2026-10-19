@@ -185,6 +185,7 @@
   "uptime_days": "Choose 1, 7 or 30 days.",
   "release_web_only": "Decide this LIVE release on the web: only the Owner can, with password and authenticator code.",
   "release_not_editable": "A LIVE release can only be approved or rejected, not edited.",
+  "skill_install_not_editable": "A skill install can only be approved or rejected, not edited.",
   "release_request_expired": "This LIVE release request is older than 24 hours. Reject it and ask the Developer again.",
   "release_request_stale": "LIVE changed since this request was made. Reject it and ask the Developer to propose the release again.",
   "team_not_found": "Division not found.",
@@ -232,5 +233,13 @@
   "ui_template_in_use": "Apps or clients still use this template ({count}).",
   "app_no_design": "Choose a UI template or a Figma file first.",
   "app_module_busy": "A module of this app is being built ({task}): try again when it is done.",
-  "builder_not_coder": "Only an employee in Workspace mode (or a division with a code lead) can change the app's code."
+  "builder_not_coder": "Only an employee in Workspace mode (or a division with a code lead) can change the app's code.",
+  "skill_not_from_catalog": "This skill does not come from the skill catalog.",
+  "skill_update_gone": "The skill is no longer in its repository at that version.",
+  "skill_catalog_unavailable": "The skill catalog (GitHub) could not be reached. Try again later.",
+  "skill_no_update": "No newer version of this skill is known.",
+  "skill_update_changed": "The skill changed since you read it. Open the update again.",
+  "skill_no_license": "This version of the skill has no license, so it cannot be used.",
+  "skill_audit_no_hr": "Choose an active employee to run the skill audit (for example the head of HR).",
+  "skill_audit_running": "A skill audit is still running. Wait for it to finish first."
 }

@@ -16,6 +16,7 @@ import type { FetchLike } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { getExternalMcpServers, getWebhookUrl, workspaceLocale } from "../lib/settings";
 import { sendEmailPayload, sendInvoicePayload } from "../lib/outbox";
 import { isReservedSkillSlug, skillProposalSchema, skillProvenanceHash, SKILL_SLUG_MAX } from "../runner/skills";
+import { doInstallSkill } from "../hr/skill-catalog";
 
 export interface ActionResult {
   ok: boolean;
@@ -457,6 +458,8 @@ export async function executeAction(
       return doCreateRoutine(workspaceId, payload, context);
     case "create_skill":
       return doCreateSkill(workspaceId, payload, context);
+    case "install_skill":
+      return doInstallSkill(workspaceId, payload, { approver: await approver(workspaceId, context, "install_skill") });
     default: {
       if (toolName.startsWith("mcp__")) {
         const [, server, ...rest] = toolName.split("__");

@@ -21,7 +21,7 @@ import { resultSummary, type Approval } from "./types";
 
 const DEMO_SUFFIX = " Demo: executes as a dry run.";
 /** approved for one exact commit: approve or reject, never Edit & approve (decideApproval refuses it too) */
-const NOT_EDITABLE: ReadonlySet<string> = new Set(["git_push", "request_preview", "request_release"]);
+const NOT_EDITABLE: ReadonlySet<string> = new Set(["git_push", "request_preview", "request_release", "install_skill"]);
 /** decided by the Owner only, with a fresh step-up (a LIVE release): decideApproval refuses anyone else */
 const OWNER_ONLY: ReadonlySet<string> = new Set(["request_release"]);
 

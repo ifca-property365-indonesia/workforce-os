@@ -15,7 +15,7 @@ const BUTTON_TTL_MS = 24 * 3_600_000;
  * routine that creates tasks on its own) or need an Owner's fresh step-up (a LIVE release), so they are decided in
  * the web app, where the full content and the warnings are shown. The Telegram message says so.
  */
-export const WEB_ONLY_APPROVAL_TOOLS: readonly string[] = ["create_skill", "create_routine", "request_release"];
+export const WEB_ONLY_APPROVAL_TOOLS: readonly string[] = ["create_skill", "install_skill", "create_routine", "request_release"];
 const TZ = process.env.APP_TIME_ZONE || "Asia/Jakarta";
 const SUMMARY_HOUR = Number(process.env.TELEGRAM_SUMMARY_HOUR ?? 8);
 

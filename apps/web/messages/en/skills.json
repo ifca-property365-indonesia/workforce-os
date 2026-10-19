@@ -26,13 +26,15 @@
     "user": "Written here",
     "learned": "Learned",
     "import": "Imported",
-    "builtin": "Built in"
+    "builtin": "Built in",
+    "catalog": "Catalog"
   },
   "sourceHelp": {
     "user": "Written by a person in this workspace.",
     "learned": "Proposed by an employee and approved by a person.",
     "import": "Came from an imported package.",
-    "builtin": "Ships with Workforce OS."
+    "builtin": "Ships with Workforce OS.",
+    "catalog": "Installed from the open skill catalog (skills.sh / GitHub) at one commit, after a person approved it."
   },
   "untrusted": "Untrusted",
   "untrustedHelp": "Written outside this workspace or by a run that read outside content. Employees read it as data, not as instructions from you, and reading it marks their run as tainted.",
@@ -71,5 +73,35 @@
     "saved": "Skills saved."
   },
   "untrustedFilesNote": "Untrusted skills are only readable through skill_read and are never installed as files in Workspace mode.",
-  "reservedNote": "Skills named like built-ins (pdf, docx, xlsx, pptx) are not allowed."
+  "reservedNote": "Skills named like built-ins (pdf, docx, xlsx, pptx) are not allowed.",
+  "updateAvailable": "Update available",
+  "reviewUpdate": "Review update",
+  "licenseLabel": "license {license}",
+  "fileCount": "{count, plural, one {# file} other {# files}}",
+  "audit": {
+    "title": "Team skill audit",
+    "intro": "The HR employee reads each employee's role and recent work, looks for fitting skills in the open catalog (skills.sh) and proposes them. Every proposal is an approval you decide, with the skill's full text and license.",
+    "hrEmployee": "Run by",
+    "hrDefault": "Head of the HR division",
+    "hrDefaultNamed": "Head of HR ({name})",
+    "monthly": "Every month (the 1st, 09:00)",
+    "noHr": "No HR employee found: choose who runs the audit.",
+    "start": "Audit team skills",
+    "started": "{name} has started the skill audit.",
+    "last": "Last audit: {status}",
+    "pending": "{count, plural, one {# skill proposal waiting} other {# skill proposals waiting}}",
+    "note": "Only skills with a license are proposed. A skill's scripts run only inside an employee's sandbox (Workspace mode)."
+  },
+  "update": {
+    "title": "Update {slug}",
+    "intro": "A newer version of this skill was published. Read what changed: applying installs exactly the version shown.",
+    "license": "license {license}",
+    "moved": "The skill moved to another folder in its repository: it cannot be updated here. Install it again from an audit.",
+    "current": "Installed",
+    "next": "New version",
+    "files": "Files: {list}",
+    "apply": "Apply this version",
+    "applied": "{slug} updated.",
+    "newFiles": "Files of the new version"
+  }
 }

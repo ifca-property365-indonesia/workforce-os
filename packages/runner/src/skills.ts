@@ -20,6 +20,15 @@ export interface SkillFileSpec {
   slug: string;
   description: string;
   body: string;
+  /** C4: text files next to SKILL.md (a catalog skill's scripts and references), relative paths */
+  files?: { path: string; content: string }[];
+}
+
+/** a relative path inside a skill folder: no absolute path, no "..", no hidden or marker file, at most 4 levels */
+export function safeSkillFilePath(p: string): boolean {
+  if (typeof p !== "string" || !p || p.length > 200 || p.startsWith("/") || p.includes("\\") || p.includes("\0")) return false;
+  const parts = p.split("/");
+  return parts.length <= 4 && parts.every((x) => x && x !== "." && x !== ".." && !x.startsWith(".") && /^[A-Za-z0-9._-]+$/.test(x)) && p !== "SKILL.md";
 }
 
 export const MANAGED_SKILL_PREFIX = "wfos-";
@@ -132,11 +141,18 @@ export async function syncSkillFiles(root: string, list: SkillFileSpec[]): Promi
       res.skipped.push(s.slug); // a symlink, a file, or a directory the platform did not create
       continue;
     }
-    // the directory holds exactly SKILL.md and the marker: anything the agent added there is dropped
+    // the directory holds exactly SKILL.md, the marker and the skill's own files: anything the agent added is dropped
     for (const entry of await readdir(dir)) {
       if (entry !== "SKILL.md" && entry !== MANAGED_SKILL_MARKER) await rm(path.join(dir, entry), { recursive: true, force: true });
     }
     await replaceFile(dir, "SKILL.md", skillFileMarkdown(s));
+    for (const f of s.files ?? []) {
+      if (!safeSkillFilePath(f.path)) continue;
+      const target = path.join(dir, f.path);
+      if (!target.startsWith(`${dir}${path.sep}`)) continue;
+      await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+      await writeFile(target, f.content, { mode: /\.(sh|bash|py)$/.test(f.path) ? 0o700 : 0o600 });
+    }
     res.written.push(s.slug);
   }
   return res;

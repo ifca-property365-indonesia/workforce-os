@@ -32,6 +32,7 @@ import { appDocContext, appDocPrompt } from "../docs/app-docs";
 import { appModuleContext, appModulePrompt } from "../docs/app-module";
 import { uiTemplateContext, uiTemplatePrompt } from "../docs/ui-template";
 import { hrReviewContext, hrReviewPrompt } from "../hr/review";
+import { skillAuditContext, skillAuditPrompt } from "../hr/skill-catalog";
 import { closeBrowserSession } from "../qa/browser";
 
 type Task = typeof tasks.$inferSelect;
@@ -281,6 +282,8 @@ async function runStarted(
   const uiTemplate = await uiTemplateContext(task, appModule?.appId ?? appDoc?.appId);
   // C2: an HR review task gets submit_hr_review for its employee
   const hrReview = await hrReviewContext(task.id);
+  // C4: a skill audit task gets the team's roster and the catalog tools
+  const skillAudit = await skillAuditContext(task.id);
   const lang = employeeOutputLocale(emp.outputLanguage, ws.defaultLocale) ?? "en";
   const division = await runDivision(emp, ws, lang, { workspaceMode });
 
@@ -308,6 +311,7 @@ async function runStarted(
     ...(appDoc ? { appDoc } : {}),
     ...(appModule ? { appModule } : {}),
     ...(hrReview ? { hrReview } : {}),
+    ...(skillAudit ? { skillAudit } : {}),
     ...(workspaceMode
       ? {
           workspace: {
@@ -354,6 +358,7 @@ async function runStarted(
   if (appModule) promptParts.push(appModulePrompt(appModule));
   if (uiTemplate) promptParts.push(uiTemplatePrompt(uiTemplate, { builds: workspaceMode && !!task.repositoryId }));
   if (hrReview) promptParts.push(hrReviewPrompt(hrReview));
+  if (skillAudit) promptParts.push(skillAuditPrompt(skillAudit));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);

@@ -185,6 +185,7 @@
   "uptime_days": "Pilih 1, 7, atau 30 hari.",
   "release_web_only": "Putuskan rilis LIVE ini di web: hanya Owner yang bisa, dengan password dan kode autentikator.",
   "release_not_editable": "Rilis LIVE hanya bisa disetujui atau ditolak, tidak bisa diubah.",
+  "skill_install_not_editable": "Pemasangan skill hanya bisa disetujui atau ditolak, tidak bisa diubah.",
   "release_request_expired": "Permintaan rilis LIVE ini sudah lebih dari 24 jam. Tolak dan minta Developer mengusulkannya lagi.",
   "release_request_stale": "Live sudah berubah sejak permintaan ini dibuat. Tolak dan minta Developer mengusulkan rilisnya lagi.",
   "team_not_found": "Divisi tidak ditemukan.",
@@ -232,5 +233,13 @@
   "ui_template_in_use": "Template ini masih dipakai aplikasi atau klien ({count}).",
   "app_no_design": "Pilih template UI atau file Figma dulu.",
   "app_module_busy": "Ada modul aplikasi ini yang sedang dibangun ({task}): coba lagi setelah selesai.",
-  "builder_not_coder": "Hanya karyawan mode Workspace (atau divisi dengan code lead) yang bisa mengubah kode aplikasi."
+  "builder_not_coder": "Hanya karyawan mode Workspace (atau divisi dengan code lead) yang bisa mengubah kode aplikasi.",
+  "skill_not_from_catalog": "Skill ini bukan dari katalog skill.",
+  "skill_update_gone": "Skill ini sudah tidak ada di repositorinya pada versi tersebut.",
+  "skill_catalog_unavailable": "Katalog skill (GitHub) tidak bisa dihubungi. Coba lagi nanti.",
+  "skill_no_update": "Belum ada versi baru untuk skill ini.",
+  "skill_update_changed": "Skill berubah sejak kamu membacanya. Buka pembaruannya lagi.",
+  "skill_no_license": "Versi skill ini tidak punya lisensi, jadi tidak bisa dipakai.",
+  "skill_audit_no_hr": "Pilih karyawan aktif untuk menjalankan audit skill (misalnya kepala HR).",
+  "skill_audit_running": "Audit skill masih berjalan. Tunggu sampai selesai dulu."
 }

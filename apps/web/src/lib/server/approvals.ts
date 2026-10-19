@@ -156,6 +156,8 @@ export async function decideApproval(actor: DecisionActor, approvalId: string, i
     if (a.toolName === "request_preview") throw new HttpError(400, "A preview can only be approved or rejected", { code: "preview_not_editable" });
     // a LIVE release is approved for the exact preview release (commit) and the changes shown
     if (a.toolName === "request_release") throw new HttpError(400, "A LIVE release can only be approved or rejected", { code: "release_not_editable" });
+    // a catalog skill is approved for the exact text, files and license shown, at one commit
+    if (a.toolName === "install_skill") throw new HttpError(400, "A skill install can only be approved or rejected", { code: "skill_install_not_editable" });
     if (!input.editedPayload) throw new HttpError(400, "editedPayload is required for Edit & Approve", { code: "edited_payload_required" });
     edited = validatePayload(a.toolName, input.editedPayload) as Record<string, unknown>;
   }

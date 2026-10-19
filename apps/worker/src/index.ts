@@ -22,6 +22,7 @@ import { acquireRunLeases } from "./runner/run-lease";
 import { handleRunJobFailed } from "./runner/task-status";
 import { REAP_EVERY_MS, reapOrphanedTasks } from "./scheduler/reaper";
 import { MEMORY_TIDY_CHECK_MS, memoryTidyTick } from "./scheduler/memory-tidy";
+import { monthlySkillAuditTick, SKILL_AUDIT_CHECK_MS, skillUpdateTick } from "./scheduler/skill-audit";
 import { recheckServers, SERVER_RECHECK_TICK_MS } from "./scheduler/servers";
 import { APPS_TICK_MS, tickApps } from "./scheduler/apps";
 import { tickUptime, UPTIME_TICK_MS } from "./scheduler/uptime";
@@ -182,6 +183,11 @@ const summaryTimer = setInterval(() => void telegramDailySummary().catch((e) => 
 const backfillTimer = setInterval(() => void backfillMemoryEmbeddings().catch((e) => log.warn({ err: e }, "backfill failed")), 120_000);
 // nightly memory tidy at 02:00 APP_TIME_ZONE (checked every 10 min, claimed once per day in Redis)
 const tidyTimer = setInterval(() => void memoryTidyTick().catch((e) => log.warn({ err: e }, "memory tidy failed")), MEMORY_TIDY_CHECK_MS);
+// C4: the monthly skill audit (1st, 09:00) and the daily catalog update check (04:00), APP_TIME_ZONE, claimed in Redis
+const skillAuditTimer = setInterval(() => {
+  void monthlySkillAuditTick().catch((e) => log.warn({ err: e }, "monthly skill audit failed"));
+  void skillUpdateTick().catch((e) => log.warn({ err: e }, "skill update check failed"));
+}, SKILL_AUDIT_CHECK_MS);
 // app servers: each verified server is probed again hourly (looked for every 10 min); ready → error notifies Owners
 let rechecking = false;
 const recheck = async () => {
@@ -251,6 +257,7 @@ async function shutdown(sig: string) {
   clearInterval(reapTimer);
   clearInterval(backfillTimer);
   clearInterval(tidyTimer);
+  clearInterval(skillAuditTimer);
   clearInterval(serversTimer);
   clearInterval(appsTimer);
   clearInterval(uptimeTimer);

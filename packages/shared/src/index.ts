@@ -133,7 +133,7 @@ export const WEBHOOK_EXCERPT_CHARS = 2000;
 export const API_TOKEN_PREFIX = "wfos_";
 
 /** Where a skill came from: written by a person, learned (proposed by an employee, approved), imported, built in. */
-export const SKILL_SOURCES = ["user", "learned", "import", "builtin"] as const;
+export const SKILL_SOURCES = ["user", "learned", "import", "builtin", "catalog"] as const;
 export type SkillSource = (typeof SKILL_SOURCES)[number];
 export const SKILL_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const SKILL_DESCRIPTION_MAX = 1024;
@@ -213,6 +213,9 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "create_task", label: "Create task", description: "Create a task on the board (from chat)", class: "reversible", credits: 0.05, category: "tasks" },
   { name: "skill_read", label: "Read skill", description: "Read one of your assigned skills (SKILL.md instructions) by slug; granted automatically while you have skills assigned", class: "reversible", credits: 0.02, category: "knowledge" },
   { name: "skill_propose", label: "Propose skill", description: "Propose a new reusable skill (SKILL.md) from what you learned; a human approves it before it is saved and assigned to you", class: "reversible", credits: 0.05, category: "knowledge" },
+  { name: "skill_search", label: "Search skill catalog", description: "HR: search the open skills catalog (skills.sh) for skills that fit an employee's work; granted automatically in a skill audit", class: "reversible", credits: 0.02, category: "knowledge" },
+  { name: "skill_inspect", label: "Read catalog skill", description: "HR: read a catalog skill's SKILL.md, files and license at its latest commit before proposing it", class: "reversible", credits: 0.05, category: "knowledge" },
+  { name: "propose_skill", label: "Propose skill install", description: "HR: propose installing a catalog skill for employees; an Admin reviews its full text and license and approves it", class: "reversible", credits: 0.05, category: "knowledge" },
   { name: "propose_routine", label: "Propose routine", description: "Propose a recurring routine (cron schedule + brief); a human approves it before it is created", class: "reversible", credits: 0.05, category: "routines" },
   { name: "delegate_subtask", label: "Delegate subtask", description: "Team lead: assign a subtask to a team member", class: "reversible", credits: 0.05, category: "team" },
   { name: "request_revision", label: "Request revision", description: "Team lead: send a subtask back with feedback (at most twice per subtask)", class: "reversible", credits: 0.05, category: "team" },

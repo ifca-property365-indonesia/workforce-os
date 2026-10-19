@@ -26,7 +26,8 @@
     "./ssh-keys": "./src/ssh-keys.ts",
     "./dns": "./src/dns.ts",
     "./ui-kits": "./src/ui-kits.ts",
-    "./division-routing": "./src/division-routing.ts"
+    "./division-routing": "./src/division-routing.ts",
+    "./skill-catalog": "./src/skill-catalog.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

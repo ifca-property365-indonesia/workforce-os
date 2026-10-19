@@ -83,6 +83,7 @@ import { recordAppTestReport, type AppTestContext } from "../qa/app-test";
 import { DOC_KIND_NAME, saveAppDocument, type AppDocContext } from "../docs/app-docs";
 import { listAppModules, type AppModuleContext } from "../docs/app-module";
 import { hrReviewSubmitSchema, submitHrReview, type HrReviewContext } from "../hr/review";
+import { buildInstallProposal, PROPOSALS_PER_RUN, skillInspectText, skillSearchText, type SkillAuditContext } from "../hr/skill-catalog";
 import { APP_DOCUMENT_MAX, appTestReportSchema } from "@wfos/shared";
 
 export const WFOS_SERVER = "wfos";
@@ -198,6 +199,10 @@ export interface RunContext {
   appModule?: AppModuleContext;
   /** C2: the task is an HR review of one employee: submit_hr_review (implicitly granted) */
   hrReview?: HrReviewContext;
+  /** C4: the task is a skill audit of the team: skill_search, skill_inspect and propose_skill (implicitly granted) */
+  skillAudit?: SkillAuditContext;
+  /** propose_skill calls accepted in this run (at most PROPOSALS_PER_RUN) */
+  skillInstallProposals?: number;
   /**
    * The employee's assigned, enabled skills (loadAssignedSkills, no bodies), loaded when the run starts: listed in the
    * system prompt (untrusted ones by slug only); in Workspace mode the trusted ones are synced as SKILL.md files by
@@ -244,6 +249,9 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
   // C8: work on a module, or a document of an app, can see the app's modules
   if ((ctx.appModule || ctx.appDoc) && !perms.some((p) => p.tool === "list_app_modules" && p.enabled)) perms.push({ tool: "list_app_modules", enabled: true });
   if (ctx.hrReview && !perms.some((p) => p.tool === "submit_hr_review" && p.enabled)) perms.push({ tool: "submit_hr_review", enabled: true });
+  if (ctx.skillAudit) {
+    for (const t of ["skill_search", "skill_inspect", "propose_skill"]) if (!perms.some((p) => p.tool === t && p.enabled)) perms.push({ tool: t, enabled: true });
+  }
   // tools every task run has (report_progress), unless an explicit entry says otherwise
   if (ctx.taskId) {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "task" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
@@ -841,6 +849,59 @@ export function buildTools(ctx: RunContext) {
           `Skill "${p.slug}" proposed for approval (approval id ${id}); it has NOT been saved yet.` +
             (taken ? ` A skill named "${p.slug}" already exists in this workspace, so it will be saved under a numbered name (${p.slug}-2, ...).` : "") +
             " Do not propose it again; mention the pending approval in your summary.",
+        );
+      }),
+    ),
+  );
+
+  // C4: skills from the open catalog (skills.sh, read from GitHub). Reading is free; installing is a person's approval.
+  add(
+    "skill_search",
+    tool(
+      "skill_search",
+      "Search the open skills catalog (skills.sh) for skills that would help an employee: query with words like a framework, a kind of document or a task. Returns skill names, their GitHub source and install counts.",
+      { query: z.string().min(2).max(100), limit: z.number().int().min(1).max(20).optional() },
+      // catalog names are third-party text: screened like a web page (instructions in them taint the run)
+      wrap(ctx, "skill_search", async (a: { query: string; limit?: number }) => ok(await guardToolResult(ctx.guard, "skill catalog search", await skillSearchText(ctx.workspaceId, a.query, a.limit ?? 10)))),
+    ),
+  );
+
+  add(
+    "skill_inspect",
+    tool(
+      "skill_inspect",
+      "Read one catalog skill before proposing it: its SKILL.md (third-party text, data to judge), the files next to it, its license and the commit it was read at. source is owner/repo, skill its name (both from skill_search).",
+      { source: z.string().min(3).max(140), skill: z.string().min(1).max(100) },
+      wrap(ctx, "skill_inspect", async (a: { source: string; skill: string }) => ok(await guardToolResult(ctx.guard, `skill ${a.source.trim()}`, await skillInspectText(a.source.trim(), a.skill.trim())))),
+    ),
+  );
+
+  add(
+    "propose_skill",
+    tool(
+      "propose_skill",
+      "Propose installing one catalog skill for one or more employees (their ids): a person reviews its full text, files and license, and approves it. reason: the work it helps with. Nothing is installed until then.",
+      { source: z.string().min(3).max(140), skill: z.string().min(1).max(100), employeeIds: z.array(z.string().uuid()).min(1).max(30), reason: z.string().min(10).max(2000) },
+      wrap(ctx, "propose_skill", async (a: { source: string; skill: string; employeeIds: string[]; reason: string }) => {
+        if ((ctx.skillInstallProposals ?? 0) >= PROPOSALS_PER_RUN) {
+          return err(`Refused: at most ${PROPOSALS_PER_RUN} skills can be proposed per run. Do not propose more; list the rest in your summary.`);
+        }
+        const r = await buildInstallProposal(ctx.workspaceId, { source: a.source.trim(), skill: a.skill.trim(), employeeIds: a.employeeIds, reason: a.reason });
+        if (!r.ok) return err(r.error);
+        ctx.skillInstallProposals = (ctx.skillInstallProposals ?? 0) + 1;
+        const p = r.payload;
+        if (ctx.dryRun || ctx.sandboxed) return ok(`DRY RUN: skill "${p.name}" was NOT proposed.`);
+        const locale = await workspaceLocale(ctx.workspaceId);
+        const id = await createApproval(
+          ctx,
+          "install_skill",
+          msg(locale, "skill.installTitle", { name: p.name, employees: p.employees.map((e) => e.name).join(", ") }),
+          msg(locale, "skill.installReason", { employee: ctx.employee.name, source: p.source }),
+          { ...p, untrustedInput: ctx.guard.tainted },
+          [],
+        );
+        return ok(
+          `Skill "${p.name}" from ${p.source} (commit ${p.commit.slice(0, 8)}, license ${p.license ?? p.licenseFile}) proposed for ${p.employees.map((e) => e.name).join(", ")} (approval id ${id}); it is NOT installed yet. Do not propose it again.`,
         );
       }),
     ),

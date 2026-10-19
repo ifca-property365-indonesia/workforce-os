@@ -29,6 +29,7 @@ export {
   type ModuleWorkInput,
 } from "./app-modules";
 export { appDesign, resolveTemplate, type AppDesign } from "./ui-templates";
+export { activeSkillAudit, hrEmployeeOf, startSkillAudit, type SkillAuditTrigger } from "./skill-audit";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 

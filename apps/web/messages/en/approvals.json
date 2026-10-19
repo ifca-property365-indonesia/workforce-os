@@ -118,6 +118,21 @@
     "target": "For {name}",
     "slug": "Name"
   },
+  "installSkill": {
+    "proposed": "Install the skill {name}",
+    "source": "From",
+    "license": "License",
+    "for": "For",
+    "reason": "Why",
+    "untrusted": "Proposed by a run that read outside content. Check that the skill fits the reason given.",
+    "files": "Files next to SKILL.md ({count})",
+    "filesNote": "Scripts run only inside an employee's sandbox (Workspace mode), never on the server.",
+    "pinned": "Approving installs exactly this version (this commit). Newer versions are shown in Settings → Skills and applied only by an Admin.",
+    "replaces": "This replaces the installed skill {slug} (its text and files). Whether it is switched on stays as it is.",
+    "notShown": "too large to show here: open it on GitHub at this commit",
+    "notInstalled": "not installed (not a text file, or over the size limits)",
+    "size": "{kb} KB"
+  },
   "reasons": {
     "autonomy": "Irreversible action: needs your approval (autonomy {level}).",
     "allowList": "Irreversible action outside the Owner allow-list: needs your approval.",

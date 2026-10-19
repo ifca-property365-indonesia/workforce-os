@@ -100,7 +100,7 @@ export async function loadSkillFiles(employeeId: string, workspaceId: string, li
     .map((s) => s.id);
   if (!ids.length) return [];
   const rows = await db
-    .select({ slug: skills.slug, description: skills.description, body: skills.body })
+    .select({ slug: skills.slug, description: skills.description, body: skills.body, files: skills.files })
     .from(employeeSkills)
     .innerJoin(skills, eq(skills.id, employeeSkills.skillId))
     .where(

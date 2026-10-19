@@ -26,13 +26,15 @@
     "user": "Ditulis di sini",
     "learned": "Dipelajari",
     "import": "Diimpor",
-    "builtin": "Bawaan"
+    "builtin": "Bawaan",
+    "catalog": "Katalog"
   },
   "sourceHelp": {
     "user": "Ditulis oleh seseorang di workspace ini.",
     "learned": "Diusulkan oleh karyawan dan disetujui oleh seseorang.",
     "import": "Berasal dari paket yang diimpor.",
-    "builtin": "Disertakan dalam Workforce OS."
+    "builtin": "Disertakan dalam Workforce OS.",
+    "catalog": "Dipasang dari katalog skill terbuka (skills.sh / GitHub) pada satu commit, setelah disetujui seseorang."
   },
   "untrusted": "Tidak tepercaya",
   "untrustedHelp": "Ditulis di luar workspace ini atau oleh run yang membaca konten dari luar. Karyawan membacanya sebagai data, bukan sebagai instruksi dari Anda, dan membacanya menandai run mereka sebagai tercemar.",
@@ -71,5 +73,35 @@
     "saved": "Skill disimpan."
   },
   "untrustedFilesNote": "Skill tidak tepercaya hanya dapat dibaca melalui skill_read dan tidak pernah dipasang sebagai file dalam mode Workspace.",
-  "reservedNote": "Skill yang namanya sama dengan skill bawaan (pdf, docx, xlsx, pptx) tidak diizinkan."
+  "reservedNote": "Skill yang namanya sama dengan skill bawaan (pdf, docx, xlsx, pptx) tidak diizinkan.",
+  "updateAvailable": "Ada pembaruan",
+  "reviewUpdate": "Tinjau pembaruan",
+  "licenseLabel": "lisensi {license}",
+  "fileCount": "{count, plural, other {# file}}",
+  "audit": {
+    "title": "Audit skill tim",
+    "intro": "Karyawan HR membaca peran dan pekerjaan terbaru tiap karyawan, mencari skill yang cocok di katalog terbuka (skills.sh), lalu mengusulkannya. Setiap usulan adalah persetujuan yang kamu putuskan, lengkap dengan teks dan lisensi skill-nya.",
+    "hrEmployee": "Dijalankan oleh",
+    "hrDefault": "Kepala divisi HR",
+    "hrDefaultNamed": "Kepala HR ({name})",
+    "monthly": "Setiap bulan (tanggal 1, 09.00)",
+    "noHr": "Karyawan HR tidak ditemukan: pilih siapa yang menjalankan audit.",
+    "start": "Audit skill tim",
+    "started": "{name} mulai mengaudit skill tim.",
+    "last": "Audit terakhir: {status}",
+    "pending": "{count, plural, other {# usulan skill menunggu}}",
+    "note": "Hanya skill berlisensi yang diusulkan. Skrip sebuah skill hanya berjalan di sandbox karyawan (mode Workspace)."
+  },
+  "update": {
+    "title": "Perbarui {slug}",
+    "intro": "Versi baru skill ini sudah terbit. Baca perubahannya: menerapkan akan memasang persis versi yang ditampilkan.",
+    "license": "lisensi {license}",
+    "moved": "Skill pindah ke folder lain di repositorinya: tidak bisa diperbarui di sini. Pasang ulang lewat audit.",
+    "current": "Terpasang",
+    "next": "Versi baru",
+    "files": "File: {list}",
+    "apply": "Terapkan versi ini",
+    "applied": "{slug} diperbarui.",
+    "newFiles": "File di versi baru"
+  }
 }
