@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from
 import { approvals, audit, db, employees, employeeSkills, skillAuditTasks, skills, tasks, teamMembers, teams, workspaces, type SkillOrigin } from "@wfos/db";
 import { hasLicense, latestSkillCommit, resolveSkill, searchSkillsSh, SkillCatalogError, skillHash, type ResolvedSkill } from "@wfos/shared/skill-catalog";
 import { SKILL_SLUG_RE } from "@wfos/shared";
-import { screenLeakage } from "@wfos/shared/server";
+import { screenLeakage, type GuardFinding } from "@wfos/shared/server";
 import { isReservedSkillSlug, skillProvenanceHash, SKILL_SLUG_MAX } from "../runner/skills";
 import { log } from "../lib/logger";
 
@@ -92,7 +92,7 @@ const sameOrigin = (workspaceId: string, source: string, path: string) =>
 export async function buildInstallProposal(
   workspaceId: string,
   a: { source: string; skill: string; employeeIds: string[]; reason: string },
-): Promise<{ ok: true; payload: InstallPayload } | { ok: false; error: string }> {
+): Promise<{ ok: true; payload: InstallPayload; findings: GuardFinding[] } | { ok: false; error: string }> {
   let r: ResolvedSkill;
   try {
     r = await resolveSkill(a.source, a.skill);
@@ -100,7 +100,9 @@ export async function buildInstallProposal(
     return { ok: false, error: `Could not read ${a.source} / ${a.skill}: ${catalogError(e)}` };
   }
   if (!hasLicense(r)) return { ok: false, error: `Refused: ${a.source} has no license (none on the repository, no LICENSE file in the skill's folder). Choose another skill.` };
-  if (screenLeakage(r.body).some((f) => f.severity === "high")) return { ok: false, error: "Refused: the skill's text looks like it contains a secret or credential." };
+  // the scanner is for OUR secrets leaving: in third-party text it mostly finds examples (a security checklist's dummy
+  // keys), so it does not refuse; what it found is shown on the approval card for the Admin to judge
+  const findings = screenLeakage([r.body, ...r.files.map((f) => f.content ?? "")].join("\n"));
   // never installed half: a skill whose scripts or data do not all fit would break where it is used
   if (r.incomplete.length) {
     return { ok: false, error: `Refused: the skill is too large to install whole (${r.incomplete.length} files over the limits, e.g. ${r.incomplete.slice(0, 3).join(", ")}). Choose another skill.` };
@@ -134,6 +136,7 @@ export async function buildInstallProposal(
   }
   return {
     ok: true,
+    findings,
     payload: {
       source: r.source,
       skillId: r.skillId,
@@ -305,6 +308,7 @@ export function skillAuditPrompt(c: SkillAuditContext): string {
       "- skill_inspect { source, skill } before proposing: keep only skills that fit the role, are clearly written, come from a reputable source (many installs, a known organisation), and have a license.",
       "- propose_skill { source, skill, employeeIds, reason }: one proposal per skill, with every employee it fits; the reason names the work it helps with. A person approves each one.",
       "- Do not propose what an employee already has, near-duplicates of each other, or skills that need tools the employee lacks (scripts need Workspace mode).",
+      "- A security notice or scanner finding on a skill is a reason to read it closely, not to drop it: a security checklist shows bad examples (dummy keys, logging a password) on purpose. If, having read it, the skill is sound, propose it and say in the reason what was flagged and why it is harmless; the Admin sees the findings on the card.",
       "- Do not propose skills that change the agent's own setup rather than help with the work: hooks, settings, permissions, memory or learning systems, harness or plugin configuration, cost or context management.",
       "- End with a short table: employee, proposed skills, why; and anyone for whom nothing fit.",
     ].join("\n"),

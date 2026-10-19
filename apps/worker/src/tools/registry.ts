@@ -898,10 +898,12 @@ export function buildTools(ctx: RunContext) {
           msg(locale, "skill.installTitle", { name: p.name, employees: p.employees.map((e) => e.name).join(", ") }),
           msg(locale, "skill.installReason", { employee: ctx.employee.name, source: p.source }),
           { ...p, untrustedInput: ctx.guard.tainted },
-          [],
+          r.findings,
         );
         return ok(
-          `Skill "${p.name}" from ${p.source} (commit ${p.commit.slice(0, 8)}, license ${p.license ?? p.licenseFile}) proposed for ${p.employees.map((e) => e.name).join(", ")} (approval id ${id}); it is NOT installed yet. Do not propose it again.`,
+          `Skill "${p.name}" from ${p.source} (commit ${p.commit.slice(0, 8)}, license ${p.license ?? p.licenseFile}) proposed for ${p.employees.map((e) => e.name).join(", ")} (approval id ${id}); it is NOT installed yet.` +
+            (r.findings.length ? ` The scanner flagged ${r.findings.length} passage(s) (${[...new Set(r.findings.map((f) => f.rule))].join(", ")}): the Admin sees them on the card.` : "") +
+            " Do not propose it again.",
         );
       }),
     ),

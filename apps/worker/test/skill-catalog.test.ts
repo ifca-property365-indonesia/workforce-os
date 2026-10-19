@@ -172,6 +172,16 @@ describe("skill audit task (C4)", () => {
     expect(text(r)).toMatch(/too large to install whole/);
   });
 
+  it("a third-party skill with example secrets is proposed, with the scanner's findings on the card", async () => {
+    const { ws, dev, ctx } = await hrSetup();
+    repo.commits[sha("a")]!["skills/pdf-tools/SKILL.md"] = SKILL_MD("pdf-tools", "Security checklist", "Never commit keys like sk-ant-api03-" + "Q7".repeat(24) + " to git.");
+    const r = await toolOf(ctx, "propose_skill")!.handler({ source: "acme/skills", skill: "pdf-tools", employeeIds: [dev.id], reason: "Bima reviews security" }, {});
+    expect(r.isError).toBeFalsy();
+    expect(text(r)).toMatch(/scanner flagged/);
+    const [a] = await db.select().from(approvals).where(and(eq(approvals.workspaceId, ws.id), eq(approvals.toolName, "install_skill")));
+    expect((a!.guardFindings as unknown[]).length).toBeGreaterThan(0);
+  });
+
   it("a newer version keeps the Admin's off switch", async () => {
     const { ws, dev, ctx } = await hrSetup();
     await toolOf(ctx, "propose_skill")!.handler({ source: "acme/skills", skill: "pdf-tools", employeeIds: [dev.id], reason: "Bima writes PDF reports" }, {});
