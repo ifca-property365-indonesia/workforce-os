@@ -18,6 +18,7 @@ function release(over: Partial<ReleaseDTO> & Pick<ReleaseDTO, "branch" | "commit
     error: null,
     approvalId: null,
     taskId: null,
+    modules: null,
     createdByName: null,
     startedAt: null,
     finishedAt: null,

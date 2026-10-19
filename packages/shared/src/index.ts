@@ -194,7 +194,7 @@ export interface ToolMeta {
    * app_doc: granted only to the run of a task asked to write an app document (C9);
    * hr_review: granted only to the run of an HR review task (C2)
    */
-  implicit?: "task" | "app_test" | "app_doc" | "hr_review";
+  implicit?: "task" | "app_test" | "app_doc" | "app_module" | "hr_review";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -232,6 +232,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "browser_act", label: "Use the app (browser)", description: "App test: click, fill in, choose and press on the open page, like a user", class: "reversible", credits: 0.2, category: "code", implicit: "app_test" },
   { name: "browser_look", label: "Look at the page (browser)", description: "App test: what the open page shows (text, fields, buttons, errors) and a screenshot", class: "reversible", credits: 0.1, category: "code", implicit: "app_test" },
   { name: "save_app_document", label: "Save the app document", description: "App documents: save a new version (a draft a person approves) of the PRD, business flow, test guide or presentation you were asked for", class: "reversible", credits: 0, category: "drafting", implicit: "app_doc" },
+  { name: "list_app_modules", label: "List app modules", description: "App modules: the modules of an app (status, approved PRD version, what is being built), so work on one module fits the others", class: "reversible", credits: 0, category: "code", implicit: "app_module" },
   { name: "submit_hr_review", label: "Submit the HR review", description: "HR review: the assessment of one employee from its measured work, recommendations, and optionally new instructions (applied only if a replay passes)", class: "reversible", credits: 0, category: "team", implicit: "hr_review" },
   { name: "report_app_test", label: "Report the app test", description: "App test: the result (passed, or findings with steps to reproduce)", class: "reversible", credits: 0, category: "code", implicit: "app_test" },
   { name: "request_preview", label: "Publish preview", description: "Workspace mode: publish the branch you pushed (git_push) as a preview of an app at its URL (the platform deploys after approval)", class: "irreversible", credits: 0.5, category: "code" },
@@ -1784,6 +1785,8 @@ export interface AppDTO {
   createdAt: string;
   preview: AppEnvironmentDTO;
   live: AppEnvironmentDTO | null;
+  /** C8: how many modules the app has (dropped ones aside) and how many PRD drafts of them wait for a decision */
+  modules: { total: number; waiting: number };
 }
 export interface ReleaseDTO {
   id: string;
@@ -1802,6 +1805,8 @@ export interface ReleaseDTO {
   error: string | null;
   approvalId: string | null;
   taskId: string | null;
+  /** C8b: ids of the app modules whose work this commit contains (null: not worked out) */
+  modules: string[] | null;
   createdByName: string | null;
   createdAt: string;
   startedAt: string | null;

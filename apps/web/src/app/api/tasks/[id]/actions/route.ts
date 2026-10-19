@@ -1,11 +1,13 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { approvals, audit, db, tasks } from "@wfos/db";
+import { activeModuleWork, approvals, appModuleTasks, audit, db, lockAppModules, moduleAppOfTask, tasks } from "@wfos/db";
 import { canTransition } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
 import { control, publish, q } from "@/lib/server/queue";
 import { createTaskOr400 } from "@/lib/server/tasks";
+import { startWaitingModuleWork } from "@/lib/server/app-modules";
+import { logger } from "@/lib/server/logger";
 
 const schema = z.object({
   action: z.enum(["start", "cancel", "retry", "dry_run", "request_changes", "discard"]),
@@ -63,6 +65,14 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
       await publish(session.workspaceId, { type: "task.updated", taskId: c.id, status: "CANCELLED" });
     }
     for (const x of expired) await publish(session.workspaceId, { type: "approval.updated", approvalId: x.id, status: "EXPIRED" });
+    // C8: a cancelled module build frees its app: the build that waited starts (the worker never sees a queued task end)
+    const moduleApp = await moduleAppOfTask(t.id);
+    if (moduleApp) {
+      await startWaitingModuleWork(moduleApp.workspaceId, moduleApp.appId).catch((e: unknown) =>
+        // the cancel itself is done; the next request also starts when any later module task of the app ends
+        logger.warn({ err: (e as Error).message, taskId: t.id }, "waiting module work could not start"),
+      );
+    }
     // discard: the workspace is removed by the next garbage collection (deliverables stay on the task)
     if (action === "discard") await db.update(tasks).set({ workspaceStatus: "discarded" }).where(eq(tasks.id, t.id));
     await audit({
@@ -108,10 +118,22 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
       await q.task(copy.id, session.workspaceId);
       return { taskId: copy.id };
     }
-    await db
-      .update(tasks)
-      .set({ status: "QUEUED", error: null, phase: t.teamId && !t.parentTaskId ? null : t.phase, sandboxSecondsBase: sql`${tasks.sandboxSeconds}` })
-      .where(eq(tasks.id, t.id));
+    const busy = await db.transaction(async (tx) => {
+      // C8: a module build or change retried in place keeps one build per app (no queue skipping)
+      const [link] = await tx.select({ role: appModuleTasks.role }).from(appModuleTasks).where(eq(appModuleTasks.taskId, t.id));
+      const moduleApp = link && (link.role === "build" || link.role === "change") ? await moduleAppOfTask(t.id) : null;
+      if (moduleApp) {
+        await lockAppModules(tx, moduleApp.appId);
+        const running = await activeModuleWork(tx, moduleApp.appId);
+        if (running && running.taskId !== t.id) return running.title;
+      }
+      await tx
+        .update(tasks)
+        .set({ status: "QUEUED", error: null, phase: t.teamId && !t.parentTaskId ? null : t.phase, sandboxSecondsBase: sql`${tasks.sandboxSeconds}` })
+        .where(eq(tasks.id, t.id));
+      return null;
+    });
+    if (busy) throw new HttpError(409, "Another module of this app is being built: retry when it is done", { code: "app_module_busy", task: busy });
     await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "QUEUED" });
     await q.task(t.id, session.workspaceId);
     return { taskId: t.id };

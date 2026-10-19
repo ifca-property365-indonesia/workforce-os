@@ -1,10 +1,10 @@
 import { and, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { settleAppTest } from "../qa/app-test";
 import { settleHrReview } from "../hr/review";
-import { db, tasks } from "@wfos/db";
+import { audit, db, moduleAppOfTask, takeQueuedModuleWork, tasks } from "@wfos/db";
 import { assertTransition, TASK_STATUSES, canTransition, type RoutineRunStatus, type RunJob, type TaskStatus } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
-import { miscQueue, publish } from "../lib/redis";
+import { enqueueTask, miscQueue, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { workspaceLocale } from "../lib/settings";
 import { log } from "../lib/logger";
@@ -46,9 +46,25 @@ export async function afterTerminal(task: Task, status: TerminalStatus, opts: { 
   // C3: an app test whose task ended without a report is an error (never left running)
   await bestEffort("app test settle", task.id, () => settleAppTest(task.id, status));
   await bestEffort("hr review settle", task.id, () => settleHrReview(task.id));
+  // C8: one module build or change runs per app; the end of one starts the next that waits
+  await bestEffort("module queue", task.id, () => startWaitingModuleWork(task.id));
   await bestEffort("publish", task.id, () => publish(task.workspaceId, { type: "task.updated", taskId: task.id, status, employeeId: task.assigneeId, title: task.title }));
   if (status === "DONE") await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
   if (status === "FAILED" && opts.notifyFailure) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.error ?? ""));
+}
+
+/** After a task linked to an app module ended: start the oldest waiting build or change of that app, if any. */
+export async function startWaitingModuleWork(taskId: string): Promise<void> {
+  const at = await moduleAppOfTask(taskId);
+  if (!at) return;
+  const { task, dropped } = await takeQueuedModuleWork(db, at.workspaceId, at.appId);
+  if (dropped) {
+    log.warn({ appId: at.appId, moduleId: dropped.moduleId, err: dropped.error }, "waiting module work could not start");
+    await audit({ workspaceId: at.workspaceId, actorLabel: "system", action: "app.module_work_dropped", targetType: "app", targetId: at.appId, details: { moduleId: dropped.moduleId, error: dropped.error.slice(0, 300) } });
+  }
+  if (!task) return;
+  await publish(task.workspaceId, { type: "task.created", taskId: task.id, title: task.title, employeeId: task.assigneeId });
+  await enqueueTask(task.id, task.workspaceId);
 }
 
 /**

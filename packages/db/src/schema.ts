@@ -1156,6 +1156,8 @@ export const appReleases = pgTable(
     warnings: jsonb("warnings").$type<ReleaseWarning[]>().notNull().default([]),
     /** the validated wfos-app.json of this commit */
     manifest: jsonb("manifest").$type<AppManifest>(),
+    /** C8: the modules whose merged work this release's commit contains (null: not worked out) */
+    modules: jsonb("modules").$type<string[]>(),
     /** secrets redacted, capped (the tail is kept) */
     log: text("log").notNull().default(""),
     error: text("error"),
@@ -1323,13 +1325,66 @@ export const APP_DOCUMENT_KINDS = ["prd", "flow", "test_guide", "deck"] as const
 export type AppDocumentKind = (typeof APP_DOCUMENT_KINDS)[number];
 export type AppDocumentStatus = "draft" | "approved" | "superseded" | "rejected";
 
-/** C9: one version of an app's document; a new version is a draft next to the approved one. */
+/** C8: what a person decided about a module; every other status is derived (tasks, merges, releases) */
+export type AppModuleHold = "paused" | "dropped";
+export const APP_MODULE_TASK_ROLES = ["prd", "build", "change", "register"] as const;
+export type AppModuleTaskRole = (typeof APP_MODULE_TASK_ROLES)[number];
+export interface AppModulePendingWork {
+  role: "build" | "change";
+  employeeId: string | null;
+  teamId: string | null;
+  note: string;
+  requestedBy: string | null;
+  requestedAt: string;
+}
+
+/** C8: a module of an app (a part built from its own PRD in the app's repository; released with the app). */
+export const appModules = pgTable(
+  "app_modules",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    /** technical name, unique in the app (folder/route names follow it) */
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    summary: text("summary").notNull().default(""),
+    position: integer("position").notNull().default(0),
+    hold: text("hold").$type<AppModuleHold>(),
+    /** a build or change asked for while another module of the app was being built: started when the app is free */
+    pendingWork: jsonb("pending_work").$type<AppModulePendingWork>(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("app_modules_slug").on(t.appId, t.slug), index("app_modules_ws").on(t.workspaceId)],
+);
+
+/** C8: a task's work for a module (its PRD, a build, a change, or earlier work registered to it). One module per task. */
+export const appModuleTasks = pgTable(
+  "app_module_tasks",
+  {
+    taskId: uuid("task_id")
+      .primaryKey()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    moduleId: uuid("module_id").notNull().references(() => appModules.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    role: text("role").$type<AppModuleTaskRole>().notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index("app_module_tasks_module").on(t.moduleId, t.createdAt)],
+);
+
+/** C9: one version of an app's document; a new version is a draft next to the approved one. C8: or a module's PRD. */
 export const appDocuments = pgTable(
   "app_documents",
   {
     id: id(),
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    /** C8: the module this document belongs to (its PRD); null: a document of the whole app */
+    moduleId: uuid("module_id").references(() => appModules.id, { onDelete: "cascade" }),
     kind: text("kind").$type<AppDocumentKind>().notNull(),
     version: integer("version").notNull(),
     title: text("title").notNull(),
@@ -1345,7 +1400,12 @@ export const appDocuments = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("app_documents_version").on(t.appId, t.kind, t.version), index("app_documents_ws_status").on(t.workspaceId, t.status)],
+  (t) => [
+    // version numbers count per app (module_id null) and per module
+    uniqueIndex("app_documents_version").on(t.appId, t.kind, t.version).where(sql`module_id IS NULL`),
+    uniqueIndex("app_documents_module_version").on(t.moduleId, t.kind, t.version).where(sql`module_id IS NOT NULL`),
+    index("app_documents_ws_status").on(t.workspaceId, t.status),
+  ],
 );
 
 /** C9: a task asked to write one of an app's documents (save_app_document is granted for that app and kind only) */
@@ -1355,6 +1415,8 @@ export const appDocumentTasks = pgTable("app_document_tasks", {
     .references(() => tasks.id, { onDelete: "cascade" }),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  /** C8: the module whose PRD the task writes (kind prd only) */
+  moduleId: uuid("module_id").references(() => appModules.id, { onDelete: "cascade" }),
   kind: text("kind").$type<AppDocumentKind>().notNull(),
   createdAt: createdAt(),
 });

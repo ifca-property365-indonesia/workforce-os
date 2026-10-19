@@ -81,6 +81,7 @@ import { findAssignedSkill, isReservedSkillSlug, skillProposalSchema, skillReadT
 import { browserAct, browserLook, browserOpen, viewText, type ActStep } from "../qa/browser";
 import { recordAppTestReport, type AppTestContext } from "../qa/app-test";
 import { DOC_KIND_NAME, saveAppDocument, type AppDocContext } from "../docs/app-docs";
+import { listAppModules, type AppModuleContext } from "../docs/app-module";
 import { hrReviewSubmitSchema, submitHrReview, type HrReviewContext } from "../hr/review";
 import { APP_DOCUMENT_MAX, appTestReportSchema } from "@wfos/shared";
 
@@ -193,6 +194,8 @@ export interface RunContext {
   appTest?: AppTestContext;
   /** C9: the task writes one of an app's documents: save_app_document for that app and kind (implicitly granted) */
   appDoc?: AppDocContext;
+  /** C8: the task builds or changes one module of an app (its PRD and the other modules are in the prompt) */
+  appModule?: AppModuleContext;
   /** C2: the task is an HR review of one employee: submit_hr_review (implicitly granted) */
   hrReview?: HrReviewContext;
   /**
@@ -238,6 +241,8 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "app_test" && !perms.some((p) => p.tool === t.name && p.enabled)) perms.push({ tool: t.name, enabled: true });
   }
   if (ctx.appDoc && !perms.some((p) => p.tool === "save_app_document" && p.enabled)) perms.push({ tool: "save_app_document", enabled: true });
+  // C8: work on a module, or a document of an app, can see the app's modules
+  if ((ctx.appModule || ctx.appDoc) && !perms.some((p) => p.tool === "list_app_modules" && p.enabled)) perms.push({ tool: "list_app_modules", enabled: true });
   if (ctx.hrReview && !perms.some((p) => p.tool === "submit_hr_review" && p.enabled)) perms.push({ tool: "submit_hr_review", enabled: true });
   // tools every task run has (report_progress), unless an explicit entry says otherwise
   if (ctx.taskId) {
@@ -1059,7 +1064,7 @@ export function buildTools(ctx: RunContext) {
       "save_app_document",
       tool(
         "save_app_document",
-        `Save a new version of the ${DOC_KIND_NAME[doc.kind]} of ${doc.appName} (markdown). It is a draft next to the approved version; a person approves it. note: one line on what changed.`,
+        `Save a new version of the ${doc.module ? `PRD of the module ${doc.module.name} of ${doc.appName}` : `${DOC_KIND_NAME[doc.kind]} of ${doc.appName}`} (markdown). It is a draft next to the approved version; a person approves it. note: one line on what changed.`,
         { title: z.string().min(3).max(200), content: z.string().min(50).max(APP_DOCUMENT_MAX), note: z.string().max(500).optional() },
         wrap(ctx, "save_app_document", async (input: { title: string; content: string; note?: string }) => {
           if (!ctx.taskId) return err("App documents are saved from their task only.");
@@ -1070,7 +1075,7 @@ export function buildTools(ctx: RunContext) {
           // the same output guard as draft_document (secrets, personal data)
           const { text } = await guardOutput(ctx.guard, "save_app_document", a.content);
           const r = await saveAppDocument(doc, { title: a.title, content: text, note: a.note ?? "" }, { taskId: ctx.taskId, employeeId: ctx.employee.id, workspaceId: ctx.workspaceId });
-          return ok(`Saved version ${r.version} of the ${DOC_KIND_NAME[doc.kind]} as a draft. A person reviews and approves it on the app's Documents.`);
+          return ok(`Saved version ${r.version} of the ${doc.module ? `PRD of the module ${doc.module.name}` : DOC_KIND_NAME[doc.kind]} as a draft. A person reviews and approves it on the app's ${doc.module ? "Modules" : "Documents"}.`);
         }),
       ),
     );
@@ -1712,6 +1717,23 @@ export function buildTools(ctx: RunContext) {
           draftKind: "document",
           draftContent: `${a.title}\n\n${a.body ?? ""}`,
         });
+      }),
+    ),
+  );
+
+  // C8: the modules of an app (read only; creating or changing modules is a person's decision)
+  add(
+    "list_app_modules",
+    tool(
+      "list_app_modules",
+      "The modules of an app: name, slug, status (draft, ready, building, in_review, merged, live, paused, dropped), the approved PRD version, what is being built and whether the preview / LIVE contains it. appId: from list_apps (default: the app of the module you work on).",
+      { appId: z.string().uuid().optional() },
+      wrap(ctx, "list_app_modules", async (a: { appId?: string }) => {
+        const appId = a.appId ?? ctx.appModule?.appId ?? ctx.appDoc?.appId;
+        if (!appId) return err("Give appId (list_apps shows the apps).");
+        const text = await listAppModules(ctx.workspaceId, appId);
+        if (text === null) return err("No such app in this workspace (list_apps shows the apps).");
+        return ok(await guardToolResult(ctx.guard, "list_app_modules", text));
       }),
     ),
   );

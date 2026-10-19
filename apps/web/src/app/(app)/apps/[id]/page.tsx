@@ -14,6 +14,7 @@ import { AccessCard } from "@/components/apps/access-card";
 import { TestUsersCard } from "@/components/apps/test-users-card";
 import { AppTestsPanel } from "@/components/apps/app-tests-panel";
 import { AppDocumentsPanel } from "@/components/apps/app-documents-panel";
+import { AppModulesPanel, useAppModules } from "@/components/apps/app-modules-panel";
 import { BackupsPanel } from "@/components/apps/backups-panel";
 import { DeployDialog, EditAppDialog } from "@/components/apps/app-dialogs";
 import { DnsPanel } from "@/components/apps/dns-panel";
@@ -41,6 +42,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
   const { data: all } = useApps();
   const { data: clients } = useClients();
   const { admin, owner, logs } = useAppRights();
+  const { data: mods } = useAppModules(id, logs);
+  const moduleNames = Object.fromEntries((mods?.modules ?? []).map((m) => [m.id, m.name]));
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<AppEnvironmentKind | null>(null);
   const now = useNow();
@@ -278,6 +281,8 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
 
       {/* C3: browser tests of the preview (members start one; findings become fix tasks) */}
       {logs && <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} />}
+      {/* C8: modules, each with its own PRD, built one at a time in the app's repository */}
+      {logs && <AppModulesPanel app={app} admin={admin} member={logs} />}
       {/* C9: PRD, business flow, test guide and presentation, versioned (drafts approved by an Admin) */}
       {logs && <AppDocumentsPanel app={app} admin={admin} member={logs} />}
 
@@ -286,6 +291,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
         <ReleasesTable
           releases={releases}
           origins={data.origins}
+          moduleNames={moduleNames}
           currentIds={[preview.currentRelease?.id, live?.currentRelease?.id].filter((x): x is string => !!x)}
           logs={logs}
           showEnvironments={!!live || releases.some((r) => r.environmentKind === "live")}

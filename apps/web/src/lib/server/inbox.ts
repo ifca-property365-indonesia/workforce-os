@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { agentWorkOnRepository, appDocuments, apps, appTests, approvals, db, employees, hrReviews, incidents, replays, repositories, tasks, teams, type AppDocumentKind } from "@wfos/db";
+import { agentWorkOnRepository, appDocuments, appModules, apps, appTests, approvals, db, employees, hrReviews, incidents, replays, repositories, tasks, teams, type AppDocumentKind } from "@wfos/db";
 import { APPROVAL_UNDECIDABLE_TASK_STATUSES, type IncidentKind, type IncidentStatus, type TaskStatus } from "@wfos/shared";
 
 /**
@@ -28,7 +28,7 @@ export type InboxItem =
   | { kind: "paused_employee"; id: string; at: Date; name: string; role: string }
   | { kind: "merge"; id: string; at: Date; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
   | { kind: "test_findings"; id: string; at: Date; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null }
-  | { kind: "doc_review"; id: string; at: Date; app: { id: string; name: string }; docKind: AppDocumentKind; version: number; title: string; note: string; author: string | null }
+  | { kind: "doc_review"; id: string; at: Date; app: { id: string; name: string }; module: { id: string; name: string } | null; docKind: AppDocumentKind; version: number; title: string; note: string; author: string | null }
   | { kind: "hr_proposal"; id: string; at: Date; employee: { id: string; name: string }; verdicts: string[]; judgeError: string | null };
 
 export type InboxKind = InboxItem["kind"];
@@ -174,9 +174,10 @@ async function testFindings(workspaceId: string): Promise<InboxItem[]> {
 
 async function documentDrafts(workspaceId: string): Promise<InboxItem[]> {
   const rows = await db
-    .select({ d: appDocuments, appName: apps.name, author: employees.name })
+    .select({ d: appDocuments, appName: apps.name, author: employees.name, moduleName: appModules.name })
     .from(appDocuments)
     .innerJoin(apps, and(eq(apps.id, appDocuments.appId), eq(apps.workspaceId, workspaceId)))
+    .leftJoin(appModules, eq(appModules.id, appDocuments.moduleId))
     .leftJoin(employees, eq(employees.id, appDocuments.authorEmployeeId))
     .where(and(eq(appDocuments.workspaceId, workspaceId), eq(appDocuments.status, "draft")))
     .orderBy(desc(appDocuments.createdAt))
@@ -186,6 +187,8 @@ async function documentDrafts(workspaceId: string): Promise<InboxItem[]> {
     id: r.d.id,
     at: r.d.createdAt,
     app: { id: r.d.appId, name: r.appName },
+    // C8: a module's PRD is reviewed on the module
+    module: r.d.moduleId ? { id: r.d.moduleId, name: r.moduleName ?? "" } : null,
     docKind: r.d.kind,
     version: r.d.version,
     title: r.d.title,

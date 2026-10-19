@@ -1,9 +1,12 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { z } from "zod";
 import { appDocuments, audit, db } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { loadApp } from "@/lib/server/apps";
 import { body, notFound, route } from "@/lib/server/route";
+
+/** the versions a document is numbered and approved among: its module's (C8), else the app's own */
+const sameScope = (d: { moduleId: string | null }) => (d.moduleId ? eq(appDocuments.moduleId, d.moduleId) : isNull(appDocuments.moduleId));
 
 async function loadDoc(workspaceId: string, appId: string, docId: string) {
   const [d] = await db.select().from(appDocuments).where(and(eq(appDocuments.id, docId), eq(appDocuments.appId, appId), eq(appDocuments.workspaceId, workspaceId)));
@@ -18,7 +21,7 @@ export const GET = route<{ id: string; docId: string }>("MEMBER", async ({ sessi
   const [approved] = await db
     .select({ id: appDocuments.id, version: appDocuments.version, content: appDocuments.content })
     .from(appDocuments)
-    .where(and(eq(appDocuments.appId, app.id), eq(appDocuments.kind, doc.kind), eq(appDocuments.status, "approved"), ne(appDocuments.id, doc.id)));
+    .where(and(eq(appDocuments.appId, app.id), sameScope(doc), eq(appDocuments.kind, doc.kind), eq(appDocuments.status, "approved"), ne(appDocuments.id, doc.id)));
   return { doc, approved: approved ?? null };
 });
 
@@ -36,7 +39,7 @@ export const POST = route<{ id: string; docId: string }>("ADMIN", async ({ sessi
   const now = new Date();
   await db.transaction(async (tx) => {
     if (action === "approve") {
-      await tx.update(appDocuments).set({ status: "superseded" }).where(and(eq(appDocuments.appId, app.id), eq(appDocuments.kind, doc.kind), eq(appDocuments.status, "approved")));
+      await tx.update(appDocuments).set({ status: "superseded" }).where(and(eq(appDocuments.appId, app.id), sameScope(doc), eq(appDocuments.kind, doc.kind), eq(appDocuments.status, "approved")));
     }
     await tx.update(appDocuments).set({ status: action === "approve" ? "approved" : "rejected", decidedBy: session.userId, decidedAt: now }).where(eq(appDocuments.id, doc.id));
   });
@@ -47,7 +50,7 @@ export const POST = route<{ id: string; docId: string }>("ADMIN", async ({ sessi
     action: action === "approve" ? "app.document_approved" : "app.document_rejected",
     targetType: "app",
     targetId: app.id,
-    details: { name: app.name, kind: doc.kind, version: doc.version },
+    details: { name: app.name, kind: doc.kind, version: doc.version, moduleId: doc.moduleId },
   });
   return { ok: true };
 });

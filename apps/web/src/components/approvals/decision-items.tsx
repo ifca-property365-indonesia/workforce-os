@@ -21,7 +21,7 @@ export type DecisionItem =
   | { kind: "paused_employee"; id: string; at: string; name: string; role: string }
   | { kind: "merge"; id: string; at: string; title: string; employee: Ref; repository: { id: string; name: string; defaultBranch: string }; state: "unmerged" | "failed"; conflicts: string[] }
   | { kind: "test_findings"; id: string; at: string; app: { id: string; name: string }; summary: string; findings: number; high: number; commit: string | null }
-  | { kind: "doc_review"; id: string; at: string; app: { id: string; name: string }; docKind: "prd" | "flow" | "test_guide" | "deck"; version: number; title: string; note: string; author: string | null }
+  | { kind: "doc_review"; id: string; at: string; app: { id: string; name: string }; module: { id: string; name: string } | null; docKind: "prd" | "flow" | "test_guide" | "deck"; version: number; title: string; note: string; author: string | null }
   | { kind: "hr_proposal"; id: string; at: string; employee: { id: string; name: string }; verdicts: string[]; judgeError: string | null };
 
 export interface InboxResponse {
@@ -179,12 +179,12 @@ export function DecisionItemCard({ item }: { item: DecisionItem }) {
       break;
     case "doc_review":
       label = t("kind.docReview", { doc: t(`docKind.${item.docKind}`), version: item.version });
-      title = `${item.app.name}: ${item.title}`;
+      title = `${item.app.name}${item.module ? ` · ${item.module.name}` : ""}: ${item.title}`;
       meta = [item.author ?? ""];
       body = item.note || null;
       actions = (
         <Button asChild size="sm" variant="outline">
-          <Link href={`/apps/${item.app.id}?doc=${item.id}`}>{t("actions.reviewDoc")}</Link>
+          <Link href={item.module ? `/apps/${item.app.id}?module=${item.module.id}&doc=${item.id}` : `/apps/${item.app.id}?doc=${item.id}`}>{t("actions.reviewDoc")}</Link>
         </Button>
       );
       break;

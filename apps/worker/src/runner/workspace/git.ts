@@ -218,7 +218,7 @@ export async function pushAgentBranch(repo: RepoRef, taskId: string, approvedHea
 const SHA = /^[0-9a-f]{40}$/;
 
 /** git's exit status 1 is "no"; anything else (unknown commit, broken mirror) is also not a yes */
-async function isAncestor(mirror: string, ancestor: string, of: string): Promise<boolean> {
+export async function isAncestor(mirror: string, ancestor: string, of: string): Promise<boolean> {
   return rootGit(["-C", mirror, "merge-base", "--is-ancestor", ancestor, of]).then(
     () => true,
     () => false,

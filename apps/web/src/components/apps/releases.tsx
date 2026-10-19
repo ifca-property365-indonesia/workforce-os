@@ -84,6 +84,7 @@ export function ReleasesTable({
   onRollback,
   rollbackPending,
   showEnvironments = false,
+  moduleNames = {},
 }: {
   releases: ReleaseDTO[];
   origins?: Record<string, ReleaseOrigin>;
@@ -94,6 +95,8 @@ export function ReleasesTable({
   onRollback: (r: ReleaseDTO) => void;
   rollbackPending: boolean;
   showEnvironments?: boolean;
+  /** C8b: module id → name, to name the modules a release contains */
+  moduleNames?: Record<string, string>;
 }) {
   const t = useTranslations("apps");
   const f = useFormat();
@@ -185,6 +188,13 @@ export function ReleasesTable({
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <code className="font-mono text-[11px] text-muted-foreground">{r.branch}</code>
                       <WarningChips warnings={r.warnings} />
+                      {r.modules
+                        ?.filter((id) => moduleNames[id])
+                        .map((id) => (
+                          <span key={id} className="rounded bg-secondary px-1.5 text-[11px]" title={t("releases.moduleIn")}>
+                            {moduleNames[id]}
+                          </span>
+                        ))}
                     </div>
                     {r.error && <p className="mt-1 line-clamp-2 text-xs text-destructive">{r.error}</p>}
                   </td>

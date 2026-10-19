@@ -1,4 +1,4 @@
-import { and, desc, eq, max, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import { appDocuments, audit, db, tasks } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
@@ -30,7 +30,7 @@ export const POST = route<{ id: string }>("ADMIN", async ({ session, req, params
   if (!d) notFound("prd_not_found");
   if (d.content.length < 50) throw new HttpError(400, "That PRD is empty", { code: "prd_not_found" });
   const version = await db.transaction(async (tx) => {
-    const [m] = await tx.select({ v: max(appDocuments.version) }).from(appDocuments).where(and(eq(appDocuments.appId, app.id), eq(appDocuments.kind, "prd")));
+    const [m] = await tx.select({ v: max(appDocuments.version) }).from(appDocuments).where(and(eq(appDocuments.appId, app.id), eq(appDocuments.kind, "prd"), isNull(appDocuments.moduleId)));
     const v = (m?.v ?? 0) + 1;
     await tx.insert(appDocuments).values({ workspaceId: session.workspaceId, appId: app.id, kind: "prd", version: v, title: d.title, content: d.content, note: "Imported from a task deliverable", taskId: b.taskId, createdBy: session.userId });
     return v;

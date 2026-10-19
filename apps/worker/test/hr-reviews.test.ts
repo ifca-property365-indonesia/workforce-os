@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { approvals, auditLog, db, employeeMetrics, employees, hrReviews, incidents, metricScore, replays, steps, tasks } from "@wfos/db";
+import { approvals, auditLog, db, employeeMetrics, employees, hrReviews, incidents, metricScore, replays, steps } from "@wfos/db";
 import { runTask } from "../src/runner/task";
 import { setQueryImpl, type QueryFn } from "../src/runner/sdk";
 import { mockRunner, type MockStep } from "../src/runner/mock-sdk";

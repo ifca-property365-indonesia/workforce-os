@@ -1,9 +1,9 @@
-import { and, count, desc, eq, gt } from "drizzle-orm";
+import { and, count, desc, eq, gt, isNull } from "drizzle-orm";
 import { appDocuments, appEnvironments, appReleases, APP_DOCUMENT_KINDS, db, employees, type AppDocumentKind } from "@wfos/db";
 import { loadApp } from "@/lib/server/apps";
 import { route } from "@/lib/server/route";
 
-/** C9: the app's documents per kind: every version (no content), the approved one, and preview releases since it. */
+/** C9: the app's documents per kind: every version (no content), the approved one, and preview releases since it. Module PRDs (C8) are on the module. */
 export const GET = route<{ id: string }>("MEMBER", async ({ session, params }) => {
   const app = await loadApp(session.workspaceId, params.id);
   const rows = await db
@@ -22,7 +22,7 @@ export const GET = route<{ id: string }>("MEMBER", async ({ session, params }) =
     })
     .from(appDocuments)
     .leftJoin(employees, eq(employees.id, appDocuments.authorEmployeeId))
-    .where(and(eq(appDocuments.appId, app.id), eq(appDocuments.workspaceId, session.workspaceId)))
+    .where(and(eq(appDocuments.appId, app.id), eq(appDocuments.workspaceId, session.workspaceId), isNull(appDocuments.moduleId)))
     .orderBy(desc(appDocuments.version));
   const [preview] = await db.select({ id: appEnvironments.id }).from(appEnvironments).where(and(eq(appEnvironments.appId, app.id), eq(appEnvironments.kind, "preview")));
   const kinds = {} as Record<AppDocumentKind, { versions: typeof rows; approved: { id: string; version: number } | null; releasesSinceApproved: number }>;

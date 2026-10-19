@@ -7,6 +7,7 @@ import { sftpPut, type SshTarget } from "@wfos/shared/ssh";
 import { errorMessage } from "../lib/errors";
 import { log } from "../lib/logger";
 import { publish } from "../lib/redis";
+import { modulesInCommit } from "../docs/app-module";
 import { mirrorPath, rootGitSpawn, SAFE_REF, syncMirror, type RepoRef } from "../runner/workspace/git";
 import { recheckServer } from "../scheduler/servers";
 import {
@@ -1028,13 +1029,18 @@ async function succeed(c: Ctx): Promise<ReleaseStatus> {
       graceDone: !graceUnit,
     });
   }
+  // C8b: which app modules this commit contains (shown on the release and the modules); never blocks a release
+  const modules = await modulesInCommit(c.app.workspaceId, c.app, c.mirror, c.sha).catch((e: unknown) => {
+    log.warn({ err: e, releaseId: c.rel.id }, "modules of the release could not be worked out");
+    return null;
+  });
   const superseded = await db.transaction(async (tx) => {
     const old = await tx
       .update(appReleases)
       .set({ status: "superseded" })
       .where(and(eq(appReleases.environmentId, c.env.id), eq(appReleases.status, "deployed"), ne(appReleases.id, c.rel.id)))
       .returning();
-    await tx.update(appReleases).set({ status: "deployed", step: "cleanup", error: null, finishedAt: now }).where(eq(appReleases.id, c.rel.id));
+    await tx.update(appReleases).set({ status: "deployed", step: "cleanup", error: null, finishedAt: now, modules }).where(eq(appReleases.id, c.rel.id));
     await tx
       .update(appEnvironments)
       .set({

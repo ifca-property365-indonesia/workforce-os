@@ -12,6 +12,22 @@ export { employeeDivision, divisionSubagents, workspaceDivisions, type DivisionR
 export { getOrCreateWorkspaceSshKey, workspaceSshPrivateKey, type WorkspaceSshKey } from "./ssh-key";
 export { agentWorkOnRepository, MERGE_TOOL, type AgentWork, type MergeDecision, type MergeState } from "./agent-work";
 export { createTask, TaskInputError, TASK_INPUT_ERROR_CODES, type CreateTaskInput, type TaskInputErrorCode, type TaskRow } from "./tasks";
+export {
+  appModuleViews,
+  activeModuleWork,
+  lockAppModules,
+  moduleAppOfTask,
+  moduleSlug,
+  moduleTaskTree,
+  MODULE_SLUG,
+  requestModuleWork,
+  startModuleWork,
+  takeQueuedModuleWork,
+  type AppModuleStatus,
+  type AppModuleTaskRef,
+  type AppModuleView,
+  type ModuleWorkInput,
+} from "./app-modules";
 
 export type DB = PostgresJsDatabase<typeof schema>;
 

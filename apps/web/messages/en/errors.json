@@ -218,5 +218,13 @@
   "app_document_not_draft": "Only a draft can be approved or rejected.",
   "writer_not_found": "Choose an employee of this workspace.",
   "prd_not_found": "PRD not found.",
-  "reviewer_not_found": "Choose another employee of this workspace as the reviewer."
+  "reviewer_not_found": "Choose another employee of this workspace as the reviewer.",
+  "app_module_not_found": "Module not found.",
+  "app_module_slug_taken": "A module with this technical name exists in the app.",
+  "app_module_slug_fixed": "The technical name is fixed once the module was built.",
+  "app_module_has_work": "This module has work: drop it instead of removing it.",
+  "app_module_on_hold": "This module is paused or dropped.",
+  "app_module_no_prd": "Approve the module's PRD first.",
+  "app_module_no_work": "That task pushed no work to this app's repository.",
+  "app_module_task_linked": "That task already belongs to a module."
 }

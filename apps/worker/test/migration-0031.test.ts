@@ -33,7 +33,7 @@ describe("migration 0031 on live-shaped data", () => {
     const t1 = await team("T1", hana, "2026-01-01T00:00:00Z");
     const t2 = await team("T2", lina, "2026-02-01T00:00:00Z");
     const t3 = await team("T3", hana, "2026-03-01T00:00:00Z");
-    const t4 = await team("T4", kiki, "2026-04-01T00:00:00Z");
+    await team("T4", kiki, "2026-04-01T00:00:00Z");
     await member(t1, hana);
     await member(t3, hana);
     await member(t1, lina);

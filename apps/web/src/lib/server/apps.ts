@@ -2,8 +2,8 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { and, desc, eq, gt, inArray, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
-import { appBackups, appEnvironments, appReleases, apps, auditLog, clients, db, employees, projects, repositories, servers, tasks, users, workspaces } from "@wfos/db";
+import { and, count, countDistinct, desc, eq, gt, inArray, isNotNull, isNull, max, ne, or, sql, type SQL } from "drizzle-orm";
+import { appBackups, appDocuments, appEnvironments, appModules, appReleases, apps, auditLog, clients, db, employees, projects, repositories, servers, tasks, users, workspaces } from "@wfos/db";
 import {
   APP_PORT_MAX,
   APP_PORT_MIN,
@@ -70,6 +70,7 @@ export function releaseDTO(r: ReleaseRow, createdByName: string | null, environm
     error: r.error,
     approvalId: r.approvalId,
     taskId: r.taskId,
+    modules: r.modules ?? null,
     createdByName,
     createdAt: r.createdAt.toISOString(),
     startedAt: r.startedAt?.toISOString() ?? null,
@@ -222,6 +223,17 @@ export async function appDTOs(workspaceId: string, ids?: string[]): Promise<AppD
         .groupBy(appBackups.environmentId)
     : [];
   const lastBackup = new Map(backups.map((b) => [b.environmentId, b.at]));
+  const appIds = rows.map((r) => r.a.id);
+  const moduleCounts = await db
+    .select({ appId: appModules.appId, n: count() })
+    .from(appModules)
+    .where(and(inArray(appModules.appId, appIds), sql`${appModules.hold} IS DISTINCT FROM 'dropped'`))
+    .groupBy(appModules.appId);
+  const waitingDrafts = await db
+    .select({ appId: appDocuments.appId, n: countDistinct(appDocuments.moduleId) })
+    .from(appDocuments)
+    .where(and(inArray(appDocuments.appId, appIds), isNotNull(appDocuments.moduleId), eq(appDocuments.status, "draft")))
+    .groupBy(appDocuments.appId);
   const envOf = (appId: string, kind: AppEnvironmentKind) => {
     const x = envs.find((y) => y.e.appId === appId && y.e.kind === kind);
     return x ? environmentDTO(x.e, x.serverName, x.e.currentReleaseId ? byId.get(x.e.currentReleaseId) : undefined, lastBackup.get(x.e.id) ?? null) : null;
@@ -243,6 +255,7 @@ export async function appDTOs(workspaceId: string, ids?: string[]): Promise<AppD
       createdAt: a.createdAt.toISOString(),
       preview,
       live: envOf(a.id, "live"),
+      modules: { total: Number(moduleCounts.find((m) => m.appId === a.id)?.n ?? 0), waiting: Number(waitingDrafts.find((m) => m.appId === a.id)?.n ?? 0) },
     });
   }
   return out;

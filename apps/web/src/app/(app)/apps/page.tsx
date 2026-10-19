@@ -59,6 +59,13 @@ function AppCard({ app, color }: { app: AppDTO; color: SignColor }) {
           </span>
         )}
       </div>
+      {/* C8: modules are listed on the app, never as apps of their own */}
+      {app.modules.total > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {t("list.modules", { count: app.modules.total })}
+          {app.modules.waiting > 0 && <span className="ml-1.5 rounded bg-[var(--sign-biru)]/20 px-1.5 font-semibold text-foreground">{t("list.modulesWaiting", { count: app.modules.waiting })}</span>}
+        </p>
+      )}
       <div className="mt-auto space-y-1 border-t pt-3 text-xs text-muted-foreground">
         {cur ? (
           <>

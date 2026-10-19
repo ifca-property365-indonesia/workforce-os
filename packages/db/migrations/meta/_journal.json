@@ -267,6 +267,13 @@
       "when": 1792478400000,
       "tag": "0037_hr_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792564800000,
+      "tag": "0038_app_modules",
+      "breakpoints": true
     }
   ]
 }

@@ -218,5 +218,13 @@
   "app_document_not_draft": "Hanya draf yang bisa disetujui atau ditolak.",
   "writer_not_found": "Pilih karyawan di workspace ini.",
   "prd_not_found": "PRD tidak ditemukan.",
-  "reviewer_not_found": "Pilih karyawan lain di workspace ini sebagai reviewer."
+  "reviewer_not_found": "Pilih karyawan lain di workspace ini sebagai reviewer.",
+  "app_module_not_found": "Modul tidak ditemukan.",
+  "app_module_slug_taken": "Sudah ada modul dengan nama teknis ini di aplikasi.",
+  "app_module_slug_fixed": "Nama teknis tidak bisa diubah setelah modul dibangun.",
+  "app_module_has_work": "Modul ini sudah punya pekerjaan: hentikan, jangan dihapus.",
+  "app_module_on_hold": "Modul ini sedang dijeda atau dihentikan.",
+  "app_module_no_prd": "Setujui PRD modul ini dulu.",
+  "app_module_no_work": "Tugas itu tidak mem-push pekerjaan ke repo aplikasi ini.",
+  "app_module_task_linked": "Tugas itu sudah menjadi bagian sebuah modul."
 }
