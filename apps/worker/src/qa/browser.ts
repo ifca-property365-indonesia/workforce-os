@@ -87,6 +87,8 @@ export const BROWSER_IDLE_MS = 10 * 60_000;
 const STEP_LIMIT = 15;
 const TEXT_MAX = 3000;
 const LIST_MAX = 30;
+/** how long a sign-in submit may take to show its outcome (next page, a code field or an error) */
+const LOGIN_WAIT_MS = 10_000;
 
 export class BrowserBusyError extends Error {
   constructor() {
@@ -204,21 +206,40 @@ const realDriver: DriverFactory = async (target) => {
             .first();
           const pass = page.locator("input[type=password]").first();
           if (!(await pass.isVisible().catch(() => false))) return { ok: false, detail: `no password field on ${account.loginPath}` };
+          const otp = page.locator("input[autocomplete=one-time-code], input[name*=otp i], input[name*=totp i], input[name*=code i], input[id*=otp i], input[id*=code i]").first();
+          const alert = page.getByRole("alert").filter({ hasText: /\S/ }).first();
+          // A form sent with fetch (common in SPAs) changes the page only when its answer arrives, and networkidle was
+          // already reached before the submit, so settle() alone returns at once: wait for an outcome instead.
+          const submit = async (field: typeof pass, otpMayAppear: boolean) => {
+            const from = page.url();
+            // an error shown before this submit (e.g. "enter your code") says nothing about its outcome
+            const alertBefore = await alert.isVisible().catch(() => false);
+            await field.press("Enter");
+            const waits = [
+              page.waitForURL((u) => u.toString() !== from, { timeout: LOGIN_WAIT_MS }),
+              pass.waitFor({ state: "hidden", timeout: LOGIN_WAIT_MS }),
+              ...(alertBefore ? [] : [alert.waitFor({ state: "visible", timeout: LOGIN_WAIT_MS })]),
+              ...(otpMayAppear ? [otp.waitFor({ state: "visible", timeout: LOGIN_WAIT_MS })] : []),
+            ];
+            await Promise.race(waits.map((p) => p.catch(() => {})));
+            await settle();
+          };
           await user.fill(account.username);
           await pass.fill(account.password);
-          await pass.press("Enter");
-          await settle();
-          const otp = page.locator("input[autocomplete=one-time-code], input[name*=otp i], input[name*=totp i], input[name*=code i], input[id*=otp i], input[id*=code i]").first();
+          await submit(pass, true);
           if (await otp.isVisible().catch(() => false)) {
             if (!account.totp) return { ok: false, detail: "the app asks for a two-factor code but this test account has no TOTP key" };
             await otp.fill(code());
-            await otp.press("Enter");
-            await settle();
+            await submit(otp, false);
           }
-          const still = await page.locator("input[type=password]").first().isVisible().catch(() => false);
-          return still
-            ? { ok: false, detail: "still on a page with a password field after signing in (wrong account, or the form needs something else)" }
-            : { ok: true, detail: `signed in, now at ${pathOf(page.url())}` };
+          // a client-side navigation may update the URL just before the next page replaces the form
+          await pass.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
+          if (!(await pass.isVisible().catch(() => false))) return { ok: true, detail: `signed in, now at ${pathOf(page.url())}` };
+          const said = (await alert.textContent({ timeout: 500 }).catch(() => null))?.trim().slice(0, 200);
+          return {
+            ok: false,
+            detail: `still on a page with a password field after signing in${said ? ` (the page says: "${said}")` : " (wrong account, or the form needs something else)"}`,
+          };
         },
         async act(step) {
           if ("click" in step) await page.getByRole("button", { name: step.click }).or(page.getByRole("link", { name: step.click })).or(page.getByText(step.click, { exact: false })).first().click();
