@@ -213,4 +213,28 @@ describe("per-user notifications", () => {
     await notify({ ...(held.data as NotifyJob), heldSince: Date.now() - APPROVAL_NOTICE_MAX_HOLD_MS - 1 });
     expect(transport.mails).not.toEqual([]);
   });
+
+  it("2026-10-19: a run that asked for six approvals sends one digest (one email each, no per-approval buttons); a later approval is announced again", async () => {
+    const ws = await makeWorkspace({ notifyEmail: "ops@test.local" });
+    const m = await member(ws.id);
+    const emp = await makeEmployee(ws.id);
+    const task = await makeTask(ws.id, emp.id, { status: "AWAITING_APPROVAL" });
+    const make = async (title: string) =>
+      (await db.insert(approvals).values({ workspaceId: ws.id, taskId: task.id, employeeId: emp.id, toolName: "install_skill", title, payload: {}, status: "PENDING" }).returning())[0]!;
+    const six = [];
+    for (const n of [1, 2, 3, 4, 5, 6]) six.push(await make(`Install skill s${n}`));
+    for (const a of six) await notify(job(ws.id, { notificationKind: "approval", approvalId: a.id, employeeId: emp.id }));
+    expect(transport.mails.map((x) => x.mail.to[0]).sort()).toEqual(["ops@test.local", m.user.email].sort());
+    const mail = transport.mails[0]!.mail;
+    expect(mail.subject).toContain("6 approvals needed");
+    for (const n of [1, 2, 3, 4, 5, 6]) expect(mail.text).toContain(`- Install skill s${n}`);
+    expect(telegramTo).toEqual([m.chatId]);
+    expect(await db.select().from(notifications).where(eq(notifications.workspaceId, ws.id))).toHaveLength(1);
+
+    // the next run asks for one more: a notice of its own
+    transport.mails.length = 0;
+    const later = await make("Install skill s7");
+    await notify(job(ws.id, { notificationKind: "approval", approvalId: later.id, employeeId: emp.id }));
+    expect(transport.mails.map((x) => x.mail.subject)).toEqual(["[Workforce OS] Approval needed: Email", "[Workforce OS] Approval needed: Email"]);
+  });
 });

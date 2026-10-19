@@ -1,5 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
-import { approvals, db, members, notificationPrefs, notifications, tasks, users } from "@wfos/db";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { approvals, db, employees, members, notificationPrefs, notifications, tasks, users } from "@wfos/db";
 import { APPROVAL_UNDECIDABLE_TASK_STATUSES, notificationEnabled, type NotificationChannel, type NotifyJob } from "@wfos/shared";
 import { sendMail } from "@wfos/shared/mail";
 import { withRetry } from "@wfos/shared/server";
@@ -9,7 +9,7 @@ import { msg } from "@wfos/shared/messages";
 import { log } from "./logger";
 import { telegramNotify } from "./telegram";
 import { pushNotify } from "./push";
-import { miscQueue } from "./redis";
+import { miscQueue, redis } from "./redis";
 
 export type NotifyInput = Omit<NotifyJob, "kind">;
 
@@ -75,11 +75,53 @@ export const APPROVAL_NOTICE_RECHECK_MS = 30_000;
 /** a notice is never held longer than this, however long the task keeps running */
 export const APPROVAL_NOTICE_MAX_HOLD_MS = 6 * 3_600_000;
 
-export async function notify(n: NotifyInput): Promise<void> {
-  const { workspaceId, subject, text, link, approvalId } = n;
+/** how long a task's approval digest remembers which approvals it covered */
+const APPROVAL_DIGEST_TTL_S = 7 * 86_400;
+
+/**
+ * A run that asked for several approvals (a skill audit's proposals, a build's pushes) is announced once: the first
+ * notice released after the run ends sends one digest of every approval of that task still pending, and the notices
+ * of the approvals it listed are dropped. Approvals asked for later (a next run) are announced again, the same way.
+ * Returns the digest to send instead of this notice, "skip" when an earlier digest covered it, "retry" while another
+ * notice of the task is deciding, or null (send as is).
+ */
+async function approvalDigest(n: NotifyInput, taskId: string): Promise<NotifyInput | "skip" | "retry" | null> {
+  const key = `${env.namespace}:approval-digest:${taskId}`;
+  // notices released together: one at a time decides, the others come back in a moment and find themselves covered
+  if (!(await redis.set(`${key}:lock`, "1", "EX", 30, "NX"))) return "retry";
+  try {
+    const covered = await redis.get(key);
+    const seen: string[] = covered ? (JSON.parse(covered) as string[]) : [];
+    if (seen.includes(n.approvalId!)) return "skip";
+    const pending = await db
+      .select({ id: approvals.id, title: approvals.title, employee: employees.name })
+      .from(approvals)
+      .leftJoin(employees, eq(employees.id, approvals.employeeId))
+      .where(and(eq(approvals.taskId, taskId), eq(approvals.status, "PENDING")))
+      .orderBy(asc(approvals.createdAt));
+    const fresh = pending.filter((a) => !seen.includes(a.id));
+    if (fresh.length <= 1) return null;
+    await redis.set(key, JSON.stringify([...seen, ...fresh.map((a) => a.id)]), "EX", APPROVAL_DIGEST_TTL_S);
+    const ws = await getWorkspace(n.workspaceId);
+    const who = fresh[0]!.employee ?? "";
+    return {
+      ...n,
+      approvalId: undefined,
+      subject: msg(ws.defaultLocale, "notify.approvalsNeeded", { count: fresh.length, employee: who }),
+      text: `${msg(ws.defaultLocale, "notify.approvalsNeededText", { count: fresh.length, employee: who })}\n${fresh.map((a) => `- ${a.title}`).join("\n")}`,
+      link: "/approvals",
+    };
+  } finally {
+    await redis.del(`${key}:lock`);
+  }
+}
+
+export async function notify(input: NotifyInput): Promise<void> {
+  let n = input;
+  const { workspaceId, approvalId } = n;
   // an approval notice that is no longer actionable (withdrawn, expired or decided before it went out) is not sent
   if (approvalId) {
-    const [a] = await db.select({ status: approvals.status, taskStatus: tasks.status }).from(approvals).leftJoin(tasks, eq(tasks.id, approvals.taskId)).where(eq(approvals.id, approvalId));
+    const [a] = await db.select({ status: approvals.status, taskId: approvals.taskId, taskStatus: tasks.status }).from(approvals).leftJoin(tasks, eq(tasks.id, approvals.taskId)).where(eq(approvals.id, approvalId));
     if (a && a.status !== "PENDING") {
       log.info({ approvalId, status: a.status }, "notify: approval no longer pending; notice not sent");
       return;
@@ -91,7 +133,17 @@ export async function notify(n: NotifyInput): Promise<void> {
       await miscQueue.add("notify", { ...n, kind: "notify", heldSince }, { delay: APPROVAL_NOTICE_RECHECK_MS });
       return;
     }
+    if (a?.taskId) {
+      const digest = await approvalDigest(n, a.taskId);
+      if (digest === "skip") return;
+      if (digest === "retry") {
+        await miscQueue.add("notify", { ...n, kind: "notify" }, { delay: 3_000 });
+        return;
+      }
+      if (digest) n = digest;
+    }
   }
+  const { subject, text, link } = n;
   await db.insert(notifications).values({
     workspaceId,
     userId: n.userId ?? null,

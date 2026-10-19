@@ -8,6 +8,8 @@ const MESSAGES = {
   en: {
     "notify.approvalNeeded": "Approval needed: {title}",
     "notify.approvalNeededText": "{employee} ({role}) wants to run {tool}.\nReason: {reason}",
+    "notify.approvalsNeeded": "{count} approvals needed from {employee}",
+    "notify.approvalsNeededText": "{employee} is waiting for {count} decisions. Open Needs a decision to approve or reject each:",
     "notify.taskFinished": "Task finished: {title}",
     "notify.taskFailed": "Task failed: {title}",
     "notify.pausedBudget": "{name} paused: budget cap",
@@ -88,6 +90,8 @@ const MESSAGES = {
   id: {
     "notify.approvalNeeded": "Perlu persetujuan: {title}",
     "notify.approvalNeededText": "{employee} ({role}) ingin menjalankan {tool}.\nAlasan: {reason}",
+    "notify.approvalsNeeded": "{count} persetujuan menunggu dari {employee}",
+    "notify.approvalsNeededText": "{employee} menunggu {count} keputusan. Buka Butuh keputusan untuk menyetujui atau menolak masing-masing:",
     "notify.taskFinished": "Tugas selesai: {title}",
     "notify.taskFailed": "Tugas gagal: {title}",
     "notify.pausedBudget": "{name} dijeda: batas anggaran",
