@@ -191,6 +191,14 @@ function buildSchema() {
       .max(50)
       .default([]),
   });
+  /** P3: the workspace's goal tree (whole-workspace exports); keys only reference goals and divisions in the package */
+  const goal = z.object({
+    key: key(),
+    title: z.string().min(1).max(200),
+    description: z.string().max(4000).default(""),
+    parentKey: key().nullable().default(null),
+    teamKey: key().nullable().default(null),
+  });
   const mcpSlot = z.object({
     name: z.string().regex(MCP_SLOT_NAME_RE, "an MCP server name like crm"),
     url: z.url({ protocol: /^https?$/ }).max(2000),
@@ -212,6 +220,7 @@ function buildSchema() {
       departments: z.array(department).max(50).optional(),
       skills: z.array(skill).max(PACKAGE_SKILLS_MAX).optional(),
       mcpSlots: z.array(mcpSlot).max(50).default([]),
+      goals: z.array(goal).max(200).optional(),
     })
     .superRefine((p, ctx) => {
       const dupes = (items: { k: string; i: number }[], path: string, field: string) => {
@@ -225,6 +234,18 @@ function buildSchema() {
       dupes(p.teams.map((t, i) => ({ k: t.key, i })), "teams", "key");
       dupes((p.departments ?? []).map((d, i) => ({ k: d.key, i })), "departments", "key");
       dupes(p.mcpSlots.map((s, i) => ({ k: s.name, i })), "mcpSlots", "name");
+      dupes((p.goals ?? []).map((g, i) => ({ k: g.key, i })), "goals", "key");
+      const goalParent = new Map((p.goals ?? []).map((g) => [g.key, g.parentKey]));
+      (p.goals ?? []).forEach((g, i) => {
+        if (g.parentKey && !goalParent.has(g.parentKey)) ctx.addIssue({ code: "custom", path: ["goals", i, "parentKey"], message: `unknown goal "${g.parentKey}"` });
+        if (g.teamKey && !p.teams.some((t) => t.key === g.teamKey)) ctx.addIssue({ code: "custom", path: ["goals", i, "teamKey"], message: `unknown team "${g.teamKey}"` });
+        // no goal under itself, directly or through its parents
+        for (let k = g.parentKey, n = 0; k && n <= goalParent.size; k = goalParent.get(k) ?? null, n++)
+          if (k === g.key) {
+            ctx.addIssue({ code: "custom", path: ["goals", i, "parentKey"], message: `goal "${g.key}" sits under itself` });
+            break;
+          }
+      });
       dupes((p.skills ?? []).map((s, i) => ({ k: s.slug, i })), "skills", "slug");
       const skills = new Set((p.skills ?? []).map((s) => s.slug));
       p.employees.forEach((e, i) => {
@@ -293,6 +314,7 @@ export type PackageTeam = WfosPackage["teams"][number];
 export type PackageRoutine = WfosPackage["routines"][number];
 export type PackageDepartment = NonNullable<WfosPackage["departments"]>[number];
 export type PackageMcpSlot = WfosPackage["mcpSlots"][number];
+export type PackageGoal = NonNullable<WfosPackage["goals"]>[number];
 export type PackageSkill = NonNullable<WfosPackage["skills"]>[number];
 
 export type PackageParseResult =

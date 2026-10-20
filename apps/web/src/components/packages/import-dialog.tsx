@@ -40,7 +40,7 @@ interface Preview {
   ok: boolean;
   name: string;
   details: Details;
-  will: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number };
+  will: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number; goals: number };
   warnings: Note[];
   conflicts: { kind: string; name: string; as?: string }[];
   errors: Note[];

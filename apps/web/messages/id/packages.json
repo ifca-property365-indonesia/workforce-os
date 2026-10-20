@@ -36,7 +36,7 @@
     "notJson": "Itu bukan JSON yang valid.",
     "tooLarge": "Paket lebih besar dari 2 MB.",
     "will": "Akan dibuat",
-    "willCounts": "{employees, plural, other {# karyawan}}, {teams, plural, other {# divisi}}, {routines, plural, other {# rutinitas}}, {skills, plural, other {# skill}}, {mcpSlots, plural, other {# slot MCP}}, {memories, plural, other {# memori}}",
+    "willCounts": "{employees, plural, other {# karyawan}}, {teams, plural, other {# divisi}}, {routines, plural, other {# rutinitas}}, {skills, plural, other {# skill}}, {mcpSlots, plural, other {# slot MCP}}, {memories, plural, other {# memori}}, {goals, plural, =0 {tanpa sasaran} other {# sasaran}}",
     "errors": "Perbaiki dulu",
     "warnings": "Perlu diketahui",
     "conflicts": "Nama yang sama",

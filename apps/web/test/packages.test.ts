@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { auditLog, credentials, db, employees, employeeSkills, members, memories, routines, skills, teamMembers, teams, users, workspaces } from "@wfos/db";
+import { auditLog, credentials, db, employees, employeeSkills, goals, members, memories, routines, skills, teamMembers, teams, users, workspaces } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import { POST as exportPkg } from "@/app/api/packages/export/route";
 import { POST as preview } from "@/app/api/packages/import/preview/route";
@@ -650,5 +650,41 @@ describe("skills in packages: leak screen, reserved names, slug races", () => {
     ]);
     const links = await db.select().from(employeeSkills).where(eq(employeeSkills.skillId, rows[1]!.id));
     expect(links).toHaveLength(1);
+  });
+});
+
+describe("goals in packages (P3)", () => {
+  it("a whole-workspace export carries the active goal tree with its divisions; an import rebuilds it", async () => {
+    const a = await workspace();
+    const { team } = await seedSales(a.id);
+    const [top] = await db.insert(goals).values({ workspaceId: a.id, title: "Grow recurring revenue" }).returning();
+    await db.insert(goals).values([
+      { workspaceId: a.id, title: "Double the pipeline", parentId: top!.id, teamId: team.id },
+      { workspaceId: a.id, title: "Old idea", status: "dropped" },
+    ]);
+    await signIn(a.id);
+    const exp = await call(exportPkg, "POST", "/api/packages/export", {});
+    const p = exp.json.package as { goals: { key: string; title: string; parentKey: string | null; teamKey: string | null }[]; teams: { key: string }[] };
+    expect(p.goals.map((g) => g.title)).toEqual(["Grow recurring revenue", "Double the pipeline"]);
+    expect(p.goals[1]).toMatchObject({ parentKey: p.goals[0]!.key, teamKey: p.teams[0]!.key });
+    // a selection (one division) carries no goals
+    expect((await call(exportPkg, "POST", "/api/packages/export", { teamIds: [team.id] })).json.package).not.toHaveProperty("goals");
+
+    const b = await workspace();
+    await signIn(b.id, { stepUp: true });
+    expect((await call(preview, "POST", "/api/packages/import/preview", p)).json.preview).toMatchObject({ will: { goals: 2 } });
+    expect((await call(commit, "POST", "/api/packages/import/commit", p)).status).toBe(200);
+    const bGoals = await db.select().from(goals).where(eq(goals.workspaceId, b.id));
+    const [bTeam] = await db.select().from(teams).where(eq(teams.workspaceId, b.id));
+    const bTop = bGoals.find((g) => g.title === "Grow recurring revenue")!;
+    expect(bGoals.find((g) => g.title === "Double the pipeline")).toMatchObject({ parentId: bTop.id, teamId: bTeam!.id });
+  });
+
+  it("refuses goals that sit under themselves or name unknown goals and divisions", () => {
+    const bad = (goalsList: unknown[]) => parseWfosPackage(pkg({ goals: goalsList }));
+    expect(bad([{ key: "a", title: "A", parentKey: "b" }, { key: "b", title: "B", parentKey: "a" }]).ok).toBe(false);
+    expect(bad([{ key: "a", title: "A", parentKey: "nope" }]).ok).toBe(false);
+    expect(bad([{ key: "a", title: "A", teamKey: "nope" }]).ok).toBe(false);
+    expect(bad([{ key: "a", title: "A", teamKey: "sales" }, { key: "b", title: "B", parentKey: "a" }]).ok).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import type { NextRequest } from "next/server";
-import { credentials, db, employees, employeeSkills, memories, routines, skills, teamMembers, teams, workspaces, type DB } from "@wfos/db";
+import { credentials, db, employees, employeeSkills, goals, memories, routines, skills, teamMembers, teams, workspaces, type DB } from "@wfos/db";
 import {
   isTimeZone,
   mcpServerOfSelector,
@@ -22,6 +22,7 @@ import {
   uniqueMcpName,
   uniqueSkillSlug,
   type PackageEmployee,
+  type PackageGoal,
   type PackageMcpSlot,
   type PackageRoutine,
   type PackageSkill,
@@ -278,6 +279,22 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
     }
   }
 
+  // P3: a whole-workspace export carries its active goal tree (a parent left out moves its goals up)
+  const pkgGoals: PackageGoal[] = [];
+  if (everything) {
+    const rows = (await db.select().from(goals).where(eq(goals.workspaceId, workspaceId)).orderBy(goals.position, goals.createdAt)).filter((g) => g.status === "active");
+    const takenGoal = new Set<string>();
+    const goalKeys = new Map(rows.map((g) => [g.id, packageKey(g.title, takenGoal)]));
+    for (const g of rows)
+      pkgGoals.push({
+        key: goalKeys.get(g.id)!,
+        title: clean(`goal:${goalKeys.get(g.id)}.title`, g.title, 200) || "Goal",
+        description: clean(`goal:${goalKeys.get(g.id)}.description`, g.description, 4000),
+        parentKey: (g.parentId && goalKeys.get(g.parentId)) || null,
+        teamKey: (g.teamId && teamKeys.get(g.teamId)) || null,
+      });
+  }
+
   const [ws] = await db.select({ name: workspaces.name }).from(workspaces).where(eq(workspaces.id, workspaceId));
   const defaultName = input.name ?? (teamRows.length === 1 && !wantEmployees.length ? teamRows[0]!.name : empRows.length === 1 && !teamRows.length ? empRows[0]!.name : (ws?.name ?? "Workforce"));
   const commit = process.env.WFOS_COMMIT?.trim().slice(0, 64);
@@ -290,6 +307,7 @@ export async function buildExport(workspaceId: string, input: ExportRequest): Pr
     routines: pkgRoutines,
     ...(pkgSkills.length ? { skills: pkgSkills } : {}),
     mcpSlots,
+    ...(pkgGoals.length ? { goals: pkgGoals } : {}),
   };
   // what we hand out must be exactly what an import accepts
   const pkg = parsePackageOrThrow(draft);
@@ -592,7 +610,7 @@ export interface ImportPreview {
   name: string;
   /** the full text of what would be imported (instructions, memories, division SOPs, skills), for review */
   details: ImportPreviewDetails;
-  will: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number };
+  will: { employees: number; teams: number; routines: number; skills: number; mcpSlots: number; memories: number; goals: number };
   warnings: ImportWarning[];
   conflicts: ImportConflict[];
   /** problems that make the commit fail */
@@ -619,6 +637,7 @@ export async function previewImport(workspaceId: string, pkg: WfosPackage, opts:
       skills: pkg.skills?.length ?? 0,
       mcpSlots: pkg.mcpSlots.length,
       memories: pkg.employees.reduce((n, e) => n + (e.seedMemories?.length ?? 0), 0),
+      goals: pkg.goals?.length ?? 0,
     },
     warnings: p.warnings,
     conflicts: p.conflicts,
@@ -633,6 +652,7 @@ export interface ImportResult {
   skills: { id: string; slug: string; from: string }[];
   mcpSlots: { id: string; name: string; from: string }[];
   memories: number;
+  goals: { id: string; title: string }[];
   warnings: ImportWarning[];
 }
 
@@ -655,7 +675,7 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
   }
   return db.transaction(async (tx) => {
     const p = plan(pkg, await loadExisting(tx, workspaceId));
-    const out: ImportResult = { employees: [], teams: [], routines: [], skills: [], mcpSlots: [], memories: 0, warnings: p.warnings };
+    const out: ImportResult = { employees: [], teams: [], routines: [], skills: [], mcpSlots: [], memories: 0, goals: [], warnings: p.warnings };
 
     for (const s of pkg.mcpSlots) {
       const name = p.mcpRenames.get(s.name)!;
@@ -779,6 +799,20 @@ export async function commitImport(workspaceId: string, pkg: WfosPackage, opts: 
         })
         .returning({ id: routines.id });
       out.routines.push({ id: row!.id, name: r.name });
+    }
+
+    // P3: the goal tree, parents first (the package checked every reference and that there is no cycle)
+    const goalIds = new Map<string, string>();
+    const pending = [...(pkg.goals ?? [])];
+    while (pending.length) {
+      const i = pending.findIndex((g) => !g.parentKey || goalIds.has(g.parentKey));
+      const [g] = pending.splice(i < 0 ? 0 : i, 1);
+      const [row] = await tx
+        .insert(goals)
+        .values({ workspaceId, title: g!.title, description: g!.description, parentId: (g!.parentKey && goalIds.get(g!.parentKey)) || null, teamId: (g!.teamKey && teamIds.get(g!.teamKey)) || null, createdBy: opts.userId ?? null })
+        .returning({ id: goals.id });
+      goalIds.set(g!.key, row!.id);
+      out.goals.push({ id: row!.id, title: g!.title });
     }
     return out;
   });

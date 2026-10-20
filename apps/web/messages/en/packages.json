@@ -36,7 +36,7 @@
     "notJson": "That is not valid JSON.",
     "tooLarge": "The package is larger than 2 MB.",
     "will": "Will create",
-    "willCounts": "{employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# division} other {# divisions}}, {routines, plural, one {# routine} other {# routines}}, {skills, plural, one {# skill} other {# skills}}, {mcpSlots, plural, one {# MCP slot} other {# MCP slots}}, {memories, plural, one {# memory} other {# memories}}",
+    "willCounts": "{employees, plural, one {# employee} other {# employees}}, {teams, plural, one {# division} other {# divisions}}, {routines, plural, one {# routine} other {# routines}}, {skills, plural, one {# skill} other {# skills}}, {mcpSlots, plural, one {# MCP slot} other {# MCP slots}}, {memories, plural, one {# memory} other {# memories}}, {goals, plural, =0 {no goals} one {# goal} other {# goals}}",
     "errors": "Fix these first",
     "warnings": "Good to know",
     "conflicts": "Name clashes",
