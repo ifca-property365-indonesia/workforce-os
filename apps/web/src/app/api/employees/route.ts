@@ -5,6 +5,7 @@ import { employeeInputSchema, TEAM_MEMBER_ROLES } from "@wfos/shared";
 import { body, route } from "@/lib/server/route";
 import { addToDivision, assertCanJoinDivision } from "@/lib/server/teams";
 import { requireStepUp } from "@/lib/server/twofactor";
+import { guestEmployee } from "@/lib/server/share";
 
 export const GET = route("VIEWER", async ({ session }) => {
   const rows = await db.select().from(employees).where(eq(employees.workspaceId, session.workspaceId)).orderBy(desc(employees.createdAt));
@@ -29,7 +30,8 @@ export const GET = route("VIEWER", async ({ session }) => {
       { id: m.id, key: m.key, name: m.name, color: m.color, role: m.leadId === m.employeeId ? ("head" as const) : m.codeLeadId === m.employeeId ? ("code_lead" as const) : m.role },
     ]),
   );
-  return { employees: rows.map((e) => ({ ...e, spentToday: byId.get(e.id) ?? 0, division: divisionOf.get(e.id) ?? null })) };
+  const shown = session.guest ? rows.map(guestEmployee) : rows;
+  return { employees: shown.map((e) => ({ ...e, spentToday: byId.get(e.id) ?? 0, division: divisionOf.get(e.id) ?? null })) };
 });
 
 /** a new hire may join a division right away (the hire page); the one-division rule and the structure rules apply */

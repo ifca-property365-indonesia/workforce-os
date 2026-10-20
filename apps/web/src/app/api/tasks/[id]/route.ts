@@ -34,8 +34,9 @@ export const GET = route<{ id: string }>("VIEWER", async ({ session, params }) =
     parent,
     origin,
     dependsOn,
-    approvals: appr,
-    messages: msgs.filter((m) => m.taskId && ids.includes(m.taskId)),
+    // a view-only guest sees the work, not the actions' payloads or the employees' messages
+    approvals: session.guest ? [] : appr,
+    messages: session.guest ? [] : msgs.filter((m) => m.taskId && ids.includes(m.taskId)),
     employees: emps,
     previews: await taskPreviews(session.workspaceId, t.id),
     sandboxLimitSec: serverEnv.workspaceTaskMaxHours * 3600,

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { audit, changedFields, db, employeeRevisions, employees, employeeSkills, skills, snapshotEmployee, withEmployeeRevision } from "@wfos/db";
 import { hasRole } from "@wfos/shared";
@@ -22,20 +22,24 @@ export const POST = route<{ id: string; version: string }>("ADMIN", async ({ ses
   const [rev] = await db.select().from(employeeRevisions).where(and(eq(employeeRevisions.employeeId, before.id), eq(employeeRevisions.version, version)));
   if (!rev) notFound("revision_not_found");
   const { skillIds, ...fields } = rev.config;
-  if (fields.executionMode === "workspace" && before.executionMode !== "workspace") await requireStepUp(session);
-  else if (fields.egressDomains.some((d) => !before.egressDomains.includes(d))) await requireStepUp(session);
-  if (JSON.stringify(fields.allowList) !== JSON.stringify(before.allowList) && !hasRole(session.role, "OWNER"))
-    throw new HttpError(403, "Only an Owner can change the irreversible-action allow-list", { code: "owner_only_allow_list" });
-  const textChanged = fields.instructions !== before.instructions || fields.persona !== before.persona || fields.businessContext !== before.businessContext;
   const keep = skillIds.length ? await db.select({ id: skills.id }).from(skills).where(and(eq(skills.workspaceId, session.workspaceId), inArray(skills.id, skillIds))) : [];
-  const now = await snapshotEmployee(db, before.id);
-  await withEmployeeRevision(db, before.id, { workspaceId: session.workspaceId, source: "rollback", actorUserId: session.userId, actorLabel: session.email, restoredVersion: version }, async (tx) => {
+  // the rules are checked against the employee as it is under the revision lock (an edit meanwhile counts)
+  const changed = await withEmployeeRevision(db, before.id, { workspaceId: session.workspaceId, source: "rollback", actorUserId: session.userId, actorLabel: session.email, restoredVersion: version }, async (tx) => {
+    const [now] = await tx.select().from(employees).where(eq(employees.id, before.id));
+    if (!now) notFound("employee_not_found");
+    if (fields.executionMode === "workspace" && now.executionMode !== "workspace") await requireStepUp(session);
+    else if (fields.egressDomains.some((d) => !now.egressDomains.includes(d))) await requireStepUp(session);
+    if (JSON.stringify(fields.allowList) !== JSON.stringify(now.allowList) && !hasRole(session.role, "OWNER"))
+      throw new HttpError(403, "Only an Owner can change the irreversible-action allow-list", { code: "owner_only_allow_list" });
+    const textChanged = fields.instructions !== now.instructions || fields.persona !== now.persona || fields.businessContext !== now.businessContext;
+    const snap = await snapshotEmployee(tx, before.id);
     await tx
       .update(employees)
-      .set({ ...fields, ...(textChanged ? { instructionsVersion: before.instructionsVersion + 1 } : {}) })
+      .set({ ...fields, ...(textChanged ? { instructionsVersion: sql`${employees.instructionsVersion} + 1` } : {}) })
       .where(eq(employees.id, before.id));
     await tx.delete(employeeSkills).where(eq(employeeSkills.employeeId, before.id));
     if (keep.length) await tx.insert(employeeSkills).values(keep.map((s) => ({ employeeId: before.id, skillId: s.id })));
+    return snap ? changedFields(snap, rev.config) : [];
   });
   await audit({
     workspaceId: session.workspaceId,
@@ -44,7 +48,7 @@ export const POST = route<{ id: string; version: string }>("ADMIN", async ({ ses
     action: "employee.revision_restored",
     targetType: "employee",
     targetId: before.id,
-    details: { version, changed: now ? changedFields(now, rev.config) : [], missingSkills: skillIds.length - keep.length },
+    details: { version, changed, missingSkills: skillIds.length - keep.length },
   });
   return { ok: true, missingSkills: skillIds.length - keep.length };
 });

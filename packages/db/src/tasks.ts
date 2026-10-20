@@ -142,11 +142,13 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
   if (input.originTaskId && !(await owned(tasks, input.originTaskId))) throw new TaskInputError("unknown_origin_task");
   // P1: a goal given must be this workspace's; else the parent's, the origin task's or the project's
   let goalId = input.goalId ?? null;
-  // P4: an ask-only or plan-only task stays so in its subtasks
+  // P4: work started from an ask-only or plan-only task (a subtask, a follow-up, a handoff) is never allowed more than
+  // it: a mode asked for only applies when the task it comes from is standard
   let workMode: TaskWorkMode = input.workMode ?? "standard";
-  if (!input.workMode && input.parentTaskId) {
-    const [p] = await database.select({ workMode: tasks.workMode }).from(tasks).where(and(eq(tasks.id, input.parentTaskId), eq(tasks.workspaceId, ws))).limit(1);
-    workMode = p?.workMode ?? "standard";
+  for (const from of [input.parentTaskId, input.originTaskId]) {
+    if (!from) continue;
+    const [p] = await database.select({ workMode: tasks.workMode }).from(tasks).where(and(eq(tasks.id, from), eq(tasks.workspaceId, ws))).limit(1);
+    if (p && p.workMode !== "standard" && workMode === "standard") workMode = p.workMode;
   }
   if (goalId) {
     const [g] = UUID.test(goalId) ? await database.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws))).limit(1) : [];

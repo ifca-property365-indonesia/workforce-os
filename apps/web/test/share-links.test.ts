@@ -15,6 +15,10 @@ import { DELETE as revokeLink } from "@/app/api/share-links/[id]/route";
 import { GET as openLink } from "@/app/lihat/[token]/route";
 import { GET as listTasks, POST as createTask } from "@/app/api/tasks/route";
 import { GET as listGoals } from "@/app/api/goals/route";
+import { GET as getEmployee } from "@/app/api/employees/[id]/route";
+import { GET as listEmployees } from "@/app/api/employees/route";
+import { GET as taskSteps } from "@/app/api/tasks/[id]/steps/route";
+import { employees } from "@wfos/db";
 import { GET as inbox } from "@/app/api/inbox/route";
 import { GET as outbox } from "@/app/api/outbox/route";
 import { guestAllowed, guestEventAllowed, hashShareToken } from "@/lib/server/share";
@@ -75,6 +79,13 @@ describe("view-only links", () => {
     expect(who.json).toMatchObject({ role: "VIEWER", guest: { label: "Rapat direksi" }, workspace: { id: o.ws.id } });
     expect((await call(listTasks, "GET", "/api/tasks")).status).toBe(200);
     expect((await call(listGoals, "GET", "/api/goals")).status).toBe(200);
+    // employees without their instructions, context or permissions; no step-by-step activity
+    const [emp] = await db.insert(employees).values({ workspaceId: o.ws.id, name: "Dewi", role: "Sales", model: "m", instructions: "secret playbook", businessContext: "margins" }).returning();
+    const one = await callWithParams(getEmployee, "GET", `/api/employees/${emp!.id}`, undefined, { id: emp!.id });
+    expect(one.json.employee).toMatchObject({ name: "Dewi", role: "Sales" });
+    expect(JSON.stringify(one.json)).not.toMatch(/secret playbook|margins/);
+    expect(JSON.stringify((await call(listEmployees, "GET", "/api/employees")).json)).not.toContain("secret playbook");
+    expect((await callWithParams(taskSteps, "GET", `/api/tasks/${emp!.id}/steps`, undefined, { id: emp!.id })).status).toBe(403);
     // closed: pages off the list, any change, the links themselves
     expect((await call(inbox, "GET", "/api/inbox")).json.code).toBe("view_only");
     expect((await call(outbox, "GET", "/api/outbox")).status).toBe(403);

@@ -29,6 +29,9 @@ describe("task work mode and review policy (P4)", () => {
     expect(t).toMatchObject({ workMode: "plan", reviewPolicy: "person" });
     const child = await createTask(db, { workspaceId: ws.id, title: "sub", source: "board", assigneeId: emp.id, parentTaskId: t.id });
     expect(child.workMode).toBe("plan");
+    // a follow-up or handoff (origin) cannot be made standard by asking for it
+    const follow = await createTask(db, { workspaceId: ws.id, title: "follow-up", source: "board", assigneeId: emp.id, originTaskId: t.id, workMode: "standard" });
+    expect(follow.workMode).toBe("plan");
     const plain = (await call(createTaskRoute, "POST", "/api/tasks", { title: "x", assigneeId: emp.id, start: false })).json.task as { workMode: string; reviewPolicy: string };
     expect(plain).toMatchObject({ workMode: "standard", reviewPolicy: "auto" });
     expect((await call(createTaskRoute, "POST", "/api/tasks", { title: "x", assigneeId: emp.id, workMode: "yolo" })).status).toBe(400);

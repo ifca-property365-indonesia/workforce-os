@@ -132,7 +132,8 @@ export async function advanceAppTestSuite(
   return database.transaction(async (tx) => {
     await lockSuite(tx, suiteId);
     const [suite] = await tx.select().from(appTestSuites).where(eq(appTestSuites.id, suiteId));
-    if (!suite || suite.status !== "running") return { inSuite: true, task: null, ended: null };
+    // a stopped suite: its last package notifies on its own, like a single test
+    if (!suite || suite.status !== "running") return { inSuite: false, task: null, ended: null };
     const tests = await tx.select().from(appTests).where(eq(appTests.suiteId, suiteId)).orderBy(asc(appTests.position));
     // another package already runs (this end was handed over before): nothing to start
     if (tests.some((t) => t.status === "running" && t.taskId !== taskId)) return { inSuite: true, task: null, ended: null };

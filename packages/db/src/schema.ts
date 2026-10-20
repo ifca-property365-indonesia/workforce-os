@@ -1472,7 +1472,7 @@ export const appTestSuites = pgTable(
     createdAt: createdAt(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("app_test_suites_app").on(t.appId, t.createdAt)],
+  (t) => [index("app_test_suites_app").on(t.appId, t.createdAt), uniqueIndex("app_test_suites_running").on(t.environmentId).where(sql`status = 'running'`)],
 );
 
 /** C9: the kinds of an app's documents */

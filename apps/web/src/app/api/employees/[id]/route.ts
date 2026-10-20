@@ -5,6 +5,7 @@ import { allowListEntrySchema, employeeInputSchema, hasRole } from "@wfos/shared
 import { HttpError } from "@/lib/server/auth";
 import { notFound, patchBody, route } from "@/lib/server/route";
 import { requireStepUp } from "@/lib/server/twofactor";
+import { guestEmployee } from "@/lib/server/share";
 
 type P = { id: string };
 
@@ -36,7 +37,7 @@ export const GET = route<P>("VIEWER", async ({ session, params }) => {
   ]);
   return {
     employee: {
-      ...e,
+      ...(session.guest ? guestEmployee(e) : e),
       spentToday: Number(s?.s ?? 0),
       credits7d: Number(w?.s ?? 0),
       division: division && division.division.workspaceId === session.workspaceId ? { id: division.division.id, key: division.division.key, name: division.division.name, color: division.division.color, role: division.role } : null,

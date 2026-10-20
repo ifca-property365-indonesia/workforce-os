@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS "app_test_suites" (
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "app_test_suites_app" ON "app_test_suites" ("app_id", "created_at");
 --> statement-breakpoint
+-- one full test at a time per preview (two Admins starting at once: one gets a 409)
+CREATE UNIQUE INDEX IF NOT EXISTS "app_test_suites_running" ON "app_test_suites" ("environment_id") WHERE status = 'running';
+--> statement-breakpoint
 ALTER TABLE "app_tests" ADD COLUMN IF NOT EXISTS "suite_id" uuid REFERENCES "app_test_suites"("id") ON DELETE CASCADE;
 --> statement-breakpoint
 ALTER TABLE "app_tests" ADD COLUMN IF NOT EXISTS "position" integer DEFAULT 0 NOT NULL;

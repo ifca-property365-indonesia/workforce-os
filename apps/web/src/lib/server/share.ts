@@ -12,7 +12,9 @@ export const hashShareToken = (token: string) => createHash("sha256").update(tok
 /**
  * What a guest with a view-only link may read: GET only, and only these API paths (an allow-list, so a new route
  * stays closed until it is added here on purpose). Left out on purpose: chat, approvals and their payloads, the
- * outbox, clients and billing, knowledge, memories, settings, audit, secrets, app access/variables/test accounts.
+ * outbox, clients and billing, knowledge, memories, settings, audit, secrets, app access/variables/test accounts, the
+ * step-by-step activity (tool inputs and outputs). Routes on the list strip what a guest must not read (guestEmployee,
+ * the task detail's approvals and messages).
  */
 const GUEST_GET: RegExp[] = [
   /^\/api\/me$/,
@@ -20,12 +22,10 @@ const GUEST_GET: RegExp[] = [
   /^\/api\/office(\/[^/]+)?$/,
   /^\/api\/employees$/,
   /^\/api\/employees\/[^/]+$/,
-  /^\/api\/employees\/[^/]+\/activity$/,
   /^\/api\/teams$/,
   /^\/api\/teams\/[^/]+$/,
   /^\/api\/tasks$/,
   /^\/api\/tasks\/[^/]+$/,
-  /^\/api\/tasks\/[^/]+\/steps$/,
   /^\/api\/goals$/,
   /^\/api\/apps$/,
   /^\/api\/apps\/[^/]+$/,
@@ -37,6 +37,12 @@ export function guestAllowed(method: string, path: string): boolean {
   if (m !== "GET" && m !== "HEAD") return false;
   const p = path.replace(/\/+$/, "") || "/";
   return GUEST_GET.some((r) => r.test(p));
+}
+
+/** an employee as a guest sees it: who they are and what they do, never their instructions, context or permissions */
+export function guestEmployee<E extends Record<string, unknown>>(e: E) {
+  const { persona: _p, instructions: _i, businessContext: _b, allowList: _a, egressDomains: _e, toolPermissions: _t, ...rest } = e;
+  return rest;
 }
 
 /** realtime events a guest receives: work and people, never chat, approvals, mail or money */
