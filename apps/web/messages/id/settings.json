@@ -228,5 +228,31 @@
     "scheduleHelp": "Dipakai saat Claude belum melaporkan waktu reset mingguan saat ini. Isi hari dan jam sekaligus, atau biarkan keduanya otomatis.",
     "savedToast": "Anggaran pemakaian disimpan",
     "invalid": "Isi jumlah positif, atau kosongkan."
+  },
+  "shareLinks": {
+    "title": "Tautan tampilan",
+    "description": "Tautan yang bisa dibuka orang tanpa akun untuk melihat-lihat: dashboard, kantor, karyawan, divisi, tugas, sasaran, dan aplikasi. Chat, persetujuan, email, klien, pengetahuan, dan pengaturan tetap tertutup, dan tidak ada yang bisa diubah. Tautan berlaku sampai kedaluwarsa atau Anda cabut.",
+    "label": "Untuk siapa",
+    "labelPlaceholder": "mis. Rapat direksi, demo GOB",
+    "valid": "Berlaku",
+    "hours": {
+      "2": "2 jam",
+      "24": "1 hari",
+      "72": "3 hari",
+      "168": "7 hari"
+    },
+    "create": "Buat tautan",
+    "createdOnce": "Salin tautannya sekarang: hanya ditampilkan sekali.",
+    "revoked": "Tautan dicabut.",
+    "revoke": "Cabut",
+    "revokeConfirm": "Cabut tautan untuk \"{label}\"? Siapa pun yang memegangnya langsung kehilangan akses.",
+    "state": {
+      "active": "Aktif",
+      "expired": "Kedaluwarsa",
+      "revoked": "Dicabut"
+    },
+    "until": "sampai {when}",
+    "opens": "{count, plural, =0 {belum dibuka} other {dibuka # kali}}",
+    "lastUsed": "terakhir {when}"
   }
 }

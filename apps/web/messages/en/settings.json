@@ -228,5 +228,31 @@
     "scheduleHelp": "Used when Claude has not reported the current weekly reset time. Set both day and hour, or leave both automatic.",
     "savedToast": "Usage budget saved",
     "invalid": "Enter a positive amount, or leave it empty."
+  },
+  "shareLinks": {
+    "title": "View-only links",
+    "description": "A link someone without an account can open to look around: the dashboard, the office, employees, divisions, tasks, goals and apps. Chat, approvals, mail, clients, knowledge and settings stay closed, and nothing can be changed. The link works until it expires or you revoke it.",
+    "label": "For whom",
+    "labelPlaceholder": "e.g. Board meeting, GOB demo",
+    "valid": "Valid for",
+    "hours": {
+      "2": "2 hours",
+      "24": "1 day",
+      "72": "3 days",
+      "168": "7 days"
+    },
+    "create": "Create link",
+    "createdOnce": "Copy the link now: it is shown only once.",
+    "revoked": "Link revoked.",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke the link for \"{label}\"? Whoever has it loses access at once.",
+    "state": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked"
+    },
+    "until": "until {when}",
+    "opens": "{count, plural, =0 {not opened} one {opened once} other {opened # times}}",
+    "lastUsed": "last {when}"
   }
 }

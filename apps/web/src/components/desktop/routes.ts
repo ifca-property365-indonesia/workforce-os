@@ -41,6 +41,8 @@ export const APPS: readonly DesktopApp[] = [
   { key: "account", href: "/account", icon: UserRound, color: null, group: "system", dock: false, size: [900, 720] },
 ];
 export const APP_BY_KEY = new Map(APPS.map((a) => [a.key, a]));
+/** the apps a view-only guest sees (the server allows only what these pages read) */
+export const GUEST_APP_KEYS: ReadonlySet<AppKey> = new Set<AppKey>(["dashboard", "employees", "teams", "tasks", "goals", "apps"]);
 
 /** which page a path shows: its app (dock tile, window title), the page component and its route params */
 export interface Route {

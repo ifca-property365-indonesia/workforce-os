@@ -15,7 +15,7 @@ import { useRealtimeStatus } from "@/lib/events";
 import { useDecisionCount, useEmployees, useMe } from "@/lib/hooks";
 import { employeeLooks, signVars } from "@/lib/sign";
 import { cn } from "@/lib/utils";
-import { APPS, routeOf, type AppGroup, type DesktopApp } from "./routes";
+import { APPS, GUEST_APP_KEYS, routeOf, type AppGroup, type DesktopApp } from "./routes";
 import { DesktopWindow } from "./window";
 import { WindowProvider, current, useWindows } from "./windows";
 
@@ -73,6 +73,7 @@ export function Desktop({ onClassic }: { onClassic: () => void }) {
 }
 
 function Screen({ topRef, onClassic }: { topRef: RefObject<HTMLDivElement | null>; onClassic: () => void }) {
+  const { data: me } = useMe();
   const t = useTranslations("desktop");
   const to = useTranslations("office");
   const tn = useTranslations("nav");
@@ -159,7 +160,7 @@ function Screen({ topRef, onClassic }: { topRef: RefObject<HTMLDivElement | null
               <section key={g}>
                 <h3 className="font-display mb-2 text-sm tracking-[0.12em] text-muted-foreground">{t(`launcher.groups.${g}`)}</h3>
                 <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                  {APPS.filter((a) => a.group === g).map((a) => (
+                  {APPS.filter((a) => a.group === g && (!me?.guest || GUEST_APP_KEYS.has(a.key))).map((a) => (
                     <LauncherItem
                       key={a.key}
                       app={a}
@@ -322,6 +323,7 @@ function Dock({ onLauncher, onShowOffice }: { onLauncher: () => void; onShowOffi
   const tn = useTranslations("nav.items");
   const wm = useWindows();
   const pending = useDecisionCount();
+  const { data: me } = useMe();
   const windowOf = (a: DesktopApp) => wm.wins.find((w) => routeOf(current(w))?.app.key === a.key);
   // a dock tile raises its app's window as it was left; clicking the front window's tile minimizes it
   const click = (a: DesktopApp) => {
@@ -336,7 +338,7 @@ function Dock({ onLauncher, onShowOffice }: { onLauncher: () => void; onShowOffi
         <LayoutGrid className="size-6" />
       </DockTile>
       <span className="mx-0.5 h-10 w-px self-center bg-border" aria-hidden />
-      {APPS.filter((a) => a.dock).map((a) => {
+      {APPS.filter((a) => a.dock && (!me?.guest || GUEST_APP_KEYS.has(a.key))).map((a) => {
         const Icon = a.icon;
         return (
           <DockTile key={a.key} label={tn(a.key)} onClick={() => click(a)} style={a.color ? signVars(a.color) : undefined} neutral={!a.color} running={!!windowOf(a)} runningLabel={t("dock.running")} badge={a.key === "approvals" ? pending : 0}>

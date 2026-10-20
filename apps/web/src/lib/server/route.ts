@@ -4,6 +4,7 @@ import { ZodError, type z } from "zod";
 import type { Role } from "@wfos/shared";
 import { HttpError, requireSession, type Session } from "./auth";
 import { logger } from "./logger";
+import { guestAllowed } from "./share";
 import { serverT } from "./i18n";
 import { createFormatter } from "@/lib/format";
 import { APP_TIME_ZONE } from "@/i18n/locale";
@@ -21,6 +22,8 @@ export function route<P = Record<string, string>>(minRole: Role, fn: (ctx: Ctx<P
     const started = Date.now();
     try {
       const session = await requireSession(minRole);
+      // a view-only guest reads an allow-list of pages and changes nothing
+      if (session.guest && !guestAllowed(req.method, req.nextUrl.pathname)) throw new HttpError(403, "View-only link: this cannot be opened or changed", { code: "view_only" });
       if (session.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(req.nextUrl.pathname)) {
         throw new HttpError(403, "Password change required", { code: "password_change_required" });
       }

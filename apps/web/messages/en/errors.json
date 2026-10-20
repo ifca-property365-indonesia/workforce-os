@@ -247,5 +247,7 @@
   "revision_not_found": "This revision does not exist.",
   "unknown_goal": "Unknown goal.",
   "goal_not_found": "Goal not found.",
-  "goal_cycle": "A goal cannot sit under itself or one of its sub-goals."
+  "goal_cycle": "A goal cannot sit under itself or one of its sub-goals.",
+  "view_only": "View-only link: this part is not open to guests, and nothing can be changed.",
+  "share_link_not_found": "This link does not exist or was already revoked."
 }

@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Armchair, Bell, BookOpen, Bot, Building2, CalendarClock, CheckCircle2, KanbanSquare, Languages, LayoutDashboard, LogOut, Menu, MessageSquare, Monitor, Moon, OctagonX, Rocket, Search, Send, Settings, ShieldCheck, Sun, Target, UserRound, UsersRound } from "lucide-react";
+import { Armchair, Bell, BookOpen, Bot, Building2, CalendarClock, CheckCircle2, Eye, KanbanSquare, Languages, LayoutDashboard, LogOut, Menu, MessageSquare, Monitor, Moon, OctagonX, Rocket, Search, Send, Settings, ShieldCheck, Sun, Target, UserRound, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette, useCommandPaletteShortcut } from "@/components/layout/command-palette";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
@@ -52,6 +52,8 @@ const NAV = [
   { href: "/settings", key: "settings", icon: Settings },
 ] as const;
 
+const GUEST_NAV: ReadonlySet<string> = new Set(["dashboard", "employees", "teams", "office", "tasks", "goals", "apps"]);
+
 /**
  * `rail`: the desktop icon rail (icon over a short label, like the shop signs' row); `list`: the phone menu.
  * The "Needs a decision" count is the one number the rail always shows.
@@ -60,9 +62,12 @@ function Nav({ onNavigate, layout }: { onNavigate?: () => void; layout: "rail" |
   const t = useTranslations("nav");
   const path = usePathname();
   const data = useDecisionCount();
+  const { data: me } = useMe();
+  /** a view-only guest sees only the pages the server lets it read */
+  const items = me?.guest ? NAV.filter((n) => GUEST_NAV.has(n.key)) : NAV;
   return (
     <nav className={layout === "rail" ? "flex flex-col items-center gap-1" : "space-y-0.5"}>
-      {NAV.map((n) => {
+      {items.map((n) => {
         const active = path === n.href || path.startsWith(`${n.href}/`);
         const count = "badge" in n && !!data ? data : 0;
         if (layout === "rail")
@@ -337,6 +342,11 @@ export function Banners() {
   return (
     <>
       <QuotaBanner />
+      {me?.guest && (
+        <div className="flex items-center gap-2 border-b bg-[var(--sign-biru)] px-4 py-1.5 text-sm font-semibold text-white sm:px-6 lg:px-8" role="status">
+          <Eye className="size-4 shrink-0" aria-hidden /> <span className="min-w-0 flex-1 truncate">{t("viewOnly.banner", { label: me.guest.label })}</span>
+        </div>
+      )}
       {me?.workspace.killSwitch && (
         <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-semibold text-white sm:px-6 lg:px-8">
           <OctagonX className="size-4" /> {t("killSwitch.banner")}

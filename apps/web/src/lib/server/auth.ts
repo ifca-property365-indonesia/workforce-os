@@ -1,11 +1,12 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { SignJWT, jwtVerify } from "jose";
-import { and, eq } from "drizzle-orm";
-import { db, members, users, workspaces } from "@wfos/db";
+import { and, eq, gt, isNull } from "drizzle-orm";
+import { db, members, shareLinks, users, workspaces } from "@wfos/db";
 import { hasRole, type Role } from "@wfos/shared";
 import { authCookieName, authCookieOptions, clearAuthCookie } from "./auth-cookies";
 import { serverEnv } from "./env";
+import { hashShareToken, VIEW_COOKIE } from "./share";
 
 /** base names; the cookies are sent as authCookieName(…) (`__Host-` over https) */
 export const SESSION_COOKIE = "wfos_session";
@@ -28,6 +29,7 @@ export async function setSession(userId: string, workspaceId?: string) {
 
 export async function clearSession() {
   await clearAuthCookie(SESSION_COOKIE);
+  await clearAuthCookie(VIEW_COOKIE);
 }
 
 export interface Session {
@@ -41,9 +43,39 @@ export interface Session {
   twoFactorEnabled: boolean;
   /** OWNER/ADMIN in a workspace that requires 2FA, not enrolled yet: everything else is blocked */
   mustEnroll2fa: boolean;
+  /** a guest with a view-only link (no account): role VIEWER, GET on an allow-list only; userId is the link's id */
+  guest?: { linkId: string; label: string; expiresAt: Date };
 }
 
 export async function getSession(): Promise<Session | null> {
+  return (await userSession()) ?? (await guestSession());
+}
+
+/** A view-only link's guest (no person signed in): a valid, unrevoked, unexpired link from the view cookie. */
+async function guestSession(): Promise<Session | null> {
+  const token = (await cookies()).get(authCookieName(VIEW_COOKIE))?.value;
+  if (!token) return null;
+  const [row] = await db
+    .select({ id: shareLinks.id, label: shareLinks.label, expiresAt: shareLinks.expiresAt, workspaceId: workspaces.id, workspaceName: workspaces.name })
+    .from(shareLinks)
+    .innerJoin(workspaces, eq(workspaces.id, shareLinks.workspaceId))
+    .where(and(eq(shareLinks.tokenHash, hashShareToken(token)), isNull(shareLinks.revokedAt), gt(shareLinks.expiresAt, new Date())));
+  if (!row) return null;
+  return {
+    userId: row.id,
+    email: "",
+    name: row.label,
+    workspaceId: row.workspaceId,
+    workspaceName: row.workspaceName,
+    role: "VIEWER",
+    mustChangePassword: false,
+    twoFactorEnabled: false,
+    mustEnroll2fa: false,
+    guest: { linkId: row.id, label: row.label, expiresAt: row.expiresAt },
+  };
+}
+
+async function userSession(): Promise<Session | null> {
   const jar = await cookies();
   const token = jar.get(authCookieName(SESSION_COOKIE))?.value;
   if (!token) return null;

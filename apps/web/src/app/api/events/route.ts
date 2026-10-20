@@ -2,6 +2,7 @@ import { Redis } from "ioredis";
 import { channelFor } from "@wfos/shared";
 import { getSession } from "@/lib/server/auth";
 import { serverEnv } from "@/lib/server/env";
+import { guestEventAllowed } from "@/lib/server/share";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,7 +26,19 @@ export async function GET(req: Request) {
       };
       send(`retry: 3000\n\n`);
       send(`event: ready\ndata: {}\n\n`);
-      sub.on("message", (_ch, msg) => send(`data: ${msg}\n\n`));
+      sub.on("message", (_ch, msg) => {
+        if (session.guest) {
+          // a view-only guest gets work and people only (never chat, approvals, mail or money)
+          let type: unknown;
+          try {
+            type = (JSON.parse(msg) as { type?: unknown }).type;
+          } catch {
+            return;
+          }
+          if (!guestEventAllowed(type)) return;
+        }
+        send(`data: ${msg}\n\n`);
+      });
       await sub.subscribe(channelFor(session.workspaceId, serverEnv.namespace));
       heartbeat = setInterval(() => send(`: ping\n\n`), 20000);
       req.signal.addEventListener("abort", () => {

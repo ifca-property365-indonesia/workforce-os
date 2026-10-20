@@ -31,6 +31,8 @@ export const GET = route("VIEWER", async ({ session }) => {
     telegramEnabled: telegramConfigured(),
     workspace: { id: ws!.id, name: ws!.name, killSwitch: ws!.killSwitch, demoMode: ws!.demoMode, guardsEnabled: ws!.guardsEnabled, defaultLocale: ws!.defaultLocale },
     role: session.role,
+    /** a view-only link's guest (no account): the UI shows a banner and only the pages a guest may read */
+    guest: session.guest ? { label: session.guest.label, expiresAt: session.guest.expiresAt } : null,
     workspaces: all,
     claude: claudeSummary(await claudeCredentialStatus(session.workspaceId)),
     googleEnabled: !!serverEnv.googleClientId,

@@ -115,6 +115,7 @@ function LoginForm() {
         <CardDescription>{t("login.description")}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {sp.get("view") === "expired" && <p className="rounded-md bg-warning/15 p-2 text-sm">{t("login.viewExpired")}</p>}
         {error && (
           <p className="rounded-md bg-destructive/10 p-2 text-sm text-destructive">
             {t("login.failed", { reason: t.has(`login.oauthErrors.${error}`) ? t(`login.oauthErrors.${error}`) : error.replace(/_/g, " ") })}

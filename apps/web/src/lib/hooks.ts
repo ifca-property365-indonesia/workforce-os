@@ -29,6 +29,8 @@ export interface Me {
   telegramEnabled: boolean;
   workspace: { id: string; name: string; killSwitch: boolean; demoMode: boolean; guardsEnabled: boolean; defaultLocale: "id" | "en" | null };
   role: Role;
+  /** a view-only link's guest (no account) */
+  guest: { label: string; expiresAt: string } | null;
   workspaces: { id: string; name: string; role: Role }[];
   claude: { credentialPresent: boolean; source: "workspace" | "instance" | null; type: "oauth" | "api_key" | null };
   googleEnabled: boolean;

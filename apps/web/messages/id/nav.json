@@ -102,5 +102,8 @@
       "apps": "Aplikasi",
       "documents": "Dokumen"
     }
+  },
+  "viewOnly": {
+    "banner": "Mode tampilan ({label}): Anda bisa melihat-lihat; tidak ada yang bisa diubah."
   }
 }

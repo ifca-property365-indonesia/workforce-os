@@ -102,5 +102,8 @@
       "apps": "Apps",
       "documents": "Documents"
     }
+  },
+  "viewOnly": {
+    "banner": "View-only mode ({label}): you can look around; nothing can be changed."
   }
 }

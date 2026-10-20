@@ -204,6 +204,27 @@ export const employees = pgTable(
   (t) => [index("employees_ws").on(t.workspaceId)],
 );
 
+/**
+ * A view-only link (after AIRIS 1f1b126): someone without an account opens the workspace read-only until it expires
+ * or is revoked. Only the token's hash is kept; what a guest may read is an allow-list (lib/server/share.ts).
+ */
+export const shareLinks = pgTable(
+  "share_links",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    label: text("label").notNull().default(""),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    opens: integer("opens").notNull().default(0),
+  },
+  (t) => [uniqueIndex("share_links_token").on(t.tokenHash), index("share_links_ws").on(t.workspaceId, t.createdAt)],
+);
+
 /** what changed an employee's configuration (P2): a person, an HR replay, a skill install, a restore… */
 export const EMPLOYEE_REVISION_SOURCES = ["baseline", "person", "replay", "hr_auto", "skills", "skill_install", "rollback"] as const;
 export type EmployeeRevisionSource = (typeof EMPLOYEE_REVISION_SOURCES)[number];

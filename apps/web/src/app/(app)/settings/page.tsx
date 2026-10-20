@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ShareLinksSettings } from "@/components/settings/share-links";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
@@ -922,6 +923,11 @@ export default function SettingsPage() {
         </TabsContent>
         <TabsContent value="members" className="mt-4">
           <Members owner={owner} admin={admin} meId={me?.user.id} />
+          {owner && (
+            <div className="mt-6">
+              <ShareLinksSettings />
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="webhooks" className="mt-4">
           <WebhooksSettings owner={owner} admin={admin} />

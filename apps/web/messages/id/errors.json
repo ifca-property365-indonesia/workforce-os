@@ -247,5 +247,7 @@
   "revision_not_found": "Revisi ini tidak ada.",
   "unknown_goal": "Sasaran tidak dikenal.",
   "goal_not_found": "Sasaran tidak ditemukan.",
-  "goal_cycle": "Sasaran tidak bisa berada di bawah dirinya sendiri atau sub-sasarannya."
+  "goal_cycle": "Sasaran tidak bisa berada di bawah dirinya sendiri atau sub-sasarannya.",
+  "view_only": "Tautan mode tampilan: bagian ini tidak dibuka untuk tamu, dan tidak ada yang bisa diubah.",
+  "share_link_not_found": "Tautan ini tidak ada atau sudah dicabut."
 }
