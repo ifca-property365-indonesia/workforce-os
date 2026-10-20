@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { approvals, auditLog, db, employeeMetrics, employees, hrReviews, incidents, metricScore, replays, steps } from "@wfos/db";
+import { approvals, auditLog, db, employeeMetrics, employeeRevisionList, employees, hrReviews, incidents, metricScore, replays, steps } from "@wfos/db";
 import { runTask } from "../src/runner/task";
 import { setQueryImpl, type QueryFn } from "../src/runner/sdk";
 import { mockRunner, type MockStep } from "../src/runner/mock-sdk";
@@ -142,6 +142,8 @@ describe("replay judge (C2)", () => {
     expect(after).toMatchObject({ status: "promoted", autoApplied: true });
     expect(emp).toMatchObject({ instructions: "Use the template.", instructionsVersion: 2 });
     expect(await db.select().from(auditLog).where(and(eq(auditLog.action, "employee.instructions_auto_promoted"), eq(auditLog.targetId, s.reviewee.id)))).toHaveLength(1);
+    // P2: the change is a revision ("hr_auto") next to the state before it, so it can be rolled back
+    expect((await employeeRevisionList(db, s.reviewee.id)).map((r) => r.source)).toEqual(["hr_auto", "baseline"]);
     expect((await db.select().from(steps).where(and(eq(steps.employeeId, s.reviewee.id), eq(steps.name, "replay_judge")))).length).toBe(3);
   });
 

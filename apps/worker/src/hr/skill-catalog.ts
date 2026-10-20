@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
-import { approvals, audit, db, employees, employeeSkills, skillAuditTasks, skills, tasks, teamMembers, teams, workspaces, type SkillOrigin } from "@wfos/db";
+import { approvals, audit, db, employees, employeeSkills, skillAuditTasks, skills, tasks, teamMembers, teams, withEmployeeRevision, workspaces, type SkillOrigin } from "@wfos/db";
 import { hasLicense, latestSkillCommit, resolveSkill, searchSkillsSh, SkillCatalogError, skillHash, type ResolvedSkill } from "@wfos/shared/skill-catalog";
 import { SKILL_SLUG_RE } from "@wfos/shared";
 import { screenLeakage, type GuardFinding } from "@wfos/shared/server";
@@ -216,7 +216,8 @@ export async function doInstallSkill(
     installs: null,
   };
   const files = fetched.map((f) => ({ path: f.path, content: f.content }));
-  const saved = await db.transaction(async (tx) => {
+  const who = { workspaceId, source: "skill_install" as const, actorUserId: context.approver?.id ?? null, actorLabel: context.approver?.email ?? "approval", note: `${r.source} ${r.path}` };
+  const saved = await withEmployeeRevision(db, emps.map((e) => e.id), who, async (tx) => {
     // two approvals of the same skill at once: one installs, the other updates that row (never a second copy)
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`skill-install:${workspaceId}:${r.source}:${r.path}`}))`);
     const [existing] = await tx.select({ id: skills.id, slug: skills.slug }).from(skills).where(sameOrigin(workspaceId, r.source, r.path));

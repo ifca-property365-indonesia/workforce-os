@@ -24,7 +24,8 @@
       "tools": "Tool & otonomi",
       "memory": "Memori",
       "activity": "Aktivitas",
-      "hr": "HR"
+      "hr": "HR",
+      "history": "Riwayat"
     },
     "spentToday": "Terpakai hari ini",
     "budgetOf": "/ {budget} kredit",
@@ -538,5 +539,44 @@
     "startExplain": "Angka {days} hari terakhir diukur sekarang; karyawan HR menilainya. Instruksi baru yang diusulkannya hanya berlaku setelah lolos replay.",
     "reviewer": "Reviewer",
     "startNow": "Mulai review"
+  },
+  "revisions": {
+    "title": "Riwayat konfigurasi",
+    "description": "Setiap perubahan peran, instruksi, tools, budget, dan skill karyawan ini disimpan sebagai versi, baik oleh orang, replay HR, maupun pemasangan skill. Admin bisa mengembalikan versi sebelumnya (dengan pengecekan yang sama seperti mengedit).",
+    "empty": "Belum ada perubahan yang tercatat: perubahan pertama menyimpan kondisi sekarang sebagai versi 1.",
+    "version": "Versi {version}",
+    "current": "Sekarang",
+    "show": "Lihat perubahan",
+    "hide": "Sembunyikan",
+    "restore": "Kembalikan",
+    "restoreConfirm": "Kembalikan ke versi {version}? Konfigurasi dan skill karyawan menjadi seperti saat itu; ini disimpan sebagai versi baru.",
+    "restored": "Dikembalikan. Disimpan sebagai versi baru.",
+    "restoredMissing": "{count, plural, other {Dikembalikan tanpa # skill yang sudah tidak ada.}}",
+    "changed": "Berubah: {fields}",
+    "source": {
+      "baseline": "Sebelum perubahan",
+      "person": "Diedit",
+      "replay": "Replay HR diterapkan",
+      "hr_auto": "Replay HR (otomatis, lolos)",
+      "skills": "Skill diubah",
+      "skill_install": "Skill dipasang",
+      "rollback": "Kembali ke versi {version}"
+    },
+    "field": {
+      "role": "Peran",
+      "specialty": "Keahlian",
+      "persona": "Persona",
+      "instructions": "Instruksi",
+      "businessContext": "Konteks bisnis",
+      "model": "Model",
+      "autonomyLevel": "Otonomi",
+      "toolPermissions": "Tools",
+      "allowList": "Allow-list",
+      "dailyBudget": "Budget harian",
+      "outputLanguage": "Bahasa",
+      "executionMode": "Mode kerja",
+      "egressDomains": "Akses jaringan",
+      "skillIds": "Skill"
+    }
   }
 }

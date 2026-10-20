@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, employees, replays } from "@wfos/db";
+import { audit, db, employees, replays, withEmployeeRevision } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
 
@@ -23,11 +23,13 @@ export const POST = route<P>("ADMIN", async ({ session, req, params }) => {
     return { ok: true };
   }
   if (r.status !== "done") throw new HttpError(409, "Replay must finish before promoting", { code: "replay_not_finished" });
-  const [e] = await db.select().from(employees).where(eq(employees.id, r.employeeId));
-  await db
-    .update(employees)
-    .set({ ...r.proposed, instructionsVersion: (e?.instructionsVersion ?? 1) + 1 })
-    .where(eq(employees.id, r.employeeId));
+  await withEmployeeRevision(db, r.employeeId, { workspaceId: session.workspaceId, source: "replay", actorUserId: session.userId, actorLabel: session.email, note: `replay ${r.id}` }, async (tx) => {
+    const [e] = await tx.select().from(employees).where(eq(employees.id, r.employeeId));
+    await tx
+      .update(employees)
+      .set({ ...r.proposed, instructionsVersion: (e?.instructionsVersion ?? 1) + 1 })
+      .where(eq(employees.id, r.employeeId));
+  });
   await db.update(replays).set({ status: "promoted" }).where(eq(replays.id, r.id));
   await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "employee.instructions_promoted", targetType: "employee", targetId: r.employeeId, details: { replayId: r.id } });
   return { ok: true };

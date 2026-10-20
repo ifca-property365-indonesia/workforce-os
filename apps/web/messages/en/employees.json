@@ -24,7 +24,8 @@
       "tools": "Tools & autonomy",
       "memory": "Memory",
       "activity": "Activity",
-      "hr": "HR"
+      "hr": "HR",
+      "history": "History"
     },
     "spentToday": "Spent today",
     "budgetOf": "/ {budget} cr",
@@ -538,5 +539,44 @@
     "startExplain": "The numbers of the last {days} days are measured now; an HR employee assesses them. New instructions it proposes apply only after a passed replay.",
     "reviewer": "Reviewer",
     "startNow": "Start the review"
+  },
+  "revisions": {
+    "title": "Configuration history",
+    "description": "Every change to this employee's role, instructions, tools, budget and skills is kept as a version: by a person, an HR replay or a skill install. An Admin can restore an earlier version (with the same checks as an edit).",
+    "empty": "No changes recorded yet: the first change keeps the current state as version 1.",
+    "version": "Version {version}",
+    "current": "Current",
+    "show": "Show changes",
+    "hide": "Hide changes",
+    "restore": "Restore",
+    "restoreConfirm": "Restore version {version}? The employee's configuration and skills become what they were then; this is saved as a new version.",
+    "restored": "Restored. Saved as a new version.",
+    "restoredMissing": "{count, plural, one {Restored without # skill that no longer exists.} other {Restored without # skills that no longer exist.}}",
+    "changed": "Changed: {fields}",
+    "source": {
+      "baseline": "Before the change",
+      "person": "Edited",
+      "replay": "HR replay applied",
+      "hr_auto": "HR replay (auto, passed)",
+      "skills": "Skills changed",
+      "skill_install": "Skill installed",
+      "rollback": "Restored version {version}"
+    },
+    "field": {
+      "role": "Role",
+      "specialty": "Specialty",
+      "persona": "Persona",
+      "instructions": "Instructions",
+      "businessContext": "Business context",
+      "model": "Model",
+      "autonomyLevel": "Autonomy",
+      "toolPermissions": "Tools",
+      "allowList": "Allow-list",
+      "dailyBudget": "Daily budget",
+      "outputLanguage": "Language",
+      "executionMode": "Execution mode",
+      "egressDomains": "Network access",
+      "skillIds": "Skills"
+    }
   }
 }

@@ -1,4 +1,4 @@
-import { approvals, audit, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, tasks, teams, users, type TaskRow } from "@wfos/db";
+import { approvals, audit, createTask, db, employees, employeeSkills, repositories, routines, skills, TaskInputError, tasks, teams, users, withEmployeeRevision, type TaskRow } from "@wfos/db";
 import { CronExpressionParser } from "cron-parser";
 import { z } from "zod";
 import { enqueueTask, publish } from "../lib/redis";
@@ -302,7 +302,7 @@ async function doCreateSkill(
     const slug = numberedSlug(p.slug, n);
     if (isReservedSkillSlug(slug)) continue; // a built-in's name (pdf, docx, ...): saved as <slug>-2
     // insert-or-skip on the (workspace, slug) unique index: a slug taken meanwhile moves on to the next number
-    saved = await db.transaction(async (tx) => {
+    saved = await withEmployeeRevision(db, emp.id, { workspaceId, source: "skill_install", actorUserId: who?.id ?? null, actorLabel: who?.email ?? "approval", note: slug }, async (tx) => {
       const [row] = await tx
         .insert(skills)
         .values({

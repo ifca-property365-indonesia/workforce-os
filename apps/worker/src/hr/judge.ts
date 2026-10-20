@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { audit, db, employees, hrReviews, replays, type ReplayJudge } from "@wfos/db";
+import { audit, db, employees, hrReviews, replays, withEmployeeRevision, type ReplayJudge } from "@wfos/db";
 import { computeLlmCredits, roundCredits } from "@wfos/shared";
 import { log } from "../lib/logger";
 import { priceFor } from "../lib/pricing";
@@ -79,7 +79,7 @@ export async function judgeReplay(replayId: string): Promise<ReplayJudge | null>
     return judge;
   }
   // passed: apply like a person's promote, in one guarded update (a person may have promoted or discarded meanwhile)
-  const applied = await db.transaction(async (tx) => {
+  const applied = await withEmployeeRevision(db, rp.employeeId, { workspaceId: rp.workspaceId, source: "hr_auto", actorLabel: "HR review (replay passed)", note: `replay ${rp.id}` }, async (tx) => {
     const [still] = await tx.select({ status: replays.status }).from(replays).where(eq(replays.id, rp.id)).for("update");
     if (still?.status !== "done") return false;
     const [e] = await tx.select({ v: employees.instructionsVersion }).from(employees).where(eq(employees.id, rp.employeeId));

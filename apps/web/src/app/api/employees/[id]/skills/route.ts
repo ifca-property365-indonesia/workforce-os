@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, employees, employeeSkills, skills } from "@wfos/db";
+import { audit, db, employees, employeeSkills, skills, withEmployeeRevision } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { body, notFound, route } from "@/lib/server/route";
 
@@ -33,7 +33,7 @@ export const PUT = route<P>("ADMIN", async ({ session, req, params }) => {
   const found = want.length ? await db.select({ id: skills.id, slug: skills.slug }).from(skills).where(and(eq(skills.workspaceId, session.workspaceId), inArray(skills.id, want))) : [];
   if (found.length !== want.length) throw new HttpError(400, "Unknown skill", { code: "unknown_skill" });
   const slugOf = new Map(found.map((s) => [s.id, s.slug]));
-  const { added, removed } = await db.transaction(async (tx) => {
+  const { added, removed } = await withEmployeeRevision(db, e.id, { workspaceId: session.workspaceId, source: "skills", actorUserId: session.userId, actorLabel: session.email }, async (tx) => {
     const cur = await tx
       .select({ id: employeeSkills.skillId, slug: skills.slug })
       .from(employeeSkills)

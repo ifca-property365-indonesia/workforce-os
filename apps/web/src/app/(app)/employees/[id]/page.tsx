@@ -1,5 +1,6 @@
 "use client";
 
+import { RevisionsPanel } from "@/components/employees/revisions-panel";
 import { HrPanel } from "@/components/employees/hr-panel";
 import { useStepUp } from "@/components/account/step-up";
 
@@ -418,7 +419,7 @@ export default function EmployeePage({ params }: P) {
           {t("detail.pausedBudget")}
         </div>
       )}
-      <Tabs defaultValue={tabParam === "hr" ? "hr" : "overview"}>
+      <Tabs defaultValue={tabParam === "hr" || tabParam === "history" ? tabParam : "overview"}>
         <TabsList>
           <TabsTrigger value="overview">{t("detail.tabs.overview")}</TabsTrigger>
           <TabsTrigger value="instructions">{t("detail.tabs.instructions")}</TabsTrigger>
@@ -426,6 +427,7 @@ export default function EmployeePage({ params }: P) {
           <TabsTrigger value="memory">{t("detail.tabs.memory")}</TabsTrigger>
           <TabsTrigger value="activity">{t("detail.tabs.activity")}</TabsTrigger>
           {me && hasRole(me.role, "MEMBER") && <TabsTrigger value="hr">{t("detail.tabs.hr")}</TabsTrigger>}
+          {me && hasRole(me.role, "MEMBER") && <TabsTrigger value="history">{t("detail.tabs.history")}</TabsTrigger>}
         </TabsList>
         <TabsContent value="overview" className="mt-4 space-y-4">
           <OutputLanguageCard e={e} />
@@ -489,6 +491,11 @@ export default function EmployeePage({ params }: P) {
         {me && hasRole(me.role, "MEMBER") && (
           <TabsContent value="hr" className="mt-4">
             <HrPanel employeeId={e.id} admin={hasRole(me.role, "ADMIN")} />
+          </TabsContent>
+        )}
+        {me && hasRole(me.role, "MEMBER") && (
+          <TabsContent value="history" className="mt-4">
+            <RevisionsPanel employeeId={e.id} admin={hasRole(me.role, "ADMIN")} />
           </TabsContent>
         )}
         <TabsContent value="activity" className="mt-4">

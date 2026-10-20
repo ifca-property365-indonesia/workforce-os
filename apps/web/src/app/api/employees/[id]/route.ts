@@ -1,6 +1,6 @@
 import { and, eq, gte, isNull, or, sum } from "drizzle-orm";
 import { z } from "zod";
-import { audit, db, employeeDivision, employees, steps } from "@wfos/db";
+import { audit, db, employeeDivision, employees, steps, withEmployeeRevision } from "@wfos/db";
 import { allowListEntrySchema, employeeInputSchema, hasRole } from "@wfos/shared";
 import { HttpError } from "@/lib/server/auth";
 import { notFound, patchBody, route } from "@/lib/server/route";
@@ -58,11 +58,13 @@ export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
     (input.instructions !== undefined && input.instructions !== before.instructions) ||
     (input.persona !== undefined && input.persona !== before.persona) ||
     (input.businessContext !== undefined && input.businessContext !== before.businessContext);
-  const [e] = await db
-    .update(employees)
-    .set({ ...input, ...(instructionsChanged ? { instructionsVersion: before.instructionsVersion + 1 } : {}) })
-    .where(eq(employees.id, before.id))
-    .returning();
+  const [e] = await withEmployeeRevision(db, before.id, { workspaceId: session.workspaceId, source: "person", actorUserId: session.userId, actorLabel: session.email }, (tx) =>
+    tx
+      .update(employees)
+      .set({ ...input, ...(instructionsChanged ? { instructionsVersion: before.instructionsVersion + 1 } : {}) })
+      .where(eq(employees.id, before.id))
+      .returning(),
+  );
   const permChanged =
     input.toolPermissions !== undefined ||
     input.autonomyLevel !== undefined ||

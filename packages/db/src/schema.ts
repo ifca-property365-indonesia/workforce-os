@@ -204,6 +204,51 @@ export const employees = pgTable(
   (t) => [index("employees_ws").on(t.workspaceId)],
 );
 
+/** what changed an employee's configuration (P2): a person, an HR replay, a skill install, a restore… */
+export const EMPLOYEE_REVISION_SOURCES = ["baseline", "person", "replay", "hr_auto", "skills", "skill_install", "rollback"] as const;
+export type EmployeeRevisionSource = (typeof EMPLOYEE_REVISION_SOURCES)[number];
+/** the part of an employee a revision keeps (what shapes its work), with its assigned skills */
+export interface EmployeeConfig {
+  role: string;
+  persona: string;
+  instructions: string;
+  businessContext: string;
+  model: string;
+  autonomyLevel: AutonomyLevel;
+  toolPermissions: ToolPermission[];
+  allowList: AllowListEntry[];
+  dailyBudget: number;
+  outputLanguage: OutputLanguage;
+  executionMode: ExecutionMode;
+  egressDomains: string[];
+  specialty: string;
+  skillIds: string[];
+}
+
+/**
+ * P2 (after Paperclip): every change to an employee's configuration is a numbered revision with a full snapshot, so a
+ * change by a person, an HR replay or a skill install can be compared and rolled back. Version 1 is the state before
+ * the first recorded change ("baseline").
+ */
+export const employeeRevisions = pgTable(
+  "employee_revisions",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    config: jsonb("config").$type<EmployeeConfig>().notNull(),
+    source: text("source").$type<EmployeeRevisionSource>().notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorLabel: text("actor_label").notNull().default(""),
+    note: text("note").notNull().default(""),
+    /** a rollback: the version it restored */
+    restoredVersion: integer("restored_version"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("employee_revisions_version").on(t.employeeId, t.version)],
+);
+
 /**
  * A division (UI: "Divisi"): the unit work is assigned to. The head (leadId) takes division tasks and either does them
  * or delegates to members; the code lead (codeLeadId) works in a Workspace-mode sandbox and loads the members with
