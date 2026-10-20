@@ -13,7 +13,8 @@
     "settings": "Settings",
     "account": "Account",
     "outbox": "Outbox",
-    "apps": "App Factory"
+    "apps": "App Factory",
+    "goals": "Goals"
   },
   "killSwitch": {
     "button": "Kill switch",
@@ -75,7 +76,8 @@
     "knowledge": "Knowledge",
     "settings": "Settings",
     "outbox": "Outbox",
-    "apps": "Apps"
+    "apps": "Apps",
+    "goals": "Goals"
   },
   "demoChip": "Demo",
   "desktopView": "Desktop view",

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
-import { approvals, audit, clients, db, employeeDivision, employees, projects, repositories, steps, tasks } from "@wfos/db";
+import { approvals, audit, clients, db, employeeDivision, employees, goals, projects, repositories, steps, tasks } from "@wfos/db";
 import { decryptSecret } from "@wfos/shared/server";
 import { prepareTaskRepo, syncMirror, type RepoRef } from "./workspace/git";
 import type { TaskStatus } from "@wfos/shared";
@@ -64,6 +64,12 @@ async function taskContext(task: Task): Promise<string> {
   if (task.projectId) {
     const [p] = await db.select().from(projects).where(eq(projects.id, task.projectId));
     if (p) parts.push(`Project: ${p.name} (${p.status}) — ${p.description}`);
+  }
+  if (task.goalId) {
+    // P1: the goal the work serves, with the broader goal above it (data written by the team)
+    const [g] = await db.select({ title: goals.title, description: goals.description, parentId: goals.parentId }).from(goals).where(eq(goals.id, task.goalId));
+    const [up] = g?.parentId ? await db.select({ title: goals.title }).from(goals).where(eq(goals.id, g.parentId)) : [];
+    if (g) parts.push(`This work serves the goal "${g.title}"${up ? ` (part of "${up.title}")` : ""}${g.description ? `: ${g.description.slice(0, 600)}` : ""}. Keep the result aligned with it.`);
   }
   if (task.parentTaskId) {
     const [p] = await db.select({ title: tasks.title, brief: tasks.brief }).from(tasks).where(eq(tasks.id, task.parentTaskId));

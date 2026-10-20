@@ -1,0 +1,45 @@
+{
+  "title": "Goals",
+  "description": "What the work is for. Tasks and projects serve a goal (subtasks and a project's tasks inherit it), so you see the work and credits behind each one.",
+  "new": "New goal",
+  "newTitle": "New goal",
+  "editTitle": "Edit goal",
+  "save": "Save",
+  "saved": "Saved.",
+  "showClosed": "Show done and dropped",
+  "wholeWorkspace": "Whole workspace",
+  "target": "target {date}",
+  "addSub": "Add a goal under this one",
+  "edit": "Edit",
+  "markDone": "Mark done",
+  "drop": "Drop",
+  "reopen": "Reopen",
+  "delete": "Delete",
+  "deleteConfirm": "Delete the goal \"{title}\"? Its tasks and projects keep their work without a goal; goals under it move up.",
+  "status": {
+    "active": "Active",
+    "done": "Done",
+    "dropped": "Dropped"
+  },
+  "stats": {
+    "open": "Open tasks",
+    "done": "Done tasks",
+    "credits30d": "Credits, 30 days",
+    "credits": "Credits, all"
+  },
+  "includesSub": "Including the goals under it.",
+  "tasks": "{count, plural, one {# task} other {# tasks}}",
+  "onlySubtasks": "Only subtasks of other tasks serve this goal.",
+  "withoutGoal": "Credits in the last 30 days on work without a goal: {credits}.",
+  "empty": "No goals yet",
+  "emptyAdmin": "Start with the workspace's few big goals, then add the goals under them per division.",
+  "field": {
+    "title": "Goal",
+    "titlePlaceholder": "e.g. Launch e-Procurement for 3 clients",
+    "description": "Description",
+    "parent": "Under",
+    "noParent": "— (a top goal)",
+    "team": "Owned by",
+    "targetDate": "Target date"
+  }
+}

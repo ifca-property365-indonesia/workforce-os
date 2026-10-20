@@ -13,7 +13,8 @@
     "settings": "Pengaturan",
     "account": "Akun",
     "outbox": "Kotak keluar",
-    "apps": "Pabrik Aplikasi"
+    "apps": "Pabrik Aplikasi",
+    "goals": "Sasaran"
   },
   "killSwitch": {
     "button": "Kill switch",
@@ -75,7 +76,8 @@
     "knowledge": "Pengetahuan",
     "settings": "Pengaturan",
     "outbox": "Keluar",
-    "apps": "Aplikasi"
+    "apps": "Aplikasi",
+    "goals": "Sasaran"
   },
   "demoChip": "Demo",
   "desktopView": "Tampilan desktop",

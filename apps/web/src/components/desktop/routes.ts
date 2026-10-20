@@ -1,4 +1,4 @@
-import { Bot, BookOpen, Building2, CalendarClock, KanbanSquare, LayoutDashboard, MessageSquare, Rocket, Send, Settings, ShieldCheck, UserRound, UsersRound, type LucideIcon } from "lucide-react";
+import { Bot, BookOpen, Building2, CalendarClock, KanbanSquare, LayoutDashboard, MessageSquare, Rocket, Send, Settings, ShieldCheck, Target, UserRound, UsersRound, type LucideIcon } from "lucide-react";
 import type { SignColor } from "@/lib/sign";
 
 /**
@@ -6,10 +6,10 @@ import type { SignColor } from "@/lib/sign";
  * and the size its window opens at. The page modules themselves are loaded in pages.tsx.
  */
 
-export const PAGE_KEYS = ["dashboard", "chat", "tasks", "task", "approvals", "outbox", "employees", "hire", "employee", "teams", "routines", "clients", "client", "apps", "app", "uiTemplates", "knowledge", "settings", "account"] as const;
+export const PAGE_KEYS = ["dashboard", "chat", "tasks", "task", "approvals", "outbox", "employees", "hire", "employee", "teams", "goals", "routines", "clients", "client", "apps", "app", "uiTemplates", "knowledge", "settings", "account"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
-export type AppKey = "dashboard" | "chat" | "tasks" | "approvals" | "outbox" | "employees" | "teams" | "routines" | "clients" | "apps" | "knowledge" | "settings" | "account";
+export type AppKey = "dashboard" | "chat" | "tasks" | "approvals" | "outbox" | "employees" | "teams" | "goals" | "routines" | "clients" | "apps" | "knowledge" | "settings" | "account";
 export type AppGroup = "work" | "team" | "operations" | "system";
 
 export interface DesktopApp {
@@ -32,6 +32,7 @@ export const APPS: readonly DesktopApp[] = [
   { key: "outbox", href: "/outbox", icon: Send, color: "hijau", group: "work", dock: true, size: [1080, 760] },
   { key: "employees", href: "/employees", icon: Bot, color: "oranye", group: "team", dock: true, size: [1120, 760] },
   { key: "teams", href: "/teams", icon: UsersRound, color: "magenta", group: "team", dock: true, size: [1240, 800] },
+  { key: "goals", href: "/goals", icon: Target, color: "kuning", group: "operations", dock: false, size: [1000, 760] },
   { key: "routines", href: "/routines", icon: CalendarClock, color: "hijau", group: "operations", dock: true, size: [1040, 720] },
   { key: "clients", href: "/clients", icon: Building2, color: "merah", group: "operations", dock: true, size: [1080, 740] },
   { key: "apps", href: "/apps", icon: Rocket, color: "biru", group: "operations", dock: true, size: [1120, 780] },
@@ -61,6 +62,7 @@ const TABLE: { re: RegExp; app: AppKey; page: PageKey; detail?: Route["detail"];
   { re: /^\/employees\/hire$/, app: "employees", page: "hire", detail: "hire" },
   { re: /^\/employees\/([^/]+)$/, app: "employees", page: "employee", detail: "employee", param: "id" },
   { re: /^\/teams$/, app: "teams", page: "teams" },
+  { re: /^\/goals$/, app: "goals", page: "goals" },
   { re: /^\/routines$/, app: "routines", page: "routines" },
   { re: /^\/clients$/, app: "clients", page: "clients" },
   { re: /^\/clients\/([^/]+)$/, app: "clients", page: "client", detail: "client", param: "id" },

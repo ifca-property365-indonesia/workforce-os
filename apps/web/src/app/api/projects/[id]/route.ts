@@ -3,6 +3,7 @@ import { db, projects } from "@wfos/db";
 import { projectInputSchema } from "@wfos/shared";
 import { notFound, patchBody, route } from "@/lib/server/route";
 import { assertWorkspaceTeam } from "@/lib/server/teams";
+import { checkGoalRefs } from "@/lib/server/goals";
 
 type P = { id: string };
 
@@ -16,6 +17,7 @@ export const PATCH = route<P>("MEMBER", async ({ session, req, params }) => {
   const [before] = await db.select().from(projects).where(mine);
   if (!before) notFound();
   if (input.teamId) await assertWorkspaceTeam(session.workspaceId, input.teamId);
+  if (input.goalId) await checkGoalRefs(session.workspaceId, { parentId: input.goalId });
   const statusChanged =
     (input.health !== undefined && input.health !== before.health) ||
     (input.nextMilestone !== undefined && input.nextMilestone !== before.nextMilestone) ||

@@ -10,15 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
-import { useClients, useEmployees, useTeams } from "@/lib/hooks";
+import { useClients, useEmployees, useGoals, useTeams } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { useDivisionSuggestion } from "@/components/dashboard/attention";
 
 const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
-const EMPTY = { title: "", brief: "", assignee: "", clientId: "", projectId: "", repositoryId: "", dryRun: false, start: true };
+const EMPTY = { title: "", brief: "", assignee: "", clientId: "", projectId: "", goalId: "", repositoryId: "", dryRun: false, start: true };
 /** what a quick action fills in; `assignee` is "e:<employeeId>" or "t:<teamId>". Read when the dialog mounts: give it a new `key` per prefill. */
-export type NewTaskPrefill = Partial<Pick<typeof EMPTY, "title" | "brief" | "assignee" | "clientId" | "projectId">>;
+export type NewTaskPrefill = Partial<Pick<typeof EMPTY, "title" | "brief" | "assignee" | "clientId" | "projectId" | "goalId">>;
 
 /**
  * A new task. It goes to a division by default (its head decides how it gets done); a specific person is the
@@ -31,7 +31,9 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
   const { data: emps } = useEmployees();
   const { data: divisions } = useTeams();
   const { data: clients } = useClients();
+  const { data: goalData } = useGoals();
   const [f, setF] = useState(() => ({ ...EMPTY, ...initial }));
+  const activeGoals = (goalData?.goals ?? []).filter((g) => g.status === "active" || g.id === f.goalId);
   const [mode, setMode] = useState<"division" | "person">(() => (initial?.assignee?.startsWith("e:") ? "person" : "division"));
   const uid = useId();
   const { data: repos } = useQuery({ queryKey: ["repositories"], queryFn: () => api.get<{ repositories: { id: string; name: string }[] }>("/api/repositories").then((r) => r.repositories) });
@@ -58,6 +60,8 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
         teamId: teamId || null,
         clientId: f.clientId || null,
         projectId: f.projectId || null,
+        // none chosen: the project's goal (if any)
+        goalId: f.goalId || undefined,
         repositoryId: codeWork && f.repositoryId ? f.repositoryId : null,
         dryRun: f.dryRun,
         start: f.start,
@@ -179,6 +183,19 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
               </select>
             </div>
           </div>
+          {!!activeGoals.length && (
+            <div className="space-y-1.5">
+              <Label htmlFor={`${uid}-goal`}>{t("newTask.goal")}</Label>
+              <select id={`${uid}-goal`} className={sel} value={f.goalId} onChange={(e) => setF({ ...f, goalId: e.target.value })}>
+                <option value="">{f.projectId ? t("newTask.goalFromProject") : "—"}</option>
+                {activeGoals.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.parentId ? `↳ ${g.title}` : g.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {codeWork && (
             <div className="space-y-1.5">
               <Label htmlFor={`${uid}-repository`}>{t("newTask.repository")}</Label>

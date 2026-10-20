@@ -328,6 +328,33 @@ export const clients = pgTable("clients", {
   updatedAt: updatedAt(),
 }, (t) => [uniqueIndex("clients_ws_code").on(t.workspaceId, t.code).where(sql`code <> ''`)]);
 
+/**
+ * P1 (after Paperclip): a goal of the workspace, optionally under a broader one and owned by a division. Tasks and
+ * projects point at one (subtasks and follow-ups inherit it), so the Owner sees what the credits were spent for.
+ */
+export const GOAL_STATUSES = ["active", "done", "dropped"] as const;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
+export const goals = pgTable(
+  "goals",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    parentId: uuid("parent_id").references((): AnyPgColumn => goals.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    /** the division that owns it (null: the whole workspace) */
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    status: text("status").$type<GoalStatus>().notNull().default("active"),
+    /** calendar date in the workspace time zone (YYYY-MM-DD) */
+    targetDate: date("target_date", { mode: "string" }),
+    position: integer("position").notNull().default(0),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("goals_ws").on(t.workspaceId, t.status)],
+);
+
 export const projects = pgTable("projects", {
   id: id(),
   workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
@@ -342,6 +369,8 @@ export const projects = pgTable("projects", {
   progress: integer("progress").notNull().default(0),
   /** division responsible: tasks for this project without an assignee go to it */
   teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+  /** P1: the goal this project serves (its tasks inherit it) */
+  goalId: uuid("goal_id").references(() => goals.id, { onDelete: "set null" }),
   /** calendar date in the workspace time zone (YYYY-MM-DD) */
   startDate: date("start_date", { mode: "string" }),
   nextMilestone: text("next_milestone").notNull().default(""),
@@ -380,6 +409,8 @@ export const tasks = pgTable(
     parentTaskId: uuid("parent_task_id"),
     clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    /** P1: the goal this task serves (given, or inherited from its parent, origin or project) */
+    goalId: uuid("goal_id").references(() => goals.id, { onDelete: "set null" }),
     routineId: uuid("routine_id"),
     status: text("status").$type<TaskStatus>().notNull().default("QUEUED"),
     source: text("source").$type<TaskSource>().notNull().default("board"),

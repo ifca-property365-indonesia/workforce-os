@@ -890,6 +890,8 @@ export const taskInputSchema = z.object({
   teamId: z.string().uuid().nullable().optional(),
   clientId: z.string().uuid().nullable().optional(),
   projectId: z.string().uuid().nullable().optional(),
+  /** P1: the goal it serves (omitted: inherited from the project) */
+  goalId: z.string().uuid().nullable().optional(),
   dryRun: z.boolean().default(false),
   start: z.boolean().default(true),
   /** Workspace mode: repository to check out on branch agent/<task> */
@@ -1161,6 +1163,8 @@ export const projectInputSchema = z.object({
   progress: z.number().int().min(0).max(100).default(0),
   /** division responsible: the project's tasks without an assignee go to it */
   teamId: z.string().uuid().nullable().optional(),
+  /** P1: the goal the project serves (its tasks inherit it) */
+  goalId: z.string().uuid().nullable().optional(),
   startDate: z.iso.date().nullable().optional(),
   nextMilestone: z.string().max(500).default(""),
   health: z.enum(PROJECT_HEALTH).default("on_track"),

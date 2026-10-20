@@ -246,4 +246,26 @@ export const useClient = (id: string) => useQuery({ queryKey: clientQueryKey(id)
 /** the company profile (Settings → Company): Members and up may read it */
 export const useCompanyProfile = (enabled = true) =>
   useQuery({ queryKey: ["company"], queryFn: () => api.get<{ company: CompanyProfile }>("/api/settings/company").then((r) => r.company), enabled });
+/** P1: a goal of the workspace with what was done for it (own numbers and, in `total`, with its sub-goals) */
+export interface GoalStats {
+  open: number;
+  done: number;
+  credits: number;
+  credits30d: number;
+}
+export interface Goal {
+  id: string;
+  parentId: string | null;
+  title: string;
+  description: string;
+  teamId: string | null;
+  status: "active" | "done" | "dropped";
+  targetDate: string | null;
+  position: number;
+  createdAt: string;
+  stats: GoalStats & { projects: number };
+  total: GoalStats;
+}
+export const goalsQueryKey = ["goals"] as const;
+export const useGoals = (enabled = true) => useQuery({ queryKey: goalsQueryKey, queryFn: () => api.get<{ goals: Goal[]; withoutGoal30d: number }>("/api/goals"), enabled });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: () => api.get<{ teams: Team[] }>("/api/teams").then((r) => r.teams) });

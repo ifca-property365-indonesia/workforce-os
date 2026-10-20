@@ -11,6 +11,7 @@ export const GET = route("VIEWER", async ({ session, req }) => {
   if (sp.get("employeeId")) conds.push(eq(tasks.assigneeId, sp.get("employeeId")!));
   if (sp.get("clientId")) conds.push(eq(tasks.clientId, sp.get("clientId")!));
   if (sp.get("projectId")) conds.push(eq(tasks.projectId, sp.get("projectId")!));
+  if (sp.get("goalId")) conds.push(eq(tasks.goalId, sp.get("goalId")!));
   if (sp.get("parentTaskId")) conds.push(eq(tasks.parentTaskId, sp.get("parentTaskId")!));
   const statuses = sp.get("status")?.split(",").filter((s): s is TaskStatus => (TASK_STATUSES as readonly string[]).includes(s));
   if (statuses?.length) conds.push(inArray(tasks.status, statuses));
@@ -25,6 +26,7 @@ export const GET = route("VIEWER", async ({ session, req }) => {
       parentTaskId: tasks.parentTaskId,
       clientId: tasks.clientId,
       projectId: tasks.projectId,
+      goalId: tasks.goalId,
       dryRun: tasks.dryRun,
       phase: tasks.phase,
       costCredits: tasks.costCredits,
@@ -52,6 +54,8 @@ export const POST = route("MEMBER", async ({ session, req }) => {
     teamId: input.teamId ?? null,
     clientId: input.clientId ?? null,
     projectId: input.projectId ?? null,
+    // omitted: inherited from the project; null: no goal
+    goalId: input.goalId,
     repositoryId: input.repositoryId ?? null,
     dryRun: input.dryRun,
     source: "board",

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { TASK_SOURCES, type TaskSource } from "@wfos/shared";
 import type { DB } from "./index";
-import { clients, employees, projects, repositories, tasks, teams } from "./schema";
+import { clients, employees, goals, projects, repositories, tasks, teams } from "./schema";
 
 /** Why createTask() refused its input. Each code has an `errors.<code>` message in the web catalogs. */
 export const TASK_INPUT_ERROR_CODES = [
@@ -18,6 +18,7 @@ export const TASK_INPUT_ERROR_CODES = [
   "invalid_task_source",
   "project_client_mismatch",
   "invalid_dependency",
+  "unknown_goal",
 ] as const;
 export type TaskInputErrorCode = (typeof TASK_INPUT_ERROR_CODES)[number];
 
@@ -35,6 +36,7 @@ const MESSAGES: Record<TaskInputErrorCode, string> = {
   invalid_task_source: "Invalid task source",
   project_client_mismatch: "The project belongs to another client",
   invalid_dependency: "A subtask can only wait for other subtasks of the same parent",
+  unknown_goal: "Unknown goal",
 };
 
 export class TaskInputError extends Error {
@@ -55,6 +57,8 @@ export interface CreateTaskInput {
   teamId?: string | null;
   clientId?: string | null;
   projectId?: string | null;
+  /** P1: the goal it serves; when not given: the parent's, the origin task's or the project's */
+  goalId?: string | null;
   repositoryId?: string | null;
   parentTaskId?: string | null;
   originTaskId?: string | null;
@@ -88,10 +92,11 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
   if (!(TASK_SOURCES as readonly string[]).includes(input.source)) throw new TaskInputError("invalid_task_source");
   let teamId = input.teamId ?? null;
   let clientId = input.clientId ?? null;
+  let projectGoalId: string | null = null;
   if (input.projectId) {
     const [project] = UUID.test(input.projectId)
       ? await database
-          .select({ clientId: projects.clientId, teamId: projects.teamId })
+          .select({ clientId: projects.clientId, teamId: projects.teamId, goalId: projects.goalId })
           .from(projects)
           .where(and(eq(projects.id, input.projectId), eq(projects.workspaceId, ws)))
           .limit(1)
@@ -100,6 +105,7 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
     // the project fixes the client: client-scoped knowledge and memory must not be crossed by a mismatched pair
     if (clientId && clientId !== project.clientId) throw new TaskInputError("project_client_mismatch");
     clientId = project.clientId;
+    projectGoalId = project.goalId;
     if (!input.assigneeId && !teamId) teamId = project.teamId;
   }
   if ((input.requireAssignee ?? true) && !input.assigneeId && !teamId) throw new TaskInputError("task_needs_assignee");
@@ -130,6 +136,19 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
   if (input.repositoryId && !(await owned(repositories, input.repositoryId))) throw new TaskInputError("repository_not_found");
   if (input.parentTaskId && !(await owned(tasks, input.parentTaskId))) throw new TaskInputError("unknown_parent_task");
   if (input.originTaskId && !(await owned(tasks, input.originTaskId))) throw new TaskInputError("unknown_origin_task");
+  // P1: a goal given must be this workspace's; else the parent's, the origin task's or the project's
+  let goalId = input.goalId ?? null;
+  if (goalId) {
+    const [g] = UUID.test(goalId) ? await database.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws))).limit(1) : [];
+    if (!g) throw new TaskInputError("unknown_goal");
+  } else if (input.goalId === undefined) {
+    for (const from of [input.parentTaskId, input.originTaskId]) {
+      if (goalId || !from) continue;
+      const [t] = await database.select({ goalId: tasks.goalId }).from(tasks).where(and(eq(tasks.id, from), eq(tasks.workspaceId, ws))).limit(1);
+      goalId = t?.goalId ?? null;
+    }
+    goalId ??= projectGoalId;
+  }
   const dependsOn = [...new Set(input.dependsOn ?? [])];
   if (dependsOn.length) {
     if (!input.parentTaskId || dependsOn.some((id) => !UUID.test(id))) throw new TaskInputError("invalid_dependency");
@@ -150,6 +169,7 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
       teamId,
       clientId,
       projectId: input.projectId ?? null,
+      goalId,
       repositoryId: input.repositoryId ?? null,
       parentTaskId: input.parentTaskId ?? null,
       originTaskId: input.originTaskId ?? null,

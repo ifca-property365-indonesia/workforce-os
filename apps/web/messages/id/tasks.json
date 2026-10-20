@@ -38,7 +38,10 @@
     "toPerson": "Berikan ke orang tertentu saja",
     "toDivision": "Berikan ke divisi saja",
     "suggested": "Disarankan: {name} ({words}).",
-    "useSuggestion": "Pakai"
+    "useSuggestion": "Pakai",
+    "goal": "Sasaran",
+    "goalFromProject": "Dari proyek",
+    "noGoal": "Tanpa sasaran"
   },
   "progress": {
     "title": "Kemajuan",

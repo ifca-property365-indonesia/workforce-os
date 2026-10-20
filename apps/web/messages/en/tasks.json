@@ -38,7 +38,10 @@
     "toPerson": "Give it to a specific person instead",
     "toDivision": "Give it to a division instead",
     "suggested": "Suggested: {name} ({words}).",
-    "useSuggestion": "Use it"
+    "useSuggestion": "Use it",
+    "goal": "Goal",
+    "goalFromProject": "From the project",
+    "noGoal": "No goal"
   },
   "progress": {
     "title": "Progress",

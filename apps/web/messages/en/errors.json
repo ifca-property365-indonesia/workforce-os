@@ -244,5 +244,8 @@
   "skill_audit_running": "A skill audit is still running. Wait for it to finish first.",
   "app_test_suite_not_found": "This full test is not running (any more).",
   "app_has_no_modules": "Add the app's modules first: a full test tests them one by one.",
-  "revision_not_found": "This revision does not exist."
+  "revision_not_found": "This revision does not exist.",
+  "unknown_goal": "Unknown goal.",
+  "goal_not_found": "Goal not found.",
+  "goal_cycle": "A goal cannot sit under itself or one of its sub-goals."
 }

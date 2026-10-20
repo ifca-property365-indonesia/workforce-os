@@ -30,6 +30,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CodePanel } from "./code-panel";
 import { TaskPreviews } from "@/components/apps/task-previews";
 import { TaskProgressHeader, TaskSandboxTime } from "@/components/tasks/task-progress";
+import { TaskGoal } from "@/components/tasks/task-goal";
 import { Avatar, StatusBadge } from "@/components/layout/common";
 import { api } from "@/lib/api";
 import type { TaskPreview } from "@/lib/app-previews";
@@ -57,6 +58,7 @@ interface TaskFull {
   assigneeId: string | null;
   teamId: string | null;
   parentTaskId: string | null;
+  goalId: string | null;
   deliverables: Deliverable[];
   result: string | null;
   error: string | null;
@@ -399,6 +401,7 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
                 <Avatar id={assignee.id} size="sm" /> {assignee.name}
               </span>
             )}
+            <TaskGoal taskId={task.id} goalId={task.goalId} subtask={!!task.parentTaskId} onChanged={() => void refetch()} />
             <span>{t("task.source", { source: t.has(`source.${task.source}`) ? t(`source.${task.source}`) : task.source })}</span>
             <span>{t("task.cost", { credits: f.credits(task.costCredits), usd: f.usd(task.costCredits) })}</span>
             <span>{t("task.created", { when: f.ago(task.createdAt) })}</span>

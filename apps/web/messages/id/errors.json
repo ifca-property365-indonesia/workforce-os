@@ -244,5 +244,8 @@
   "skill_audit_running": "Audit skill masih berjalan. Tunggu sampai selesai dulu.",
   "app_test_suite_not_found": "Uji menyeluruh ini tidak (lagi) berjalan.",
   "app_has_no_modules": "Tambahkan modul aplikasi dulu: uji menyeluruh menguji modul satu per satu.",
-  "revision_not_found": "Revisi ini tidak ada."
+  "revision_not_found": "Revisi ini tidak ada.",
+  "unknown_goal": "Sasaran tidak dikenal.",
+  "goal_not_found": "Sasaran tidak ditemukan.",
+  "goal_cycle": "Sasaran tidak bisa berada di bawah dirinya sendiri atau sub-sasarannya."
 }

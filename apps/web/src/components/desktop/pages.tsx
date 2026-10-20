@@ -17,6 +17,7 @@ const Pages = {
   hire: dynamic(() => import("@/app/(app)/employees/hire/page")),
   employee: dynamic(() => import("@/app/(app)/employees/[id]/page")),
   teams: dynamic(() => import("@/app/(app)/teams/page")),
+  goals: dynamic(() => import("@/app/(app)/goals/page")),
   routines: dynamic(() => import("@/app/(app)/routines/page")),
   clients: dynamic(() => import("@/app/(app)/clients/page")),
   client: dynamic(() => import("@/app/(app)/clients/[id]/page")),

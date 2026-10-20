@@ -19,6 +19,7 @@ export const NAMESPACES = [
   "outbox",
   "teams",
   "clients",
+  "goals",
   "routines",
   "knowledge",
   "settings",

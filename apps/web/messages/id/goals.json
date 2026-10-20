@@ -1,0 +1,45 @@
+{
+  "title": "Sasaran",
+  "description": "Untuk apa pekerjaannya. Tugas dan proyek melayani satu sasaran (subtugas dan tugas proyek mewarisinya), jadi pekerjaan dan kredit di balik setiap sasaran terlihat.",
+  "new": "Sasaran baru",
+  "newTitle": "Sasaran baru",
+  "editTitle": "Ubah sasaran",
+  "save": "Simpan",
+  "saved": "Tersimpan.",
+  "showClosed": "Tampilkan yang selesai dan dibatalkan",
+  "wholeWorkspace": "Seluruh workspace",
+  "target": "target {date}",
+  "addSub": "Tambah sasaran di bawahnya",
+  "edit": "Ubah",
+  "markDone": "Tandai selesai",
+  "drop": "Batalkan",
+  "reopen": "Buka lagi",
+  "delete": "Hapus",
+  "deleteConfirm": "Hapus sasaran \"{title}\"? Tugas dan proyeknya tetap ada tanpa sasaran; sasaran di bawahnya naik satu tingkat.",
+  "status": {
+    "active": "Aktif",
+    "done": "Selesai",
+    "dropped": "Dibatalkan"
+  },
+  "stats": {
+    "open": "Tugas berjalan",
+    "done": "Tugas selesai",
+    "credits30d": "Kredit 30 hari",
+    "credits": "Kredit total"
+  },
+  "includesSub": "Termasuk sasaran di bawahnya.",
+  "tasks": "{count, plural, other {# tugas}}",
+  "onlySubtasks": "Hanya subtugas dari tugas lain yang melayani sasaran ini.",
+  "withoutGoal": "Kredit 30 hari terakhir untuk pekerjaan tanpa sasaran: {credits}.",
+  "empty": "Belum ada sasaran",
+  "emptyAdmin": "Mulai dengan beberapa sasaran besar workspace, lalu tambahkan sasaran di bawahnya per divisi.",
+  "field": {
+    "title": "Sasaran",
+    "titlePlaceholder": "mis. Luncurkan e-Procurement untuk 3 klien",
+    "description": "Deskripsi",
+    "parent": "Di bawah",
+    "noParent": "— (sasaran utama)",
+    "team": "Pemilik",
+    "targetDate": "Tanggal target"
+  }
+}
