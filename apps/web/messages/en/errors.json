@@ -241,5 +241,7 @@
   "skill_update_changed": "The skill changed since you read it. Open the update again.",
   "skill_no_license": "This version of the skill has no license, so it cannot be used.",
   "skill_audit_no_hr": "Choose an active employee to run the skill audit (for example the head of HR).",
-  "skill_audit_running": "A skill audit is still running. Wait for it to finish first."
+  "skill_audit_running": "A skill audit is still running. Wait for it to finish first.",
+  "app_test_suite_not_found": "This full test is not running (any more).",
+  "app_has_no_modules": "Add the app's modules first: a full test tests them one by one."
 }

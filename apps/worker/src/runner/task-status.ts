@@ -1,7 +1,7 @@
 import { and, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
 import { settleAppTest } from "../qa/app-test";
 import { settleHrReview } from "../hr/review";
-import { audit, db, moduleAppOfTask, takeQueuedModuleWork, tasks } from "@wfos/db";
+import { advanceAppTestSuite, apps, audit, db, moduleAppOfTask, takeQueuedModuleWork, tasks, type SuiteEnd } from "@wfos/db";
 import { assertTransition, TASK_STATUSES, canTransition, type RoutineRunStatus, type RunJob, type TaskStatus } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
@@ -45,12 +45,42 @@ export async function afterTerminal(task: Task, status: TerminalStatus, opts: { 
   await bestEffort("incidents resolve", task.id, () => resolveIncidentsOnTerminal(task, status));
   // C3: an app test whose task ended without a report is an error (never left running)
   await bestEffort("app test settle", task.id, () => settleAppTest(task.id, status));
+  // a package of a full app test: the next package starts; the suite notifies once, at its end
+  let inSuite = false;
+  await bestEffort("app test suite", task.id, async () => {
+    inSuite = await advanceTestSuite(task.id);
+  });
   await bestEffort("hr review settle", task.id, () => settleHrReview(task.id));
   // C8: one module build or change runs per app; the end of one starts the next that waits
   await bestEffort("module queue", task.id, () => startWaitingModuleWork(task.id));
   await bestEffort("publish", task.id, () => publish(task.workspaceId, { type: "task.updated", taskId: task.id, status, employeeId: task.assigneeId, title: task.title }));
-  if (status === "DONE") await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
+  if (status === "DONE" && !inSuite) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
   if (status === "FAILED" && opts.notifyFailure) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.error ?? ""));
+}
+
+/** After a task ended: the next package of its full app test starts, or the suite ends with one summary. True: in a suite. */
+export async function advanceTestSuite(taskId: string): Promise<boolean> {
+  const r = await advanceAppTestSuite(db, taskId, async (appId) => (await db.select({ id: apps.id, name: apps.name, clientId: apps.clientId, projectId: apps.projectId }).from(apps).where(eq(apps.id, appId)))[0] ?? null);
+  if (r.task) {
+    await publish(r.task.workspaceId, { type: "task.created", taskId: r.task.id, title: r.task.title, employeeId: r.task.assigneeId });
+    await enqueueTask(r.task.id, r.task.workspaceId);
+  }
+  if (r.ended) await notifySuiteEnded(r.ended);
+  return r.inSuite;
+}
+
+async function notifySuiteEnded(e: SuiteEnd): Promise<void> {
+  const locale = await workspaceLocale(e.workspaceId);
+  const total = e.findings.high + e.findings.medium + e.findings.low;
+  await miscQueue.add("notify", {
+    kind: "notify",
+    notificationKind: "task_done",
+    employeeId: null,
+    workspaceId: e.workspaceId,
+    subject: msg(locale, "notify.testSuiteEnded", { app: e.appName, findings: total }),
+    text: msg(locale, "notify.testSuiteEndedText", { packages: e.packages, high: e.findings.high, medium: e.findings.medium, low: e.findings.low, failed: e.failed }),
+    link: `/apps/${e.appId}?tab=tests`,
+  });
 }
 
 /** After a task linked to an app module ended: start the oldest waiting build or change of that app, if any. */

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { appEnvironments, apps, appTests, appTestUsers, db, servers, steps, tasks } from "@wfos/db";
+import { appDocuments, appEnvironments, appModules, apps, appTests, appTestSuites, appTestUsers, db, servers, startAppTestSuite, steps, tasks } from "@wfos/db";
 import { APP_PORT_MIN } from "@wfos/shared";
 import { encryptSecret } from "@wfos/shared/server";
 import { totp } from "@wfos/shared/totp";
@@ -10,7 +10,7 @@ import { setQueryImpl, type QueryFn } from "../src/runner/sdk";
 import { mockRunner, type MockStep } from "../src/runner/mock-sdk";
 import { allowedRequest, browserAddress, setBrowserDriver, type ActStep, type DriverFactory, type TestAccount, type TestTarget } from "../src/qa/browser";
 import { makeEmployee, makeTask, makeWorkspace } from "./fixtures";
-import { resetTransport } from "./transport";
+import { resetTransport, transport } from "./transport";
 
 const TOTP = "JBSWY3DPEHPK3PXP";
 
@@ -173,5 +173,41 @@ describe("app test run (C3)", () => {
     // even an explicit grant gives nothing: the tool only exists in an app test's run
     expect(mock.calls[0]!.output ?? "").not.toMatch(/Page:/);
     expect(seen.targets).toHaveLength(0);
+  });
+});
+
+describe("full app test (suite)", () => {
+  it("each package tests only its module with the module's PRD; its end starts the next; one summary at the end", async () => {
+    const { ws, emp, app, env } = await appTestTask();
+    const [vendor] = await db.insert(appModules).values({ workspaceId: ws.id, appId: app.id, slug: "vendor", name: "Vendor", summary: "supplier master", position: 0 }).returning();
+    await db.insert(appModules).values({ workspaceId: ws.id, appId: app.id, slug: "pengadaan", name: "Pengadaan", position: 1 });
+    await db.insert(appDocuments).values({ workspaceId: ws.id, appId: app.id, moduleId: vendor!.id, kind: "prd", version: 1, title: "PRD Vendor", content: "Vendors need an NPWP of 15 digits.", status: "approved" });
+    const started = await db.transaction((tx) =>
+      startAppTestSuite(tx, { workspaceId: ws.id, app: { id: app.id, name: app.name, clientId: null, projectId: null }, environmentId: env.id, commit: null, employeeId: emp.id, focus: "", roles: [], createdBy: null }),
+    );
+    expect(started.packages).toBe(2);
+
+    // package 1: the prompt names the module and carries its PRD; its end starts package 2 without a "task finished" notice
+    const first = mockRunner([tool("report_app_test", { passed: false, summary: "NPWP accepts letters.", findings: [{ title: "UX: NPWP accepts letters", severity: "medium", steps: "type abc", actual: "saved" }] }), { result: "Reported." }]);
+    setQueryImpl(first.query as QueryFn);
+    await runTask(started.task.id);
+    expect(first.lastPrompt).toContain("package 1 of a full test");
+    expect(first.lastPrompt).toContain("### Vendor — supplier master");
+    expect(first.lastPrompt).toContain("<prd>\nVendors need an NPWP of 15 digits.\n</prd>");
+    expect(first.lastPrompt).not.toContain("Pengadaan");
+    const pk = await db.select().from(appTests).where(eq(appTests.suiteId, started.suiteId));
+    const second = pk.find((x) => x.position === 1)!;
+    expect(second.status).toBe("running");
+    expect(second.taskId).toBeTruthy();
+    const notices = () => transport.queued.filter((j) => j.name === "notify").map((j) => (j.data as { subject: string }).subject);
+    expect(notices()).toEqual([]);
+
+    // package 2 (no PRD): the last one ends the suite with one summary
+    const last = mockRunner([tool("report_app_test", { passed: true, summary: "Pengadaan works end to end.", findings: [] }), { result: "Reported." }]);
+    setQueryImpl(last.query as QueryFn);
+    await runTask(second.taskId!);
+    expect(last.lastPrompt).toContain("(no approved PRD: test what the pages offer)");
+    expect((await db.select().from(appTestSuites).where(eq(appTestSuites.id, started.suiteId)))[0]!.status).toBe("done");
+    expect(notices()).toEqual(["Full test finished: Procurement, findings: 1"]);
   });
 });

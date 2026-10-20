@@ -295,6 +295,13 @@
       "when": 1792824000000,
       "tag": "0041_default_daily_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1792910400000,
+      "tag": "0042_app_test_suites",
+      "breakpoints": true
     }
   ]
 }

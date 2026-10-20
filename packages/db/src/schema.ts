@@ -1320,8 +1320,14 @@ export const appTests = pgTable(
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     /** the preview's commit when the test started */
     commit: text("commit"),
-    status: text("status").$type<"running" | "passed" | "findings" | "error">().notNull().default("running"),
+    /** queued / cancelled: a package of a full test (suiteId) not started yet, or dropped when the suite stopped */
+    status: text("status").$type<AppTestStatus>().notNull().default("running"),
     focus: text("focus").notNull().default(""),
+    /** a package of a full test (one module or a few): its suite, place and title */
+    suiteId: uuid("suite_id").references((): AnyPgColumn => appTestSuites.id, { onDelete: "cascade" }),
+    position: integer("position").notNull().default(0),
+    title: text("title").notNull().default(""),
+    moduleIds: jsonb("module_ids").$type<string[]>().notNull().default([]),
     roles: jsonb("roles").$type<string[]>().notNull().default([]),
     summary: text("summary"),
     findings: jsonb("findings").$type<AppTestFinding[]>().notNull().default([]),
@@ -1331,7 +1337,37 @@ export const appTests = pgTable(
     createdAt: createdAt(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("app_tests_app").on(t.appId, t.createdAt), uniqueIndex("app_tests_task").on(t.taskId), index("app_tests_ws_status").on(t.workspaceId, t.status)],
+  (t) => [
+    index("app_tests_app").on(t.appId, t.createdAt),
+    uniqueIndex("app_tests_task").on(t.taskId),
+    index("app_tests_ws_status").on(t.workspaceId, t.status),
+    index("app_tests_suite").on(t.suiteId, t.position),
+  ],
+);
+
+export const APP_TEST_STATUSES = ["queued", "running", "passed", "findings", "error", "cancelled"] as const;
+export type AppTestStatus = (typeof APP_TEST_STATUSES)[number];
+
+/**
+ * A full test of an app (after AIRIS eda913b): its modules split into packages, each tested in its own session of the
+ * same tester, one after the other (the end of one starts the next). One summary when the last ends.
+ */
+export const appTestSuites = pgTable(
+  "app_test_suites",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    appId: uuid("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+    environmentId: uuid("environment_id").notNull().references(() => appEnvironments.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").references(() => employees.id, { onDelete: "set null" }),
+    status: text("status").$type<"running" | "done" | "stopped">().notNull().default("running"),
+    focus: text("focus").notNull().default(""),
+    roles: jsonb("roles").$type<string[]>().notNull().default([]),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("app_test_suites_app").on(t.appId, t.createdAt)],
 );
 
 /** C9: the kinds of an app's documents */

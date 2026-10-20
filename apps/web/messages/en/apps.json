@@ -573,7 +573,9 @@
       "running": "Testing…",
       "passed": "Passed",
       "findings": "{count, plural, one {# finding} other {# findings}}",
-      "error": "Ended without a result"
+      "error": "Ended without a result",
+      "queued": "Waiting its turn",
+      "cancelled": "Not tested"
     },
     "openTask": "Open the task",
     "focusWas": "Focus: {focus}",
@@ -593,7 +595,30 @@
     "fixTitle": "Fix: {title}",
     "fixFrom": "Found by the app test of {app} (commit {commit}).",
     "markHandled": "Mark as handled",
-    "handledAt": "Handled {when}"
+    "handledAt": "Handled {when}",
+    "suite": {
+      "start": "Full test",
+      "startTitle": "Full test of {app}",
+      "help": "Every active module is tested in its own session, one after the other, by the same tester (at most 12 sessions; with more modules, neighbours share one). One summary arrives when the last ends.",
+      "costNote": "Each package is a task of the tester and uses its budget: a full test costs about as much as one test per module.",
+      "started": "{count, plural, one {Full test started: # package} other {Full test started: # packages}}",
+      "stopped": "Full test stopped: the packages still waiting will not run.",
+      "title": "Full test",
+      "status": {
+        "running": "Full test running",
+        "done": "Full test finished",
+        "stopped": "Full test stopped"
+      },
+      "progress": "{done} of {count} packages",
+      "findings": "{count, plural, =0 {no findings} one {# finding} other {# findings}}",
+      "package": "Package {n}/{count}: {title}",
+      "stop": "Stop",
+      "stopConfirm": "Stop this full test? Packages still waiting will not run; the one being tested finishes.",
+      "makeFixTask": "One fix task for all findings",
+      "fixTitle": "Fix findings of the full test of {app} ({count})",
+      "fixFrom": "Findings of the full test of {app} (commit {commit}), most severe first:",
+      "fixMore": "{count} more findings are on the app's Tests tab."
+    }
   },
   "docs": {
     "title": "Documents",

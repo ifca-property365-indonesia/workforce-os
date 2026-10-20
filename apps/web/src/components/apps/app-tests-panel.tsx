@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { CheckCircle2, FlaskConical, Play, TriangleAlert } from "lucide-react";
+import { CheckCircle2, CircleDashed, CircleSlash, FlaskConical, Layers, Play, Square, TriangleAlert } from "lucide-react";
 import Link, { useSearchParams } from "@/lib/nav";
 import type { AppDTO } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
@@ -29,10 +29,13 @@ interface Finding {
 }
 interface AppTest {
   id: string;
-  status: "running" | "passed" | "findings" | "error";
+  status: "queued" | "running" | "passed" | "findings" | "error" | "cancelled";
   commit: string | null;
   focus: string;
   roles: string[];
+  /** a package of a full test: its modules and place */
+  title: string;
+  position: number;
   summary: string | null;
   findings: Finding[];
   handledAt: string | null;
@@ -40,6 +43,19 @@ interface AppTest {
   finishedAt: string | null;
   task: { id: string; status: string | null; tester: string | null } | null;
 }
+interface Suite {
+  id: string;
+  status: "running" | "done" | "stopped";
+  focus: string;
+  tester: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  packages: AppTest[];
+}
+type TestsResponse = { tests: AppTest[]; suites: Suite[] };
+/** findings sent in one combined fix task (high first) */
+const COMBINED_MAX = 20;
+const SEVERITY_RANK: Record<Finding["severity"], number> = { high: 0, medium: 1, low: 2 };
 
 /** testers first: roles that test (QA, tester, penguji) */
 const TESTER_RE = /\b(qa|quality|test|tester|penguji|uji)\b/i;
@@ -63,18 +79,19 @@ export const appTestsQueryKey = (appId: string) => ["app", appId, "tests"];
 export const useAppTests = (appId: string, enabled = true) =>
   useQuery({
     queryKey: appTestsQueryKey(appId),
-    queryFn: () => api.get<{ tests: AppTest[] }>(`/api/apps/${appId}/tests`),
-    refetchInterval: (q) => (q.state.data?.tests.some((x) => x.status === "running") ? 10_000 : false),
+    queryFn: () => api.get<TestsResponse>(`/api/apps/${appId}/tests`),
+    refetchInterval: (q) => (q.state.data?.tests.some((x) => x.status === "running") || q.state.data?.suites.some((x) => x.status === "running") ? 10_000 : false),
     enabled,
   });
-/** tests whose findings nobody handled yet */
-export const openFindingTests = (tests: Pick<AppTest, "status" | "handledAt">[] | undefined) => (tests ?? []).filter((x) => x.status === "findings" && !x.handledAt).length;
+/** tests (single or a full test's packages) whose findings nobody handled yet */
+export const openFindingTests = (data: TestsResponse | undefined) =>
+  [...(data?.tests ?? []), ...(data?.suites ?? []).flatMap((s) => s.packages)].filter((x) => x.status === "findings" && !x.handledAt).length;
 
 /**
  * C3: browser tests of the preview. A person starts one (a task for a tester employee who drives the preview's
  * browser), the result lists findings with steps and screenshots; a finding becomes a fix task with one click.
  */
-export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id" | "name" | "clientId" | "projectId">; running: boolean; canRun: boolean }) {
+export function AppTestsPanel({ app, running, canRun, canRunSuite }: { app: Pick<AppDTO, "id" | "name" | "clientId" | "projectId">; running: boolean; canRun: boolean; canRunSuite: boolean }) {
   const t = useTranslations("apps.tests");
   const f = useFormat();
   const qc = useQueryClient();
@@ -83,7 +100,7 @@ export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id"
   const { data } = useAppTests(app.id);
   const { data: accounts } = useQuery({ queryKey: ["app", app.id, "test-users"], queryFn: () => api.get<{ users: { role: string; label: string }[] }>(`/api/apps/${app.id}/test-users`) });
   const { data: employees } = useEmployees();
-  const [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState<"single" | "suite" | null>(null);
   const [form, setForm] = useState({ employeeId: "", focus: "", roles: [] as string[] });
   const [fix, setFix] = useState<{ prefill: NewTaskPrefill; n: number } | null>(null);
   const testers = useMemo(() => [...(employees ?? [])].filter((e) => e.status !== "ARCHIVED").sort((a, b) => Number(TESTER_RE.test(b.role)) - Number(TESTER_RE.test(a.role)) || a.name.localeCompare(b.name)), [employees]);
@@ -93,11 +110,20 @@ export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id"
   }, [focusTest, data]);
 
   const start = useMutation({
-    mutationFn: () => api.post<{ testId: string; taskId: string }>(`/api/apps/${app.id}/tests`, { employeeId: form.employeeId || testers[0]?.id, focus: form.focus, roles: form.roles }),
-    onSuccess: () => {
-      toast.success(t("started"));
-      setStarting(false);
+    mutationFn: (mode: "single" | "suite") =>
+      api.post<{ taskId: string; packages?: number }>(`/api/apps/${app.id}/tests${mode === "suite" ? "/suite" : ""}`, { employeeId: form.employeeId || testers[0]?.id, focus: form.focus, roles: form.roles }),
+    onSuccess: (r) => {
+      toast.success(r.packages ? t("suite.started", { count: r.packages }) : t("started"));
+      setStarting(null);
       setForm({ employeeId: "", focus: "", roles: [] });
+      void qc.invalidateQueries({ queryKey: key });
+    },
+    onError: (e) => toast.error((e as Error).message),
+  });
+  const stop = useMutation({
+    mutationFn: (suiteId: string) => api.post(`/api/apps/${app.id}/tests/suite/${suiteId}`, { action: "stop" }),
+    onSuccess: () => {
+      toast.success(t("suite.stopped"));
       void qc.invalidateQueries({ queryKey: key });
     },
     onError: (e) => toast.error((e as Error).message),
@@ -131,89 +157,111 @@ export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id"
       },
     }));
 
+  /** one fix task for a full test's findings: the most severe first, at most COMBINED_MAX */
+  const combinedFixTask = (s: Suite) => {
+    const all = s.packages
+      .flatMap((p) => p.findings.map((x) => ({ p, x })))
+      .sort((a, b) => SEVERITY_RANK[a.x.severity] - SEVERITY_RANK[b.x.severity]);
+    const picked = all.slice(0, COMBINED_MAX);
+    setFix((cur) => ({
+      n: (cur?.n ?? 0) + 1,
+      prefill: {
+        title: t("suite.fixTitle", { app: app.name, count: picked.length }).slice(0, 200),
+        brief: [
+          t("suite.fixFrom", { app: app.name, commit: s.packages[0]?.commit?.slice(0, 8) ?? "?" }),
+          ...picked.map(({ p, x }, i) =>
+            [
+              `${i + 1}. [${t(`severity.${x.severity}`)}] ${x.title} — ${p.title}`,
+              [x.role, x.path].filter(Boolean).join(" · "),
+              `${t("finding.steps")}: ${x.steps}`,
+              x.expected ? `${t("finding.expected")}: ${x.expected}` : "",
+              `${t("finding.actual")}: ${x.actual}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          ),
+          all.length > picked.length ? t("suite.fixMore", { count: all.length - picked.length }) : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        ...(app.clientId ? { clientId: app.clientId } : {}),
+        ...(app.projectId ? { projectId: app.projectId } : {}),
+      },
+    }));
+  };
+
   const tests = data?.tests ?? [];
+  const suites = data?.suites ?? [];
+  const busy = tests.some((x) => x.status === "running") || suites.some((x) => x.status === "running");
+  const item = (x: AppTest, pkg?: { count: number }) => (
+    <TestItem
+      key={x.id}
+      x={x}
+      pkg={pkg}
+      app={app}
+      focused={focusTest === x.id}
+      canRun={canRun}
+      handling={handled.isPending}
+      onHandled={() => handled.mutate(x.id)}
+      onFix={(fd) => fixTask(x, fd)}
+    />
+  );
   return (
     <section className="space-y-3" aria-labelledby="app-tests-title">
       <div className="flex flex-wrap items-center gap-2">
         <h2 id="app-tests-title" className="font-display flex-1 text-[1.7rem] leading-none">
           {t("title")}
         </h2>
+        {canRunSuite && (
+          <Button size="sm" variant="outline" className="gap-1.5" disabled={!running || busy} title={running ? undefined : t("needsPreview")} onClick={() => setStarting("suite")}>
+            <Layers className="size-3.5" aria-hidden /> {t("suite.start")}
+          </Button>
+        )}
         {canRun && (
-          <Button size="sm" className="gap-1.5" disabled={!running} title={running ? undefined : t("needsPreview")} onClick={() => setStarting(true)}>
+          <Button size="sm" className="gap-1.5" disabled={!running || busy} title={running ? undefined : t("needsPreview")} onClick={() => setStarting("single")}>
             <Play className="size-3.5" aria-hidden /> {t("start")}
           </Button>
         )}
       </div>
       <p className="text-sm text-muted-foreground">{t("description")}</p>
-      {!tests.length && <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">{t("empty")}</p>}
-      <ul className="space-y-3">
-        {tests.map((x) => (
-          <li key={x.id} id={`test-${x.id}`} className={cn("space-y-2 rounded-xl border bg-card p-4", focusTest === x.id && "ring-2 ring-ring")}>
+      {!tests.length && !suites.length && <p className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">{t("empty")}</p>}
+      {suites.map((s) => {
+        const ended = s.packages.filter((p) => p.status !== "queued" && p.status !== "running").length;
+        const findings = s.packages.reduce((n, p) => n + p.findings.length, 0);
+        return (
+          <section key={s.id} className="space-y-3 rounded-xl border bg-card/60 p-4" aria-label={t("suite.title")}>
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              {x.status === "passed" ? (
-                <CheckCircle2 className="size-4 text-success" aria-hidden />
-              ) : x.status === "running" ? (
-                <FlaskConical className="size-4 animate-pulse text-muted-foreground" aria-hidden />
-              ) : (
-                <TriangleAlert className="size-4 text-destructive" aria-hidden />
-              )}
-              <span className="font-semibold">{t(`status.${x.status}`, { count: x.findings.length })}</span>
+              <Layers className={cn("size-4", s.status === "running" ? "animate-pulse text-muted-foreground" : "text-foreground")} aria-hidden />
+              <span className="font-semibold">{t(`suite.status.${s.status}`)}</span>
               <span className="text-xs text-muted-foreground">
-                {[x.task?.tester, x.commit?.slice(0, 8), f.ago(x.finishedAt ?? x.createdAt)].filter(Boolean).join(" · ")}
+                {[t("suite.progress", { done: ended, count: s.packages.length }), t("suite.findings", { count: findings }), s.tester, f.ago(s.finishedAt ?? s.createdAt)].filter(Boolean).join(" · ")}
               </span>
-              {x.task && (
-                <Link href={`/tasks/${x.task.id}`} className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-                  {t("openTask")}
-                </Link>
-              )}
+              <span className="ml-auto flex gap-2">
+                {s.status === "running" && canRunSuite && (
+                  <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs" disabled={stop.isPending} onClick={() => confirm(t("suite.stopConfirm")) && stop.mutate(s.id)}>
+                    <Square className="size-3" aria-hidden /> {t("suite.stop")}
+                  </Button>
+                )}
+                {findings > 0 && canRun && (
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => combinedFixTask(s)}>
+                    {t("suite.makeFixTask")}
+                  </Button>
+                )}
+              </span>
             </div>
-            {x.focus && <p className="text-xs text-muted-foreground">{t("focusWas", { focus: x.focus })}</p>}
-            {x.summary && <p className="whitespace-pre-wrap text-sm">{withShots(x.summary, app.id, x.id)}</p>}
-            {!!x.findings.length && (
-              <ol className="space-y-2">
-                {x.findings.map((fd) => (
-                  <li key={fd.id} className="rounded-lg border p-3 text-sm">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={cn("rounded px-1.5 text-[11px] font-bold uppercase", SEVERITY_TONE[fd.severity])}>{t(`severity.${fd.severity}`)}</span>
-                      <span className="font-semibold">{fd.title}</span>
-                      <span className="text-xs text-muted-foreground">{[fd.role, fd.path].filter(Boolean).join(" · ")}</span>
-                    </div>
-                    <dl className="mt-1.5 grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-3">
-                      <dt className="text-muted-foreground">{t("finding.steps")}</dt>
-                      <dd className="whitespace-pre-wrap">{withShots(fd.steps, app.id, x.id)}</dd>
-                      {fd.expected && (
-                        <>
-                          <dt className="text-muted-foreground">{t("finding.expected")}</dt>
-                          <dd>{withShots(fd.expected, app.id, x.id)}</dd>
-                        </>
-                      )}
-                      <dt className="text-muted-foreground">{t("finding.actual")}</dt>
-                      <dd>{withShots(fd.actual, app.id, x.id)}</dd>
-                    </dl>
-                    {canRun && (
-                      <Button size="sm" variant="outline" className="mt-2 h-7 px-2 text-xs" onClick={() => fixTask(x, fd)}>
-                        {t("makeFixTask")}
-                      </Button>
-                    )}
-                  </li>
-                ))}
-              </ol>
-            )}
-            {x.status === "findings" && !x.handledAt && canRun && (
-              <Button size="sm" variant="ghost" disabled={handled.isPending} onClick={() => handled.mutate(x.id)}>
-                {t("markHandled")}
-              </Button>
-            )}
-            {x.handledAt && <p className="text-xs text-muted-foreground">{t("handledAt", { when: f.ago(x.handledAt) })}</p>}
-          </li>
-        ))}
-      </ul>
+            {s.focus && <p className="text-xs text-muted-foreground">{t("focusWas", { focus: s.focus })}</p>}
+            <ul className="space-y-3">{s.packages.map((p) => item(p, { count: s.packages.length }))}</ul>
+          </section>
+        );
+      })}
+      <ul className="space-y-3">{tests.map((x) => item(x))}</ul>
 
-      <Dialog open={starting} onOpenChange={setStarting}>
+      <Dialog open={!!starting} onOpenChange={(o) => !o && setStarting(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("startTitle", { app: app.name })}</DialogTitle>
+            <DialogTitle>{t(starting === "suite" ? "suite.startTitle" : "startTitle", { app: app.name })}</DialogTitle>
           </DialogHeader>
+          {starting === "suite" && <p className="text-sm text-muted-foreground">{t("suite.help")}</p>}
           <div className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="test-tester">{t("tester")}</Label>
@@ -246,10 +294,10 @@ export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id"
               </div>
               <p className="text-xs text-muted-foreground">{t("rolesHint")}</p>
             </fieldset>
-            <p className="text-xs text-muted-foreground">{t("costNote")}</p>
+            <p className="text-xs text-muted-foreground">{t(starting === "suite" ? "suite.costNote" : "costNote")}</p>
           </div>
           <DialogFooter>
-            <Button disabled={start.isPending || !testers.length} onClick={() => start.mutate()}>
+            <Button disabled={start.isPending || !testers.length} onClick={() => starting && start.mutate(starting)}>
               {t("startNow")}
             </Button>
           </DialogFooter>
@@ -257,5 +305,94 @@ export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id"
       </Dialog>
       {fix && <NewTaskDialog key={fix.n} open onOpenChange={(o) => !o && setFix(null)} initial={fix.prefill} />}
     </section>
+  );
+}
+
+/** one test: its result, its findings (each can become a fix task) and "handled" */
+function TestItem({
+  x,
+  pkg,
+  app,
+  focused,
+  canRun,
+  handling,
+  onHandled,
+  onFix,
+}: {
+  x: AppTest;
+  pkg?: { count: number };
+  app: Pick<AppDTO, "id">;
+  focused: boolean;
+  canRun: boolean;
+  handling: boolean;
+  onHandled: () => void;
+  onFix: (fd: Finding) => void;
+}) {
+  const t = useTranslations("apps.tests");
+  const f = useFormat();
+  return (
+    <li id={`test-${x.id}`} className={cn("space-y-2 rounded-xl border bg-card p-4", focused && "ring-2 ring-ring", (x.status === "queued" || x.status === "cancelled") && "opacity-70")}>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {x.status === "passed" ? (
+          <CheckCircle2 className="size-4 text-success" aria-hidden />
+        ) : x.status === "running" ? (
+          <FlaskConical className="size-4 animate-pulse text-muted-foreground" aria-hidden />
+        ) : x.status === "queued" ? (
+          <CircleDashed className="size-4 text-muted-foreground" aria-hidden />
+        ) : x.status === "cancelled" ? (
+          <CircleSlash className="size-4 text-muted-foreground" aria-hidden />
+        ) : (
+          <TriangleAlert className="size-4 text-destructive" aria-hidden />
+        )}
+        {pkg && <span className="font-medium">{t("suite.package", { n: x.position + 1, count: pkg.count, title: x.title })}</span>}
+        <span className="font-semibold">{t(`status.${x.status}`, { count: x.findings.length })}</span>
+        <span className="text-xs text-muted-foreground">
+          {[x.task?.tester, x.commit?.slice(0, 8), f.ago(x.finishedAt ?? x.createdAt)].filter(Boolean).join(" · ")}
+        </span>
+        {x.task && (
+          <Link href={`/tasks/${x.task.id}`} className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+            {t("openTask")}
+          </Link>
+        )}
+      </div>
+      {x.focus && !pkg && <p className="text-xs text-muted-foreground">{t("focusWas", { focus: x.focus })}</p>}
+      {x.summary && <p className="whitespace-pre-wrap text-sm">{withShots(x.summary, app.id, x.id)}</p>}
+      {!!x.findings.length && (
+        <ol className="space-y-2">
+          {x.findings.map((fd) => (
+            <li key={fd.id} className="rounded-lg border p-3 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={cn("rounded px-1.5 text-[11px] font-bold uppercase", SEVERITY_TONE[fd.severity])}>{t(`severity.${fd.severity}`)}</span>
+                <span className="font-semibold">{fd.title}</span>
+                <span className="text-xs text-muted-foreground">{[fd.role, fd.path].filter(Boolean).join(" · ")}</span>
+              </div>
+              <dl className="mt-1.5 grid gap-1 text-xs sm:grid-cols-[auto_1fr] sm:gap-x-3">
+                <dt className="text-muted-foreground">{t("finding.steps")}</dt>
+                <dd className="whitespace-pre-wrap">{withShots(fd.steps, app.id, x.id)}</dd>
+                {fd.expected && (
+                  <>
+                    <dt className="text-muted-foreground">{t("finding.expected")}</dt>
+                    <dd>{withShots(fd.expected, app.id, x.id)}</dd>
+                  </>
+                )}
+                <dt className="text-muted-foreground">{t("finding.actual")}</dt>
+                <dd>{withShots(fd.actual, app.id, x.id)}</dd>
+              </dl>
+              {canRun && (
+                <Button size="sm" variant="outline" className="mt-2 h-7 px-2 text-xs" onClick={() => onFix(fd)}>
+                  {t("makeFixTask")}
+                </Button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {x.status === "findings" && !x.handledAt && canRun && (
+        <Button size="sm" variant="ghost" disabled={handling} onClick={onHandled}>
+          {t("markHandled")}
+        </Button>
+      )}
+      {x.handledAt && <p className="text-xs text-muted-foreground">{t("handledAt", { when: f.ago(x.handledAt) })}</p>}
+    </li>
   );
 }

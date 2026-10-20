@@ -241,5 +241,7 @@
   "skill_update_changed": "Skill berubah sejak kamu membacanya. Buka pembaruannya lagi.",
   "skill_no_license": "Versi skill ini tidak punya lisensi, jadi tidak bisa dipakai.",
   "skill_audit_no_hr": "Pilih karyawan aktif untuk menjalankan audit skill (misalnya kepala HR).",
-  "skill_audit_running": "Audit skill masih berjalan. Tunggu sampai selesai dulu."
+  "skill_audit_running": "Audit skill masih berjalan. Tunggu sampai selesai dulu.",
+  "app_test_suite_not_found": "Uji menyeluruh ini tidak (lagi) berjalan.",
+  "app_has_no_modules": "Tambahkan modul aplikasi dulu: uji menyeluruh menguji modul satu per satu."
 }

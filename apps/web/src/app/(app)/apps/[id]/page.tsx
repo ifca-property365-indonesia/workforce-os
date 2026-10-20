@@ -171,7 +171,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
       )
     );
 
-  const findings = openFindingTests(tests?.tests);
+  const findings = openFindingTests(tests);
   const drafts = draftDocuments(docs);
   const dnsPending = !!live && live.dnsCheck?.status !== "ok";
   const badges: Partial<Record<Tab, number>> = { tests: findings, docs: drafts, settings: dnsPending ? 1 : 0, releases: previewBusy || liveBusy ? 1 : 0 };
@@ -320,7 +320,7 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
           <>
             <TabsContent value="tests" className="mt-4 space-y-4">
               {/* C3: browser tests of the preview (members start one; findings become fix tasks) */}
-              <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} />
+              <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} canRunSuite={admin} />
               {/* C10: the preview's test accounts per role (members see them; showing a password is an Admin's, audited) */}
               <TestUsersCard key={`test-users-${preview.id}`} app={app} admin={admin} />
             </TabsContent>

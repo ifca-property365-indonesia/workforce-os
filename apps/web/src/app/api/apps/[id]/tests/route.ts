@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { appReleases, appTests, audit, db, employees, tasks } from "@wfos/db";
+import { appReleases, appTests, appTestSuites, audit, db, employees, tasks } from "@wfos/db";
 import { HttpError } from "@/lib/server/auth";
 import { loadApp, loadEnv } from "@/lib/server/apps";
 import { effectiveTestStatus } from "@/lib/server/app-tests";
@@ -8,31 +8,57 @@ import { publish, q } from "@/lib/server/queue";
 import { body, route } from "@/lib/server/route";
 import { createTaskOr400 } from "@/lib/server/tasks";
 
-/** C3: the app's browser tests (preview), newest first, with their findings. */
-export const GET = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {
-  const app = await loadApp(session.workspaceId, params.id);
-  const limit = Math.min(20, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 10));
-  const rows = await db
+/** a test row with its task's status and tester, as the panel shows it */
+const testRows = (where: ReturnType<typeof and>) =>
+  db
     .select({ t: appTests, taskStatus: tasks.status, tester: employees.name })
     .from(appTests)
     .leftJoin(tasks, eq(tasks.id, appTests.taskId))
     .leftJoin(employees, eq(employees.id, tasks.assigneeId))
-    .where(and(eq(appTests.appId, app.id), eq(appTests.workspaceId, session.workspaceId)))
+    .where(where);
+const testDTO = (r: Awaited<ReturnType<typeof testRows>>[number]) => ({
+  id: r.t.id,
+  status: effectiveTestStatus(r.t.status, r.taskStatus),
+  commit: r.t.commit,
+  focus: r.t.focus,
+  roles: r.t.roles,
+  title: r.t.title,
+  position: r.t.position,
+  summary: r.t.summary,
+  findings: r.t.findings,
+  handledAt: r.t.handledAt,
+  createdAt: r.t.createdAt,
+  finishedAt: r.t.finishedAt,
+  task: r.t.taskId ? { id: r.t.taskId, status: r.taskStatus, tester: r.tester } : null,
+});
+
+/** C3: the app's browser tests (preview), newest first, with their findings; and its latest full tests with their packages. */
+export const GET = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {
+  const app = await loadApp(session.workspaceId, params.id);
+  const limit = Math.min(20, Math.max(1, Number(req.nextUrl.searchParams.get("limit")) || 10));
+  const single = await testRows(and(eq(appTests.appId, app.id), eq(appTests.workspaceId, session.workspaceId), isNull(appTests.suiteId)))
     .orderBy(desc(appTests.createdAt))
     .limit(limit);
+  const suites = await db
+    .select({ s: appTestSuites, tester: employees.name })
+    .from(appTestSuites)
+    .leftJoin(employees, eq(employees.id, appTestSuites.employeeId))
+    .where(and(eq(appTestSuites.appId, app.id), eq(appTestSuites.workspaceId, session.workspaceId)))
+    .orderBy(desc(appTestSuites.createdAt))
+    .limit(3);
+  const packages = suites.length
+    ? await testRows(inArray(appTests.suiteId, suites.map((x) => x.s.id))).orderBy(asc(appTests.position))
+    : [];
   return {
-    tests: rows.map((r) => ({
-      id: r.t.id,
-      status: effectiveTestStatus(r.t.status, r.taskStatus),
-      commit: r.t.commit,
-      focus: r.t.focus,
-      roles: r.t.roles,
-      summary: r.t.summary,
-      findings: r.t.findings,
-      handledAt: r.t.handledAt,
-      createdAt: r.t.createdAt,
-      finishedAt: r.t.finishedAt,
-      task: r.t.taskId ? { id: r.t.taskId, status: r.taskStatus, tester: r.tester } : null,
+    tests: single.map(testDTO),
+    suites: suites.map((x) => ({
+      id: x.s.id,
+      status: x.s.status,
+      focus: x.s.focus,
+      tester: x.tester,
+      createdAt: x.s.createdAt,
+      finishedAt: x.s.finishedAt,
+      packages: packages.filter((p) => p.t.suiteId === x.s.id).map(testDTO),
     })),
   };
 });
@@ -60,7 +86,8 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
     .from(appTests)
     .innerJoin(tasks, eq(tasks.id, appTests.taskId))
     .where(and(eq(appTests.environmentId, env.id), eq(appTests.status, "running"), inArray(tasks.status, ["QUEUED", "RUNNING", "AWAITING_APPROVAL"])));
-  if (busy) throw new HttpError(409, "A test of this preview is already running", { code: "app_test_running" });
+  const [suite] = await db.select({ id: appTestSuites.id }).from(appTestSuites).where(and(eq(appTestSuites.environmentId, env.id), eq(appTestSuites.status, "running")));
+  if (busy || suite) throw new HttpError(409, "A test of this preview is already running", { code: "app_test_running" });
   const [rel] = await db.select({ commit: appReleases.commit }).from(appReleases).where(eq(appReleases.id, env.currentReleaseId));
   const task = await createTaskOr400(db, {
     workspaceId: session.workspaceId,

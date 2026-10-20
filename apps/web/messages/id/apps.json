@@ -573,7 +573,9 @@
       "running": "Sedang diuji…",
       "passed": "Lolos",
       "findings": "{count, plural, other {# temuan}}",
-      "error": "Selesai tanpa hasil"
+      "error": "Selesai tanpa hasil",
+      "queued": "Menunggu giliran",
+      "cancelled": "Tidak diuji"
     },
     "openTask": "Buka tugas",
     "focusWas": "Fokus: {focus}",
@@ -593,7 +595,30 @@
     "fixTitle": "Perbaiki: {title}",
     "fixFrom": "Ditemukan oleh uji aplikasi {app} (commit {commit}).",
     "markHandled": "Tandai sudah ditangani",
-    "handledAt": "Ditangani {when}"
+    "handledAt": "Ditangani {when}",
+    "suite": {
+      "start": "Uji menyeluruh",
+      "startTitle": "Uji menyeluruh {app}",
+      "help": "Setiap modul aktif diuji dalam sesinya sendiri, berurutan, oleh penguji yang sama (paling banyak 12 sesi; bila modulnya lebih banyak, modul yang berdekatan digabung). Satu ringkasan dikirim setelah sesi terakhir selesai.",
+      "costNote": "Setiap paket adalah tugas penguji dan memakai budgetnya: uji menyeluruh kira-kira sama dengan satu uji per modul.",
+      "started": "{count, plural, other {Uji menyeluruh dimulai: # paket}}",
+      "stopped": "Uji menyeluruh dihentikan: paket yang masih menunggu tidak dijalankan.",
+      "title": "Uji menyeluruh",
+      "status": {
+        "running": "Uji menyeluruh berjalan",
+        "done": "Uji menyeluruh selesai",
+        "stopped": "Uji menyeluruh dihentikan"
+      },
+      "progress": "{done} dari {count} paket",
+      "findings": "{count, plural, =0 {tanpa temuan} other {# temuan}}",
+      "package": "Paket {n}/{count}: {title}",
+      "stop": "Hentikan",
+      "stopConfirm": "Hentikan uji menyeluruh ini? Paket yang masih menunggu tidak dijalankan; paket yang sedang diuji tetap selesai.",
+      "makeFixTask": "Satu tugas perbaikan untuk semua temuan",
+      "fixTitle": "Perbaiki temuan uji menyeluruh {app} ({count})",
+      "fixFrom": "Temuan uji menyeluruh {app} (commit {commit}), yang paling berat dulu:",
+      "fixMore": "{count} temuan lain ada di tab Uji aplikasi."
+    }
   },
   "docs": {
     "title": "Dokumen",
