@@ -194,3 +194,17 @@ describe("applyRunSignals (injection taint, leak guard)", () => {
     expect(applyRunSignals({ kind: "run" }, { toolClass: "reversible", tainted: true }).kind).toBe("run");
   });
 });
+
+describe("work mode (P4)", () => {
+  it("an ask-only or plan-only task takes no irreversible action, even allow-listed or as a dry run; reversible tools still run", () => {
+    for (const workMode of ["ask", "plan"] as const) {
+      const d = decideGate(input({ workMode, employeeAutonomy: "CLOSE", allowList: [allow] }));
+      expect(d).toMatchObject({ kind: "deny", rule: "work_mode" });
+      expect(decideGate(input({ workMode, dryRun: true })).kind).toBe("deny");
+      expect(decideGate(input({ workMode, toolClass: "reversible" })).kind).toBe("run");
+    }
+    expect(decideGate(input({ workMode: "standard", employeeAutonomy: "CLOSE", allowList: [allow] })).kind).toBe("run");
+    // not granted still wins
+    expect(decideGate(input({ workMode: "plan", permissions: [] }))).toMatchObject({ kind: "deny", rule: "not_granted" });
+  });
+});

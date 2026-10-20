@@ -203,7 +203,8 @@
       "testFindings": "{count, plural, one {App test: # finding} other {App test: # findings}}",
       "testFindingsHigh": "App test: {count} findings, {high} high",
       "docReview": "{doc} v{version} to review",
-      "hrProposal": "HR: new instructions to decide"
+      "hrProposal": "HR: new instructions to decide",
+      "taskReview": "Result to review"
     },
     "incidentStatus": {
       "escalated": "asks you",
@@ -226,14 +227,16 @@
       "openTest": "See the findings",
       "handled": "Mark as handled",
       "reviewDoc": "Review",
-      "reviewHr": "Review"
+      "reviewHr": "Review",
+      "accept": "Accept result"
     },
     "done": {
       "start": "Task started",
       "cancel": "Task cancelled",
       "retry": "Task queued again",
       "resolved": "Closed",
-      "handled": "Marked as handled"
+      "handled": "Marked as handled",
+      "accept": "Result accepted"
     },
     "docKind": {
       "prd": "PRD",
@@ -242,6 +245,7 @@
       "deck": "Presentation"
     },
     "hrVerdicts": "Replay: {better} better, {same} same, {worse} worse",
-    "hrJudgeError": "The judge could not decide: a person decides."
+    "hrJudgeError": "The judge could not decide: a person decides.",
+    "taskReviewExplain": "Done, and waits for a person to accept the result. Open it to check; to change it, request changes on the task (or start a new one)."
   }
 }

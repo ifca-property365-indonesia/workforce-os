@@ -350,7 +350,14 @@ export const allowListEntrySchema = z.object({
 export type AllowListEntry = z.infer<typeof allowListEntrySchema>;
 
 /** Which rule produced a gate decision (shown in the Activity Inspector). */
-export type GateRule = "not_granted" | "reversible" | "dry_run" | "autonomy_draft" | "allow_list" | "autonomy" | "taint" | "leak";
+export type GateRule = "not_granted" | "reversible" | "dry_run" | "work_mode" | "autonomy_draft" | "allow_list" | "autonomy" | "taint" | "leak";
+
+/** P4 (after Paperclip): what a task may do. ask: answer only; plan: a plan only. Neither takes an irreversible action. */
+export const TASK_WORK_MODES = ["standard", "ask", "plan"] as const;
+export type TaskWorkMode = (typeof TASK_WORK_MODES)[number];
+/** P4: who accepts a finished task. auto: done is done; person: it waits in Needs a decision until a person accepts it */
+export const TASK_REVIEW_POLICIES = ["auto", "person"] as const;
+export type TaskReviewPolicy = (typeof TASK_REVIEW_POLICIES)[number];
 
 export type GateDecision =
   | { kind: "run"; rule?: GateRule }
@@ -436,6 +443,8 @@ export interface GateInput {
   permissions: ToolPermission[];
   allowList: AllowListEntry[];
   dryRun: boolean;
+  /** P4: an ask-only or plan-only task takes no irreversible action (default standard) */
+  workMode?: TaskWorkMode;
   /** recipients / client / amount extracted from the proposed payload, used for allow-list scope */
   scope?: {
     recipients?: string[];
@@ -521,6 +530,8 @@ export function decideGate(input: GateInput): GateDecision {
   if (input.toolClass === "reversible") return { kind: "run", rule: "reversible" };
 
   // Irreversible from here on.
+  if (input.workMode && input.workMode !== "standard")
+    return { kind: "deny", reason: `This task is ${input.workMode === "ask" ? "answer-only" : "plan-only"}: no actions. Describe what you would do instead.`, rule: "work_mode" };
   if (input.dryRun) return { kind: "simulate", reason: "Dry run: irreversible action replaced by a mock.", rule: "dry_run" };
   const level = effectiveAutonomy(input.toolName, input.employeeAutonomy, input.permissions);
   if (level === "DRAFT") return { kind: "draft", reason: "Autonomy DRAFT: saved as a draft, nothing was sent.", rule: "autonomy_draft" };
@@ -892,6 +903,10 @@ export const taskInputSchema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   /** P1: the goal it serves (omitted: inherited from the project) */
   goalId: z.string().uuid().nullable().optional(),
+  /** P4: standard, ask (answer only) or plan (a plan only) */
+  workMode: z.enum(TASK_WORK_MODES).default("standard"),
+  /** P4: person = a person accepts the result before it counts as done */
+  reviewPolicy: z.enum(TASK_REVIEW_POLICIES).default("auto"),
   dryRun: z.boolean().default(false),
   start: z.boolean().default(true),
   /** Workspace mode: repository to check out on branch agent/<task> */

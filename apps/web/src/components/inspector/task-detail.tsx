@@ -59,6 +59,9 @@ interface TaskFull {
   teamId: string | null;
   parentTaskId: string | null;
   goalId: string | null;
+  workMode: "standard" | "ask" | "plan";
+  reviewPolicy: "auto" | "person";
+  reviewedAt: string | null;
   deliverables: Deliverable[];
   result: string | null;
   error: string | null;
@@ -355,9 +358,9 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
     return null;
   })();
   const action = useMutation({
-    mutationFn: (a: "start" | "cancel" | "retry" | "dry_run") => api.post<{ taskId?: string }>(`/api/tasks/${taskId}/actions`, { action: a }),
+    mutationFn: (a: "start" | "cancel" | "retry" | "dry_run" | "accept") => api.post<{ taskId?: string }>(`/api/tasks/${taskId}/actions`, { action: a }),
     onSuccess: (r, a) => {
-      toast.success(a === "cancel" ? t("actions.cancelled") : a === "dry_run" ? t("actions.dryRunStarted") : t("actions.queued"));
+      toast.success(a === "cancel" ? t("actions.cancelled") : a === "dry_run" ? t("actions.dryRunStarted") : a === "accept" ? t("actions.accepted") : t("actions.queued"));
       if (r.taskId && r.taskId !== taskId) location.href = `/tasks/${r.taskId}`;
       void refetch();
     },
@@ -402,6 +405,19 @@ export function TaskDetail({ taskId, compact = false }: { taskId: string; compac
               </span>
             )}
             <TaskGoal taskId={task.id} goalId={task.goalId} subtask={!!task.parentTaskId} onChanged={() => void refetch()} />
+            {task.workMode !== "standard" && <span className="rounded-full bg-[var(--sign-biru)]/15 px-2 py-0.5 font-medium">{t(`task.workMode.${task.workMode}`)}</span>}
+            {task.reviewPolicy === "person" && task.status === "DONE" && (
+              task.reviewedAt ? (
+                <span className="rounded-full bg-success/15 px-2 py-0.5 text-success">{t("task.accepted")}</span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 text-foreground">
+                  {t("task.awaitingReview")}
+                  <button type="button" className="font-semibold underline underline-offset-2" disabled={action.isPending} onClick={() => action.mutate("accept")}>
+                    {t("task.accept")}
+                  </button>
+                </span>
+              )
+            )}
             <span>{t("task.source", { source: t.has(`source.${task.source}`) ? t(`source.${task.source}`) : task.source })}</span>
             <span>{t("task.cost", { credits: f.credits(task.costCredits), usd: f.usd(task.costCredits) })}</span>
             <span>{t("task.created", { when: f.ago(task.createdAt) })}</span>

@@ -55,6 +55,13 @@ function startRunHeartbeat(taskId: string): () => void {
   return () => clearInterval(timer);
 }
 
+/** P4: what an ask-only or plan-only task expects (the gate refuses every irreversible action either way) */
+export function workModeNote(mode: Task["workMode"]): string {
+  return mode === "ask"
+    ? "## This task is answer-only\nAnswer the question with what you know and can look up. Take no actions (no emails, pushes, releases, payments or other changes outside your answer): they are refused in this task. If an action is needed, say which one and why."
+    : "## This task is plan-only\nWrite a plan, do not carry it out: the steps in order, who does each (division or employee), what each needs, the risks and how to check the result. Actions are refused in this task. Deliver the plan as a document (draft_document) or in your answer.";
+}
+
 async function taskContext(task: Task): Promise<string> {
   const parts: string[] = [];
   if (task.clientId) {
@@ -244,7 +251,8 @@ async function runStarted(
   const creditBudget = limit.credits;
   // Workspace mode (not for a head planning or reviewing: that is platform work), with a repository: refresh the
   // platform mirror, then clone/refresh inside the sandbox. A member's subtask (the code lead's build) runs in it too.
-  const workspaceMode = emp.executionMode === "workspace" && team?.role !== "lead";
+  // an ask-only or plan-only task (P4) changes nothing: no sandbox
+  const workspaceMode = emp.executionMode === "workspace" && team?.role !== "lead" && task.workMode === "standard";
   // sandbox time across all of this task's runs, counted from the last time a person let it go on
   const sandboxLimitSec = env.workspaceTaskMaxHours * 3600;
   const sandboxUsedSec = Math.max(0, task.sandboxSeconds - task.sandboxSecondsBase);
@@ -300,6 +308,7 @@ async function runStarted(
     taskId: task.id,
     conversationId: null,
     dryRun: task.dryRun,
+    workMode: task.workMode,
     sandboxed: false,
     // created from untrusted input (a webhook payload, or a sub-/follow-up task of one): the run starts tainted,
     // so every irreversible action needs a human approval, even an allow-listed one (applyRunSignals)
@@ -367,6 +376,7 @@ async function runStarted(
   if (skillAudit) promptParts.push(skillAuditPrompt(skillAudit));
   if (team?.role === "lead" && team.phase === "plan") promptParts.push(await planPrompt(team));
   if (team?.role === "lead" && team.phase === "review") promptParts.push(await reviewPrompt(task));
+  if (task.workMode !== "standard") promptParts.push(workModeNote(task.workMode));
   if (resumeNote) promptParts.push(`## Update since your last attempt\n${resumeNote}`);
   if (task.deliverables.length && !(team?.role === "lead" && team.phase === "review")) {
     promptParts.push(`## Your previous deliverables on this task\n${task.deliverables.map((d) => `- ${d.title} (${d.kind})`).join("\n")}`);

@@ -69,6 +69,8 @@ import type {
   AppBackupKind,
   UptimeStatus,
   ReleaseWindow,
+  TaskWorkMode,
+  TaskReviewPolicy,
 } from "@wfos/shared";
 
 export const EMBEDDING_DIM = 384;
@@ -432,6 +434,12 @@ export const tasks = pgTable(
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
     /** P1: the goal this task serves (given, or inherited from its parent, origin or project) */
     goalId: uuid("goal_id").references(() => goals.id, { onDelete: "set null" }),
+    /** P4: standard | ask (answer only) | plan (a plan only); subtasks inherit it */
+    workMode: text("work_mode").$type<TaskWorkMode>().notNull().default("standard"),
+    /** P4: auto | person (a person accepts the result: reviewedAt) */
+    reviewPolicy: text("review_policy").$type<TaskReviewPolicy>().notNull().default("auto"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewedBy: uuid("reviewed_by").references(() => users.id, { onDelete: "set null" }),
     routineId: uuid("routine_id"),
     status: text("status").$type<TaskStatus>().notNull().default("QUEUED"),
     source: text("source").$type<TaskSource>().notNull().default("board"),

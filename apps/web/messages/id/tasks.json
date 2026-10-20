@@ -41,7 +41,18 @@
     "useSuggestion": "Pakai",
     "goal": "Sasaran",
     "goalFromProject": "Dari proyek",
-    "noGoal": "Tanpa sasaran"
+    "noGoal": "Tanpa sasaran",
+    "workMode": "Boleh melakukan apa?",
+    "workModes": {
+      "standard": "Kerjakan",
+      "ask": "Hanya jawab (tanpa aksi)",
+      "plan": "Hanya rencana (tanpa aksi)"
+    },
+    "workModeHelp": {
+      "ask": "Karyawan menjawab; semua aksi (email, push, rilis…) ditolak.",
+      "plan": "Karyawan menulis rencana: langkah, siapa mengerjakan, risiko. Tidak ada yang dijalankan."
+    },
+    "personReview": "Saya review hasilnya sebelum dianggap selesai"
   },
   "progress": {
     "title": "Kemajuan",

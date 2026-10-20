@@ -12,6 +12,7 @@ import { isTaskRunActive } from "../guards/killswitch";
 import { onChildFinished } from "../orchestration/team";
 import { DEPENDENCY_PHASES } from "../orchestration/phases";
 import { closeTurnOfMessage } from "./chat-turns";
+import { warnBudgetNearCap } from "../guards/budget";
 import { incidentKindOf, openIncident, openRoutineIncident, resolveIncidentsOnTerminal, type FailureKind } from "./incidents";
 
 type Task = typeof tasks.$inferSelect;
@@ -53,6 +54,8 @@ export async function afterTerminal(task: Task, status: TerminalStatus, opts: { 
   await bestEffort("hr review settle", task.id, () => settleHrReview(task.id));
   // C8: one module build or change runs per app; the end of one starts the next that waits
   await bestEffort("module queue", task.id, () => startWaitingModuleWork(task.id));
+  // P5: a run that brought its employee past 80 % of today's budget warns once that day
+  if (task.assigneeId) await bestEffort("budget warning", task.id, () => warnBudgetNearCap(task.workspaceId, task.assigneeId!));
   await bestEffort("publish", task.id, () => publish(task.workspaceId, { type: "task.updated", taskId: task.id, status, employeeId: task.assigneeId, title: task.title }));
   if (status === "DONE" && !inSuite) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.result ?? ""));
   if (status === "FAILED" && opts.notifyFailure) await bestEffort("notify", task.id, () => notifyFinished(task, status, task.error ?? ""));

@@ -1,6 +1,8 @@
 import { db, employees, steps, teamMembers, workspaces, type DivisionRow } from "@wfos/db";
 import { and, eq, gte, inArray, or, sum } from "drizzle-orm";
-import { publish } from "../lib/redis";
+import { msg } from "@wfos/shared/messages";
+import { miscQueue, publish, redis } from "../lib/redis";
+import { env } from "../lib/env";
 import { recordStep } from "../lib/steps";
 import { audit } from "@wfos/db";
 
@@ -46,6 +48,35 @@ export async function checkBudget(workspaceId: string, employeeId: string): Prom
   if (dayLeft <= 0) return { ok: false, reason: `Daily budget reached (${daySpend.toFixed(2)} / ${emp.dailyBudget} credits)`, remaining: 0 };
   if (monthLeft <= 0) return { ok: false, reason: `Workspace monthly budget reached (${monthSpend.toFixed(2)} / ${ws.monthlyBudget} credits)`, remaining: 0 };
   return { ok: true, remaining: Math.min(dayLeft, monthLeft) };
+}
+
+/** the share of the daily budget that warns before the cap pauses the employee (P5) */
+export const BUDGET_WARN_SHARE = 0.8;
+
+/**
+ * P5 (after Paperclip): once an employee spent 80 % of today's budget, the people who follow limits hear it once that
+ * day (a Redis key per employee and UTC day), before the cap pauses the employee. True when the warning was sent now.
+ */
+export async function warnBudgetNearCap(workspaceId: string, employeeId: string): Promise<boolean> {
+  const [emp] = await db.select({ name: employees.name, dailyBudget: employees.dailyBudget }).from(employees).where(eq(employees.id, employeeId));
+  if (!emp || emp.dailyBudget <= 0) return false;
+  const spent = await employeeSpendToday(employeeId);
+  if (spent < emp.dailyBudget * BUDGET_WARN_SHARE || spent >= emp.dailyBudget) return false;
+  const day = startOfUtcDay().toISOString().slice(0, 10);
+  const first = await redis.set(`${env.namespace}:budget-warn:${employeeId}:${day}`, "1", "EX", 2 * 86_400, "NX");
+  if (first !== "OK") return false;
+  const [ws] = await db.select({ locale: workspaces.defaultLocale }).from(workspaces).where(eq(workspaces.id, workspaceId));
+  const pct = Math.round((spent / emp.dailyBudget) * 100);
+  await miscQueue.add("notify", {
+    kind: "notify",
+    notificationKind: "limits",
+    employeeId,
+    workspaceId,
+    subject: msg(ws?.locale ?? null, "notify.budgetNearCap", { name: emp.name, pct }),
+    text: msg(ws?.locale ?? null, "notify.budgetNearCapText", { name: emp.name, spent: spent.toFixed(0), budget: emp.dailyBudget }),
+    link: `/employees/${employeeId}`,
+  });
+  return true;
 }
 
 /** Hitting a cap pauses the employee; it never silently continues. */

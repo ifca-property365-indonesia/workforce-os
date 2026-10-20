@@ -203,7 +203,8 @@
       "testFindings": "{count, plural, other {Uji aplikasi: # temuan}}",
       "testFindingsHigh": "Uji aplikasi: {count} temuan, {high} tinggi",
       "docReview": "{doc} v{version} perlu ditinjau",
-      "hrProposal": "HR: instruksi baru perlu diputuskan"
+      "hrProposal": "HR: instruksi baru perlu diputuskan",
+      "taskReview": "Hasil untuk direview"
     },
     "incidentStatus": {
       "escalated": "menunggu Anda",
@@ -226,14 +227,16 @@
       "openTest": "Lihat temuan",
       "handled": "Tandai sudah ditangani",
       "reviewDoc": "Tinjau",
-      "reviewHr": "Tinjau"
+      "reviewHr": "Tinjau",
+      "accept": "Terima hasil"
     },
     "done": {
       "start": "Tugas dimulai",
       "cancel": "Tugas dibatalkan",
       "retry": "Tugas diantrekan lagi",
       "resolved": "Ditutup",
-      "handled": "Ditandai sudah ditangani"
+      "handled": "Ditandai sudah ditangani",
+      "accept": "Hasil diterima"
     },
     "docKind": {
       "prd": "PRD",
@@ -242,6 +245,7 @@
       "deck": "Presentasi"
     },
     "hrVerdicts": "Replay: {better} lebih baik, {same} sama, {worse} lebih buruk",
-    "hrJudgeError": "Penilai tidak bisa memutuskan: seseorang yang memutuskan."
+    "hrJudgeError": "Penilai tidak bisa memutuskan: seseorang yang memutuskan.",
+    "taskReviewExplain": "Sudah selesai dan menunggu orang menerima hasilnya. Buka untuk memeriksa; untuk mengubah, minta perubahan di tugasnya (atau buat tugas baru)."
   }
 }

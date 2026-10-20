@@ -27,6 +27,9 @@ export const GET = route("VIEWER", async ({ session, req }) => {
       clientId: tasks.clientId,
       projectId: tasks.projectId,
       goalId: tasks.goalId,
+      workMode: tasks.workMode,
+      reviewPolicy: tasks.reviewPolicy,
+      reviewedAt: tasks.reviewedAt,
       dryRun: tasks.dryRun,
       phase: tasks.phase,
       costCredits: tasks.costCredits,
@@ -56,6 +59,8 @@ export const POST = route("MEMBER", async ({ session, req }) => {
     projectId: input.projectId ?? null,
     // omitted: inherited from the project; null: no goal
     goalId: input.goalId,
+    workMode: input.workMode,
+    reviewPolicy: input.reviewPolicy,
     repositoryId: input.repositoryId ?? null,
     dryRun: input.dryRun,
     source: "board",

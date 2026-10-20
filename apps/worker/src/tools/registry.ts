@@ -56,6 +56,7 @@ import {
   type InvoicePayload,
   type InvoiceStatus,
   type ToolPermission,
+  type TaskWorkMode,
 } from "@wfos/shared";
 import { screenLeakage, withRetry } from "@wfos/shared/server";
 import { safeFetch, SsrfBlockedError, type SafeFetchResult } from "@wfos/shared/netguard";
@@ -144,6 +145,8 @@ export interface RunContext {
   /** chat runs: the assistant message being written; approvals raised in this run attach to it */
   messageId?: string | null;
   dryRun: boolean;
+  /** P4: an ask-only or plan-only task: the gate refuses irreversible actions (chat runs: standard) */
+  workMode?: TaskWorkMode;
   /** demo/replay runs never create approvals or real side effects */
   sandboxed: boolean;
   guard: GuardCtx;
@@ -488,6 +491,7 @@ async function irreversible(
       permissions: effectivePermissions(ctx),
       allowList: ctx.employee.allowList,
       dryRun: ctx.dryRun || ctx.sandboxed,
+      workMode: ctx.workMode,
       scope: meta.scope,
     }),
     { toolClass: "irreversible", tainted: ctx.guard.tainted, highLeak },

@@ -79,7 +79,14 @@
     "waitedFor": "Waited for (all done)",
     "phaseAfter": "waiting for other subtasks",
     "phaseBlocked": "blocked",
-    "blocked": "Blocked: a subtask it waits for did not finish"
+    "blocked": "Blocked: a subtask it waits for did not finish",
+    "workMode": {
+      "ask": "Answer only",
+      "plan": "Plan only"
+    },
+    "awaitingReview": "Waits for your review",
+    "accept": "Accept",
+    "accepted": "Result accepted"
   },
   "source": {
     "chat": "chat",
@@ -98,7 +105,8 @@
     "dryRun": "Dry run",
     "cancelled": "Task cancelled",
     "dryRunStarted": "Dry run started",
-    "queued": "Task queued"
+    "queued": "Task queued",
+    "accepted": "Result accepted"
   },
   "weeklySpend": {
     "empty": "No spend recorded in the last 8 weeks.",

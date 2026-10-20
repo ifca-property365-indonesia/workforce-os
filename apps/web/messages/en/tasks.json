@@ -41,7 +41,18 @@
     "useSuggestion": "Use it",
     "goal": "Goal",
     "goalFromProject": "From the project",
-    "noGoal": "No goal"
+    "noGoal": "No goal",
+    "workMode": "What may it do?",
+    "workModes": {
+      "standard": "Do the work",
+      "ask": "Answer only (no actions)",
+      "plan": "Plan only (no actions)"
+    },
+    "workModeHelp": {
+      "ask": "The employee answers; any action (email, push, release…) is refused.",
+      "plan": "The employee writes a plan: steps, who does each, risks. Nothing is carried out."
+    },
+    "personReview": "I review the result before it counts as done"
   },
   "progress": {
     "title": "Progress",

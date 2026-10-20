@@ -1,5 +1,6 @@
 "use client";
 
+import { TASK_WORK_MODES, type TaskWorkMode } from "@wfos/shared";
 import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -16,7 +17,7 @@ import { useDivisionSuggestion } from "@/components/dashboard/attention";
 
 const sel = "h-9 w-full rounded-md border bg-background px-2 text-sm";
 
-const EMPTY = { title: "", brief: "", assignee: "", clientId: "", projectId: "", goalId: "", repositoryId: "", dryRun: false, start: true };
+const EMPTY = { title: "", brief: "", assignee: "", clientId: "", projectId: "", goalId: "", repositoryId: "", dryRun: false, start: true, workMode: "standard" as TaskWorkMode, personReview: false };
 /** what a quick action fills in; `assignee` is "e:<employeeId>" or "t:<teamId>". Read when the dialog mounts: give it a new `key` per prefill. */
 export type NewTaskPrefill = Partial<Pick<typeof EMPTY, "title" | "brief" | "assignee" | "clientId" | "projectId" | "goalId">>;
 
@@ -62,7 +63,9 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
         projectId: f.projectId || null,
         // none chosen: the project's goal (if any)
         goalId: f.goalId || undefined,
-        repositoryId: codeWork && f.repositoryId ? f.repositoryId : null,
+        workMode: f.workMode,
+        reviewPolicy: f.personReview ? "person" : "auto",
+        repositoryId: codeWork && f.workMode === "standard" && f.repositoryId ? f.repositoryId : null,
         dryRun: f.dryRun,
         start: f.start,
       }),
@@ -196,7 +199,18 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
               </select>
             </div>
           )}
-          {codeWork && (
+          <div className="space-y-1.5">
+            <Label htmlFor={`${uid}-mode`}>{t("newTask.workMode")}</Label>
+            <select id={`${uid}-mode`} className={sel} value={f.workMode} onChange={(e) => setF({ ...f, workMode: e.target.value as TaskWorkMode })}>
+              {TASK_WORK_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {t(`newTask.workModes.${m}`)}
+                </option>
+              ))}
+            </select>
+            {f.workMode !== "standard" && <p className="text-xs text-muted-foreground">{t(`newTask.workModeHelp.${f.workMode}`)}</p>}
+          </div>
+          {codeWork && f.workMode === "standard" && (
             <div className="space-y-1.5">
               <Label htmlFor={`${uid}-repository`}>{t("newTask.repository")}</Label>
               <select id={`${uid}-repository`} className={sel} value={f.repositoryId} onChange={(e) => setF({ ...f, repositoryId: e.target.value })}>
@@ -213,6 +227,9 @@ export function NewTaskDialog({ open, onOpenChange, initial }: { open: boolean; 
           <div className="flex flex-wrap gap-4 text-sm">
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={f.dryRun} onChange={(e) => setF({ ...f, dryRun: e.target.checked })} /> {t("newTask.dryRun")}
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={f.personReview} onChange={(e) => setF({ ...f, personReview: e.target.checked })} /> {t("newTask.personReview")}
             </label>
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={f.start} onChange={(e) => setF({ ...f, start: e.target.checked })} /> {t("newTask.startImmediately")}

@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { TASK_SOURCES, type TaskSource } from "@wfos/shared";
+import { TASK_SOURCES, type TaskReviewPolicy, type TaskSource, type TaskWorkMode } from "@wfos/shared";
 import type { DB } from "./index";
 import { clients, employees, goals, projects, repositories, tasks, teams } from "./schema";
 
@@ -59,6 +59,10 @@ export interface CreateTaskInput {
   projectId?: string | null;
   /** P1: the goal it serves; when not given: the parent's, the origin task's or the project's */
   goalId?: string | null;
+  /** P4: what the task may do (default: the parent's, else standard) */
+  workMode?: TaskWorkMode;
+  /** P4: who accepts the result (default auto) */
+  reviewPolicy?: TaskReviewPolicy;
   repositoryId?: string | null;
   parentTaskId?: string | null;
   originTaskId?: string | null;
@@ -138,6 +142,12 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
   if (input.originTaskId && !(await owned(tasks, input.originTaskId))) throw new TaskInputError("unknown_origin_task");
   // P1: a goal given must be this workspace's; else the parent's, the origin task's or the project's
   let goalId = input.goalId ?? null;
+  // P4: an ask-only or plan-only task stays so in its subtasks
+  let workMode: TaskWorkMode = input.workMode ?? "standard";
+  if (!input.workMode && input.parentTaskId) {
+    const [p] = await database.select({ workMode: tasks.workMode }).from(tasks).where(and(eq(tasks.id, input.parentTaskId), eq(tasks.workspaceId, ws))).limit(1);
+    workMode = p?.workMode ?? "standard";
+  }
   if (goalId) {
     const [g] = UUID.test(goalId) ? await database.select({ id: goals.id }).from(goals).where(and(eq(goals.id, goalId), eq(goals.workspaceId, ws))).limit(1) : [];
     if (!g) throw new TaskInputError("unknown_goal");
@@ -170,6 +180,8 @@ export async function createTask(database: Database, input: CreateTaskInput): Pr
       clientId,
       projectId: input.projectId ?? null,
       goalId,
+      workMode,
+      reviewPolicy: input.reviewPolicy ?? "auto",
       repositoryId: input.repositoryId ?? null,
       parentTaskId: input.parentTaskId ?? null,
       originTaskId: input.originTaskId ?? null,

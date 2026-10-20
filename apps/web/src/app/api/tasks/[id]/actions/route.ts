@@ -10,7 +10,7 @@ import { startWaitingModuleWork } from "@/lib/server/app-modules";
 import { logger } from "@/lib/server/logger";
 
 const schema = z.object({
-  action: z.enum(["start", "cancel", "retry", "dry_run", "request_changes", "discard"]),
+  action: z.enum(["start", "cancel", "retry", "dry_run", "request_changes", "discard", "accept"]),
   /** request_changes: what the employee should change; resumes the same Claude session and workspace */
   feedback: z.string().trim().min(3).max(10000).optional(),
 });
@@ -37,6 +37,14 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
     await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "QUEUED" });
     await q.task(t.id, session.workspaceId, `The reviewer requested changes:\n${feedback}\nMake the changes in your workspace, run the tests, commit, and propose the push again.`);
     await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.changes_requested", targetType: "task", targetId: t.id, details: { feedback } });
+    return { ok: true };
+  }
+  if (action === "accept") {
+    // P4: a person accepts the result of a task that waits for one (review policy "person")
+    if (t.status !== "DONE" || t.reviewPolicy !== "person" || t.reviewedAt) throw new HttpError(409, "This task does not wait for a review", { code: "task_not_awaiting_review" });
+    await db.update(tasks).set({ reviewedAt: new Date(), reviewedBy: session.userId }).where(eq(tasks.id, t.id));
+    await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "task.accepted", targetType: "task", targetId: t.id });
+    await publish(session.workspaceId, { type: "task.updated", taskId: t.id, status: "DONE" });
     return { ok: true };
   }
   if (action === "discard" && t.status === "DONE") {

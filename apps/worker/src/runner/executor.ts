@@ -141,6 +141,7 @@ export async function gateExternalTool(ctx: RunContext, toolName: string, input:
       permissions: ctx.employee.toolPermissions,
       allowList: ctx.employee.allowList,
       dryRun: ctx.dryRun || ctx.sandboxed,
+      workMode: ctx.workMode,
     }),
     { toolClass: cls, tainted: ctx.guard.tainted },
   );

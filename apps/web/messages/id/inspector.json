@@ -79,7 +79,14 @@
     "waitedFor": "Sudah menunggu (semua selesai)",
     "phaseAfter": "menunggu subtugas lain",
     "phaseBlocked": "terhenti",
-    "blocked": "Terhenti: subtugas yang ditunggu tidak selesai"
+    "blocked": "Terhenti: subtugas yang ditunggu tidak selesai",
+    "workMode": {
+      "ask": "Hanya jawab",
+      "plan": "Hanya rencana"
+    },
+    "awaitingReview": "Menunggu review Anda",
+    "accept": "Terima",
+    "accepted": "Hasil diterima"
   },
   "source": {
     "chat": "obrolan",
@@ -98,7 +105,8 @@
     "dryRun": "Dry run",
     "cancelled": "Tugas dibatalkan",
     "dryRunStarted": "Dry run dimulai",
-    "queued": "Tugas masuk antrean"
+    "queued": "Tugas masuk antrean",
+    "accepted": "Hasil diterima"
   },
   "weeklySpend": {
     "empty": "Belum ada pengeluaran tercatat dalam 8 minggu terakhir.",
