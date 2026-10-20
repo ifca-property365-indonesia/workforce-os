@@ -58,6 +58,18 @@ function withShots(text: string, appId: string, testId: string) {
   );
 }
 
+export const appTestsQueryKey = (appId: string) => ["app", appId, "tests"];
+/** the app's latest tests (shared by the panel and the app page's tab badge) */
+export const useAppTests = (appId: string, enabled = true) =>
+  useQuery({
+    queryKey: appTestsQueryKey(appId),
+    queryFn: () => api.get<{ tests: AppTest[] }>(`/api/apps/${appId}/tests`),
+    refetchInterval: (q) => (q.state.data?.tests.some((x) => x.status === "running") ? 10_000 : false),
+    enabled,
+  });
+/** tests whose findings nobody handled yet */
+export const openFindingTests = (tests: Pick<AppTest, "status" | "handledAt">[] | undefined) => (tests ?? []).filter((x) => x.status === "findings" && !x.handledAt).length;
+
 /**
  * C3: browser tests of the preview. A person starts one (a task for a tester employee who drives the preview's
  * browser), the result lists findings with steps and screenshots; a finding becomes a fix task with one click.
@@ -67,8 +79,8 @@ export function AppTestsPanel({ app, running, canRun }: { app: Pick<AppDTO, "id"
   const f = useFormat();
   const qc = useQueryClient();
   const focusTest = useSearchParams().get("test");
-  const key = ["app", app.id, "tests"];
-  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<{ tests: AppTest[] }>(`/api/apps/${app.id}/tests`), refetchInterval: (q) => (q.state.data?.tests.some((x) => x.status === "running") ? 10_000 : false) });
+  const key = appTestsQueryKey(app.id);
+  const { data } = useAppTests(app.id);
   const { data: accounts } = useQuery({ queryKey: ["app", app.id, "test-users"], queryFn: () => api.get<{ users: { role: string; label: string }[] }>(`/api/apps/${app.id}/test-users`) });
   const { data: employees } = useEmployees();
   const [starting, setStarting] = useState(false);

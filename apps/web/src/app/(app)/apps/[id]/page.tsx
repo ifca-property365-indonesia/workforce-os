@@ -1,19 +1,20 @@
 "use client";
 
-import Link, { useRouter } from "@/lib/nav";
+import Link, { usePathname, useRouter, useSearchParams } from "@/lib/nav";
 import { use, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Pencil, Play, Radio, Rocket, Settings2, Square, Trash2 } from "lucide-react";
+import { CircleAlert, Pencil, Play, Radio, Rocket, Settings2, Square, Trash2 } from "lucide-react";
 import type { AppEnvironmentDTO, AppEnvironmentKind, ReleaseDTO } from "@wfos/shared";
 import { useStepUp } from "@/components/account/step-up";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/common";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AccessCard } from "@/components/apps/access-card";
 import { TestUsersCard } from "@/components/apps/test-users-card";
-import { AppTestsPanel } from "@/components/apps/app-tests-panel";
-import { AppDocumentsPanel } from "@/components/apps/app-documents-panel";
+import { AppTestsPanel, openFindingTests, useAppTests } from "@/components/apps/app-tests-panel";
+import { AppDocumentsPanel, draftDocuments, useAppDocuments } from "@/components/apps/app-documents-panel";
 import { AppModulesPanel, useAppModules } from "@/components/apps/app-modules-panel";
 import { AppDesignCard } from "@/components/apps/ui-templates";
 import { BackupsPanel } from "@/components/apps/backups-panel";
@@ -31,6 +32,20 @@ import { api } from "@/lib/api";
 import { useClients } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 
+/** the app page's tabs (?tab= in the URL) */
+const TABS = ["overview", "releases", "tests", "docs", "design", "settings"] as const;
+type Tab = (typeof TABS)[number];
+
+/** the tab a link opens: ?tab=, else the one holding what ?test= / ?doc= point at (a module's PRD lives on the overview) */
+function linkedTab(q: URLSearchParams): Tab {
+  const asked = q.get("tab") as Tab | null;
+  if (asked && TABS.includes(asked)) return asked;
+  if (q.get("test")) return "tests";
+  if (q.get("module")) return "overview";
+  if (q.get("doc")) return "docs";
+  return "overview";
+}
+
 type Dialog = "deploy" | "edit" | "setupLive" | "editLive" | "releaseLive" | "removeLive" | "removeApp" | null;
 
 export default function AppPage({ params }: { params: Promise<{ id: string }> }) {
@@ -38,12 +53,19 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
   const t = useTranslations("apps");
   const qc = useQueryClient();
   const router = useRouter();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const pageTab = linkedTab(search as unknown as URLSearchParams);
+  /** a tab change keeps the other parameters out (a focus link only opens once) */
+  const openTab = (next: string) => router.replace(next === "overview" ? pathname : `${pathname}?tab=${next}`);
   const withStepUp = useStepUp();
   const { data, isLoading, isError } = useApp(id);
   const { data: all } = useApps();
   const { data: clients } = useClients();
   const { admin, owner, logs } = useAppRights();
   const { data: mods } = useAppModules(id, logs);
+  const { data: tests } = useAppTests(id, logs);
+  const { data: docs } = useAppDocuments(id, logs);
   const moduleNames = Object.fromEntries((mods?.modules ?? []).map((m) => [m.id, m.name]));
   const [dialog, setDialog] = useState<Dialog>(null);
   const [tab, setTab] = useState<AppEnvironmentKind | null>(null);
@@ -149,6 +171,15 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
       )
     );
 
+  const findings = openFindingTests(tests?.tests);
+  const drafts = draftDocuments(docs);
+  const dnsPending = !!live && live.dnsCheck?.status !== "ok";
+  const badges: Partial<Record<Tab, number>> = { tests: findings, docs: drafts, settings: dnsPending ? 1 : 0, releases: previewBusy || liveBusy ? 1 : 0 };
+  const attention: { tab: Tab; label: string }[] = [];
+  if (findings > 0) attention.push({ tab: "tests", label: t("detail.attention.findings", { count: findings }) });
+  if (drafts > 0 && admin) attention.push({ tab: "docs", label: t("detail.attention.drafts", { count: drafts }) });
+  if (dnsPending && owner) attention.push({ tab: "settings", label: t("detail.attention.dns") });
+
   return (
     <div className="space-y-6">
       {back}
@@ -173,176 +204,225 @@ export default function AppPage({ params }: { params: Promise<{ id: string }> })
 
       {(previewBusy || liveBusy) && (
         <p className="rounded-xl border border-[var(--sign-biru)]/40 bg-[color-mix(in_srgb,var(--sign-biru)_8%,transparent)] px-3 py-2 text-sm">
-          {liveBusy ? t("detail.deployingLiveNote") : t("detail.deployingNote")}
+          {liveBusy ? t("detail.deployingLiveNote") : t("detail.deployingNote")}{" "}
+          {pageTab !== "releases" && (
+            <button type="button" className="underline underline-offset-2" onClick={() => openTab("releases")}>
+              {t("detail.followRelease")}
+            </button>
+          )}
         </p>
       )}
 
-      {app.repositoryId && <UnmergedWork repositoryId={app.repositoryId} />}
-
-      {/* the two shopfronts: the preview everyone tries, and the client's live site */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <EnvironmentPanel
-          env={preview}
-          actions={
-            admin && (
-              <>
-                <Button className="gap-1.5" disabled={previewBusy} onClick={() => setDialog("deploy")}>
-                  <Rocket className="size-4" aria-hidden /> {t("actions.deploy")}
-                </Button>
-                {stopStart(preview, true, true)}
-              </>
-            )
-          }
-        />
-        {live ? (
-          <EnvironmentPanel
-            env={live}
-            monitor={(live.currentRelease || live.uptimeCheckedAt) && <UptimeBlock appId={app.id} env={live} />}
-            note={
-              <>
-                {live.dnsCheck?.status !== "ok" && <p className="text-xs text-muted-foreground">{t("live.dnsPending")}</p>}
-                <ReleaseWindowNote w={live.releaseWindow} now={now} />
-              </>
-            }
-            actions={
-              admin && (
-                <>
-                  {owner && (
-                    <Button
-                      className="gap-1.5 bg-[var(--sign-merah)] text-white hover:bg-[color-mix(in_srgb,var(--sign-merah)_86%,black)]"
-                      disabled={liveBusy || !liveWindow.open}
-                      title={liveWindow.open ? undefined : t("window.releaseWaits")}
-                      onClick={() => setDialog("releaseLive")}
-                    >
-                      <Radio className="size-4" aria-hidden /> {t("live.release")}
-                    </Button>
-                  )}
-                  {stopStart(live, owner, owner)}
-                  {owner && (
-                    <Button variant="ghost" className="gap-1.5" onClick={() => setDialog("editLive")}>
-                      <Settings2 className="size-4" aria-hidden /> {t("live.settings")}
-                    </Button>
-                  )}
-                </>
-              )
-            }
-          />
-        ) : (
-          <LiveSlot owner={owner} onSetup={() => setDialog("setupLive")} />
-        )}
-      </div>
-
-      <section className="space-y-3" aria-labelledby="app-settings-title">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="app-settings-title" className="font-display text-[1.7rem] leading-none">
-            {t("detail.settingsTitle")}
-          </h2>
-          {live && (
-            <div className="inline-flex rounded-lg border p-0.5" role="tablist" aria-label={t("detail.settingsTitle")}>
-              {(["preview", "live"] as const).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  role="tab"
-                  aria-selected={shownTab === k}
-                  onClick={() => setTab(k)}
-                  className={cn(
-                    "inline-flex h-8 items-center rounded-md px-2.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                    shownTab === k ? "bg-secondary" : "opacity-60 hover:opacity-100",
-                  )}
-                >
-                  <EnvPlate kind={k} status={k === "live" ? live.status : preview.status} />
-                </button>
-              ))}
-            </div>
-          )}
+      {/* what waits for a person, with the tab that holds it */}
+      {attention.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warning/40 bg-warning/5 px-3 py-2 text-sm" role="status">
+          <CircleAlert className="size-4 shrink-0 text-warning" aria-hidden />
+          {attention.map((a) => (
+            <button key={a.tab} type="button" onClick={() => openTab(a.tab)} className="rounded-md px-1.5 py-0.5 underline-offset-2 hover:bg-warning/10 hover:underline">
+              {a.label}
+            </button>
+          ))}
         </div>
-        <div className="space-y-4" role={live ? "tabpanel" : undefined}>
-          {shownEnv.kind === "live" && <DnsPanel app={app} env={shownEnv} admin={admin} />}
-          <div className="grid gap-4 lg:grid-cols-2">
-            {/* the live site's password and variables are the Owner's */}
-            <AccessCard key={`access-${shownEnv.id}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
-            <EnvEditor key={`${shownEnv.id}-${shownEnv.envKeys.join(",")}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
-          </div>
-          {/* C10: the preview's test accounts per role (members see them; showing a password is an Admin's, audited) */}
-          {shownEnv.kind === "preview" && logs && <TestUsersCard key={`test-users-${shownEnv.id}`} app={app} admin={admin} />}
-          {/* the database's backups: Admins see them; backing up live and every restore are the Owner's */}
-          {admin && shownEnv.hasDatabase && (
-            <BackupsPanel
-              key={`backups-${shownEnv.id}`}
-              app={app}
-              env={shownEnv}
-              canBackup={shownEnv.kind === "live" ? owner : admin}
-              canRestore={owner}
-              busy={shownEnv.kind === "live" ? liveBusy : previewBusy}
-            />
-          )}
-        </div>
-      </section>
-
-      {/* C3: browser tests of the preview (members start one; findings become fix tasks) */}
-      {logs && <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} />}
-      {/* C8: modules, each with its own PRD, built one at a time in the app's repository */}
-      {logs && <AppModulesPanel app={app} admin={admin} member={logs} />}
-      {/* C5: the UI template and Figma file the app follows; "apply the look" as a task */}
-      {logs && <AppDesignCard app={app} admin={admin} />}
-      {/* C9: PRD, business flow, test guide and presentation, versioned (drafts approved by an Admin) */}
-      {logs && <AppDocumentsPanel app={app} admin={admin} member={logs} />}
-
-      <section className="space-y-3">
-        <h2 className="font-display text-[1.7rem] leading-none">{t("releases.title")}</h2>
-        <ReleasesTable
-          releases={releases}
-          origins={data.origins}
-          moduleNames={moduleNames}
-          currentIds={[preview.currentRelease?.id, live?.currentRelease?.id].filter((x): x is string => !!x)}
-          logs={logs}
-          showEnvironments={!!live || releases.some((r) => r.environmentKind === "live")}
-          canRollback={(r) => (r.environmentKind === "live" ? owner && !liveBusy : admin && !previewBusy)}
-          rollbackPending={rollback.isPending}
-          onRollback={(r) =>
-            confirm(t(r.environmentKind === "live" ? "actions.rollbackLiveConfirm" : "actions.rollbackConfirm", { commit: r.commit.slice(0, 7) })) && rollback.mutate(r)
-          }
-        />
-      </section>
-
-      {admin && (
-        <section className="space-y-3 rounded-xl border border-destructive/30 p-4">
-          {live && owner && (
-            <div className="flex flex-col gap-3 border-b border-destructive/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">
-                {t("live.removeHelp", { domain: live.domain })}
-                {liveOn && <span className="mt-1 block text-xs text-warning">{t("live.stopFirst")}</span>}
-              </p>
-              <Button
-                variant="outline"
-                className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                disabled={removeLive.isPending || liveOn}
-                onClick={() => setDialog("removeLive")}
-              >
-                <Trash2 className="size-4" aria-hidden /> {t("live.remove")}
-              </Button>
-            </div>
-          )}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-muted-foreground">{live ? t("detail.dangerHelpLive") : t("detail.dangerHelp")}</p>
-            <Button
-              variant="outline"
-              className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              disabled={remove.isPending || (!!live && (!owner || liveOn))}
-              onClick={() => (live ? setDialog("removeApp") : confirm(t("detail.deleteConfirm", { name: app.name })) && remove.mutate(undefined))}
-            >
-              <Trash2 className="size-4" aria-hidden /> {t("detail.danger")}
-            </Button>
-          </div>
-          {live && !owner && <p className="text-xs text-muted-foreground">{t("detail.deleteNeedsOwner")}</p>}
-          {live && owner && liveOn && <p className="text-xs text-warning">{t("live.stopFirst")}</p>}
-        </section>
       )}
+
+      <Tabs value={pageTab} onValueChange={openTab}>
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
+          {TABS.filter((k) => logs || (k !== "tests" && k !== "docs" && k !== "design")).map((k) => (
+            <TabsTrigger key={k} value={k} className="gap-1.5">
+              {t(`detail.tabs.${k}`)}
+              {badges[k] ? (
+                <span className="rounded-full bg-warning/20 px-1.5 text-[0.7rem] leading-4 font-medium text-foreground tabular-nums" aria-label={t("detail.tabs.badge", { count: badges[k] })}>
+                  {badges[k]}
+                </span>
+              ) : null}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-4 space-y-6">
+          {app.repositoryId && <UnmergedWork repositoryId={app.repositoryId} />}
+          {/* the two shopfronts: the preview everyone tries, and the client's live site */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <EnvironmentPanel
+              env={preview}
+              actions={
+                admin && (
+                  <>
+                    <Button className="gap-1.5" disabled={previewBusy} onClick={() => setDialog("deploy")}>
+                      <Rocket className="size-4" aria-hidden /> {t("actions.deploy")}
+                    </Button>
+                    {stopStart(preview, true, true)}
+                  </>
+                )
+              }
+            />
+            {live ? (
+              <EnvironmentPanel
+                env={live}
+                monitor={(live.currentRelease || live.uptimeCheckedAt) && <UptimeBlock appId={app.id} env={live} />}
+                note={
+                  <>
+                    {live.dnsCheck?.status !== "ok" && <p className="text-xs text-muted-foreground">{t("live.dnsPending")}</p>}
+                    <ReleaseWindowNote w={live.releaseWindow} now={now} />
+                  </>
+                }
+                actions={
+                  admin && (
+                    <>
+                      {owner && (
+                        <Button
+                          className="gap-1.5 bg-[var(--sign-merah)] text-white hover:bg-[color-mix(in_srgb,var(--sign-merah)_86%,black)]"
+                          disabled={liveBusy || !liveWindow.open}
+                          title={liveWindow.open ? undefined : t("window.releaseWaits")}
+                          onClick={() => setDialog("releaseLive")}
+                        >
+                          <Radio className="size-4" aria-hidden /> {t("live.release")}
+                        </Button>
+                      )}
+                      {stopStart(live, owner, owner)}
+                      {owner && (
+                        <Button variant="ghost" className="gap-1.5" onClick={() => setDialog("editLive")}>
+                          <Settings2 className="size-4" aria-hidden /> {t("live.settings")}
+                        </Button>
+                      )}
+                    </>
+                  )
+                }
+              />
+            ) : (
+              <LiveSlot owner={owner} onSetup={() => setDialog("setupLive")} />
+            )}
+          </div>
+          {/* C8: modules, each with its own PRD, built one at a time in the app's repository */}
+          {logs && <AppModulesPanel app={app} admin={admin} member={logs} />}
+        </TabsContent>
+
+        <TabsContent value="releases" className="mt-4">
+          <section className="space-y-3" aria-labelledby="app-releases-title">
+            <h2 id="app-releases-title" className="sr-only">{t("releases.title")}</h2>
+            <ReleasesTable
+              releases={releases}
+              origins={data.origins}
+              moduleNames={moduleNames}
+              currentIds={[preview.currentRelease?.id, live?.currentRelease?.id].filter((x): x is string => !!x)}
+              logs={logs}
+              showEnvironments={!!live || releases.some((r) => r.environmentKind === "live")}
+              canRollback={(r) => (r.environmentKind === "live" ? owner && !liveBusy : admin && !previewBusy)}
+              rollbackPending={rollback.isPending}
+              onRollback={(r) =>
+                confirm(t(r.environmentKind === "live" ? "actions.rollbackLiveConfirm" : "actions.rollbackConfirm", { commit: r.commit.slice(0, 7) })) && rollback.mutate(r)
+              }
+            />
+          </section>
+        </TabsContent>
+
+        {logs && (
+          <>
+            <TabsContent value="tests" className="mt-4 space-y-4">
+              {/* C3: browser tests of the preview (members start one; findings become fix tasks) */}
+              <AppTestsPanel app={app} running={preview.status === "running"} canRun={logs} />
+              {/* C10: the preview's test accounts per role (members see them; showing a password is an Admin's, audited) */}
+              <TestUsersCard key={`test-users-${preview.id}`} app={app} admin={admin} />
+            </TabsContent>
+            <TabsContent value="docs" className="mt-4">
+              {/* C9: PRD, business flow, test guide and presentation, versioned (drafts approved by an Admin) */}
+              <AppDocumentsPanel app={app} admin={admin} member={logs} />
+            </TabsContent>
+            <TabsContent value="design" className="mt-4">
+              {/* C5: the UI template and Figma file the app follows; "apply the look" as a task */}
+              <AppDesignCard app={app} admin={admin} />
+            </TabsContent>
+          </>
+        )}
+
+        <TabsContent value="settings" className="mt-4 space-y-6">
+          <section className="space-y-3" aria-labelledby="app-settings-title">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 id="app-settings-title" className="font-display text-[1.7rem] leading-none">
+                {t("detail.settingsTitle")}
+              </h2>
+              {live && (
+                <div className="inline-flex rounded-lg border p-0.5" role="tablist" aria-label={t("detail.settingsTitle")}>
+                  {(["preview", "live"] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      role="tab"
+                      aria-selected={shownTab === k}
+                      onClick={() => setTab(k)}
+                      className={cn(
+                        "inline-flex h-8 items-center rounded-md px-2.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                        shownTab === k ? "bg-secondary" : "opacity-60 hover:opacity-100",
+                      )}
+                    >
+                      <EnvPlate kind={k} status={k === "live" ? live.status : preview.status} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-4" role={live ? "tabpanel" : undefined}>
+              {shownEnv.kind === "live" && <DnsPanel app={app} env={shownEnv} admin={admin} />}
+              <div className="grid gap-4 lg:grid-cols-2">
+                {/* the live site's password and variables are the Owner's */}
+                <AccessCard key={`access-${shownEnv.id}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
+                <EnvEditor key={`${shownEnv.id}-${shownEnv.envKeys.join(",")}`} app={app} env={shownEnv} admin={shownEnv.kind === "live" ? owner : admin} />
+              </div>
+              {/* the database's backups: Admins see them; backing up live and every restore are the Owner's */}
+              {admin && shownEnv.hasDatabase && (
+                <BackupsPanel
+                  key={`backups-${shownEnv.id}`}
+                  app={app}
+                  env={shownEnv}
+                  canBackup={shownEnv.kind === "live" ? owner : admin}
+                  canRestore={owner}
+                  busy={shownEnv.kind === "live" ? liveBusy : previewBusy}
+                />
+              )}
+            </div>
+          </section>
+          {admin && (
+            <section className="space-y-3 rounded-xl border border-destructive/30 p-4">
+              {live && owner && (
+                <div className="flex flex-col gap-3 border-b border-destructive/20 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    {t("live.removeHelp", { domain: live.domain })}
+                    {liveOn && <span className="mt-1 block text-xs text-warning">{t("live.stopFirst")}</span>}
+                  </p>
+                  <Button
+                    variant="outline"
+                    className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    disabled={removeLive.isPending || liveOn}
+                    onClick={() => setDialog("removeLive")}
+                  >
+                    <Trash2 className="size-4" aria-hidden /> {t("live.remove")}
+                  </Button>
+                </div>
+              )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">{live ? t("detail.dangerHelpLive") : t("detail.dangerHelp")}</p>
+                <Button
+                  variant="outline"
+                  className="shrink-0 gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={remove.isPending || (!!live && (!owner || liveOn))}
+                  onClick={() => (live ? setDialog("removeApp") : confirm(t("detail.deleteConfirm", { name: app.name })) && remove.mutate(undefined))}
+                >
+                  <Trash2 className="size-4" aria-hidden /> {t("detail.danger")}
+                </Button>
+              </div>
+              {live && !owner && <p className="text-xs text-muted-foreground">{t("detail.deleteNeedsOwner")}</p>}
+              {live && owner && liveOn && <p className="text-xs text-warning">{t("live.stopFirst")}</p>}
+            </section>
+          )}
+        </TabsContent>
+      </Tabs>
 
       {dialog === "deploy" && <DeployDialog app={app} releases={releases} origins={data.origins} onClose={() => setDialog(null)} />}
       {dialog === "edit" && <EditAppDialog app={app} onClose={() => setDialog(null)} />}
-      {dialog === "setupLive" && <SetupLiveDialog app={app} onClose={() => setDialog(null)} onCreated={() => setTab("live")} />}
+      {dialog === "setupLive" && <SetupLiveDialog app={app} onClose={() => setDialog(null)} onCreated={() => {
+            setTab("live");
+            openTab("settings");
+          }} />}
       {dialog === "editLive" && live && <EditLiveDialog app={app} env={live} onClose={() => setDialog(null)} />}
       {dialog === "releaseLive" && live && <ReleaseToLiveDialog app={app} live={live} releases={releases} envChanged={data.liveEnvChanged ?? []} dbPlans={data.dbPlans ?? {}} onClose={() => setDialog(null)} />}
       {dialog === "removeLive" && live && (

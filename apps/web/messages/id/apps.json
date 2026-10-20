@@ -138,7 +138,22 @@
     },
     "lastBackup": "Database dicadangkan {ago}",
     "noBackup": "Belum ada cadangan database",
-    "backupStale": "Lebih dari sehari tanpa cadangan"
+    "backupStale": "Lebih dari sehari tanpa cadangan",
+    "tabs": {
+      "overview": "Ringkasan",
+      "releases": "Rilis",
+      "tests": "Uji",
+      "docs": "Dokumen",
+      "design": "Tampilan",
+      "settings": "Pengaturan",
+      "badge": "{count} menunggu"
+    },
+    "attention": {
+      "findings": "{count} uji punya temuan yang belum ditangani",
+      "drafts": "{count} draf dokumen menunggu persetujuan",
+      "dns": "DNS domain live belum siap"
+    },
+    "followRelease": "Lihat di tab Rilis"
   },
   "actions": {
     "deploy": "Terbitkan",

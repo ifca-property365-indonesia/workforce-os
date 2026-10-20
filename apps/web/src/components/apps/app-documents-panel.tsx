@@ -42,6 +42,13 @@ const STATUS_TONE: Record<VersionRow["status"], string> = { draft: "bg-[var(--si
 /** writers first: roles that write documents (project, product, analyst, marketing) */
 const WRITER_RE = /\b(project|product|pm|analyst|analis|marketing|writer|penulis|bisnis|business)\b/i;
 
+export const appDocumentsQueryKey = (appId: string) => ["app", appId, "documents"];
+/** the app's documents by kind (shared by the panel and the app page's tab badge) */
+export const useAppDocuments = (appId: string, enabled = true) =>
+  useQuery({ queryKey: appDocumentsQueryKey(appId), queryFn: () => api.get<{ kinds: Docs }>(`/api/apps/${appId}/documents`).then((r) => r.kinds), enabled });
+/** document versions waiting for an Admin's decision */
+export const draftDocuments = (docs: Docs | undefined) => (docs ? KINDS.reduce((n, k) => n + docs[k].versions.filter((v) => v.status === "draft").length, 0) : 0);
+
 /**
  * C9: the app's documents. Each kind has versions; a new version is a draft next to the approved one, compared line
  * by line, approved or rejected by an Admin. Members ask an employee for a new version (a task that may write exactly
@@ -52,8 +59,8 @@ export function AppDocumentsPanel({ app, admin, member }: { app: Pick<AppDTO, "i
   const f = useFormat();
   const qc = useQueryClient();
   const focusDoc = useSearchParams().get("doc");
-  const key = ["app", app.id, "documents"];
-  const { data } = useQuery({ queryKey: key, queryFn: () => api.get<{ kinds: Docs }>(`/api/apps/${app.id}/documents`).then((r) => r.kinds) });
+  const key = appDocumentsQueryKey(app.id);
+  const { data } = useAppDocuments(app.id);
   const [kind, setKind] = useState<Kind>("prd");
   const [picked, setPicked] = useState<string | null>(null);
   const [diff, setDiff] = useState(false);

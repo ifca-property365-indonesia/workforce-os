@@ -138,7 +138,22 @@
     },
     "lastBackup": "Database backed up {ago}",
     "noBackup": "No database backup yet",
-    "backupStale": "Over a day without a backup"
+    "backupStale": "Over a day without a backup",
+    "tabs": {
+      "overview": "Overview",
+      "releases": "Releases",
+      "tests": "Tests",
+      "docs": "Documents",
+      "design": "Look",
+      "settings": "Settings",
+      "badge": "{count} waiting"
+    },
+    "attention": {
+      "findings": "{count, plural, one {# test has findings nobody handled} other {# tests have findings nobody handled}}",
+      "drafts": "{count, plural, one {# document draft waits for approval} other {# document drafts wait for approval}}",
+      "dns": "The live domain's DNS is not ready yet"
+    },
+    "followRelease": "Follow it in Releases"
   },
   "actions": {
     "deploy": "Deploy",
