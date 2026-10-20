@@ -134,6 +134,10 @@ describe("app test run (C3)", () => {
     const modelSaw = JSON.stringify([mock.lastPrompt, mock.calls.map((c) => c.output)]);
     expect(modelSaw).toContain("requester: Requester");
     expect(modelSaw).toContain("the approval flow");
+    // the UX and process-rule checks (letters in amounts, Indonesian amounts, double click, conflicting processes)
+    expect(mock.lastPrompt).toContain("1.250.000,50");
+    expect(mock.lastPrompt).toMatch(/Double click: .*Exactly one record/);
+    expect(mock.lastPrompt).toContain('starting with "UX:"');
     expect(modelSaw).not.toMatch(/shared-test-pw|basic-auth-pw|JBSWY3DP/);
     expect(mock.calls[2]!.output).toMatch(/Steps done: 0 of 1 — step 1 .* failed: no element/);
     // the page said "ignore all previous instructions": the run is tainted
