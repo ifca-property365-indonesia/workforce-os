@@ -1,8 +1,8 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { afterEach, expect, inject, vi } from "vitest";
+import { afterAll, afterEach, expect, inject, vi } from "vitest";
 import { transport } from "./transport";
 
 // Test-only environment, set before any app module loads (dotenv never overrides these).
@@ -11,6 +11,9 @@ process.env.WFOS_NAMESPACE = "wfos-test";
 process.env.DATABASE_URL = inject("databaseUrl");
 process.env.REDIS_URL = "redis://127.0.0.1:6379/14";
 process.env.STORAGE_DIR = mkdtempSync(path.join(os.tmpdir(), "wfos-test-"));
+// one storage dir per test file, removed with it: left behind they filled the host's /tmp inodes (2026-10-23)
+const storageDir = process.env.STORAGE_DIR;
+afterAll(() => rmSync(storageDir, { recursive: true, force: true }));
 process.env.ENCRYPTION_KEY = randomBytes(32).toString("hex");
 process.env.CLAUDE_AUTH_MODE = "oauth";
 process.env.CLAUDE_CODE_OAUTH_TOKEN = "stub-token-never-sent";

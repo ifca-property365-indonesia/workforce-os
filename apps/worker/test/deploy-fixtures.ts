@@ -1,10 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
-import { vi } from "vitest";
+import { afterAll, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { appEnvironments, apps, appReleases, db, getOrCreateWorkspaceSshKey, members, repositories, servers, users } from "@wfos/db";
 import { appInstanceName, WFOS_HELPER_VERSION, type DomainCheck, type ServerInfo } from "@wfos/shared";
@@ -291,9 +291,16 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd,
 
 export const MANIFEST = { type: "nextjs", migrate: "pnpm db:migrate", database: true, health: "/api/health", memoryMb: 512 };
 
+/** repositories made by makeRemote in this test file, removed after it */
+const remoteDirs: string[] = [];
+afterAll(() => {
+  for (const d of remoteDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
 /** A bare "remote" plus a work tree to commit from. commit() writes files, commits and pushes; returns the sha. */
 export function makeRemote(files: Record<string, string> = {}) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "wfos-app-repo-"));
+  remoteDirs.push(dir);
   const remote = path.join(dir, "remote.git");
   const work = path.join(dir, "work");
   execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env: gitEnv });
