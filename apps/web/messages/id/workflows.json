@@ -1,0 +1,72 @@
+{
+  "title": "Alur Kerja",
+  "description": "Langkah yang jalan berurutan: task karyawan, syarat, persetujuan orang, pemberitahuan. Karyawan boleh mengusulkan; orang yang menyalakan.",
+  "new": "Alur kerja baru",
+  "edit": "Ubah alur kerja",
+  "saved": "Alur kerja disimpan",
+  "started": "Run dimulai",
+  "runNow": "Jalankan sekarang",
+  "enabledLabel": "Alur kerja aktif",
+  "toggleRuns": "Tampilkan run",
+  "confirmDelete": "Hapus alur kerja \"{name}\" beserta riwayat run-nya?",
+  "confirmEnableProposed": "{employee} mengusulkan alur kerja ini. Nyalakan? Periksa langkahnya dulu: setelah aktif, ia berjalan sendiri.",
+  "nextRun": "Run berikutnya: {when}",
+  "lastRun": "Run terakhir {when}: {status}",
+  "neverRan": "Belum pernah jalan",
+  "badge": {
+    "proposed": "Draf dari {employee}",
+    "untrusted": "Diusulkan saat menangani konten tak tepercaya"
+  },
+  "empty": {
+    "title": "Belum ada alur kerja",
+    "description": "Buat di sini, atau minta karyawan mengusulkannya lewat chat."
+  },
+  "kind": {
+    "agent": "Task karyawan",
+    "condition": "Syarat",
+    "approval": "Persetujuan",
+    "notify": "Pemberitahuan"
+  },
+  "trigger": {
+    "manual": "Manual",
+    "schedule": "Terjadwal"
+  },
+  "status": {
+    "running": "Berjalan",
+    "waiting": "Menunggu",
+    "done": "Selesai",
+    "stopped": "Berhenti",
+    "failed": "Gagal"
+  },
+  "form": {
+    "description": "Deskripsi",
+    "trigger": "Kapan berjalan",
+    "cron": "Cron",
+    "timezone": "Zona waktu",
+    "steps": "Langkah",
+    "addStep": "Tambah langkah",
+    "kind": "Jenis langkah",
+    "moveUp": "Naikkan",
+    "moveDown": "Turunkan",
+    "employee": "Karyawan",
+    "instruction": "Instruksi",
+    "instructionPlaceholder": "Apa yang harus dikerjakan karyawan ini",
+    "previousOutputHint": "Hasil langkah sebelumnya ditambahkan ke instruksi sebagai data.",
+    "conditionLead": "Lanjut hanya jika hasil sebelumnya",
+    "conditionMode": "Syarat",
+    "conditionText": "Teks",
+    "contains": "mengandung",
+    "notContains": "tidak mengandung",
+    "title": "Judul",
+    "approvalPlaceholder": "mis. Kirim laporan ke klien?",
+    "notifyPlaceholder": "mis. Laporan mingguan siap"
+  },
+  "runs": {
+    "title": "Run",
+    "none": "Belum ada run",
+    "progress": "{done} dari {total} langkah",
+    "openTask": "Buka task",
+    "openApproval": "Buka persetujuan",
+    "outputs": "Hasil tiap langkah"
+  }
+}

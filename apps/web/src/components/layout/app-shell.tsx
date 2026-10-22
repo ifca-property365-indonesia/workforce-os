@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Armchair, Bell, BookOpen, Bot, Building2, CalendarClock, CheckCircle2, Eye, KanbanSquare, Languages, LayoutDashboard, LogOut, Menu, MessageSquare, Monitor, Moon, OctagonX, Rocket, Search, Send, Settings, ShieldCheck, Sun, Target, UserRound, UsersRound } from "lucide-react";
+import { Armchair, Bell, BookOpen, Bot, Building2, CalendarClock, CheckCircle2, Eye, GitBranch, KanbanSquare, Languages, LayoutDashboard, LogOut, Menu, MessageSquare, Monitor, Moon, OctagonX, Rocket, Search, Send, Settings, ShieldCheck, Sun, Target, UserRound, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CommandPalette, useCommandPaletteShortcut } from "@/components/layout/command-palette";
 import { NewTaskDialog } from "@/components/tasks/new-task-dialog";
@@ -44,6 +44,7 @@ const NAV = [
   { href: "/tasks", key: "tasks", icon: KanbanSquare },
   { href: "/goals", key: "goals", icon: Target },
   { href: "/routines", key: "routines", icon: CalendarClock },
+  { href: "/workflows", key: "workflows", icon: GitBranch },
   { href: "/approvals", key: "approvals", icon: ShieldCheck, badge: "approvals" as const },
   { href: "/outbox", key: "outbox", icon: Send },
   { href: "/clients", key: "clients", icon: Building2 },

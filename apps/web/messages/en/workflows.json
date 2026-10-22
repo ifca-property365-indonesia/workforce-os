@@ -1,0 +1,72 @@
+{
+  "title": "Workflows",
+  "description": "Steps that run in order: an employee's task, a condition, a person's approval, a notice. Employees can propose one; a person turns it on.",
+  "new": "New workflow",
+  "edit": "Edit workflow",
+  "saved": "Workflow saved",
+  "started": "Run started",
+  "runNow": "Run now",
+  "enabledLabel": "Workflow on",
+  "toggleRuns": "Show runs",
+  "confirmDelete": "Delete the workflow \"{name}\" and its run history?",
+  "confirmEnableProposed": "{employee} proposed this workflow. Turn it on? Check its steps first: once on, it runs on its own.",
+  "nextRun": "Next run: {when}",
+  "lastRun": "Last run {when}: {status}",
+  "neverRan": "Never ran",
+  "badge": {
+    "proposed": "Draft from {employee}",
+    "untrusted": "Proposed while handling untrusted content"
+  },
+  "empty": {
+    "title": "No workflows yet",
+    "description": "Make one here, or ask an employee to propose one in chat."
+  },
+  "kind": {
+    "agent": "Employee task",
+    "condition": "Condition",
+    "approval": "Approval",
+    "notify": "Notice"
+  },
+  "trigger": {
+    "manual": "By hand",
+    "schedule": "Schedule"
+  },
+  "status": {
+    "running": "Running",
+    "waiting": "Waiting",
+    "done": "Done",
+    "stopped": "Stopped",
+    "failed": "Failed"
+  },
+  "form": {
+    "description": "Description",
+    "trigger": "When it runs",
+    "cron": "Cron",
+    "timezone": "Time zone",
+    "steps": "Steps",
+    "addStep": "Add a step",
+    "kind": "Step kind",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "employee": "Employee",
+    "instruction": "Instruction",
+    "instructionPlaceholder": "What this employee should do",
+    "previousOutputHint": "The previous step's output is added to the instruction as data.",
+    "conditionLead": "Go on only if the previous output",
+    "conditionMode": "Condition",
+    "conditionText": "Text",
+    "contains": "contains",
+    "notContains": "does not contain",
+    "title": "Title",
+    "approvalPlaceholder": "e.g. Send the report to the client?",
+    "notifyPlaceholder": "e.g. Weekly report ready"
+  },
+  "runs": {
+    "title": "Runs",
+    "none": "No runs yet",
+    "progress": "{done} of {total} steps",
+    "openTask": "Open the task",
+    "openApproval": "Open the approval",
+    "outputs": "Step outputs"
+  }
+}

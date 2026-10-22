@@ -22,6 +22,7 @@ import {
   teamMembers,
   teams,
   TaskInputError,
+  workflows,
   workspaces,
   type Deliverable,
   type TaskRow,
@@ -47,6 +48,8 @@ import {
   SKILL_DESCRIPTION_MAX,
   SKILL_INDEX_MAX,
   webhookPayloadSchema,
+  WORKFLOW_MAX_STEPS,
+  workflowInputSchema,
   type AllowListEntry,
   type AutonomyLevel,
   type AutoActionChip,
@@ -758,6 +761,53 @@ export function buildTools(ctx: RunContext) {
           }
         });
         return ok(old ? "Saved to memory; the outdated memory is no longer recalled." : `Saved to memory${expiresAt ? ` until ${expiresAt.toISOString().slice(0, 10)}` : ""}.`);
+      }),
+    ),
+  );
+
+  add(
+    "propose_workflow",
+    tool(
+      "propose_workflow",
+      "Draft a workflow: steps that run in order on a schedule or by hand. Step kinds: agent { employeeId, instruction } (a task for that " +
+        "employee; the previous step's output is added as data), condition { mode: contains | not_contains, text } (go on only if the " +
+        "previous output matches), approval { title } (a person approves before it goes on), notify { title } (a notice with the previous output). " +
+        "trigger: { kind: manual } or { kind: schedule, cron (5 fields), timezone }. It is saved as a DRAFT that is off: a person reviews it in " +
+        "Workflows and turns it on. You cannot turn it on or run it.",
+      {
+        name: z.string().min(1).max(120),
+        description: z.string().max(2000).optional(),
+        trigger: z.record(z.string(), z.unknown()),
+        steps: z.array(z.record(z.string(), z.unknown())).min(1).max(WORKFLOW_MAX_STEPS),
+      },
+      wrap(ctx, "propose_workflow", async (a: { name: string; description?: string; trigger: Record<string, unknown>; steps: Record<string, unknown>[] }) => {
+        const input = workflowInputSchema.safeParse({ ...a, description: a.description ?? "" });
+        if (!input.success) return err(`Invalid workflow: ${input.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+        const p = input.data;
+        if (p.trigger.kind === "schedule") {
+          try {
+            cronNextRuns(p.trigger.cron, p.trigger.timezone, 1);
+          } catch (e) {
+            return err(`${(e as Error).message}. Use 5 cron fields: minute hour day-of-month month day-of-week.`);
+          }
+        }
+        const ids = [...new Set(p.steps.flatMap((s) => (s.kind === "agent" ? [s.employeeId] : [])))];
+        const known = await db.select({ id: employees.id }).from(employees).where(and(eq(employees.workspaceId, ctx.workspaceId), inArray(employees.id, ids)));
+        const missing = ids.filter((id) => !known.some((k) => k.id === id));
+        if (missing.length) return err(`Unknown employee id(s): ${missing.join(", ")}. Use ids of this workspace's employees.`);
+        if (ctx.dryRun || ctx.sandboxed) return ok(`DRY RUN: workflow "${p.name}" was NOT saved.`);
+        const texts = p.steps.map((s) => (s.kind === "agent" ? s.instruction : "")).join("\n");
+        const { findings } = await guardOutput(ctx.guard, "propose_workflow", `${p.description}\n${texts}`);
+        if (findings.some((f) => f.severity === "high")) return err("Refused: the workflow looks like it contains a secret.");
+        const [wf] = await db
+          .insert(workflows)
+          .values({ workspaceId: ctx.workspaceId, name: p.name, description: p.description, trigger: p.trigger, steps: p.steps, enabled: false, proposedByEmployeeId: ctx.employee.id, untrustedInput: ctx.guard.tainted })
+          .returning({ id: workflows.id });
+        await publish(ctx.workspaceId, { type: "workflow.proposed", workflowId: wf!.id, name: p.name });
+        return ok(
+          `Workflow "${p.name}" saved as a draft (id ${wf!.id}). It is OFF: a person reviews it in Workflows and turns it on. ` +
+            "Do not propose it again; tell the user it is waiting for their review.",
+        );
       }),
     ),
   );

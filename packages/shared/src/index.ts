@@ -120,10 +120,48 @@ export const STEP_KINDS = [
 export type StepKind = (typeof STEP_KINDS)[number];
 
 /** handoff: made by handoff_to_division (another division's head handed the work over; chains are limited) */
-export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo", "webhook", "handoff"] as const;
+export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo", "webhook", "handoff", "workflow"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
 export const WEBHOOK_DELIVERY_STATUSES = ["accepted", "duplicate", "rejected", "failed", "triaging", "dropped", "noted", "escalated"] as const;
+// ---------------------------------------------------------------------------
+// Workflows (after OpenHuman's workflows): steps run in order on a schedule or by hand
+// ---------------------------------------------------------------------------
+
+export const WORKFLOW_MAX_STEPS = 12;
+export const WORKFLOW_RUN_STATUSES = ["running", "waiting", "done", "stopped", "failed"] as const;
+export type WorkflowRunStatus = (typeof WORKFLOW_RUN_STATUSES)[number];
+/** the approval a workflow's approval step asks for (decided like any other approval) */
+export const WORKFLOW_APPROVAL_TOOL = "workflow_step";
+
+export const workflowStepSchema = z.discriminatedUnion("kind", [
+  /** a task for one employee; the previous step's output follows the instruction as data */
+  z.object({ kind: z.literal("agent"), employeeId: z.string().uuid(), instruction: z.string().trim().min(1).max(8000) }),
+  /** go on only when the previous output contains (or does not contain) a text, case-insensitive; else the run stops */
+  z.object({ kind: z.literal("condition"), mode: z.enum(["contains", "not_contains"]), text: z.string().trim().min(1).max(200) }),
+  /** a person approves before the run goes on; a rejection (or no answer in time) stops it */
+  z.object({ kind: z.literal("approval"), title: z.string().trim().min(1).max(200) }),
+  /** a notice to the workspace with the previous output */
+  z.object({ kind: z.literal("notify"), title: z.string().trim().min(1).max(200) }),
+]);
+export type WorkflowStep = z.infer<typeof workflowStepSchema>;
+
+export const workflowTriggerSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("manual") }),
+  z.object({ kind: z.literal("schedule"), cron: z.string().trim().min(9).max(100), timezone: z.string().refine(isTimeZone, "an IANA time zone").default("Asia/Jakarta") }),
+]);
+export type WorkflowTrigger = z.infer<typeof workflowTriggerSchema>;
+
+export const workflowInputSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    description: z.string().max(2000).default(""),
+    trigger: workflowTriggerSchema,
+    steps: z.array(workflowStepSchema).min(1).max(WORKFLOW_MAX_STEPS),
+  })
+  .refine((w) => w.steps.some((s) => s.kind === "agent"), { message: "A workflow needs at least one employee step", path: ["steps"] });
+export type WorkflowInput = z.infer<typeof workflowInputSchema>;
+
 /** what webhook triage decides for one delivery (after OpenHuman's trigger triage) */
 export const WEBHOOK_TRIAGE_DECISIONS = ["drop", "note", "task", "escalate"] as const;
 export type WebhookTriageDecision = (typeof WEBHOOK_TRIAGE_DECISIONS)[number];
@@ -230,6 +268,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "skill_inspect", label: "Read catalog skill", description: "HR: read a catalog skill's SKILL.md, files and license at its latest commit before proposing it", class: "reversible", credits: 0.05, category: "knowledge" },
   { name: "propose_skill", label: "Propose skill install", description: "HR: propose installing a catalog skill for employees; an Admin reviews its full text and license and approves it", class: "reversible", credits: 0.05, category: "knowledge" },
   { name: "propose_routine", label: "Propose routine", description: "Propose a recurring routine (cron schedule + brief); a human approves it before it is created", class: "reversible", credits: 0.05, category: "routines" },
+  { name: "propose_workflow", label: "Propose workflow", description: "Draft a workflow (employee tasks, conditions, a person's approval, notices) that a person reviews and turns on; it never turns one on itself", class: "reversible", credits: 0, category: "routines" },
   { name: "delegate_subtask", label: "Delegate subtask", description: "Team lead: assign a subtask to a team member", class: "reversible", credits: 0.05, category: "team" },
   { name: "request_revision", label: "Request revision", description: "Team lead: send a subtask back with feedback (at most twice per subtask)", class: "reversible", credits: 0.05, category: "team" },
   { name: "finish_review", label: "Finish review", description: "Division head: end the review of the subtasks with a verdict, accept (with notes) or fail (what is missing)", class: "reversible", credits: 0, category: "team" },
@@ -635,6 +674,8 @@ export type RealtimeEvent =
   | { type: "chat.message"; conversationId: string; message: ChatMessageDTO }
   | { type: "approval.created"; approvalId: string; taskId: string | null; conversationId?: string | null; title: string }
   | { type: "approval.updated"; approvalId: string; status: ApprovalStatus }
+  /** an employee drafted a workflow (propose_workflow): it waits, off, for a person's review */
+  | { type: "workflow.proposed"; workflowId: string; name: string }
   | { type: "employee.updated"; employeeId: string; status: EmployeeStatus }
   | { type: "killswitch"; engaged: boolean }
   | { type: "replay.updated"; replayId: string; status: string }
@@ -879,6 +920,9 @@ export type MiscJob =
   | { kind: "merge_scan"; workspaceId: string; repositoryId: string }
   /** sort one webhook delivery of a trigger with triage on (drop / note / task / escalate) */
   | { kind: "webhook_triage"; workspaceId: string; deliveryId: string }
+  /** start a run of a workflow (Run now), or move a run on after its task or approval settled */
+  | { kind: "workflow_start"; workspaceId: string; workflowId: string; userId?: string }
+  | { kind: "workflow_advance"; workspaceId: string; runId: string }
   | NotifyJob;
 
 /**

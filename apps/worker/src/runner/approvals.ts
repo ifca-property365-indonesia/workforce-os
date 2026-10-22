@@ -20,6 +20,7 @@ import { appendToBranch, chatMessageDto } from "./chat-turns";
 import { redactSecrets } from "@wfos/shared/server";
 import { approvalTainted } from "./taint";
 import { dataBlock, escapeData } from "./incidents";
+import { onWorkflowApprovalSettled } from "./workflows";
 
 type ApprovalRow = typeof approvals.$inferSelect;
 
@@ -123,6 +124,7 @@ export async function executeApproval(approvalId: string): Promise<void> {
     .where(and(eq(approvals.id, a.id), eq(approvals.status, "EXECUTING")))
     .returning({ id: approvals.id });
   if (!updated.length) return;
+  await onWorkflowApprovalSettled(a).catch((e: unknown) => log.warn({ err: e, approvalId: a.id }, "workflow run not handed on (the reaper retries)"));
   await recordStep({
     workspaceId: a.workspaceId,
     taskId: a.taskId,
@@ -207,6 +209,7 @@ export async function handleRejection(approvalId: string): Promise<void> {
     await recordStep({ workspaceId: a.workspaceId, taskId: a.taskId, conversationId: a.conversationId, employeeId: a.employeeId, kind: "system", name: "feedback_written_to_memory", output: content });
   }
   await postChatReceipt(a, { kind: "rejected" });
+  await onWorkflowApprovalSettled(a);
   if (a.taskId) await afterApprovalResolved(a.taskId);
 }
 
@@ -239,6 +242,7 @@ export async function expireUnansweredApprovals(now = new Date()): Promise<strin
       await audit({ workspaceId: a.workspaceId, actorLabel: "system", action: "approval.expired", targetType: "approval", targetId: a.id, details: { toolName: a.toolName, title: a.title, hours: r.hours } });
       await publish(a.workspaceId, { type: "approval.updated", approvalId: a.id, status: "EXPIRED" });
       await postChatReceipt(a, { kind: "expired", hours: r.hours });
+      await onWorkflowApprovalSettled(a);
       if (a.taskId) await afterApprovalResolved(a.taskId);
     } catch (e) {
       log.warn({ err: e, approvalId: r.id }, "expired approval not handed back (the reaper retries the task)");

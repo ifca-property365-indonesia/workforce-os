@@ -254,5 +254,8 @@
   "claude_login_not_waiting": "Proses masuk ini tidak lagi menunggu kode. Mulai lagi.",
   "always_allow_approve_only": "Selalu izinkan hanya bisa bersama persetujuan biasa, bukan saat mengedit atau menolak.",
   "always_allow_web_only": "Pilih selalu izinkan di web.",
-  "always_allow_not_offered": "Aksi ini tidak bisa diizinkan seterusnya; setujui sekali saja."
+  "always_allow_not_offered": "Aksi ini tidak bisa diizinkan seterusnya; setujui sekali saja.",
+  "invalid_workflow": "Alur kerja tidak valid.",
+  "workflow_run_open": "Masih ada run alur kerja ini yang berjalan.",
+  "workflow_unknown_employee": "Ada langkah alur kerja yang menyebut karyawan di luar workspace ini."
 }

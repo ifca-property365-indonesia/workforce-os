@@ -18,6 +18,7 @@ import { tickBilling } from "./scheduler/billing";
 import { resendOutbound } from "./lib/outbox";
 import { runMergeScan } from "./runner/merge-scan";
 import { triageDelivery } from "./runner/webhook-triage";
+import { advanceWorkflowRun, startWorkflowRun, tickWorkflows } from "./runner/workflows";
 import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { acquireRunLeases } from "./runner/run-lease";
 import { handleRunJobFailed } from "./runner/task-status";
@@ -87,6 +88,12 @@ const workers = [
           return;
         case "webhook_triage":
           await triageDelivery(d.deliveryId);
+          return;
+        case "workflow_start":
+          await startWorkflowRun(d.workflowId, "manual", d.userId);
+          return;
+        case "workflow_advance":
+          await advanceWorkflowRun(d.runId);
           return;
       }
     },
@@ -160,6 +167,11 @@ const schedTimer = setInterval(async () => {
     await tickRoutines();
   } catch (e) {
     log.error({ err: e }, "routine tick failed");
+  }
+  try {
+    await tickWorkflows();
+  } catch (e) {
+    log.error({ err: e }, "workflow tick failed");
   }
   try {
     await tickBilling();

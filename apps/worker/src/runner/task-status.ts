@@ -3,6 +3,7 @@ import { settleAppTest } from "../qa/app-test";
 import { settleHrReview } from "../hr/review";
 import { advanceAppTestSuite, apps, audit, db, moduleAppOfTask, takeQueuedModuleWork, tasks, type SuiteEnd } from "@wfos/db";
 import { assertTransition, TASK_STATUSES, canTransition, type RoutineRunStatus, type RunJob, type TaskStatus } from "@wfos/shared";
+import { onWorkflowTaskEnded } from "./workflows";
 import { msg } from "@wfos/shared/messages";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
@@ -52,6 +53,8 @@ export async function afterTerminal(task: Task, status: TerminalStatus, opts: { 
     inSuite = await advanceTestSuite(task.id);
   });
   await bestEffort("hr review settle", task.id, () => settleHrReview(task.id));
+  // a workflow step: its run goes on (or fails with the task)
+  await bestEffort("workflow advance", task.id, () => onWorkflowTaskEnded(task));
   // C8: one module build or change runs per app; the end of one starts the next that waits
   await bestEffort("module queue", task.id, () => startWaitingModuleWork(task.id));
   // P5: a run that brought its employee past 80 % of today's budget warns once that day

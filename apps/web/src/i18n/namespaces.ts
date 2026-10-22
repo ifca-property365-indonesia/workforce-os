@@ -21,6 +21,7 @@ export const NAMESPACES = [
   "clients",
   "goals",
   "routines",
+  "workflows",
   "knowledge",
   "settings",
   "office",

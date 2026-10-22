@@ -24,7 +24,8 @@
     "list_apps": "Lihat daftar aplikasi",
     "request_preview": "Terbitkan preview",
     "request_release": "Usulkan rilis LIVE",
-    "merge_branch": "Gabung ke branch utama"
+    "merge_branch": "Gabung ke branch utama",
+    "workflow_step": "Langkah alur kerja"
   },
   "email": {
     "to": "Kepada:",

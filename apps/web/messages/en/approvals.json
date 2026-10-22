@@ -24,7 +24,8 @@
     "list_apps": "List apps",
     "request_preview": "Publish preview",
     "request_release": "Propose LIVE release",
-    "merge_branch": "Merge into main branch"
+    "merge_branch": "Merge into main branch",
+    "workflow_step": "Workflow step"
   },
   "email": {
     "to": "To:",

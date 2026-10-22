@@ -24,6 +24,9 @@ import type {
   RoutineOverlap,
   IncidentKind,
   WebhookDeliveryStatus,
+  WorkflowRunStatus,
+  WorkflowStep,
+  WorkflowTrigger,
   IncidentStatus,
   MessageMeta,
   TeamResponderMode,
@@ -470,6 +473,8 @@ export const tasks = pgTable(
     retryCount: integer("retry_count").notNull().default(0),
     /** created from untrusted input (webhook payload): the run starts tainted */
     untrustedInput: boolean("untrusted_input").notNull().default(false),
+    /** a step of this workflow run: when the task ends, the run goes on */
+    workflowRunId: uuid("workflow_run_id").references((): AnyPgColumn => workflowRuns.id, { onDelete: "set null" }),
     /** 0..100 reported by the assignee (report_progress); null = never reported */
     progress: integer("progress"),
     progressNote: text("progress_note"),
@@ -1697,4 +1702,57 @@ export const toolOutputs = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (t) => [index("tool_outputs_ws").on(t.workspaceId, t.createdAt), index("tool_outputs_expires").on(t.expiresAt)],
+);
+
+/**
+ * A workflow (after OpenHuman's workflows): steps that run on a schedule or by hand. An employee only proposes one
+ * (propose_workflow: a draft, off); a person turns it on.
+ */
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    trigger: jsonb("trigger").$type<WorkflowTrigger>().notNull(),
+    steps: jsonb("steps").$type<WorkflowStep[]>().notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    /** proposed by this employee (propose_workflow); null: made by a person */
+    proposedByEmployeeId: uuid("proposed_by_employee_id").references(() => employees.id, { onDelete: "set null" }),
+    /** proposed by a tainted run: its tasks start tainted */
+    untrustedInput: boolean("untrusted_input").notNull().default(false),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("workflows_ws").on(t.workspaceId)],
+);
+
+/** One run of a workflow, with the steps as they were when it started. */
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: id(),
+    workflowId: uuid("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    /** manual | schedule */
+    trigger: text("trigger").notNull().default("manual"),
+    startedBy: uuid("started_by").references(() => users.id, { onDelete: "set null" }),
+    steps: jsonb("steps").$type<WorkflowStep[]>().notNull(),
+    stepIndex: integer("step_index").notNull().default(0),
+    status: text("status").$type<WorkflowRunStatus>().notNull().default("running"),
+    /** what each finished step handed on (an agent step: its task's result) */
+    outputs: jsonb("outputs").$type<string[]>().notNull().default([]),
+    waitingTaskId: uuid("waiting_task_id").references(() => tasks.id, { onDelete: "set null" }),
+    waitingApprovalId: uuid("waiting_approval_id").references(() => approvals.id, { onDelete: "set null" }),
+    /** an earlier step handled untrusted content (or the workflow was proposed by a tainted run) */
+    untrusted: boolean("untrusted").notNull().default(false),
+    error: text("error"),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("workflow_runs_workflow").on(t.workflowId, t.createdAt)],
 );

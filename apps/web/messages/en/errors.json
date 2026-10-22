@@ -254,5 +254,8 @@
   "claude_login_not_waiting": "This sign-in is no longer waiting for a code. Start again.",
   "always_allow_approve_only": "Always allow goes with a plain approve, not with an edit or a rejection.",
   "always_allow_web_only": "Choose always allow on the web.",
-  "always_allow_not_offered": "This action cannot be allowed for good; approve it once."
+  "always_allow_not_offered": "This action cannot be allowed for good; approve it once.",
+  "invalid_workflow": "The workflow is not valid.",
+  "workflow_run_open": "A run of this workflow is still in progress.",
+  "workflow_unknown_employee": "A workflow step names an employee outside this workspace."
 }

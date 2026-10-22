@@ -6,7 +6,7 @@ import { agentBranch, createPullRequest, mergeAgentBranch, pushAgentBranch, type
 import { runApprovedCommand } from "../runner/workspace/exec";
 import { queuePreviewRelease } from "../deploy/preview";
 import { queueLiveRelease } from "../deploy/live-request";
-import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, TERMINAL_STATUSES, webhookPayloadSchema, type OutboundEmailTrigger } from "@wfos/shared";
+import { emailPayloadSchema, invoicePayloadSchema, ROUTINE_OVERLAP_MODES, routineInputSchema, TERMINAL_STATUSES, webhookPayloadSchema, WORKFLOW_APPROVAL_TOOL, type OutboundEmailTrigger } from "@wfos/shared";
 import { decryptSecret, screenLeakage, withRetry } from "@wfos/shared/server";
 import { msg } from "@wfos/shared/messages";
 import { and, desc, eq } from "drizzle-orm";
@@ -456,6 +456,9 @@ export async function executeAction(
       return doPostWebhook(workspaceId, webhookPayloadSchema.parse(payload));
     case "create_routine":
       return doCreateRoutine(workspaceId, payload, context);
+    case WORKFLOW_APPROVAL_TOOL:
+      // the approval itself is the action: executeApproval hands the run on (onWorkflowApprovalSettled)
+      return { ok: true, summary: "Approved: the workflow goes on." };
     case "create_skill":
       return doCreateSkill(workspaceId, payload, context);
     case "install_skill":
