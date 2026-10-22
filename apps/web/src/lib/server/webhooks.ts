@@ -126,13 +126,8 @@ export function webhookSummary(payload: WebhookPayload): string {
   return summary;
 }
 
-/**
- * "<trigger name> · <short delivery id>". The title is shown everywhere (board, notifications, chat) outside any
- * data fence, so no payload text goes in it: the payload's summary stays inside the fenced brief.
- */
-export function webhookTitle(triggerName: string, deliveryId: string): string {
-  return `${triggerName} · ${deliveryId.replace(/-/g, "").slice(0, 8)}`.slice(0, 200);
-}
+/** the task title of a delivery (shared with the worker's triage) */
+export { webhookTitle } from "@wfos/shared";
 
 /** The first characters of the payload kept with the delivery, every leak finding (high and medium) redacted. */
 export function webhookExcerpt(payload: string): string {
@@ -184,6 +179,8 @@ export function publicWebhook(w: typeof webhookTriggers.$inferSelect) {
     teamId: w.teamId,
     briefTemplate: w.briefTemplate,
     dryRun: w.dryRun,
+    triage: w.triage,
+    triageRules: w.triageRules,
     enabled: w.enabled,
     lastFiredAt: w.lastFiredAt,
     createdAt: w.createdAt,

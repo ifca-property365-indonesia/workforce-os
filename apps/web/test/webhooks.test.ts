@@ -473,3 +473,36 @@ describe("Settings → Webhooks API", () => {
     expect(JSON.stringify(a!.details)).not.toContain(newSecret);
   });
 });
+
+describe("POST /api/hooks/[id]: triage (after OpenHuman)", () => {
+  it("a trigger with triage on keeps the fenced brief, creates no task yet and hands the delivery to the worker", async () => {
+    vi.mocked(queueModule.q.misc).mockClear();
+    const { ws, trigger: t, secret } = await trigger({ triage: true, triageRules: "Orders over Rp 1 juta are urgent." });
+    const r = await fire(t.id, { secret });
+    expect(r.status).toBe(202);
+    expect(r.json.status).toBe("triaging");
+    expect(await tasksOf(ws.id)).toHaveLength(0);
+    expect(queueModule.q.task).not.toHaveBeenCalled();
+    const [d] = await deliveriesOf(t.id);
+    expect(d).toMatchObject({ id: r.json.deliveryId, status: "triaging", taskId: null });
+    expect(d!.pendingPayload).toContain("Process the new order.\n\n<webhook_payload>\nSummary: Order #1001\n");
+    expect(queueModule.q.misc).toHaveBeenCalledWith({ kind: "webhook_triage", workspaceId: ws.id, deliveryId: d!.id });
+    // a retry with the same key is still a duplicate
+    const again = await fire(t.id, { secret, idempotencyKey: "k1" });
+    const dup = await fire(t.id, { secret, idempotencyKey: "k1" });
+    expect(again.json.status).toBe("triaging");
+    expect(dup.json.status).toBe("duplicate");
+  });
+
+  it("an admin turns triage on and sets its rules; the list shows them", async () => {
+    const { wsId, own } = await signIn("ADMIN");
+    const created = await call(createHook, "POST", "/api/settings/webhooks", { name: "Billing", assigneeId: own!.emp.id, triage: true, triageRules: "Failed payments are urgent." });
+    expect(created.status).toBe(200);
+    const id = (created.json.webhook as { id: string }).id;
+    const [row] = await db.select().from(webhookTriggers).where(eq(webhookTriggers.id, id));
+    expect(row).toMatchObject({ workspaceId: wsId, triage: true, triageRules: "Failed payments are urgent." });
+    expect((await callWithParams(patchHook, "PATCH", `/api/settings/webhooks/${id}`, { triage: false, triageRules: "x" }, { id })).status).toBe(200);
+    const list = (await call(listHooks, "GET", "/api/settings/webhooks")).json.webhooks as { id: string; triage: boolean; triageRules: string; counts: Record<string, number> }[];
+    expect(list.find((w) => w.id === id)).toMatchObject({ triage: false, triageRules: "x", counts: { dropped: 0, escalated: 0 } });
+  });
+});

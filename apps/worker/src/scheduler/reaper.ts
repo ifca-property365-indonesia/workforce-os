@@ -4,6 +4,7 @@ import { enqueueTask, runsQueue } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { log } from "../lib/logger";
 import { pruneToolOutputs } from "../lib/tool-outputs";
+import { retriageStuckDeliveries } from "../runner/webhook-triage";
 import { activeConversationIds, isTaskRunActive } from "../guards/killswitch";
 import { tasksHoldingLease } from "../guards/lease";
 import { failTask, settleDispatchedRoutineRuns } from "../runner/task-status";
@@ -46,6 +47,7 @@ import { failStuckSends } from "../lib/outbox";
  * - QUEUED tasks older than LOST_QUEUED_AFTER_MS that no BullMQ job will ever run (the enqueue was lost):
  *   re-enqueued, unless held (phase hold), an ordered subtask waiting for or blocked by its dependencies, behind the kill switch, a quota pause or an employee that is not active,
  * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches),
+ * - webhook deliveries stuck in triage (their job was lost), asked again (retriageStuckDeliveries),
  * - PENDING approvals past their workspace's approval_expiry_hours, expired unanswered (expireUnansweredApprovals),
  * - saved large tool results (read_output handles): emptied once expired, deleted after OUTPUT_STATS_RETENTION_MS,
  * - outbox rows left `sending` for more than STUCK_SENDING_MS (failed with an "interrupted, check before resending" note),
@@ -114,6 +116,8 @@ export interface ReapResult {
   requeued: string[];
   /** webhook deliveries deleted for age */
   webhookDeliveriesPruned: number;
+  /** webhook deliveries whose triage job was lost, enqueued again */
+  deliveriesRetriaged: string[];
   /** approvals nobody decided in time, expired (fail closed) */
   approvalsExpired: string[];
   /** saved large tool results emptied after they expired, or deleted for age */
@@ -172,12 +176,14 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
   const webhookDeliveriesPruned = await sweep("webhook deliveries", 0, () => pruneWebhookDeliveries(now));
   const toolOutputsPruned = await sweep("tool outputs", 0, () => pruneToolOutputs(now));
   const approvalsExpired = await sweep("approval expiry", [], () => expireUnansweredApprovals(now));
+  const deliveriesRetriaged = await sweep("webhook triage", [], () => retriageStuckDeliveries(now));
+  if (deliveriesRetriaged.length) log.warn({ deliveriesRetriaged }, "reaper: webhook deliveries stuck in triage enqueued again");
   if (approvalsExpired.length) log.warn({ approvalsExpired }, "reaper: approvals nobody decided in time expired");
   const stuckEmailsFailed = await sweep("outbox sending", [], () => failStuckSends(now));
   if (stuckEmailsFailed.length) log.warn({ stuckEmailsFailed }, "reaper: outbox rows stuck in sending marked failed");
 
   const routineRunsSettled = await settleDispatchedRoutineRuns();
-  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, toolOutputsPruned, approvalsExpired, stuckEmailsFailed, releasesLost, releasesHandedBack };
+  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, toolOutputsPruned, approvalsExpired, deliveriesRetriaged, stuckEmailsFailed, releasesLost, releasesHandedBack };
 }
 
 /**

@@ -19,6 +19,8 @@ export const GET = route("ADMIN", async ({ session }) => {
         teamName: teams.name,
         briefTemplate: webhookTriggers.briefTemplate,
         dryRun: webhookTriggers.dryRun,
+        triage: webhookTriggers.triage,
+        triageRules: webhookTriggers.triageRules,
         enabled: webhookTriggers.enabled,
         lastFiredAt: webhookTriggers.lastFiredAt,
         createdAt: webhookTriggers.createdAt,
@@ -41,7 +43,7 @@ export const GET = route("ADMIN", async ({ session }) => {
   ]);
   return {
     webhooks: rows.map((r) => {
-      const c: Record<WebhookDeliveryStatus, number> = { accepted: 0, duplicate: 0, rejected: 0, failed: 0 };
+      const c: Record<WebhookDeliveryStatus, number> = { accepted: 0, duplicate: 0, rejected: 0, failed: 0, triaging: 0, dropped: 0, noted: 0, escalated: 0 };
       for (const x of counts) if (x.triggerId === r.id) c[x.status] = Number(x.n);
       const l = last.find((x) => x.triggerId === r.id);
       return { ...r, url: webhookUrl(r.id), counts: c, lastDelivery: l ? { status: l.status, receivedAt: l.receivedAt } : null };
@@ -55,6 +57,8 @@ const createSchema = z.object({
   teamId: z.uuid().nullish(),
   briefTemplate: z.string().max(8000).default(""),
   dryRun: z.boolean().default(false),
+  triage: z.boolean().default(false),
+  triageRules: z.string().max(4000).default(""),
 });
 
 /** Create a trigger. The secret is returned once, here; only its sha256 is stored. */
@@ -72,6 +76,8 @@ export const POST = route("ADMIN", async ({ session, req }) => {
       teamId: input.teamId ?? null,
       briefTemplate: input.briefTemplate,
       dryRun: input.dryRun,
+      triage: input.triage,
+      triageRules: input.triageRules,
       createdBy: session.userId,
     })
     .returning();

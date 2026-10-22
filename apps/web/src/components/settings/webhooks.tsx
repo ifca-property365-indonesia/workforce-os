@@ -30,6 +30,8 @@ interface Webhook {
   teamName: string | null;
   briefTemplate: string;
   dryRun: boolean;
+  triage: boolean;
+  triageRules: string;
   enabled: boolean;
   lastFiredAt: string | null;
   counts: Record<WebhookDeliveryStatus, number>;
@@ -43,6 +45,8 @@ interface Delivery {
   error: string | null;
   idempotencyKey: string | null;
   payloadExcerpt: string;
+  /** the triage's reason (a model's sentence about untrusted data: shown as text only) */
+  triageReason: string | null;
   receivedAt: string;
 }
 
@@ -53,7 +57,33 @@ const TONE: Record<WebhookDeliveryStatus, "default" | "secondary" | "destructive
   duplicate: "secondary",
   rejected: "outline",
   failed: "destructive",
+  triaging: "secondary",
+  dropped: "outline",
+  noted: "secondary",
+  escalated: "destructive",
 };
+
+/** The admin's triage rules for one trigger: what matters, what is noise, what is urgent. */
+function TriageRules({ initial, onSave }: { initial: string; onSave: (rules: string) => void }) {
+  const t = useTranslations("webhooks");
+  const tc = useTranslations("common");
+  const id = useId();
+  const [rules, setRules] = useState(initial);
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {t("triageRules")}
+      </Label>
+      <Textarea id={id} value={rules} maxLength={4000} placeholder={t("triageRulesPlaceholder")} onChange={(e) => setRules(e.target.value)} className="min-h-16 text-xs" />
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" disabled={rules === initial} onClick={() => onSave(rules)}>
+          {tc("save")}
+        </Button>
+        <span className="text-xs text-muted-foreground">{t("triageHelp")}</span>
+      </div>
+    </div>
+  );
+}
 
 /** The curl line for a webhook (the secret is only known right after creation or rotation). */
 function curlExample(url: string, secret: string) {
@@ -219,6 +249,12 @@ export function WebhooksSettings({ owner, admin }: { owner: boolean; admin: bool
                 {!w.assigneeId && !w.teamId && <span className="text-xs text-destructive">{t("targetMissing")}</span>}
               </div>
               <p className="text-xs text-muted-foreground">{t("counts", w.counts)}</p>
+              {w.triage && (
+                <>
+                  <p className="text-xs text-muted-foreground">{t("triageCounts", w.counts)}</p>
+                  <TriageRules key={w.triageRules} initial={w.triageRules} onSave={(triageRules) => patch.mutate({ id: w.id, body: { triageRules } })} />
+                </>
+              )}
               <div className="flex flex-wrap items-center gap-4">
                 <label className="flex items-center gap-2">
                   <Switch checked={w.enabled} onCheckedChange={(v) => patch.mutate({ id: w.id, body: { enabled: v } })} />
@@ -227,6 +263,10 @@ export function WebhooksSettings({ owner, admin }: { owner: boolean; admin: bool
                 <label className="flex items-center gap-2">
                   <Switch checked={w.dryRun} onCheckedChange={(v) => patch.mutate({ id: w.id, body: { dryRun: v } })} />
                   {t("dryRun")}
+                </label>
+                <label className="flex items-center gap-2">
+                  <Switch checked={w.triage} onCheckedChange={(v) => patch.mutate({ id: w.id, body: { triage: v } })} />
+                  {t("triage")}
                 </label>
                 <div className="ml-auto flex flex-wrap gap-1">
                   <Button size="sm" variant="outline" onClick={() => setDrawer(w)}>
@@ -382,6 +422,7 @@ function Deliveries({ id }: { id: string }) {
             )}
           </div>
           {d.error && <p className="text-xs text-destructive">{errorText(d.error)}</p>}
+          {d.triageReason && <p className="text-xs text-muted-foreground">{t("triageReason", { reason: d.triageReason })}</p>}
           {d.payloadExcerpt && <pre className="max-h-40 overflow-auto rounded bg-muted p-2 text-xs break-all whitespace-pre-wrap">{d.payloadExcerpt}</pre>}
         </li>
       ))}

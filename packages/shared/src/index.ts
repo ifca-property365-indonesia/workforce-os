@@ -123,7 +123,18 @@ export type StepKind = (typeof STEP_KINDS)[number];
 export const TASK_SOURCES = ["chat", "board", "routine", "team", "replay", "demo", "webhook", "handoff"] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
-export const WEBHOOK_DELIVERY_STATUSES = ["accepted", "duplicate", "rejected", "failed"] as const;
+export const WEBHOOK_DELIVERY_STATUSES = ["accepted", "duplicate", "rejected", "failed", "triaging", "dropped", "noted", "escalated"] as const;
+/** what webhook triage decides for one delivery (after OpenHuman's trigger triage) */
+export const WEBHOOK_TRIAGE_DECISIONS = ["drop", "note", "task", "escalate"] as const;
+export type WebhookTriageDecision = (typeof WEBHOOK_TRIAGE_DECISIONS)[number];
+
+/**
+ * "<trigger name> · <short delivery id>". The title is shown everywhere (board, notifications, chat) outside any
+ * data fence, so no payload text goes in it: the payload's summary stays inside the fenced brief.
+ */
+export function webhookTitle(triggerName: string, deliveryId: string): string {
+  return `${triggerName} · ${deliveryId.replace(/-/g, "").slice(0, 8)}`.slice(0, 200);
+}
 export type WebhookDeliveryStatus = (typeof WEBHOOK_DELIVERY_STATUSES)[number];
 /** Inbound webhook limits: body size, requests per trigger per minute, payload excerpt kept per delivery. */
 export const WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
@@ -866,6 +877,8 @@ export type MiscJob =
   | { kind: "outbox_resend"; emailId: string; workspaceId: string; userId: string }
   /** refresh a repository's mirror and record pushed agent work found already in its default branch */
   | { kind: "merge_scan"; workspaceId: string; repositoryId: string }
+  /** sort one webhook delivery of a trigger with triage on (drop / note / task / escalate) */
+  | { kind: "webhook_triage"; workspaceId: string; deliveryId: string }
   | NotifyJob;
 
 /**

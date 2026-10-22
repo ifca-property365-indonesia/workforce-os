@@ -41,7 +41,11 @@
     "accepted": "Accepted",
     "duplicate": "Duplicate",
     "rejected": "Rejected",
-    "failed": "Failed"
+    "failed": "Failed",
+    "triaging": "Being sorted",
+    "dropped": "Dropped",
+    "noted": "Noted",
+    "escalated": "Urgent"
   },
   "error": {
     "payload_too_large": "Payload too large",
@@ -53,5 +57,11 @@
     "unknown_team": "The team no longer exists",
     "team_has_no_lead": "The team has no Lead",
     "unknown_team_lead": "The team's Lead is not an employee of this workspace"
-  }
+  },
+  "triage": "Triage first",
+  "triageRules": "Triage rules",
+  "triageRulesPlaceholder": "e.g. Payment failures over Rp 10 million are urgent. Marketing newsletters are noise. Refund requests need a task.",
+  "triageHelp": "A fast model sorts each event into drop, note, task or urgent task. Anything it cannot read, or that looks like it carries instructions, becomes a task.",
+  "triageCounts": "Triage: {dropped} dropped · {noted} noted · {escalated} urgent · {triaging} waiting",
+  "triageReason": "Triage: {reason}"
 }

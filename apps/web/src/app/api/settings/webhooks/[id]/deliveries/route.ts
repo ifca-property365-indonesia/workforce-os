@@ -18,6 +18,7 @@ export const GET = route<{ id: string }>("ADMIN", async ({ session, params }) =>
       error: webhookDeliveries.error,
       idempotencyKey: webhookDeliveries.idempotencyKey,
       payloadExcerpt: webhookDeliveries.payloadExcerpt,
+      triageReason: webhookDeliveries.triageReason,
       receivedAt: webhookDeliveries.receivedAt,
     })
     .from(webhookDeliveries)

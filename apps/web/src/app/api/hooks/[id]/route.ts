@@ -50,7 +50,8 @@ async function limited(key: string, max: number): Promise<boolean> {
 
 /**
  * Inbound webhook: an external system POSTs here with the trigger's bearer secret and a task is created for the
- * trigger's employee or team. No session. The payload is untrusted: it is fenced and escaped in the brief, and the
+ * trigger's employee or team. With triage on, the delivery waits as "triaging" and the worker sorts it first
+ * (webhook-triage.ts): dropped, noted, a task, or a task plus an urgent notice. No session. The payload is untrusted: it is fenced and escaped in the brief, and the
  * task is marked untrusted_input, so its run starts tainted (every irreversible action needs a human approval).
  *
  * Kill switch: a delivery is still accepted while it is engaged. The task waits QUEUED (the worker does not start
@@ -106,6 +107,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
         .onConflictDoNothing({ target: [webhookDeliveries.triggerId, webhookDeliveries.idempotencyKey], where: sql`${webhookDeliveries.idempotencyKey} is not null` })
         .returning({ id: webhookDeliveries.id });
       if (!delivery) return { duplicate: true as const };
+      // triage on: the worker sorts the delivery first (drop / note / task / escalate); the fenced brief waits here
+      if (t.triage) {
+        await tx.update(webhookDeliveries).set({ status: "triaging", pendingPayload: webhookBrief(t.briefTemplate, payload) }).where(eq(webhookDeliveries.id, delivery.id));
+        await tx.update(webhookTriggers).set({ lastFiredAt: new Date() }).where(eq(webhookTriggers.id, t.id));
+        return { duplicate: false as const, triage: true as const, deliveryId: delivery.id };
+      }
       const task = await createTask(tx, {
         workspaceId: t.workspaceId,
         title: webhookTitle(t.name, delivery.id),
@@ -118,7 +125,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       });
       await tx.update(webhookDeliveries).set({ taskId: task.id }).where(eq(webhookDeliveries.id, delivery.id));
       await tx.update(webhookTriggers).set({ lastFiredAt: new Date() }).where(eq(webhookTriggers.id, t.id));
-      return { duplicate: false as const, task };
+      return { duplicate: false as const, triage: false as const, task };
     });
 
     if (out.duplicate) {
@@ -129,6 +136,17 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       // logged without the key: the key column is unique per trigger and belongs to the first delivery
       await db.insert(webhookDeliveries).values({ triggerId: t.id, workspaceId: t.workspaceId, status: "duplicate", taskId: first?.taskId ?? null, payloadExcerpt: excerpt });
       return reply(200, { status: "duplicate", taskId: first?.taskId ?? null });
+    }
+
+    if (out.triage) {
+      const deliveryId = out.deliveryId;
+      // the delivery exists either way; a lost job is picked up again by the reaper (stuck in triaging)
+      try {
+        await q.misc({ kind: "webhook_triage", workspaceId: t.workspaceId, deliveryId });
+      } catch (e) {
+        logger.error({ err: errorTag(e), deliveryId, triggerId: t.id }, "webhook delivery kept but triage not enqueued");
+      }
+      return reply(202, { status: "triaging", deliveryId });
     }
 
     // 7. like POST /api/tasks: announce and start. The task exists either way; a failed enqueue is picked up again

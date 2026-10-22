@@ -17,6 +17,7 @@ import { backfillMemoryEmbeddings, runRoutineJob, tickRoutines } from "./schedul
 import { tickBilling } from "./scheduler/billing";
 import { resendOutbound } from "./lib/outbox";
 import { runMergeScan } from "./runner/merge-scan";
+import { triageDelivery } from "./runner/webhook-triage";
 import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { acquireRunLeases } from "./runner/run-lease";
 import { handleRunJobFailed } from "./runner/task-status";
@@ -83,6 +84,9 @@ const workers = [
           return;
         case "merge_scan":
           await runMergeScan(d.workspaceId, d.repositoryId);
+          return;
+        case "webhook_triage":
+          await triageDelivery(d.deliveryId);
           return;
       }
     },

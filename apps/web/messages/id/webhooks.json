@@ -41,7 +41,11 @@
     "accepted": "Diterima",
     "duplicate": "Duplikat",
     "rejected": "Ditolak",
-    "failed": "Gagal"
+    "failed": "Gagal",
+    "triaging": "Sedang dipilah",
+    "dropped": "Dibuang",
+    "noted": "Dicatat",
+    "escalated": "Mendesak"
   },
   "error": {
     "payload_too_large": "Payload terlalu besar",
@@ -53,5 +57,11 @@
     "unknown_team": "Tim tersebut sudah tidak ada",
     "team_has_no_lead": "Tim tidak memiliki Lead",
     "unknown_team_lead": "Lead tim bukan karyawan di workspace ini"
-  }
+  },
+  "triage": "Triase dulu",
+  "triageRules": "Aturan triase",
+  "triageRulesPlaceholder": "mis. Pembayaran gagal di atas Rp 10 juta itu mendesak. Newsletter marketing itu noise. Permintaan refund perlu jadi task.",
+  "triageHelp": "Model cepat memilah tiap event: buang, catat, task, atau task mendesak. Yang tidak terbaca, atau yang tampak berisi instruksi, selalu jadi task.",
+  "triageCounts": "Triase: {dropped} dibuang · {noted} dicatat · {escalated} mendesak · {triaging} menunggu",
+  "triageReason": "Triase: {reason}"
 }

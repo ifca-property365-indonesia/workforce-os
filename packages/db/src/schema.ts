@@ -920,6 +920,10 @@ export const webhookTriggers = pgTable(
     briefTemplate: text("brief_template").notNull().default(""),
     dryRun: boolean("dry_run").notNull().default(false),
     enabled: boolean("enabled").notNull().default(true),
+    /** each delivery is sorted first (drop / note / task / escalate) by a fast model following triageRules */
+    triage: boolean("triage").notNull().default(false),
+    /** the admin's rules for triage: what matters, what is noise, what is urgent */
+    triageRules: text("triage_rules").notNull().default(""),
     createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
     lastFiredAt: timestamp("last_fired_at", { withTimezone: true }),
     createdAt: createdAt(),
@@ -934,12 +938,16 @@ export const webhookDeliveries = pgTable(
     triggerId: uuid("trigger_id").notNull().references(() => webhookTriggers.id, { onDelete: "cascade" }),
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     idempotencyKey: text("idempotency_key"),
-    /** accepted | duplicate | rejected | failed */
+    /** accepted | duplicate | rejected | failed; with triage also triaging | dropped | noted | escalated */
     status: text("status").$type<WebhookDeliveryStatus>().notNull(),
     taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
     error: text("error"),
     /** first characters of the payload, secrets redacted */
     payloadExcerpt: text("payload_excerpt").notNull().default(""),
+    /** the triage's one-line reason (model output about untrusted data: shown as text, never acted on) */
+    triageReason: text("triage_reason"),
+    /** the payload text while the delivery waits for triage; cleared once it is sorted */
+    pendingPayload: text("pending_payload"),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

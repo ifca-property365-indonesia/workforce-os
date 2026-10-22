@@ -11,6 +11,8 @@ const patchSchema = z.object({
   enabled: z.boolean(),
   dryRun: z.boolean(),
   briefTemplate: z.string().max(8000),
+  triage: z.boolean(),
+  triageRules: z.string().max(4000),
   assigneeId: z.uuid().nullable(),
   teamId: z.uuid().nullable(),
 }).partial();
@@ -27,6 +29,8 @@ export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   if (input.enabled !== undefined) set.enabled = input.enabled;
   if (input.dryRun !== undefined) set.dryRun = input.dryRun;
   if (input.briefTemplate !== undefined) set.briefTemplate = input.briefTemplate;
+  if (input.triage !== undefined) set.triage = input.triage;
+  if (input.triageRules !== undefined) set.triageRules = input.triageRules;
   if (input.assigneeId !== undefined || input.teamId !== undefined) {
     let assigneeId = input.assigneeId !== undefined ? input.assigneeId : before.assigneeId;
     let teamId = input.teamId !== undefined ? input.teamId : before.teamId;
@@ -39,7 +43,7 @@ export const PATCH = route<P>("ADMIN", async ({ session, req, params }) => {
   if (!Object.keys(set).length) return { webhook: publicWebhook(before) };
   const [w] = await db.update(webhookTriggers).set(set).where(eq(webhookTriggers.id, before.id)).returning();
   const details: Record<string, unknown> = { fields: Object.keys(set) };
-  for (const k of ["name", "enabled", "dryRun", "assigneeId", "teamId"] as const) if (k in set) details[k] = set[k];
+  for (const k of ["name", "enabled", "dryRun", "triage", "assigneeId", "teamId"] as const) if (k in set) details[k] = set[k];
   await audit({ workspaceId: session.workspaceId, actorUserId: session.userId, actorLabel: session.email, action: "webhook.updated", targetType: "webhook", targetId: w!.id, details });
   return { webhook: publicWebhook(w!) };
 });
