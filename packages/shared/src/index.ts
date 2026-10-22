@@ -792,6 +792,30 @@ export function controlChannel(namespace = ""): string {
   return `${namespace ? `${namespace}:` : ""}wfos:control`;
 }
 
+/**
+ * "Connect Claude" sign-in (Settings → Claude credential): the worker runs `claude setup-token` and keeps this state in
+ * Redis for the web to poll. It never holds the token; `error` is a code the UI translates.
+ */
+export interface ClaudeLoginState {
+  id: string;
+  status: "starting" | "awaiting_code" | "verifying" | "connected" | "failed";
+  /** the claude.com sign-in link, once the CLI printed it */
+  url: string | null;
+  error: "busy" | "no_link" | "invalid_code" | "timeout" | "cli_failed" | "worker_restarted" | null;
+  startedAt: string;
+  expiresAt: string;
+  /** last 4 characters of the stored token, once connected */
+  last4: string | null;
+}
+
+export const CLAUDE_LOGIN_MINUTES = 10;
+/** the code claude.com shows after sign-in (`<code>#<state>`); nothing else is ever typed into the CLI */
+export const CLAUDE_LOGIN_CODE_RE = /^[A-Za-z0-9_\-#.~%=+/]{10,400}$/;
+
+export function claudeLoginKey(workspaceId: string, namespace = ""): string {
+  return `${namespace ? `${namespace}:` : ""}wfos:claude-login:${workspaceId}`;
+}
+
 /** set by the web while an app's remove job is queued (one at a time); cleared by the worker when the job ends */
 export function appRemoveLockKey(appId: string, namespace = ""): string {
   return `${namespace ? `${namespace}:` : ""}wfos:app-remove:${appId}`;

@@ -92,11 +92,17 @@ export async function publish(workspaceId: string, ev: RealtimeEvent) {
   await redis().publish(channelFor(workspaceId, serverEnv.namespace), JSON.stringify(ev));
 }
 
-/** Control channel: kill switch, task cancellation, and stopping a conversation's in-flight reply (an edit forked it). */
+/**
+ * Control channel: kill switch, task cancellation, stopping a conversation's in-flight reply (an edit forked it), and the
+ * steps of a Connect Claude sign-in (the worker holds the CLI process; web instances may be several).
+ */
 export type ControlMessage =
   | { type: "kill"; workspaceId: string }
   | { type: "cancel_task"; taskId: string }
-  | { type: "abort_conversation"; conversationId: string };
+  | { type: "abort_conversation"; conversationId: string }
+  | { type: "claude_login_start"; workspaceId: string; sessionId: string; userId: string; email: string }
+  | { type: "claude_login_code"; workspaceId: string; sessionId: string; code: string }
+  | { type: "claude_login_cancel"; workspaceId: string; sessionId: string };
 
 export async function control(msg: ControlMessage) {
   await redis().publish(controlChannel(serverEnv.namespace), JSON.stringify(msg));

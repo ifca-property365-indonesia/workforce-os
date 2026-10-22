@@ -250,5 +250,6 @@
   "goal_cycle": "Sasaran tidak bisa berada di bawah dirinya sendiri atau sub-sasarannya.",
   "view_only": "Tautan mode tampilan: bagian ini tidak dibuka untuk tamu, dan tidak ada yang bisa diubah.",
   "share_link_not_found": "Tautan ini tidak ada atau sudah dicabut.",
-  "task_not_awaiting_review": "Tugas ini tidak sedang menunggu review."
+  "task_not_awaiting_review": "Tugas ini tidak sedang menunggu review.",
+  "claude_login_not_waiting": "Proses masuk ini tidak lagi menunggu kode. Mulai lagi."
 }

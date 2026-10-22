@@ -57,7 +57,31 @@
     "typeLabel": "Jenis",
     "replaceWith": "Ganti dengan",
     "credential": "Kredensial",
-    "removeConfirm": "Hapus kredensial Claude workspace ini?"
+    "removeConfirm": "Hapus kredensial Claude workspace ini?",
+    "connect": {
+      "title": "Hubungkan dengan akun Claude",
+      "help": "Masuk di claude.com dengan langganan Claude (Pro/Max) yang akan dipakai workspace ini. Server membuat token 1 tahun khusus workspace ini dan menyimpannya terenkripsi; Anda tidak perlu melihat atau menyalinnya.",
+      "start": "Hubungkan akun Claude",
+      "reconnect": "Hubungkan akun lain",
+      "starting": "Menyiapkan tautan masuk…",
+      "step1": "Buka halaman masuk Claude, lalu masuk dengan akun yang akan dipakai.",
+      "openLink": "Buka halaman masuk claude.com",
+      "step2": "Claude lalu menampilkan sebuah kode. Salin seluruhnya dan tempel di sini.",
+      "codeLabel": "Kode dari Claude",
+      "submit": "Hubungkan",
+      "verifying": "Memeriksa kode ke Claude…",
+      "expires": "Proses masuk ini berlaku sampai {time}.",
+      "connectedToast": "Claude terhubung · token berakhiran {last4}",
+      "orPaste": "Atau tempel token / API key sendiri",
+      "error": {
+        "busy": "Sedang ada beberapa proses masuk di server ini. Coba lagi sebentar lagi.",
+        "no_link": "Claude Code tidak menampilkan tautan masuk. Coba lagi; bila terus gagal, mungkin server tidak bisa menjangkau claude.com.",
+        "invalid_code": "Claude menolak kodenya (salah, terpotong, atau kedaluwarsa). Mulai lagi dan salin kode lengkap.",
+        "timeout": "Proses masuk tidak selesai dalam 10 menit. Mulai lagi.",
+        "cli_failed": "Claude Code berhenti sebelum token dibuat. Mulai lagi.",
+        "worker_restarted": "Server dimulai ulang saat proses masuk. Mulai lagi."
+      }
+    }
   },
   "email": {
     "savedToast": "SMTP disimpan (kata sandi dienkripsi dengan AES-256-GCM)",

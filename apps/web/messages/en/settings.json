@@ -57,7 +57,31 @@
     "typeLabel": "Type",
     "replaceWith": "Replace with",
     "credential": "Credential",
-    "removeConfirm": "Remove this workspace's Claude credential?"
+    "removeConfirm": "Remove this workspace's Claude credential?",
+    "connect": {
+      "title": "Connect with a Claude account",
+      "help": "Sign in at claude.com with the Claude subscription (Pro/Max) this workspace should use. The server creates a 1-year token for this workspace only and stores it encrypted; you never see or copy it.",
+      "start": "Connect Claude account",
+      "reconnect": "Connect a different account",
+      "starting": "Preparing the sign-in link…",
+      "step1": "Open the Claude sign-in page and sign in with the account to use.",
+      "openLink": "Open claude.com sign-in",
+      "step2": "Claude then shows a code. Copy all of it and paste it here.",
+      "codeLabel": "Code from Claude",
+      "submit": "Connect",
+      "verifying": "Checking the code with Claude…",
+      "expires": "This sign-in expires at {time}.",
+      "connectedToast": "Claude connected · token ending in {last4}",
+      "orPaste": "Or paste a token or API key yourself",
+      "error": {
+        "busy": "Several sign-ins are running on this server right now. Try again in a minute.",
+        "no_link": "Claude Code did not show a sign-in link. Try again; if it keeps failing, the server may not reach claude.com.",
+        "invalid_code": "Claude did not accept the code (wrong, incomplete or expired). Start again and copy the whole code.",
+        "timeout": "The sign-in was not finished within 10 minutes. Start again.",
+        "cli_failed": "Claude Code stopped before a token was created. Start again.",
+        "worker_restarted": "The server restarted during the sign-in. Start again."
+      }
+    }
   },
   "email": {
     "savedToast": "SMTP saved (password encrypted with AES-256-GCM)",

@@ -45,7 +45,11 @@ export type ControlMessage =
   | { type: "kill"; workspaceId: string }
   | { type: "cancel_task"; taskId: string }
   /** a user edited a message mid-reply: stop the conversation's in-flight chat runs */
-  | { type: "abort_conversation"; conversationId: string };
+  | { type: "abort_conversation"; conversationId: string }
+  /** Settings → Connect Claude: start `claude setup-token`, forward the pasted code, or stop it */
+  | { type: "claude_login_start"; workspaceId: string; sessionId: string; userId: string; email: string }
+  | { type: "claude_login_code"; workspaceId: string; sessionId: string; code: string }
+  | { type: "claude_login_cancel"; workspaceId: string; sessionId: string };
 
 export async function enqueueTask(taskId: string, workspaceId: string, resumeNote?: string, delayMs = 0): Promise<void> {
   await runsQueue.add("task", { kind: "task", taskId, workspaceId, resumeNote }, { jobId: `task-${taskId}-${Date.now()}`, delay: delayMs });

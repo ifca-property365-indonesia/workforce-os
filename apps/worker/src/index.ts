@@ -27,6 +27,7 @@ import { recheckServers, SERVER_RECHECK_TICK_MS } from "./scheduler/servers";
 import { APPS_TICK_MS, tickApps } from "./scheduler/apps";
 import { tickUptime, UPTIME_TICK_MS } from "./scheduler/uptime";
 import { syncSubscriptionUsage, USAGE_SYNC_EVERY_MS } from "./scheduler/usage";
+import { cancelClaudeLogin, recoverClaudeLogins, startClaudeLogin, stopClaudeLogins, submitClaudeLoginCode } from "./claude-login";
 import { activeDeployCount, drainDeploys, onDeployActivity, processDeployJob, recoverInterruptedReleases, recoverInterruptedRestores, sweepGraceStops } from "./deploy";
 import type { WorkerDeployJob } from "./deploy/jobs";
 import { collectWorkspaces } from "./runner/workspace/gc";
@@ -89,6 +90,11 @@ const workers = [
   ),
 ];
 
+// a Connect Claude sign-in of the previous worker process cannot finish: tell the page and remove its HOME
+void getSql()<{ id: string }[]>`select id from workspaces`
+  .then((rows) => recoverClaudeLogins(rows.map((r) => r.id)))
+  .catch((e: unknown) => log.error({ err: errorMessage(e) }, "recovering claude sign-ins failed"));
+
 // App deploys and start/stop/remove: one job at a time (one build per server). Not started until releases a dead
 // process left behind are settled (recoverInterruptedReleases), so a job taken now is never mistaken for one.
 const deployWorker = new Worker<WorkerDeployJob>(QUEUE_DEPLOYS, processDeployJob, {
@@ -130,6 +136,10 @@ sub.on("message", (_ch, raw) => {
     if (msg.type === "kill") abortWorkspace(msg.workspaceId, "Stopped by kill switch");
     if (msg.type === "cancel_task") abortTask(msg.taskId, "Cancelled by user");
     if (msg.type === "abort_conversation") abortConversation(msg.conversationId);
+    const claudeLogin = (p: Promise<void>) => void p.catch((e: unknown) => log.error({ err: errorMessage(e), type: msg.type }, "claude sign-in step failed"));
+    if (msg.type === "claude_login_start") claudeLogin(startClaudeLogin(msg));
+    if (msg.type === "claude_login_code") claudeLogin(submitClaudeLoginCode(msg));
+    if (msg.type === "claude_login_cancel") claudeLogin(cancelClaudeLogin(msg));
   } catch (e) {
     log.warn({ err: e }, "bad control message");
   }
@@ -266,6 +276,7 @@ async function shutdown(sig: string) {
   clearInterval(gcTimer);
   clearInterval(summaryTimer);
   clearInterval(heartbeatTimer);
+  stopClaudeLogins();
   // a running deploy gets up to 60 s to finish its step (one that has not switched anything on stops cleanly)
   await Promise.allSettled([...workers.map((w) => w.close()), drainDeploys(() => deployWorker.close())]);
   sub.disconnect();

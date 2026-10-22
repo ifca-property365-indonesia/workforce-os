@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ShareLinksSettings } from "@/components/settings/share-links";
+import { ClaudeConnect } from "@/components/settings/claude-connect";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/layout/common";
 import { api } from "@/lib/api";
@@ -121,6 +122,8 @@ function ClaudeCredential({ owner }: { owner: boolean }) {
             )}
           </div>
         </div>
+        {owner && <ClaudeConnect hasCredential={!!data.workspace} onConnected={done} />}
+        {owner && <div className="font-medium">{t("claude.connect.orPaste")}</div>}
         {owner && (
           <form
             className="grid gap-3 sm:grid-cols-[auto_1fr_auto] sm:items-end"

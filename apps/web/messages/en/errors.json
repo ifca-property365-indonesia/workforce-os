@@ -250,5 +250,6 @@
   "goal_cycle": "A goal cannot sit under itself or one of its sub-goals.",
   "view_only": "View-only link: this part is not open to guests, and nothing can be changed.",
   "share_link_not_found": "This link does not exist or was already revoked.",
-  "task_not_awaiting_review": "This task does not wait for a review."
+  "task_not_awaiting_review": "This task does not wait for a review.",
+  "claude_login_not_waiting": "This sign-in is no longer waiting for a code. Start again."
 }
