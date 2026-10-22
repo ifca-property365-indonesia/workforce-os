@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { approvals, db, tasks, workflowRuns, workflows, workspaces } from "@wfos/db";
+import { approvals, db, employees, tasks, workflowRuns, workflows, workspaces } from "@wfos/db";
 import type { WorkflowStep, WorkflowTrigger } from "@wfos/shared";
 import { advanceStuckWorkflowRuns, advanceWorkflowRun, startWorkflowRun, tickWorkflows } from "../src/runner/workflows";
 import { executeApproval, expireUnansweredApprovals, handleRejection } from "../src/runner/approvals";
@@ -116,6 +116,22 @@ describe("workflow runs", () => {
     expect(await expireUnansweredApprovals()).toContain(apC);
     await advanceStuckWorkflowRuns();
     expect((await runOf(r3.id)).status).toBe("stopped");
+  });
+
+  it("a step that cannot start fails the run instead of leaving it running; a run left running is picked up", async () => {
+    const { wf, emp } = await workflow((e) => [{ kind: "agent", employeeId: e, instruction: "x" }]);
+    await db.update(employees).set({ status: "ARCHIVED" }).where(eq(employees.id, emp.id));
+    await db.delete(employees).where(eq(employees.id, emp.id));
+    const r = (await startWorkflowRun(wf.id, "manual"))!;
+    const after = await runOf(r.id);
+    expect(after.status).toBe("failed");
+    expect(after.error).toMatch(/^The run stopped: /);
+    expect(await startWorkflowRun(wf.id, "manual")).not.toBeNull(); // not blocked by the failed one
+
+    const b = await workflow((e) => [{ kind: "agent", employeeId: e, instruction: "x" }]);
+    const [stale] = await db.insert(workflowRuns).values({ workflowId: b.wf.id, workspaceId: b.ws.id, steps: b.wf.steps, status: "running", createdAt: new Date(Date.now() - 10 * 60_000) }).returning();
+    expect(await advanceStuckWorkflowRuns()).toContain(stale!.id);
+    expect((await runOf(stale!.id)).status).toBe("waiting");
   });
 
   it("one open run at a time; a tainted proposal makes its tasks start tainted", async () => {

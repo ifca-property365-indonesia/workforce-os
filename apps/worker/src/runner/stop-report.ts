@@ -8,9 +8,10 @@ import type { FailureKind } from "./incidents";
 
 /**
  * A run the platform stopped (it looped, stalled, ran out of time or memory) never ends in silence (after OpenHuman's
- * "Incomplete" root-cause summaries): the failure carries a short report of where it was. Built from the record only
- * (no model call, so nothing a tool returned can steer it): the last progress the employee reported, its last actions
- * with their outcome, and how many deliverables it left.
+ * "Incomplete" root-cause summaries): the failure carries a short report of where it was. Built from the record only,
+ * with no model call: the last progress the employee reported, its last actions with their outcome, and how many
+ * deliverables it left. The progress note and error excerpts come from the run (which may have read untrusted
+ * content): they are cut and redacted, and prompts quote incident summaries as data (incidentBlock).
  */
 
 /** the failures that are the platform stopping a run, not the run reporting an error */

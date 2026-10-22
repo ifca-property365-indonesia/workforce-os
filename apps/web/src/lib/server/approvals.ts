@@ -117,8 +117,9 @@ async function addAlwaysAllow(tx: Parameters<Parameters<typeof withEmployeeRevis
   if (!e) return;
   const allowList = e.allowList.some((x) => sameEntry(x, entry)) ? e.allowList : [...e.allowList, entry];
   const perm = matchToolPermission(entry.tool, e.toolPermissions);
-  const toolPermissions =
-    perm && effectiveAutonomy(entry.tool, e.autonomyLevel, e.toolPermissions) !== "CLOSE" ? e.toolPermissions.map((p) => (p === perm ? { ...p, autonomy: "CLOSE" as const } : p)) : e.toolPermissions;
+  // QUEUE / EXECUTE ask for approval: CLOSE lets the allow-listed action through; DRAFT (drafts only) is left alone
+  const level = effectiveAutonomy(entry.tool, e.autonomyLevel, e.toolPermissions);
+  const toolPermissions = perm && (level === "QUEUE" || level === "EXECUTE") ? e.toolPermissions.map((p) => (p === perm ? { ...p, autonomy: "CLOSE" as const } : p)) : e.toolPermissions;
   await tx.update(employees).set({ allowList, toolPermissions, updatedAt: new Date() }).where(eq(employees.id, employeeId));
 }
 

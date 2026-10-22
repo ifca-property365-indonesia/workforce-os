@@ -54,9 +54,13 @@ const STATUS: Record<WebhookTriageDecision, "dropped" | "noted" | "accepted" | "
 /** Sort one delivery. Idempotent: a delivery that is no longer triaging is left alone. */
 export async function triageDelivery(deliveryId: string): Promise<void> {
   const [d] = await db.select().from(webhookDeliveries).where(eq(webhookDeliveries.id, deliveryId));
-  if (!d || d.status !== "triaging" || d.pendingPayload == null) return;
+  if (!d || d.status !== "triaging") return;
   const [t] = await db.select().from(webhookTriggers).where(eq(webhookTriggers.id, d.triggerId));
-  if (!t) return;
+  if (!t || d.pendingPayload == null) {
+    // nothing left to sort (no payload): failed, so the reaper stops asking again
+    await db.update(webhookDeliveries).set({ status: "failed", error: "triage_unavailable", pendingPayload: null }).where(and(eq(webhookDeliveries.id, d.id), eq(webhookDeliveries.status, "triaging")));
+    return;
+  }
   const brief = d.pendingPayload;
 
   let decision: WebhookTriageDecision;
@@ -138,6 +142,7 @@ export async function retriageStuckDeliveries(now = new Date()): Promise<string[
     .select({ id: webhookDeliveries.id, workspaceId: webhookDeliveries.workspaceId })
     .from(webhookDeliveries)
     .where(and(eq(webhookDeliveries.status, "triaging"), lt(webhookDeliveries.receivedAt, new Date(now.getTime() - TRIAGE_STUCK_AFTER_MS))))
+    .orderBy(webhookDeliveries.receivedAt)
     .limit(100);
   for (const r of rows) {
     await miscQueue.add("webhook_triage", { kind: "webhook_triage", workspaceId: r.workspaceId, deliveryId: r.id }, { jobId: `triage-${r.id}-${Math.floor(now.getTime() / TRIAGE_STUCK_AFTER_MS)}` });

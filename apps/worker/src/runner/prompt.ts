@@ -30,7 +30,9 @@ export interface RecalledMemory {
 
 /** Memories every run gets, newest first, before the ones relevant to the brief: lessons (tidy) and reviewer feedback. */
 export const ALWAYS_RECALLED_KINDS = ["lesson", "feedback"] as const;
-const ALWAYS_RECALLED = 6;
+/** own slots, so lessons can never push fresh reviewer feedback out */
+const RECALLED_LESSONS = 3;
+const RECALLED_FEEDBACK = 5;
 
 /** Saved by a run that handled untrusted content, or imported with a package: data for the prompt, and it taints the run. */
 export function isUntrustedMemory(m: { untrusted: boolean; source: string }): boolean {
@@ -58,12 +60,14 @@ export function recallableMemory(now: Date = new Date()) {
 export async function recallMemories(employeeId: string, brief: string, clientId: string | null = null, opts: { countUse?: boolean } = {}): Promise<RecalledMemory[]> {
   const cols = { id: memories.id, kind: memories.kind, content: memories.content, untrusted: memories.untrusted, source: memories.source };
   const live = and(recallableMemory(), clientScope(memories.clientId, clientId));
-  const always = await db
-    .select(cols)
-    .from(memories)
-    .where(and(eq(memories.employeeId, employeeId), inArray(memories.kind, [...ALWAYS_RECALLED_KINDS]), live))
-    .orderBy(sql`${memories.kind} = 'lesson' desc`, desc(memories.createdAt))
-    .limit(ALWAYS_RECALLED);
+  const newest = (kind: string, n: number) =>
+    db
+      .select(cols)
+      .from(memories)
+      .where(and(eq(memories.employeeId, employeeId), eq(memories.kind, kind), live))
+      .orderBy(desc(memories.createdAt))
+      .limit(n);
+  const always = [...(await newest("lesson", RECALLED_LESSONS)), ...(await newest("feedback", RECALLED_FEEDBACK))];
   let relevant: { id: string; kind: string; content: string; untrusted: boolean; source: string }[] = [];
   try {
     const v = toVectorLiteral(await embedOne(brief.slice(0, 1500) || "general"));

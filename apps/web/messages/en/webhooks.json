@@ -56,7 +56,8 @@
     "unknown_employee": "The employee no longer exists",
     "unknown_team": "The team no longer exists",
     "team_has_no_lead": "The team has no Lead",
-    "unknown_team_lead": "The team's Lead is not an employee of this workspace"
+    "unknown_team_lead": "The team's Lead is not an employee of this workspace",
+    "triage_unavailable": "Triage could not run (the trigger or payload was gone)"
   },
   "triage": "Triage first",
   "triageRules": "Triage rules",

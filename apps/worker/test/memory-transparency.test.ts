@@ -55,6 +55,14 @@ describe("memory you can see being used", () => {
     expect((await db.select().from(memories).where(eq(memories.id, ids[0]!)))[0]!.uses).toBe(1);
   });
 
+  it("lessons have their own slots: fresh reviewer feedback is always recalled", async () => {
+    const lessons = Array.from({ length: 8 }, (_, i) => ({ kind: "lesson", content: `Pelajaran nomor ${i}` }));
+    const { emp } = await employeeWith([...lessons, { kind: "feedback", content: "Koreksi terbaru dari reviewer" }]);
+    const got = await recallMemories(emp.id, "apa saja");
+    expect(got.filter((m) => m.kind === "lesson")).toHaveLength(3);
+    expect(got.some((m) => m.content === "Feedback from a human reviewer: Koreksi terbaru dari reviewer")).toBe(true);
+  });
+
   it("a preview leaves what recall would give in Redis and is not a use", async () => {
     const { ws, emp, ids } = await employeeWith([{ kind: "feedback", content: "Jangan kirim di akhir pekan." }]);
     await previewMemories({ kind: "memory_preview", workspaceId: ws.id, employeeId: emp.id, brief: "kirim laporan", clientId: null, requestId: "11111111-1111-4111-8111-111111111111" });

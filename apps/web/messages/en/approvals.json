@@ -88,7 +88,7 @@
     "alwaysAllowRule": {
       "email": "send email to {to} (same client)",
       "invoice": "send an invoice to {to} for this client, up to {max}",
-      "mcp": "use {tool}"
+      "mcp": "use {tool}, with any arguments"
     }
   },
   "bash": {

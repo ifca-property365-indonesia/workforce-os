@@ -88,11 +88,19 @@ describe("Always allow", () => {
 });
 
 describe("ya / tidak in chat", () => {
-  async function chatWith(ws: { id: string }, emp: { id: string }, n = 1, toolName = "send_email") {
+  /** a chat whose last message is the reply that asked for `n` approvals (onLeaf false: someone wrote after it) */
+  async function chatWith(ws: { id: string }, emp: { id: string }, n = 1, toolName = "send_email", onLeaf = true) {
     const [c] = await db.insert(conversations).values({ workspaceId: ws.id, employeeId: emp.id }).returning();
+    const [asked] = await db.insert(messages).values({ conversationId: c!.id, role: "assistant", employeeId: emp.id, content: "Boleh saya kirim?" }).returning();
+    let leaf = asked!.id;
+    if (!onLeaf) leaf = (await db.insert(messages).values({ conversationId: c!.id, parentId: asked!.id, role: "user", content: "pakai template lama?" }).returning())[0]!.id;
+    await db.update(conversations).set({ activeLeafId: leaf }).where(eq(conversations.id, c!.id));
     const ids: string[] = [];
     for (let i = 0; i < n; i++) {
-      const [a] = await db.insert(approvals).values({ workspaceId: ws.id, employeeId: emp.id, conversationId: c!.id, toolName, title: `Email ${i}`, reason: autonomyReason, payload: email }).returning();
+      const [a] = await db
+        .insert(approvals)
+        .values({ workspaceId: ws.id, employeeId: emp.id, conversationId: c!.id, messageId: asked!.id, toolName, title: `Email ${i}`, reason: autonomyReason, payload: email })
+        .returning();
       ids.push(a!.id);
     }
     return { c: c!, ids };
@@ -105,7 +113,7 @@ describe("ya / tidak in chat", () => {
     expect(r.status).toBe(200);
     expect(r.json.approval).toEqual({ approvalId: ids[0], decision: "approve" });
     expect((await db.select().from(approvals).where(eq(approvals.id, ids[0]!)))[0]).toMatchObject({ status: "APPROVED" });
-    const [m] = await db.select().from(messages).where(eq(messages.conversationId, c.id));
+    const [m] = await db.select().from(messages).where(and(eq(messages.conversationId, c.id), eq(messages.role, "user")));
     expect(m!.handledAt).not.toBeNull();
     expect(m!.meta).toMatchObject({ approvalReply: { approvalId: ids[0], decision: "approve" } });
     expect(queueModule.q.chat).not.toHaveBeenCalled();
@@ -125,8 +133,11 @@ describe("ya / tidak in chat", () => {
     expect((await send(longer.c.id, "ya tapi ganti subjeknya")).json.approval).toBeUndefined();
     const live = await chatWith(ws, emp, 1, "request_release");
     expect((await send(live.c.id, "ya")).json.approval).toBeUndefined();
-    for (const id of [...two.ids, ...longer.ids, ...live.ids]) expect((await db.select().from(approvals).where(eq(approvals.id, id)))[0]!.status).toBe("PENDING");
-    expect(queueModule.q.chat).toHaveBeenCalledTimes(3);
+    // the admin wrote something else after the card: a later "no" answers that, not the approval
+    const later = await chatWith(ws, emp, 1, "send_email", false);
+    expect((await send(later.c.id, "no")).json.approval).toBeUndefined();
+    for (const id of [...two.ids, ...longer.ids, ...live.ids, ...later.ids]) expect((await db.select().from(approvals).where(eq(approvals.id, id)))[0]!.status).toBe("PENDING");
+    expect(queueModule.q.chat).toHaveBeenCalledTimes(4);
   });
 
   it("a member's 'ya' is a normal message", async () => {

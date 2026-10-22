@@ -1,5 +1,5 @@
 import { and, eq, inArray, lte } from "drizzle-orm";
-import { approvals, createTask, db, nextCronRun, tasks, workflowRuns, workflows } from "@wfos/db";
+import { approvals, createTask, db, nextCronRun, TaskInputError, tasks, workflowRuns, workflows } from "@wfos/db";
 import { TERMINAL_STATUSES, WORKFLOW_APPROVAL_TOOL, type WorkflowStep } from "@wfos/shared";
 import { msg } from "@wfos/shared/messages";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
@@ -62,8 +62,37 @@ function agentBrief(step: Extract<WorkflowStep, { kind: "agent" }>, wf: Workflow
 
 type Effect = { enqueueTaskId?: string; approvalId?: string; notify?: { title: string; text: string }; ended?: Run["status"] };
 
-/** Move a run on as far as it can go now. */
+/**
+ * Move a run on as far as it can go now. A step that cannot even start (its employee was deleted, the task is refused)
+ * fails the run with the reason, so it never stays "running" and blocks later runs.
+ */
 export async function advanceWorkflowRun(runId: string): Promise<void> {
+  try {
+    await advance(runId);
+  } catch (e) {
+    const reason = e instanceof TaskInputError ? `a step could not start (${e.code})` : e instanceof Error ? e.message.slice(0, 300) : String(e);
+    log.error({ err: e, runId }, "workflow run failed to advance");
+    const [r] = await db
+      .update(workflowRuns)
+      .set({ status: "failed", error: `The run stopped: ${reason}.`, finishedAt: new Date() })
+      .where(and(eq(workflowRuns.id, runId), inArray(workflowRuns.status, OPEN)))
+      .returning({ workspaceId: workflowRuns.workspaceId, workflowId: workflowRuns.workflowId });
+    if (r) {
+      const [w] = await db.select({ name: workflows.name }).from(workflows).where(eq(workflows.id, r.workflowId));
+      const locale = await workspaceLocale(r.workspaceId);
+      await miscQueue.add("notify", {
+        kind: "notify",
+        notificationKind: "routine_failed",
+        workspaceId: r.workspaceId,
+        subject: msg(locale, "notify.workflowFailed", { workflow: w?.name ?? "?" }),
+        text: msg(locale, "notify.workflowFailedText", { workflow: w?.name ?? "?" }),
+        link: `/workflows?id=${r.workflowId}`,
+      });
+    }
+  }
+}
+
+async function advance(runId: string): Promise<void> {
   const effects: Effect = {};
   let wf: Workflow | undefined;
   await db.transaction(async (tx) => {
@@ -250,17 +279,28 @@ export async function tickWorkflows(now = new Date()): Promise<void> {
   }
 }
 
-/** Reaper: waiting runs whose task or approval already settled (a lost advance job) are moved on. */
-export async function advanceStuckWorkflowRuns(): Promise<string[]> {
+/** a run still "running" this long after it started was interrupted (a worker died mid-advance) */
+export const WORKFLOW_RUNNING_STALE_MS = 5 * 60_000;
+
+/**
+ * Reaper: waiting runs whose task or approval already settled (a lost advance job), and runs left "running" by an
+ * interrupted advance, are moved on.
+ */
+export async function advanceStuckWorkflowRuns(now = new Date()): Promise<string[]> {
   const rows = await db
-    .select({ id: workflowRuns.id, taskStatus: tasks.status, approvalStatus: approvals.status })
+    .select({ id: workflowRuns.id, status: workflowRuns.status, createdAt: workflowRuns.createdAt, taskStatus: tasks.status, approvalStatus: approvals.status })
     .from(workflowRuns)
     .leftJoin(tasks, eq(tasks.id, workflowRuns.waitingTaskId))
     .leftJoin(approvals, eq(approvals.id, workflowRuns.waitingApprovalId))
-    .where(eq(workflowRuns.status, "waiting"))
+    .where(inArray(workflowRuns.status, OPEN))
+    .orderBy(workflowRuns.createdAt)
     .limit(200);
   const settledApproval = (s: string | null) => !!s && s !== "PENDING" && s !== "APPROVED" && s !== "EXECUTING";
-  const stuck = rows.filter((r) => (r.taskStatus && (TERMINAL_STATUSES as readonly string[]).includes(r.taskStatus)) || settledApproval(r.approvalStatus));
+  const stuck = rows.filter((r) =>
+    r.status === "running"
+      ? now.getTime() - r.createdAt.getTime() > WORKFLOW_RUNNING_STALE_MS
+      : (r.taskStatus && (TERMINAL_STATUSES as readonly string[]).includes(r.taskStatus)) || settledApproval(r.approvalStatus),
+  );
   for (const r of stuck) await advanceWorkflowRun(r.id);
   return stuck.map((r) => r.id);
 }

@@ -58,12 +58,18 @@ describe("large tool results behind a handle", () => {
     expect(row!.reads).toBe(3);
   });
 
-  it("refuses nested-quantifier regexes and caps answers", async () => {
+  it("stops a regex that backtracks too long (without freezing the worker) and caps answers", async () => {
     const { owner, read } = await setup();
+    const evil = handleOf((await storeToolOutput(owner, "crm/notes", `${"a".repeat(40)}!\n`.repeat(250), true))!);
+    for (const pattern of ["(a+)+$", "(a|aa)+$", "(a|a)*$"]) {
+      const started = Date.now();
+      const r = await read({ handle: evil, pattern, regex: true });
+      expect(r.isError).toBe(true);
+      expect(textOf(r)).toContain("took too long");
+      expect(Date.now() - started).toBeLessThan(3000);
+    }
     const h = handleOf((await storeToolOutput(owner, "bash", logText, false))!);
-    const r = await read({ handle: h, pattern: "(a+)+$", regex: true });
-    expect(r.isError).toBe(true);
-    expect(textOf(r)).toContain("too complex");
+    expect(textOf(await read({ handle: h, pattern: "(", regex: true }))).toMatch(/Invalid regular expression/);
     expect(textOf(await read({ handle: h, from: 1, to: 600 }))).toContain("answer cut at 8000 characters");
   });
 

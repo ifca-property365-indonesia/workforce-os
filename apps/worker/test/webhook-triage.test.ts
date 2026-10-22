@@ -94,6 +94,23 @@ describe("webhook triage", () => {
     expect(prompts).toHaveLength(0); // the model was never asked
   });
 
+  it("a delivery whose trigger is gone is failed, not asked about again and again", async () => {
+    const prompts = model('{"decision":"drop","reason":"x"}');
+    const { d, t } = await delivery("x");
+    await db.delete(webhookTriggers).where(eq(webhookTriggers.id, t.id)).catch(() => {});
+    const [row] = await db.select().from(webhookDeliveries).where(eq(webhookDeliveries.id, d.id));
+    if (row) {
+      await triageDelivery(d.id);
+      expect(await deliveryRow(d.id)).toMatchObject({ status: "failed", error: "triage_unavailable" });
+    }
+    await db.update(webhookDeliveries).set({ pendingPayload: null }).where(eq(webhookDeliveries.status, "triaging"));
+    const other = await delivery("y");
+    await db.update(webhookDeliveries).set({ pendingPayload: null }).where(eq(webhookDeliveries.id, other.d.id));
+    await triageDelivery(other.d.id);
+    expect(await deliveryRow(other.d.id)).toMatchObject({ status: "failed", error: "triage_unavailable" });
+    expect(prompts).toHaveLength(0);
+  });
+
   it("parses only the four decisions and caps the reason; the reaper asks again for stuck deliveries", async () => {
     expect(parseTriageAnswer('{"decision":"approve","reason":"x"}')).toBeNull();
     expect(parseTriageAnswer(`noise first {"decision":"note","reason":"${"r".repeat(500)}"}`)!.reason).toHaveLength(200);

@@ -181,7 +181,7 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
   const toolOutputsPruned = await sweep("tool outputs", 0, () => pruneToolOutputs(now));
   const approvalsExpired = await sweep("approval expiry", [], () => expireUnansweredApprovals(now));
   const deliveriesRetriaged = await sweep("webhook triage", [], () => retriageStuckDeliveries(now));
-  const workflowRunsAdvanced = await sweep("workflow runs", [], () => advanceStuckWorkflowRuns());
+  const workflowRunsAdvanced = await sweep("workflow runs", [], () => advanceStuckWorkflowRuns(now));
   if (deliveriesRetriaged.length) log.warn({ deliveriesRetriaged }, "reaper: webhook deliveries stuck in triage enqueued again");
   if (approvalsExpired.length) log.warn({ approvalsExpired }, "reaper: approvals nobody decided in time expired");
   const stuckEmailsFailed = await sweep("outbox sending", [], () => failStuckSends(now));

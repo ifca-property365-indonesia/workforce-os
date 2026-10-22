@@ -1,3 +1,4 @@
+import vm from "node:vm";
 import { and, eq, lte, ne, sql } from "drizzle-orm";
 import { db, toolOutputs } from "@wfos/db";
 import { log } from "./logger";
@@ -20,8 +21,10 @@ const HEAD_CHARS = 3000;
 const TAIL_CHARS = 800;
 const OUTLINE_LINES = 15;
 const MAX_MATCHES = 200;
-/** a regex is only tried on this much of each line (one huge minified line cannot stall the worker) */
+/** a regex is only tried on this much of each line */
 const REGEX_LINE_CHARS = 2000;
+/** a regex search (all lines) gets this long; a pattern that backtracks past it is stopped (vm timeout) */
+export const REGEX_TIMEOUT_MS = 250;
 
 export type OutputKind = "json" | "markdown" | "log" | "text";
 
@@ -152,29 +155,41 @@ export interface ReadOutputArgs {
   path?: string;
 }
 
-/** Nested quantifiers like (a+)+ can take exponential time: refused outright. */
-const NESTED_QUANTIFIER = /\([^)]*[+*][^)]*\)\s*[+*{]/;
 
 function cap(text: string): string {
   return text.length > READ_OUTPUT_MAX_CHARS ? `${text.slice(0, READ_OUTPUT_MAX_CHARS)}\n…[answer cut at ${READ_OUTPUT_MAX_CHARS} characters; narrow the query]` : text;
 }
 
+/**
+ * Line numbers a regex matches. The pattern comes from the model (which a tool result may steer) and the text may be
+ * an attacker's, so the whole search runs in a vm context with a timeout: catastrophic backtracking is stopped there
+ * instead of freezing the worker.
+ */
+function regexHits(lines: string[], pattern: string, flags: string): number[] {
+  if (pattern.length > 200) throw new Error("That regular expression is too long; use a shorter one or a plain-text pattern.");
+  new RegExp(pattern, flags); // a syntax error is reported as such, before the vm
+  const sandbox = { pattern, flags, lines: lines.map((l) => l.slice(0, REGEX_LINE_CHARS)), hits: [] as number[] };
+  try {
+    vm.runInNewContext("const re = new RegExp(pattern, flags); for (let i = 0; i < lines.length; i++) if (re.test(lines[i])) hits.push(i);", sandbox, { timeout: REGEX_TIMEOUT_MS });
+  } catch (e) {
+    if ((e as { code?: string }).code === "ERR_SCRIPT_EXECUTION_TIMEOUT") throw new Error("That regular expression took too long; use a simpler one or a plain-text pattern.");
+    throw e;
+  }
+  return [...sandbox.hits];
+}
+
 function grep(content: string, a: ReadOutputArgs): string {
   const pattern = a.pattern ?? "";
   const caseSensitive = a.ignoreCase === false;
-  let test: (line: string) => boolean;
-  if (a.regex) {
-    if (pattern.length > 200 || NESTED_QUANTIFIER.test(pattern)) throw new Error("That regular expression is too complex; use a simpler one or a plain-text pattern.");
-    const re = new RegExp(pattern, caseSensitive ? "" : "i");
-    test = (l) => re.test(l.slice(0, REGEX_LINE_CHARS));
-  } else {
-    const needle = caseSensitive ? pattern : pattern.toLowerCase();
-    test = (l) => (caseSensitive ? l : l.toLowerCase()).includes(needle);
-  }
   const lines = content.split("\n");
   const around = Math.min(Math.max(a.context ?? 0, 0), 5);
-  const hits: number[] = [];
-  for (let i = 0; i < lines.length; i++) if (test(lines[i]!)) hits.push(i);
+  let hits: number[];
+  if (a.regex) hits = regexHits(lines, pattern, caseSensitive ? "" : "i");
+  else {
+    const needle = caseSensitive ? pattern : pattern.toLowerCase();
+    hits = [];
+    for (let i = 0; i < lines.length; i++) if ((caseSensitive ? lines[i]! : lines[i]!.toLowerCase()).includes(needle)) hits.push(i);
+  }
   if (!hits.length) return `No line matches "${pattern}".`;
   const shown = new Set<number>();
   const out: string[] = [];

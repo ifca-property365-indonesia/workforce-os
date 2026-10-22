@@ -88,7 +88,7 @@
     "alwaysAllowRule": {
       "email": "kirim email ke {to} (klien yang sama)",
       "invoice": "kirim invoice ke {to} untuk klien ini, maksimal {max}",
-      "mcp": "memakai {tool}"
+      "mcp": "memakai {tool}, dengan argumen apa pun"
     }
   },
   "bash": {

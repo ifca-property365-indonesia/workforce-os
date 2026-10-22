@@ -13,9 +13,10 @@ import { MAX_MESSAGE, checkLeaf, conversationIn, currentLeaf, expectedLeafOf, me
  * knowledge base; images are kept for the employee to see. The message hangs below the thread's current end and
  * becomes its new end, in one transaction.
  *
- * A short "ya" / "tidak" (approvalReplyDecision) from an Admin while exactly one approval of this chat waits decides
- * that approval instead (not a LIVE release, which needs the Owner's step-up): the reply is kept in the thread as
- * handled, so the employee does not answer it as a new message.
+ * A short "ya" / "tidak" (approvalReplyDecision) from an Admin, sent right below the reply that asked for the one
+ * approval waiting in this chat, decides that approval instead (not a LIVE release, which needs the Owner's step-up):
+ * the reply is kept in the thread as handled, so the employee does not answer it as a new message. When the approval
+ * cannot be decided now, the reply goes out as a normal message.
  */
 export const POST = route<{ id: string }>("MEMBER", async ({ session, req, params }) => {
   const c = await conversationIn(session.workspaceId, params.id);
@@ -37,12 +38,20 @@ export const POST = route<{ id: string }>("MEMBER", async ({ session, req, param
   let decided: { approvalId: string; decision: "approve" | "reject" } | null = null;
   if (reply) {
     const waiting = await db
-      .select({ id: approvals.id, toolName: approvals.toolName })
+      .select({ id: approvals.id, toolName: approvals.toolName, messageId: approvals.messageId })
       .from(approvals)
       .where(and(eq(approvals.workspaceId, session.workspaceId), eq(approvals.conversationId, c.id), eq(approvals.status, "PENDING")));
-    if (waiting.length === 1 && !OWNER_ONLY_APPROVAL_TOOLS.has(waiting[0]!.toolName)) {
-      await decideApproval({ userId: session.userId, email: session.email, workspaceId: session.workspaceId, via: "chat", role: session.role }, waiting[0]!.id, { decision: reply });
-      decided = { approvalId: waiting[0]!.id, decision: reply };
+    const leaf = await currentLeaf(c);
+    // only as the answer to the card just above: the reply that raised it is the thread's last message
+    const a = waiting.length === 1 && waiting[0]!.messageId && waiting[0]!.messageId === leaf && !OWNER_ONLY_APPROVAL_TOOLS.has(waiting[0]!.toolName) ? waiting[0]! : null;
+    if (a) {
+      try {
+        await decideApproval({ userId: session.userId, email: session.email, workspaceId: session.workspaceId, via: "chat", role: session.role }, a.id, { decision: reply });
+        decided = { approvalId: a.id, decision: reply };
+      } catch (e) {
+        // not decidable now (the task still runs, decided meanwhile …): sent as a normal message instead
+        if (!(e instanceof HttpError) || e.status >= 500) throw e;
+      }
     }
   }
   const attachments = await saveChatAttachments(session.workspaceId, session.userId, files);

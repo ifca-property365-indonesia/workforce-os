@@ -56,7 +56,8 @@
     "unknown_employee": "Karyawan tersebut sudah tidak ada",
     "unknown_team": "Tim tersebut sudah tidak ada",
     "team_has_no_lead": "Tim tidak memiliki Lead",
-    "unknown_team_lead": "Lead tim bukan karyawan di workspace ini"
+    "unknown_team_lead": "Lead tim bukan karyawan di workspace ini",
+    "triage_unavailable": "Triase tidak bisa jalan (trigger atau payload sudah tidak ada)"
   },
   "triage": "Triase dulu",
   "triageRules": "Aturan triase",
