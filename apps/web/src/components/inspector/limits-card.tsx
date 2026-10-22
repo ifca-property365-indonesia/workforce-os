@@ -25,6 +25,8 @@ export interface Limits {
   syncedAt?: string | null;
   paused: { until: string; reason: string | null } | null;
   usdThisMonth: number;
+  /** large tool results kept behind a handle this month, and the tokens that stayed out of the context (estimate) */
+  outputSavings?: { count: number; tokens: number };
   /** estimated 5-hour and weekly usage (workforce-os runs only, display only); null without a subscription */
   meter?: { scope: "workforce_os_only"; budget: UsageBudget; schedule: ResetSchedule; windows: WindowMeter[] } | null;
 }
@@ -93,6 +95,9 @@ export function LimitsCard() {
         })}
         {data.syncedAt && <p className="text-xs text-muted-foreground">{t("limits.syncedAt", { time: f.dateTime(data.syncedAt) })}</p>}
         <p className="text-xs text-muted-foreground">{t("limits.usd", { usd: f.money(data.usdThisMonth, "USD") })}</p>
+        {!!data.outputSavings?.count && (
+          <p className="text-xs text-muted-foreground">{t("limits.outputSavings", { count: data.outputSavings.count, tokens: f.number(data.outputSavings.tokens) })}</p>
+        )}
         {data.meter && <p className="text-xs text-muted-foreground">{t("limits.meter.scope")}</p>}
         {data.meter && admin && (
           <Link href="/settings?tab=general" className="inline-block text-xs font-semibold underline underline-offset-2">

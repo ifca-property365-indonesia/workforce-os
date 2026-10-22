@@ -29,6 +29,7 @@ import { log } from "../lib/logger";
 import { publish } from "../lib/redis";
 import { priceFor } from "../lib/pricing";
 import { recordStep, type StepRecord } from "../lib/steps";
+import { outputOwner, storeToolOutput } from "../lib/tool-outputs";
 import { getExternalMcpServers } from "../lib/settings";
 import { guardOutput, guardToolResult } from "../guards/content";
 import { redactSecrets } from "@wfos/shared/server";
@@ -337,7 +338,8 @@ function externalMcpTool(toolName: string): { server: string; tool: string } | n
 
 /**
  * PostToolUse hook for tools of external MCP servers (`mcp__<server>__<tool>`, never the platform's own server):
- * caps what the model sees at MCP_RESULT_MAX_CHARS, screens it like a fetched web page (injection markers taint
+ * a result over MCP_RESULT_MAX_CHARS is kept whole behind a read_output handle and the model sees a preview (cut off
+ * instead when it cannot be stored), screens it like a fetched web page (injection markers taint
  * the run, so later irreversible calls need approval), and records the result as an Activity step.
  * Fail-safe: the truncation / wrapping / taint are decided first and every step is best-effort, so the hook
  * always returns its updated output.
@@ -352,8 +354,12 @@ export function externalMcpResultHook(ctx: RunContext, onActivity?: () => void):
     const { server, tool } = ext;
     const full = mcpResultText(h.tool_response);
     let visible = full;
+    let kept = false;
     if (full.length > MCP_RESULT_MAX_CHARS) {
-      visible = `${full.slice(0, MCP_RESULT_MAX_CHARS)}\n…[truncated: ${full.length - MCP_RESULT_MAX_CHARS} more characters; ask for a narrower query]`;
+      // kept whole behind a handle (read_output); cut off only when it could not be stored
+      const preview = await storeToolOutput(outputOwner(ctx), `${server}/${tool}`, full, true);
+      kept = preview !== null;
+      visible = preview ?? `${full.slice(0, MCP_RESULT_MAX_CHARS)}\n…[truncated: ${full.length - MCP_RESULT_MAX_CHARS} more characters; ask for a narrower query]`;
     }
     visible = await guardToolResult(ctx.guard, `MCP server ${server} (${tool})`, visible);
     await recordStep({
@@ -364,7 +370,7 @@ export function externalMcpResultHook(ctx: RunContext, onActivity?: () => void):
       kind: "tool",
       name: `mcp:${server}/${tool}`,
       status: "ok",
-      output: { text: redactSecrets(full).slice(0, MCP_RESULT_STEP_CHARS), chars: full.length, truncated: full.length > MCP_RESULT_MAX_CHARS },
+      output: { text: redactSecrets(full).slice(0, MCP_RESULT_STEP_CHARS), chars: full.length, truncated: full.length > MCP_RESULT_MAX_CHARS, ...(kept ? { kept: true } : {}) },
     }).catch((e: unknown) => log.warn({ err: e, runId: ctx.runId, toolName: h.tool_name }, "MCP result step not recorded"));
     if (visible === full) return {};
     const updated = typeof h.tool_response === "string" ? visible : [{ type: "text", text: visible }];

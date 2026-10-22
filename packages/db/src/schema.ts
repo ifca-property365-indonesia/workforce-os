@@ -1662,3 +1662,29 @@ export const appUptimeChecks = pgTable(
   },
   (t) => [index("app_uptime_env_at").on(t.environmentId, t.checkedAt)],
 );
+
+/**
+ * A large tool result kept whole (after OpenHuman's handle preview): the model saw a preview and this row's id as a
+ * handle, and reads the rest with read_output. Only the same workspace and employee can read it; rows expire.
+ */
+export const toolOutputs = pgTable(
+  "tool_outputs",
+  {
+    id: id(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "set null" }),
+    tool: text("tool").notNull(),
+    content: text("content").notNull(),
+    chars: integer("chars").notNull(),
+    /** characters of the preview the model saw instead */
+    shownChars: integer("shown_chars").notNull(),
+    /** from an external source (MCP server): read_output screens it again */
+    untrusted: boolean("untrusted").notNull().default(false),
+    reads: integer("reads").notNull().default(0),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("tool_outputs_ws").on(t.workspaceId, t.createdAt), index("tool_outputs_expires").on(t.expiresAt)],
+);

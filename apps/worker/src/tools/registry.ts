@@ -62,6 +62,7 @@ import { screenLeakage, withRetry } from "@wfos/shared/server";
 import { safeFetch, SsrfBlockedError, type SafeFetchResult } from "@wfos/shared/netguard";
 import { embedOne, toVectorLiteral } from "../lib/embeddings";
 import { recordStep } from "../lib/steps";
+import { OUTPUT_HANDLE_MIN_CHARS, outputOwner, readToolOutput, storeToolOutput } from "../lib/tool-outputs";
 import { enqueueTask, publish, miscQueue } from "../lib/redis";
 import { guardOutput, guardToolResult, taintRun, type GuardCtx } from "../guards/content";
 import { cronNextRuns, executeAction, formatRunTime, isTimeZone, routineProposalSchema, routineTargetError } from "./actions";
@@ -255,6 +256,8 @@ function effectivePermissions(ctx: RunContext): ToolPermission[] {
   if (ctx.skillAudit) {
     for (const t of ["skill_search", "skill_inspect", "propose_skill"]) if (!perms.some((p) => p.tool === t && p.enabled)) perms.push({ tool: t, enabled: true });
   }
+  // tools every run has (read_output), unless an explicit entry says otherwise
+  for (const t of BUILTIN_TOOLS) if (t.implicit === "run" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
   // tools every task run has (report_progress), unless an explicit entry says otherwise
   if (ctx.taskId) {
     for (const t of BUILTIN_TOOLS) if (t.implicit === "task" && !perms.some((p) => p.tool === t.name)) perms.push({ tool: t.name, enabled: true });
@@ -297,6 +300,12 @@ function wrap<A extends Record<string, unknown>>(
         result = err(`Tool ${name} failed: ${(e as Error).message}`);
       }
     }
+    const text = result.content.map((c) => c.text).join("\n");
+    // a large result is kept whole behind a handle and the model gets a preview (read_output's own answers are capped)
+    if (!result.isError && name !== "read_output" && text.length > OUTPUT_HANDLE_MIN_CHARS) {
+      const preview = await storeToolOutput(outputOwner(ctx), name, text, false);
+      if (preview) result = { ...result, content: [{ type: "text", text: preview }] };
+    }
     await recordStep({
       workspaceId: ctx.workspaceId,
       taskId: ctx.taskId,
@@ -307,7 +316,7 @@ function wrap<A extends Record<string, unknown>>(
       latencyMs: Date.now() - started,
       credits: result.isError ? 0 : toolCredits(name),
       input: args,
-      output: result.content.map((c) => c.text).join("\n").slice(0, 8000),
+      output: text.slice(0, 8000),
       status: decision.kind === "deny" ? "denied" : result.isError ? "error" : "ok",
     });
     return result;
@@ -644,6 +653,35 @@ export function buildTools(ctx: RunContext) {
         if (!rows.length) return ok("No knowledge base passages found. The knowledge base may be empty.");
         const text = rows.map((r) => `[${r.doc} §${r.ordinal + 1}] (relevance ${(1 - r.dist).toFixed(2)})\n${r.content}`).join("\n\n---\n\n");
         return ok(await guardToolResult(ctx.guard, "knowledge base", text));
+      }),
+    ),
+  );
+
+  add(
+    "read_output",
+    tool(
+      "read_output",
+      "Read a large tool result that was saved behind a handle (the preview names it). Give pattern to list the matching lines " +
+        "(plain text, or regex: true; context: lines around each match), from/to for a line range, or path for a JSON value " +
+        "(e.g. items[3].email). With only the handle you get its shape, outline, start and end.",
+      {
+        handle: z.string().uuid(),
+        pattern: z.string().min(1).max(200).optional(),
+        regex: z.boolean().optional(),
+        ignoreCase: z.boolean().optional(),
+        context: z.number().int().min(0).max(5).optional(),
+        from: z.number().int().min(1).optional(),
+        to: z.number().int().min(1).optional(),
+        path: z.string().min(1).max(200).optional(),
+      },
+      wrap(ctx, "read_output", async (a: { handle: string; pattern?: string; regex?: boolean; ignoreCase?: boolean; context?: number; from?: number; to?: number; path?: string }) => {
+        try {
+          const r = await readToolOutput({ workspaceId: ctx.workspaceId, employeeId: ctx.employee.id }, a);
+          // the full result was only screened as far as the preview went: screen what is read now
+          return ok(await guardToolResult(ctx.guard, r.untrusted ? `saved result of ${r.tool} (external)` : `saved result of ${r.tool}`, r.text));
+        } catch (e) {
+          return err((e as Error).message);
+        }
       }),
     ),
   );

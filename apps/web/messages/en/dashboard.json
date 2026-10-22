@@ -27,6 +27,7 @@
     "resetSince": "This window has reset since the last report; new usage appears with the next sync.",
     "syncedAt": "Last updated {time}",
     "usd": "API-equivalent cost this month: {usd}",
+    "outputSavings": "Large tool results kept behind a handle this month: {count} · about {tokens} tokens kept out of the context",
     "window": {
       "five_hour": "5-hour window",
       "seven_day": "Weekly",

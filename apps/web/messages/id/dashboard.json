@@ -27,6 +27,7 @@
     "resetSince": "Jendela ini sudah direset sejak laporan terakhir; pemakaian baru muncul pada sinkronisasi berikutnya.",
     "syncedAt": "Terakhir diperbarui {time}",
     "usd": "Biaya setara API bulan ini: {usd}",
+    "outputSavings": "Hasil tool besar yang disimpan bulan ini: {count} · sekitar {tokens} token tidak masuk konteks",
     "window": {
       "five_hour": "Jendela 5 jam",
       "seven_day": "Mingguan",

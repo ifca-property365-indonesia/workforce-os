@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { and, eq, like } from "drizzle-orm";
-import { approvals, credentials, db, steps } from "@wfos/db";
+import { approvals, credentials, db, steps, toolOutputs } from "@wfos/db";
 import { encryptSecret } from "@wfos/shared/server";
 import type { ToolPermission } from "@wfos/shared";
 import { randomUUID } from "node:crypto";
@@ -166,23 +166,29 @@ describe("external MCP results (PostToolUse)", () => {
     return { ws, emp };
   }
 
-  it("caps what the model sees at 8000 characters and records the result trimmed to 2000", async () => {
+  it("keeps a large result behind a handle, shows a preview, and records the result trimmed to 2000", async () => {
     const { ws, emp } = await setup();
     const big = "a".repeat(MCP_RESULT_MAX_CHARS) + "b".repeat(1234);
     const mock = mockRunner([{ tool: "mcp__crm__list_contacts", input: {}, output: big }, { result: "done" }]);
     setQueryImpl(mock.query);
     const ctx = runContext(ws, emp, null);
     await run(ctx);
-    expect(mock.calls[0]!.output).toBe(`${"a".repeat(MCP_RESULT_MAX_CHARS)}\n…[truncated: 1234 more characters; ask for a narrower query]`);
+    const shown = mock.calls[0]!.output as string;
+    expect(shown.length).toBeLessThan(MCP_RESULT_MAX_CHARS);
+    expect(shown).toMatch(/^\[Large result from crm\/list_contacts: 9,234 characters/);
+    expect(shown).toContain("b".repeat(800));
+    const handle = /saved as handle ([0-9a-f-]{36})/.exec(shown)![1]!;
+    const [row] = await db.select().from(toolOutputs).where(eq(toolOutputs.id, handle));
+    expect(row).toMatchObject({ workspaceId: ws.id, employeeId: emp.id, tool: "crm/list_contacts", content: big, chars: big.length, untrusted: true });
     expect(ctx.guard.tainted).toBe(false);
 
     const [st] = await stepsNamed(ws.id, "mcp:crm/%");
     expect(st!.name).toBe("mcp:crm/list_contacts");
     expect(st!.kind).toBe("tool");
     expect(st!.status).toBe("ok");
-    const out = st!.output as { text: string; chars: number; truncated: boolean };
+    const out = st!.output as { text: string; chars: number; truncated: boolean; kept: boolean };
     expect(out.text).toHaveLength(2000);
-    expect(out).toMatchObject({ chars: big.length, truncated: true });
+    expect(out).toMatchObject({ chars: big.length, truncated: true, kept: true });
   });
 
   it("leaves a small clean result unchanged", async () => {
@@ -312,6 +318,6 @@ describe("external MCP results (PostToolUse)", () => {
     );
     const updated = (out as { hookSpecificOutput?: { updatedMCPToolOutput?: unknown } }).hookSpecificOutput?.updatedMCPToolOutput;
     expect(typeof updated).toBe("string");
-    expect((updated as string).startsWith("y".repeat(MCP_RESULT_MAX_CHARS) + "\n…[truncated: 1000 more")).toBe(true);
+    expect((updated as string).startsWith("[Large result from crm/list_x: 9,000 characters")).toBe(true);
   });
 });

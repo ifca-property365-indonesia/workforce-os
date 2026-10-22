@@ -3,6 +3,7 @@ import { db, employees, tasks, teams, webhookDeliveries, workspaces } from "@wfo
 import { enqueueTask, runsQueue } from "../lib/redis";
 import { recordStep } from "../lib/steps";
 import { log } from "../lib/logger";
+import { pruneToolOutputs } from "../lib/tool-outputs";
 import { activeConversationIds, isTaskRunActive } from "../guards/killswitch";
 import { tasksHoldingLease } from "../guards/lease";
 import { failTask, settleDispatchedRoutineRuns } from "../runner/task-status";
@@ -45,6 +46,7 @@ import { failStuckSends } from "../lib/outbox";
  * - QUEUED tasks older than LOST_QUEUED_AFTER_MS that no BullMQ job will ever run (the enqueue was lost):
  *   re-enqueued, unless held (phase hold), an ordered subtask waiting for or blocked by its dependencies, behind the kill switch, a quota pause or an employee that is not active,
  * - webhook deliveries older than WEBHOOK_DELIVERY_RETENTION_MS (deleted in batches),
+ * - saved large tool results (read_output handles): emptied once expired, deleted after OUTPUT_STATS_RETENTION_MS,
  * - outbox rows left `sending` for more than STUCK_SENDING_MS (failed with an "interrupted, check before resending" note),
  * - app releases whose job was lost (queued) or whose worker died (deploying, no progress), settled "lost", and settled
  *   preview releases whose hand-back to the waiting task was missed (sweepLostReleases, handBackMissedReleases).
@@ -111,6 +113,8 @@ export interface ReapResult {
   requeued: string[];
   /** webhook deliveries deleted for age */
   webhookDeliveriesPruned: number;
+  /** saved large tool results emptied after they expired, or deleted for age */
+  toolOutputsPruned: number;
   /** outbox rows stuck in `sending`, marked failed */
   stuckEmailsFailed: string[];
   /** app releases left queued without a job, or deploying without progress, settled failed "lost" */
@@ -163,11 +167,12 @@ export async function reapOrphanedTasks(opts: ReaperOptions = {}): Promise<ReapR
 
   const requeued = await requeueLostTasks(now, opts.liveElsewhere ?? probeLiveElsewhere);
   const webhookDeliveriesPruned = await sweep("webhook deliveries", 0, () => pruneWebhookDeliveries(now));
+  const toolOutputsPruned = await sweep("tool outputs", 0, () => pruneToolOutputs(now));
   const stuckEmailsFailed = await sweep("outbox sending", [], () => failStuckSends(now));
   if (stuckEmailsFailed.length) log.warn({ stuckEmailsFailed }, "reaper: outbox rows stuck in sending marked failed");
 
   const routineRunsSettled = await settleDispatchedRoutineRuns();
-  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, stuckEmailsFailed, releasesLost, releasesHandedBack };
+  return { reaped, routineRunsSettled, leadsChecked, approvalsResumed, chatTurnsClosed, requeued, webhookDeliveriesPruned, toolOutputsPruned, stuckEmailsFailed, releasesLost, releasesHandedBack };
 }
 
 /**

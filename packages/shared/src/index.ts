@@ -192,9 +192,10 @@ export interface ToolMeta {
    * task: granted to every task run without an explicit permission (an explicit disabled entry still wins);
    * app_test: granted only to the run of an app test task (C3), never by a permission;
    * app_doc: granted only to the run of a task asked to write an app document (C9);
-   * hr_review: granted only to the run of an HR review task (C2)
+   * hr_review: granted only to the run of an HR review task (C2);
+   * run: granted to every run, task or chat (read_output: the handles a run's own large results point at)
    */
-  implicit?: "task" | "app_test" | "app_doc" | "app_module" | "hr_review";
+  implicit?: "task" | "app_test" | "app_doc" | "app_module" | "hr_review" | "run";
 }
 
 export const BUILTIN_TOOLS: readonly ToolMeta[] = [
@@ -204,6 +205,7 @@ export const BUILTIN_TOOLS: readonly ToolMeta[] = [
   { name: "list_clients", label: "List clients", description: "List clients and projects from master data", class: "reversible", credits: 0.05, category: "clients" },
   { name: "get_client", label: "Get client", description: "Read one client with contacts and projects", class: "reversible", credits: 0.05, category: "clients" },
   { name: "list_invoices", label: "List invoices", description: "Read the invoice ledger (numbers, totals, status, due dates) and the company's invoice prefix", class: "reversible", credits: 0.05, category: "billing" },
+  { name: "read_output", label: "Read a saved result", description: "Search, slice or pick a JSON path in a large tool result that was saved behind a handle; granted automatically", class: "reversible", credits: 0, category: "tasks", implicit: "run" },
   { name: "report_progress", label: "Report progress", description: "Report how much of the current task is done (0–100%) with a short note; granted automatically in tasks", class: "reversible", credits: 0, category: "tasks", implicit: "task" },
   { name: "list_tasks", label: "List tasks", description: "Read recent tasks and deliverables in the workspace", class: "reversible", credits: 0.05, category: "tasks" },
   { name: "web_fetch", label: "Fetch web page", description: "Read a public web page (text only)", class: "reversible", credits: 0.2, category: "web" },
