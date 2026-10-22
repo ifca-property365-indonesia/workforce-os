@@ -4,6 +4,7 @@ import { settleHrReview } from "../hr/review";
 import { advanceAppTestSuite, apps, audit, db, moduleAppOfTask, takeQueuedModuleWork, tasks, type SuiteEnd } from "@wfos/db";
 import { assertTransition, TASK_STATUSES, canTransition, type RoutineRunStatus, type RunJob, type TaskStatus } from "@wfos/shared";
 import { onWorkflowTaskEnded } from "./workflows";
+import { FORCED_STOPS, stopReport } from "./stop-report";
 import { msg } from "@wfos/shared/messages";
 import { enqueueTask, miscQueue, publish } from "../lib/redis";
 import { recordStep } from "../lib/steps";
@@ -185,8 +186,11 @@ export interface FailOptions {
  * escalated to a person, or muted; this is also the human notification), then afterTerminal (wake the
  * parent, settle the routine run, publish task.updated).
  */
-export async function failTask(task: Pick<Task, "id">, error: string, opts: FailOptions = {}): Promise<boolean> {
+export async function failTask(task: Pick<Task, "id">, failure: string, opts: FailOptions = {}): Promise<boolean> {
   const kind = opts.kind ?? "error";
+  // the platform stopping a run: the failure says where it was (best-effort, "" when it cannot be built)
+  const report = FORCED_STOPS.includes(kind) ? await stopReport(task.id) : "";
+  const error = report ? `${failure}\n\n${report}` : failure;
   const from = opts.onlyIfStatus ? opts.onlyIfStatus.filter((s) => FAILABLE.includes(s)) : FAILABLE;
   if (!from.length) return false;
   const conds: SQL[] = [eq(tasks.id, task.id), inArray(tasks.status, from)];
