@@ -73,7 +73,7 @@ describe("Connect Claude API", () => {
     expect((await call(sendCode, "POST", "/api/settings/claude/connect/code", { sessionId: randomUUID(), code: "good-code-1234#s1" })).json.code).toBe("claude_login_not_waiting");
     const sent = await controlMessages(async () => {
       const r = await call(sendCode, "POST", "/api/settings/claude/connect/code", { sessionId: id, code: "good-code-1234#s1" });
-      expect(r.json.login.status).toBe("verifying");
+      expect((r.json.login as ClaudeLoginState).status).toBe("verifying");
     });
     expect(sent).toEqual([expect.objectContaining({ type: "claude_login_code", sessionId: id, code: "good-code-1234#s1" })]);
   });
@@ -81,7 +81,7 @@ describe("Connect Claude API", () => {
   it("cancel removes the sign-in and tells the worker", async () => {
     const o = await member("OWNER");
     await o.stepUp();
-    const id = (await call(start, "POST", "/api/settings/claude/connect")).json.login.id as string;
+    const id = ((await call(start, "POST", "/api/settings/claude/connect")).json.login as ClaudeLoginState).id;
     const sent = await controlMessages(() => call(cancel, "DELETE", "/api/settings/claude/connect"));
     expect(sent).toEqual([expect.objectContaining({ type: "claude_login_cancel", sessionId: id })]);
     expect((await call(status, "GET", "/api/settings/claude/connect")).json.login).toBeNull();
