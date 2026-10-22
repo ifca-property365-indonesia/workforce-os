@@ -210,7 +210,7 @@ describe("nightly tidy", () => {
     const [gone] = await db.insert(memories).values({ workspaceId: ws.id, employeeId: emp.id, content: "Promo until Friday", expiresAt: new Date(Date.now() - DAY), embedding: vec(1) }).returning();
     await db.insert(memories).values([1, 2, 3, 4].map((i) => ({ workspaceId: ws.id, employeeId: emp.id, content: `Fact ${i}`, embedding: vec(10 + i * 3) })));
     const r = await tidyEmployeeMemories(emp.id);
-    expect(r).toEqual({ expired: 1, duplicates: 0, nearDuplicates: 0 });
+    expect(r).toEqual({ expired: 1, duplicates: 0, nearDuplicates: 0, lessons: 0 });
     expect((await memsOf(emp.id)).map((m) => m.id)).not.toContain(gone!.id);
     const ev = await eventsOf(emp.id);
     expect(ev).toHaveLength(1);
@@ -254,7 +254,7 @@ describe("nightly tidy", () => {
     expect(normalizeMemory("Client  X prefers email")).toBe(normalizeMemory("client x prefers EMAIL "));
 
     const r = await tidyEmployeeMemories(emp.id);
-    expect(r).toEqual({ expired: 0, duplicates: 1, nearDuplicates: 1 });
+    expect(r).toEqual({ expired: 0, duplicates: 1, nearDuplicates: 1, lessons: 0 });
     const rows = new Map((await memsOf(emp.id)).map((m) => [m.id, m]));
     expect(rows.get(dupOld!.id)!.supersededBy).toBe(dupNew!.id);
     expect(rows.get(dupNew!.id)!.supersededBy).toBeNull();
@@ -269,7 +269,7 @@ describe("nightly tidy", () => {
       ].sort(),
     );
     // a second pass finds nothing left to do
-    expect(await tidyEmployeeMemories(emp.id)).toEqual({ expired: 0, duplicates: 0, nearDuplicates: 0 });
+    expect(await tidyEmployeeMemories(emp.id)).toEqual({ expired: 0, duplicates: 0, nearDuplicates: 0, lessons: 0 });
   });
 
   it("a close vector alone is not a near-duplicate: different wording, numbers or names keep both", async () => {
@@ -285,7 +285,7 @@ describe("nightly tidy", () => {
     await pair("The invoice for the Jakarta office is due on day 15 of each month", "The invoice for the Jakarta office is due on day 25 of each month", 0, 0);
     await pair("Budget for the launch with Client Alpha is approved by finance", "Budget for the launch with Client Beta is approved by finance", 20, 2);
     await pair("Weekly report goes out on Monday", "The weekly report is sent on Mondays", 40, 4);
-    expect(await tidyEmployeeMemories(emp.id)).toEqual({ expired: 0, duplicates: 0, nearDuplicates: 0 });
+    expect(await tidyEmployeeMemories(emp.id)).toEqual({ expired: 0, duplicates: 0, nearDuplicates: 0, lessons: 0 });
     expect((await memsOf(emp.id)).filter((m) => m.supersededBy)).toHaveLength(0);
     expect(lexicallyNear("Client X prefers email for invoices", "client X prefers email for invoices")).toBe(true);
     expect(lexicallyNear("Client X prefers email for invoices", "Client Y prefers email for invoices")).toBe(false);

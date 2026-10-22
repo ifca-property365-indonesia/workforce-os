@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Check, ChevronLeft, ChevronRight, KanbanSquare, Loader2, Paperclip, Pencil, RefreshCw } from "lucide-react";
 import { MAX_RESPONDERS_PER_TURN, type ChatMessageDTO, type RoutedBy } from "@wfos/shared";
 import { ApprovalCard } from "@/components/approvals";
+import { MemoryChip } from "./memory-chip";
 import { Avatar } from "@/components/layout/common";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -304,6 +305,7 @@ export const MessageItem = memo(function MessageItem({
             ))}
           </div>
         )}
+        {!mine && !!m.meta?.memoryIds?.length && <MemoryChip ids={m.meta.memoryIds} />}
         {!!approvals.length && (
           <div className="w-[min(36rem,100%)] space-y-2 pt-1.5">
             {approvals.map((a) => (

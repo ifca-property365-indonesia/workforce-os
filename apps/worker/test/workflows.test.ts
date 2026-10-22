@@ -13,7 +13,7 @@ beforeEach(() => resetTransport());
 
 async function workflow(steps: (emp: string) => WorkflowStep[], trigger: WorkflowTrigger = { kind: "manual" }, over: Partial<typeof workflows.$inferInsert> = {}) {
   const ws = await makeWorkspace();
-  const emp = await makeEmployee(ws.id, { name: "Rina" });
+  const emp = await makeEmployee(ws.id);
   const [wf] = await db.insert(workflows).values({ workspaceId: ws.id, name: "Laporan mingguan", trigger, steps: steps(emp.id), enabled: true, ...over }).returning();
   return { ws, emp, wf: wf! };
 }
@@ -27,7 +27,7 @@ async function finish(runId: string, result: string, status: "DONE" | "FAILED" =
   const t = await taskOf(r.waitingTaskId!);
   await db.update(tasks).set({ status: "RUNNING" }).where(eq(tasks.id, t.id));
   if (status === "DONE") await setTaskStatus({ ...t, status: "RUNNING" }, "DONE", { result });
-  else await failTask({ ...t, status: "RUNNING" }, "boom");
+  else await failTask(t, "boom");
   await advanceWorkflowRun(runId); // the advance job the hook enqueued
 }
 

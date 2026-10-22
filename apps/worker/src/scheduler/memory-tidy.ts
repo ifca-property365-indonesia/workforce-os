@@ -1,11 +1,15 @@
-import { and, asc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { db, memories } from "@wfos/db";
-import { MEMORY_NEAR_DUPLICATE, MEMORY_TIDY_MAX_SHARE } from "@wfos/shared";
+import { MEMORY_NEAR_DUPLICATE, MEMORY_TIDY_MAX_SHARE, ROUTING_MODEL } from "@wfos/shared";
 import { todayIn } from "@wfos/shared/health";
 import { env } from "../lib/env";
 import { log } from "../lib/logger";
 import { redis } from "../lib/redis";
-import { recordMemoryEvent } from "../lib/memory-journal";
+import { memorySnapshot, recordMemoryEvent } from "../lib/memory-journal";
+import { embedOne } from "../lib/embeddings";
+import { recordStep } from "../lib/steps";
+import { oneTurn } from "../runner/one-turn";
+import { firstJsonObject } from "../runner/route-classifier";
 
 const TZ = process.env.APP_TIME_ZONE || "Asia/Jakarta";
 /** Local hour (APP_TIME_ZONE) of the nightly pass. */
@@ -19,6 +23,8 @@ export interface TidyResult {
   expired: number;
   duplicates: number;
   nearDuplicates: number;
+  /** lesson memories written from recurring reviewer feedback */
+  lessons: number;
 }
 
 /** Exact-duplicate key: lower case, whitespace collapsed. */
@@ -199,7 +205,7 @@ async function dedupeNear(now: Date, live: Memory[], budget: number, changed: Se
 export async function tidyEmployeeMemories(employeeId: string, now: Date = new Date()): Promise<TidyResult> {
   const [{ n } = { n: 0 }] = await db.select({ n: sql<number>`count(*)::int` }).from(memories).where(eq(memories.employeeId, employeeId));
   const budget = Math.ceil(MEMORY_TIDY_MAX_SHARE * n);
-  const result: TidyResult = { expired: 0, duplicates: 0, nearDuplicates: 0 };
+  const result: TidyResult = { expired: 0, duplicates: 0, nearDuplicates: 0, lessons: 0 };
   if (!budget) return result;
   result.expired = await expireMemories(employeeId, now, budget);
   let left = budget - result.expired;
@@ -215,11 +221,82 @@ export async function tidyEmployeeMemories(employeeId: string, now: Date = new D
   return result;
 }
 
+// ---------------------------------------------------------------------------
+// Lessons (after OpenHuman's beliefs): recurring reviewer feedback summed up as a few lasting rules
+// ---------------------------------------------------------------------------
+
+/** trusted general feedback it takes before lessons are written, how far back it counts, and how often per employee */
+export const LESSON_MIN_FEEDBACK = 4;
+export const LESSON_WINDOW_DAYS = 60;
+export const LESSON_EVERY_DAYS = 7;
+export const LESSONS_MAX = 3;
+const LESSON_TIMEOUT_MS = 30_000;
+
+const LESSON_PROMPT = [
+  "You help an AI employee learn from its human reviewers.",
+  "You get the reviewers' feedback (between <feedback> tags) and the lessons the employee already has.",
+  `Write at most ${LESSONS_MAX} short, lasting rules that follow from feedback given at least twice. Each rule: one sentence, imperative, at most 200 characters, in the language of the feedback.`,
+  "Do not repeat an existing lesson. If nothing recurs, return an empty list.",
+  'Answer with one JSON object and nothing else: {"lessons":["..."]}.',
+].join("\n");
+
+export function parseLessons(text: string): string[] {
+  const o = firstJsonObject(text) as { lessons?: unknown } | null;
+  if (!o || !Array.isArray(o.lessons)) return [];
+  return o.lessons
+    .filter((l): l is string => typeof l === "string")
+    .map((l) => l.replace(/\s+/g, " ").trim())
+    .filter((l) => l.length >= 10 && l.length <= 300)
+    .slice(0, LESSONS_MAX);
+}
+
+/**
+ * When an employee got at least LESSON_MIN_FEEDBACK pieces of trusted, general reviewer feedback in the last
+ * LESSON_WINDOW_DAYS and has no lesson younger than LESSON_EVERY_DAYS, one fast-model turn sums the recurring ones up
+ * as "lesson" memories (recalled on every run, before the feedback). Journaled like any change by tidy; the credits go
+ * on the employee's Activity. Never throws.
+ */
+export async function writeLessons(workspaceId: string, employeeId: string, now: Date = new Date()): Promise<number> {
+  try {
+    const live = and(eq(memories.employeeId, employeeId), isNull(memories.supersededBy), or(isNull(memories.expiresAt), gt(memories.expiresAt, now)), isNull(memories.clientId));
+    const lessons = await db.select().from(memories).where(and(live, eq(memories.kind, "lesson"))).orderBy(desc(memories.createdAt));
+    if (lessons[0] && now.getTime() - lessons[0].createdAt.getTime() < LESSON_EVERY_DAYS * 86_400_000) return 0;
+    const feedback = await db
+      .select({ content: memories.content })
+      .from(memories)
+      .where(and(live, eq(memories.kind, "feedback"), eq(memories.untrusted, false), gte(memories.createdAt, new Date(now.getTime() - LESSON_WINDOW_DAYS * 86_400_000))))
+      .orderBy(desc(memories.createdAt))
+      .limit(30);
+    if (feedback.length < LESSON_MIN_FEEDBACK) return 0;
+    const r = await oneTurn({
+      workspaceId,
+      model: ROUTING_MODEL,
+      systemPrompt: LESSON_PROMPT,
+      prompt: [`<feedback>\n${feedback.map((f) => `- ${f.content.slice(0, 500)}`).join("\n")}\n</feedback>`, `<existing_lessons>\n${lessons.map((l) => `- ${l.content}`).join("\n") || "(none)"}\n</existing_lessons>`].join("\n\n"),
+      timeoutMs: LESSON_TIMEOUT_MS,
+      label: "lessons",
+    });
+    await recordStep({ workspaceId, employeeId, kind: "system", name: "memory_lessons", model: r.model, ...r.usage, latencyMs: r.latencyMs, credits: r.credits, status: r.failure ?? "ok" }).catch(() => {});
+    const fresh = parseLessons(r.text).filter((l) => !lessons.some((x) => lexicallyNear(x.content, l)));
+    for (const content of fresh) {
+      const embedding = await embedOne(content).catch(() => null);
+      const [m] = await db.insert(memories).values({ workspaceId, employeeId, kind: "lesson", source: "tidy", content, embedding }).returning();
+      await recordMemoryEvent({ workspaceId, employeeId, memoryId: m!.id, action: "create", actor: "tidy", before: null, after: memorySnapshot(m!) }).catch((e: unknown) =>
+        log.warn({ err: e }, "memory journal failed for a lesson"),
+      );
+    }
+    return fresh.length;
+  } catch (e) {
+    log.warn({ err: e, employeeId }, "lessons not written");
+    return 0;
+  }
+}
+
 /** The pass over every employee that has memories. */
 export async function tidyAllMemories(now: Date = new Date()): Promise<TidyResult> {
-  const emps = await db.selectDistinct({ id: memories.employeeId }).from(memories);
-  const total: TidyResult = { expired: 0, duplicates: 0, nearDuplicates: 0 };
-  for (const { id } of emps) {
+  const emps = await db.selectDistinct({ id: memories.employeeId, workspaceId: memories.workspaceId }).from(memories);
+  const total: TidyResult = { expired: 0, duplicates: 0, nearDuplicates: 0, lessons: 0 };
+  for (const { id, workspaceId } of emps) {
     try {
       const r = await tidyEmployeeMemories(id, now);
       total.expired += r.expired;
@@ -228,6 +305,7 @@ export async function tidyAllMemories(now: Date = new Date()): Promise<TidyResul
     } catch (e) {
       log.warn({ err: e, employeeId: id }, "memory tidy failed for an employee");
     }
+    total.lessons += await writeLessons(workspaceId, id, now);
   }
   return total;
 }

@@ -359,6 +359,17 @@ async function runStarted(
 
   // stored content written by a tainted run (or imported) is fenced as data in the prompt and taints this run
   await taintFromStoredInput(ctx, mem, inbox);
+  // which memories this run got (the Activity shows them, with a link to each)
+  if (mem.length) {
+    await recordStep({
+      workspaceId: ws.id,
+      taskId: task.id,
+      employeeId: emp.id,
+      kind: "system",
+      name: "memory_recall",
+      output: { memories: mem.flatMap((m) => (m.id ? [{ id: m.id, kind: m.kind ?? "fact", excerpt: m.content.slice(0, 160) }] : [])) },
+    }).catch((e: unknown) => log.warn({ err: e, taskId }, "memory_recall step not recorded"));
+  }
 
   // memories and recent work lead the user message (data, not instructions): the system prompt stays stable across runs
   const promptParts = [memoryNotesBlock(mem), `# Task: ${task.title}`, task.brief, context && `## Context\n${context}`, await dependencyContext(task), recent];

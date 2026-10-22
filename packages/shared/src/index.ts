@@ -166,6 +166,16 @@ export type WorkflowInput = z.infer<typeof workflowInputSchema>;
 export const WEBHOOK_TRIAGE_DECISIONS = ["drop", "note", "task", "escalate"] as const;
 export type WebhookTriageDecision = (typeof WEBHOOK_TRIAGE_DECISIONS)[number];
 
+/** Where the worker leaves a memory preview for the web to pick up (a short-lived Redis key). */
+export const memoryPreviewKey = (namespace: string, requestId: string) => `${namespace}:memory-preview:${requestId}`;
+export const MEMORY_PREVIEW_TTL_S = 120;
+export interface MemoryPreviewItem {
+  id: string;
+  kind: string;
+  content: string;
+  untrusted: boolean;
+}
+
 /**
  * "<trigger name> · <short delivery id>". The title is shown everywhere (board, notifications, chat) outside any
  * data fence, so no payload text goes in it: the payload's summary stays inside the fenced brief.
@@ -771,6 +781,8 @@ export interface MessageMeta {
   chips?: AutoActionChip[];
   /** system messages: the approval this receipt reports on */
   approvalId?: string;
+  /** assistant messages: the memories the reply had in its prompt (recallMemories) */
+  memoryIds?: string[];
   /** user messages: a short "ya" / "tidak" that decided the one approval waiting in this chat (not a turn) */
   approvalReply?: { approvalId: string; decision: "approve" | "reject" };
   /** system notes the UI localises: nobody mentioned in a "mentions" team chat / responder busy (employeeId set) */
@@ -923,6 +935,8 @@ export type MiscJob =
   /** start a run of a workflow (Run now), or move a run on after its task or approval settled */
   | { kind: "workflow_start"; workspaceId: string; workflowId: string; userId?: string }
   | { kind: "workflow_advance"; workspaceId: string; runId: string }
+  /** what recallMemories would give an employee for a brief (the worker holds the embedding model); see memoryPreviewKey */
+  | { kind: "memory_preview"; workspaceId: string; employeeId: string; brief: string; clientId: string | null; requestId: string }
   | NotifyJob;
 
 /**

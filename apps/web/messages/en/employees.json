@@ -103,7 +103,8 @@
     "kind": {
       "fact": "fact",
       "feedback": "feedback",
-      "preference": "preference"
+      "preference": "preference",
+      "lesson": "lesson"
     },
     "showInactive": "Show inactive ({count})",
     "edit": "Edit memory",
@@ -152,7 +153,18 @@
       }
     },
     "clientBadge": "Client {client}",
-    "clientHelp": "Learned on work for this client: recalled only on that client's work."
+    "clientHelp": "Learned on work for this client: recalled only on that client's work.",
+    "used": "used {count}×, last {when}",
+    "neverUsed": "not used yet",
+    "preview": {
+      "title": "What would it remember?",
+      "help": "Type a brief to see which memories this employee would get for it: lessons and reviewer feedback first, then the memories closest to the brief.",
+      "brief": "Brief",
+      "placeholder": "e.g. Send the monthly invoice to PT Maju",
+      "run": "Show",
+      "waiting": "Asking the worker…",
+      "none": "No memory would be recalled."
+    }
   },
   "toolPermissions": {
     "grant": "Grant {tool}",

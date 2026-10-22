@@ -752,7 +752,9 @@ async function reply(input: AnswerInput & { finish: (content: string, status: "d
     }
     const chips = ctx.autoActions ?? [];
     // a reply written while the run was tainted is untrusted for later turns (fenced, and it taints them)
-    const extra: MessageMeta = { ...(chips.length ? { chips } : {}), ...(ctx.guard.tainted ? { untrusted: true } : {}) };
+    // the memories this reply had in front of it (the chip under the reply lists them)
+    const memoryIds = mem.flatMap((m) => (m.id ? [m.id] : []));
+    const extra: MessageMeta = { ...(chips.length ? { chips } : {}), ...(memoryIds.length ? { memoryIds } : {}), ...(ctx.guard.tainted ? { untrusted: true } : {}) };
     const outcome = await finish(content, failed || out.stopped === "quota" ? "error" : "done", Object.keys(extra).length ? { ...assistant.meta, ...extra } : undefined);
     return out.stopped === "quota" ? { ...outcome, fatal: true } : { ...outcome, consults: ctx.consults };
   } catch (e) {

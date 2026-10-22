@@ -1,6 +1,6 @@
 import { conversations, db, memories, messages, employees, tasks } from "@wfos/db";
 import { AUTONOMY_DESCRIPTIONS, BUILTIN_TOOLS, LOCALE_NAMES, TOOL_BY_NAME, type AutonomyLevel, type Locale } from "@wfos/shared";
-import { desc, eq, sql, and, gt, gte, isNull, ne, or, type AnyColumn, type SQL } from "drizzle-orm";
+import { desc, eq, sql, and, gt, gte, inArray, isNull, ne, notInArray, or, type AnyColumn, type SQL } from "drizzle-orm";
 import { embedOne, toVectorLiteral } from "../lib/embeddings";
 import { log } from "../lib/logger";
 import { taintRun, type GuardCtx } from "../guards/content";
@@ -23,7 +23,14 @@ const escapeData = (text: string) => text.replace(/</g, "â€¹").replace(/>/g, "â€
 export interface RecalledMemory {
   content: string;
   untrusted: boolean;
+  /** the memory row (absent for notes that are not memories) */
+  id?: string;
+  kind?: string;
 }
+
+/** Memories every run gets, newest first, before the ones relevant to the brief: lessons (tidy) and reviewer feedback. */
+export const ALWAYS_RECALLED_KINDS = ["lesson", "feedback"] as const;
+const ALWAYS_RECALLED = 6;
 
 /** Saved by a run that handled untrusted content, or imported with a package: data for the prompt, and it taints the run. */
 export function isUntrustedMemory(m: { untrusted: boolean; source: string }): boolean {
@@ -44,34 +51,45 @@ export function recallableMemory(now: Date = new Date()) {
 }
 
 /**
- * Recent feedback (always) + memories relevant to the brief (vector search). Expired and superseded memories are left
- * out, and so are memories of another client (clientScope: general ones plus this client's).
+ * Lessons and recent feedback (always) + memories relevant to the brief (vector search). Expired and superseded
+ * memories are left out, and so are memories of another client (clientScope: general ones plus this client's).
+ * Each recalled memory counts as used (uses, last_used_at), except for a replay (countUse false).
  */
-export async function recallMemories(employeeId: string, brief: string, clientId: string | null = null): Promise<RecalledMemory[]> {
-  const cols = { content: memories.content, untrusted: memories.untrusted, source: memories.source };
+export async function recallMemories(employeeId: string, brief: string, clientId: string | null = null, opts: { countUse?: boolean } = {}): Promise<RecalledMemory[]> {
+  const cols = { id: memories.id, kind: memories.kind, content: memories.content, untrusted: memories.untrusted, source: memories.source };
   const live = and(recallableMemory(), clientScope(memories.clientId, clientId));
-  const feedback = await db
+  const always = await db
     .select(cols)
     .from(memories)
-    .where(and(eq(memories.employeeId, employeeId), eq(memories.kind, "feedback"), live))
-    .orderBy(desc(memories.createdAt))
-    .limit(5);
-  let relevant: { content: string; untrusted: boolean; source: string }[] = [];
+    .where(and(eq(memories.employeeId, employeeId), inArray(memories.kind, [...ALWAYS_RECALLED_KINDS]), live))
+    .orderBy(sql`${memories.kind} = 'lesson' desc`, desc(memories.createdAt))
+    .limit(ALWAYS_RECALLED);
+  let relevant: { id: string; kind: string; content: string; untrusted: boolean; source: string }[] = [];
   try {
     const v = toVectorLiteral(await embedOne(brief.slice(0, 1500) || "general"));
     relevant = await db
       .select(cols)
       .from(memories)
-      .where(and(eq(memories.employeeId, employeeId), sql`${memories.kind} <> 'feedback'`, live))
+      .where(and(eq(memories.employeeId, employeeId), notInArray(memories.kind, [...ALWAYS_RECALLED_KINDS]), live))
       .orderBy(sql`${memories.embedding} <=> ${v}::vector`)
       .limit(6);
   } catch (e) {
     log.warn({ err: e }, "memory recall failed; continuing without vector recall");
   }
-  return [
-    ...feedback.map((f) => ({ content: `Feedback from a human reviewer: ${f.content}`, untrusted: isUntrustedMemory(f) })),
-    ...relevant.map((r) => ({ content: r.content, untrusted: isUntrustedMemory(r) })),
+  const lead = (m: { kind: string }) => (m.kind === "lesson" ? "Lesson from past reviewer feedback: " : "Feedback from a human reviewer: ");
+  const out: RecalledMemory[] = [
+    ...always.map((f) => ({ id: f.id, kind: f.kind, content: `${lead(f)}${f.content}`, untrusted: isUntrustedMemory(f) })),
+    ...relevant.map((r) => ({ id: r.id, kind: r.kind, content: r.content, untrusted: isUntrustedMemory(r) })),
   ];
+  if (out.length && opts.countUse !== false) {
+    await db
+      .update(memories)
+      // a use is not an edit: updated_at keeps its value
+      .set({ uses: sql`${memories.uses} + 1`, lastUsedAt: new Date(), updatedAt: sql`${memories.updatedAt}` })
+      .where(inArray(memories.id, out.map((m) => m.id!)))
+      .catch((e: unknown) => log.warn({ err: e }, "memory use not counted"));
+  }
+  return out;
 }
 
 /** A memory section: trusted memories as a list, untrusted ones escaped inside a data block. */

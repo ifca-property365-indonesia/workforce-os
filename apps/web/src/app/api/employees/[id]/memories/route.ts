@@ -27,6 +27,8 @@ export const GET = route<P>("VIEWER", async ({ session, params }) => {
       clientCode: clients.code,
       expiresAt: memories.expiresAt,
       supersededBy: memories.supersededBy,
+      uses: memories.uses,
+      lastUsedAt: memories.lastUsedAt,
       createdAt: memories.createdAt,
       updatedAt: memories.updatedAt,
     })

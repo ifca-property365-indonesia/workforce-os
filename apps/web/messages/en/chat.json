@@ -96,5 +96,7 @@
     "cost": "Spent today",
     "ofCap": "of the daily cap {cap}"
   },
-  "conversations": "Conversations"
+  "conversations": "Conversations",
+  "memoryChip": "{count, plural, one {# memory used} other {# memories used}}",
+  "memoryChipGone": "Those memories were deleted since."
 }

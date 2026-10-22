@@ -65,7 +65,7 @@ export async function runReplay(replayId: string): Promise<void> {
         };
         // Replays must not create tasks or delegate: strip those tools.
         ctx.employee.toolPermissions = ctx.employee.toolPermissions.filter((p) => !["create_task", "delegate_subtask", "handoff_to_division", "message_teammate", "memory_save"].includes(p.tool));
-        const mem = await recallMemories(emp.id, `${t.title}\n${t.brief}`, t.clientId);
+        const mem = await recallMemories(emp.id, `${t.title}\n${t.brief}`, t.clientId, { countUse: false });
         await taintFromStoredInput(ctx, mem);
         ctx.skills = await loadAssignedSkills(emp.id, ws.id, ctx.employee.toolPermissions);
         const systemPrompt = buildSystemPrompt({

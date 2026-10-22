@@ -96,5 +96,7 @@
     "cost": "Biaya hari ini",
     "ofCap": "dari batas harian {cap}"
   },
-  "conversations": "Percakapan"
+  "conversations": "Percakapan",
+  "memoryChip": "{count} ingatan dipakai",
+  "memoryChipGone": "Ingatan itu sudah dihapus."
 }

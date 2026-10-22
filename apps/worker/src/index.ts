@@ -19,6 +19,7 @@ import { resendOutbound } from "./lib/outbox";
 import { runMergeScan } from "./runner/merge-scan";
 import { triageDelivery } from "./runner/webhook-triage";
 import { advanceWorkflowRun, startWorkflowRun, tickWorkflows } from "./runner/workflows";
+import { previewMemories } from "./runner/memory-preview";
 import { abortConversation, abortTask, abortWorkspace, activeRunCount } from "./guards/killswitch";
 import { acquireRunLeases } from "./runner/run-lease";
 import { handleRunJobFailed } from "./runner/task-status";
@@ -94,6 +95,9 @@ const workers = [
           return;
         case "workflow_advance":
           await advanceWorkflowRun(d.runId);
+          return;
+        case "memory_preview":
+          await previewMemories(d);
           return;
       }
     },

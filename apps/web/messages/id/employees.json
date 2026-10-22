@@ -103,7 +103,8 @@
     "kind": {
       "fact": "fakta",
       "feedback": "masukan",
-      "preference": "preferensi"
+      "preference": "preferensi",
+      "lesson": "pelajaran"
     },
     "showInactive": "Tampilkan yang tidak aktif ({count})",
     "edit": "Ubah memori",
@@ -152,7 +153,18 @@
       }
     },
     "clientBadge": "Klien {client}",
-    "clientHelp": "Dipelajari dari pekerjaan untuk klien ini: hanya dipanggil kembali saat mengerjakan klien yang sama."
+    "clientHelp": "Dipelajari dari pekerjaan untuk klien ini: hanya dipanggil kembali saat mengerjakan klien yang sama.",
+    "used": "dipakai {count}×, terakhir {when}",
+    "neverUsed": "belum pernah dipakai",
+    "preview": {
+      "title": "Apa yang akan diingat?",
+      "help": "Tulis brief untuk melihat ingatan mana yang akan didapat karyawan ini: pelajaran dan feedback reviewer dulu, lalu ingatan yang paling dekat dengan brief.",
+      "brief": "Brief",
+      "placeholder": "mis. Kirim invoice bulanan ke PT Maju",
+      "run": "Tampilkan",
+      "waiting": "Menanyakan ke worker…",
+      "none": "Tidak ada ingatan yang akan dipakai."
+    }
   },
   "toolPermissions": {
     "grant": "Izinkan {tool}",

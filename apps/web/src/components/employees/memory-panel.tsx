@@ -33,6 +33,9 @@ interface Memory {
   clientCode: string | null;
   expiresAt: string | null;
   supersededBy: string | null;
+  /** how often a run got it in its prompt, and when last */
+  uses: number;
+  lastUsedAt: string | null;
   createdAt: string;
   state: MemoryState;
 }
@@ -128,6 +131,60 @@ function MemoryHistory({ employeeId }: { employeeId: string }) {
   );
 }
 
+interface PreviewItem {
+  id: string;
+  kind: string;
+  content: string;
+  untrusted: boolean;
+}
+
+/**
+ * "What would it remember?" (after OpenHuman's pack preview): the memories the employee would get for a brief, asked
+ * of the worker (it holds the embedding model) and polled until it answers.
+ */
+function MemoryPreview({ employeeId }: { employeeId: string }) {
+  const t = useTranslations("employees");
+  const [brief, setBrief] = useState("");
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const ask = useMutation({
+    mutationFn: () => api.post<{ requestId: string }>(`/api/employees/${employeeId}/memory-preview`, { brief }),
+    onSuccess: (r) => setRequestId(r.requestId),
+    onError: (x) => toast.error((x as Error).message),
+  });
+  const { data } = useQuery({
+    queryKey: ["memory-preview", requestId],
+    queryFn: () => api.get<{ ready: boolean; memories: PreviewItem[] }>(`/api/employees/${employeeId}/memory-preview?request=${requestId}`),
+    enabled: !!requestId,
+    refetchInterval: (q) => (q.state.data?.ready ? false : 1000),
+  });
+  return (
+    <details className="rounded-lg border p-3 text-sm">
+      <summary className="cursor-pointer font-medium">{t("memory.preview.title")}</summary>
+      <div className="mt-2 space-y-2">
+        <p className="text-xs text-muted-foreground">{t("memory.preview.help")}</p>
+        <div className="flex gap-2">
+          <Input aria-label={t("memory.preview.brief")} placeholder={t("memory.preview.placeholder")} value={brief} onChange={(x) => setBrief(x.target.value)} />
+          <Button variant="outline" disabled={brief.trim().length < 2 || ask.isPending} onClick={() => ask.mutate()}>
+            {t("memory.preview.run")}
+          </Button>
+        </div>
+        {requestId && !data?.ready && <p className="text-xs text-muted-foreground">{t("memory.preview.waiting")}</p>}
+        {data?.ready && (
+          <ol className="space-y-1">
+            {data.memories.map((m) => (
+              <li key={m.id} className="flex gap-2 text-xs">
+                <span className="shrink-0 rounded bg-muted px-1.5 text-[10px] uppercase">{t.has(`memory.kind.${m.kind}`) ? t(`memory.kind.${m.kind}`) : m.kind}</span>
+                <span className="min-w-0 break-words">{m.content}</span>
+              </li>
+            ))}
+            {!data.memories.length && <li className="text-xs text-muted-foreground">{t("memory.preview.none")}</li>}
+          </ol>
+        )}
+      </div>
+    </details>
+  );
+}
+
 export function MemoryPanel({ employeeId }: { employeeId: string }) {
   const t = useTranslations("employees");
   const tc = useTranslations("common");
@@ -180,6 +237,7 @@ export function MemoryPanel({ employeeId }: { employeeId: string }) {
         )}
       </div>
       {showHistory && <MemoryHistory employeeId={employeeId} />}
+      {canEdit && <MemoryPreview employeeId={employeeId} />}
       {shown.map((m) => (
         <div key={m.id} className={cn("flex items-start gap-3 rounded-lg border p-3", m.state !== "active" && "opacity-70")}>
           <div className="flex flex-col items-start gap-1">
@@ -236,6 +294,8 @@ export function MemoryPanel({ employeeId }: { employeeId: string }) {
             <div className="mt-1 text-xs text-muted-foreground">
               {t("memory.metaShort", { source: t.has(`memory.source.${m.source}`) ? t(`memory.source.${m.source}`) : m.source, when: f.ago(m.createdAt) })}
               {m.expiresAt && ` · ${m.state === "expired" ? t("memory.expiredOn", { date: f.date(m.expiresAt) }) : t("memory.expiresOn", { date: f.date(m.expiresAt) })}`}
+              {" · "}
+              {m.lastUsedAt ? t("memory.used", { count: m.uses, when: f.ago(m.lastUsedAt) }) : t("memory.neverUsed")}
             </div>
           </div>
           {canEdit && editing?.id !== m.id && (

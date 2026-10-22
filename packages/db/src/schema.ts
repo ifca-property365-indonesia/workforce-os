@@ -673,7 +673,7 @@ export const memories = pgTable(
     employeeId: uuid("employee_id").notNull().references(() => employees.id, { onDelete: "cascade" }),
     /** learned on a task for this client: recalled only on that client's work (null = general) */
     clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull().default("fact"), // fact | feedback | preference
+    kind: text("kind").notNull().default("fact"), // fact | feedback | preference | lesson (tidy: sums up recurring feedback)
     content: text("content").notNull(),
     source: text("source").notNull().default("agent"), // agent | user | rejection | import
     /** saved by a tainted run (or imported): recalled as data, and recalling it taints the run */
@@ -683,6 +683,9 @@ export const memories = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     /** a newer memory replaced this one; superseded memories are not recalled */
     supersededBy: uuid("superseded_by").references((): AnyPgColumn => memories.id, { onDelete: "set null" }),
+    /** how often a run got this memory in its prompt, and when last (recallMemories) */
+    uses: integer("uses").notNull().default(0),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
