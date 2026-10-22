@@ -41,7 +41,10 @@ export function receiptText(text: string, max: number): string {
  * conversation as a system message. Best-effort: a failure is logged and never undoes or blocks
  * the decision itself.
  */
-async function postChatReceipt(a: ApprovalRow, outcome: { kind: "executed" | "failed"; summary: string } | { kind: "rejected" }): Promise<void> {
+async function postChatReceipt(
+  a: ApprovalRow,
+  outcome: { kind: "executed" | "failed"; summary: string } | { kind: "rejected" } | { kind: "expired"; hours: number },
+): Promise<void> {
   if (!a.conversationId || a.taskId) return;
   try {
     // a retried job must not post the same receipt twice
@@ -53,14 +56,16 @@ async function postChatReceipt(a: ApprovalRow, outcome: { kind: "executed" | "fa
     if (already) return;
     const locale = await workspaceLocale(a.workspaceId);
     const title = receiptText(a.title, RECEIPT_SUMMARY_CHARS);
-    const summary = outcome.kind === "rejected" ? "" : receiptText(outcome.summary, RECEIPT_SUMMARY_CHARS);
+    const summary = outcome.kind === "executed" || outcome.kind === "failed" ? receiptText(outcome.summary, RECEIPT_SUMMARY_CHARS) : "";
     const feedback = a.feedback ? receiptText(a.feedback, RECEIPT_FEEDBACK_CHARS) : "";
     const content =
       outcome.kind === "executed"
         ? msg(locale, "receipt.executed", { title, summary })
         : outcome.kind === "failed"
           ? msg(locale, "receipt.failed", { title, error: summary })
-          : msg(locale, "receipt.rejected", { title }) + (feedback ? `\n${msg(locale, "receipt.feedback", { feedback })}` : "");
+          : outcome.kind === "expired"
+            ? msg(locale, "receipt.expired", { title, hours: String(outcome.hours) })
+            : msg(locale, "receipt.rejected", { title }) + (feedback ? `\n${msg(locale, "receipt.feedback", { feedback })}` : "");
     // on the branch of the reply that raised the approval (below the active leaf while that branch is shown)
     const m = await appendToBranch(
       {
@@ -203,6 +208,43 @@ export async function handleRejection(approvalId: string): Promise<void> {
   }
   await postChatReceipt(a, { kind: "rejected" });
   if (a.taskId) await afterApprovalResolved(a.taskId);
+}
+
+/** marks an approval that expired because nobody decided it (the employee hears about it once, like a rejection) */
+const unanswered = (x: Pick<ApprovalRow, "status" | "executionResult">) => x.status === "EXPIRED" && !!(x.executionResult as { unanswered?: boolean } | null)?.unanswered;
+
+/**
+ * Reaper (after OpenHuman's fail-closed approval gate): PENDING approvals older than their workspace's
+ * approval_expiry_hours (0 = never) expire unanswered, so a stale action can no longer be approved and run. Merges
+ * are left alone (a person's step on finished work). The task gets the outcome like a rejection; a chat gets a
+ * receipt. Returns the expired ids.
+ */
+export async function expireUnansweredApprovals(now = new Date()): Promise<string[]> {
+  const rows = await db.execute<{ id: string; hours: number }>(sql`
+    update approvals a
+       set status = 'EXPIRED',
+           execution_result = jsonb_build_object('ok', false, 'unanswered', true, 'summary', 'Not decided within ' || w.approval_expiry_hours || ' hours')
+      from workspaces w
+     where w.id = a.workspace_id
+       and a.status = 'PENDING'
+       and a.tool_name <> ${MERGE_TOOL}
+       and w.approval_expiry_hours > 0
+       and a.created_at < ${now.toISOString()}::timestamptz - make_interval(hours => w.approval_expiry_hours)
+    returning a.id, w.approval_expiry_hours as hours`);
+  const list = [...rows] as { id: string; hours: number }[];
+  for (const r of list) {
+    try {
+      const [a] = await db.select().from(approvals).where(eq(approvals.id, r.id));
+      if (!a) continue;
+      await audit({ workspaceId: a.workspaceId, actorLabel: "system", action: "approval.expired", targetType: "approval", targetId: a.id, details: { toolName: a.toolName, title: a.title, hours: r.hours } });
+      await publish(a.workspaceId, { type: "approval.updated", approvalId: a.id, status: "EXPIRED" });
+      await postChatReceipt(a, { kind: "expired", hours: r.hours });
+      if (a.taskId) await afterApprovalResolved(a.taskId);
+    } catch (e) {
+      log.warn({ err: e, approvalId: r.id }, "expired approval not handed back (the reaper retries the task)");
+    }
+  }
+  return list.map((r) => r.id);
 }
 
 type ReleaseRow = typeof appReleases.$inferSelect;
@@ -362,6 +404,8 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
       .filter((f) => !f.release || isFailed(f.release));
 
     const needsRevision = all.filter((x) => x.status === "REJECTED" && x.feedback && !consumed(x));
+    // expired without an answer: the action did not run; the employee finishes without it (once)
+    const expired = all.filter((x) => unanswered(x) && !consumed(x));
     // Workspace mode: approved commands ran on the agent's behalf; it continues with their output
     const commandResults = all.filter((x) => x.toolName === "bash" && (x.status === "EXECUTED" || x.status === "FAILED") && !consumed(x));
     // a failed push, pull request or preview request (conflict, rejected, branch moved, a deploy already running) goes
@@ -413,8 +457,9 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
       });
       return { kind: "revise" as const, task, note: note.join("\n"), resumePlan: true };
     }
-    if (needsRevision.length || commandResults.length || previewFailures.length || toPreview.length || toRelease.length) {
+    if (needsRevision.length || expired.length || commandResults.length || previewFailures.length || toPreview.length || toRelease.length) {
       for (const r of needsRevision) await tx.update(approvals).set({ executionResult: { consumed: true } }).where(eq(approvals.id, r.id));
+      for (const r of expired) await tx.update(approvals).set({ executionResult: { ...(r.executionResult ?? {}), consumed: true } }).where(eq(approvals.id, r.id));
       for (const r of [...commandResults, ...previewFailures.map((f) => f.approval), ...toPreview.map((t) => t.approval)]) {
         await tx.update(approvals).set({ executionResult: { ...(r.executionResult ?? {}), consumed: true } }).where(eq(approvals.id, r.id));
       }
@@ -425,6 +470,10 @@ export async function afterApprovalResolved(taskId: string): Promise<void> {
       await tx.update(tasks).set({ status: "QUEUED" }).where(eq(tasks.id, task.id));
       const note = [
         ...needsRevision.map((r) => `- Your proposed "${r.title}" was REJECTED. Feedback: ${r.feedback}`),
+        ...expired.map(
+          (r) =>
+            `- Your proposed "${r.title}" was not decided in time and EXPIRED, so it did not run. Finish without it and say so in your summary; propose it again only if the task still needs it.`,
+        ),
         ...commandResults.map((r) => {
           if (r.toolName !== "bash") {
             const d = (r.executionResult as { summary?: string } | null) ?? {};

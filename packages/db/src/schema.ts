@@ -125,6 +125,8 @@ export const workspaces = pgTable("workspaces", {
   require2faAdmins: boolean("require_2fa_admins").notNull().default(true),
   /** IANA time zone for dates in this workspace (project health, routines default) */
   timezone: text("timezone").notNull().default("Asia/Jakarta"),
+  /** an approval nobody decides expires after this many hours and counts as declined; 0 = never */
+  approvalExpiryHours: integer("approval_expiry_hours").notNull().default(168),
   /** subscription limit reached: the queue is held until this instant (status PAUSED_QUOTA in the UI) */
   quotaPausedUntil: timestamp("quota_paused_until", { withTimezone: true }),
   quotaPauseReason: text("quota_pause_reason"),
@@ -563,7 +565,7 @@ export const approvals = pgTable(
     messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
     createdAt: createdAt(),
   },
-  (t) => [index("approvals_ws_status").on(t.workspaceId, t.status)],
+  (t) => [index("approvals_ws_status").on(t.workspaceId, t.status), index("approvals_pending_created").on(t.createdAt).where(sql`status = 'PENDING'`)],
 );
 
 /** Activity / Step: every LLM call, tool call, guard hit, compaction, agent message. */

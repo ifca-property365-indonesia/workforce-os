@@ -5,7 +5,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Check, ChevronDown, Clock, Crown, FlaskConical, History, Pencil, ShieldAlert, ShieldCheck, X } from "lucide-react";
+import { Check, ChevronDown, Clock, Crown, FlaskConical, History, Pencil, ShieldAlert, ShieldCheck, ShieldPlus, X } from "lucide-react";
+import { alwaysAllowEntry, type AllowListEntry } from "@wfos/shared";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,7 +47,7 @@ export function useReasonText(): (reason: string) => string {
   };
 }
 
-type Decision = { decision: "approve" | "edit_approve" | "reject"; editedPayload?: Record<string, unknown>; feedback?: string };
+type Decision = { decision: "approve" | "edit_approve" | "reject"; editedPayload?: Record<string, unknown>; feedback?: string; alwaysAllow?: boolean };
 
 function statusClass(status: string): string {
   if (status === "PENDING") return "bg-approval text-approval-ink";
@@ -57,6 +58,14 @@ function statusClass(status: string): string {
 }
 
 type Finding = NonNullable<Approval["guardFindings"]>[number];
+
+/** What an "Always allow" rule permits, in words (the confirm dialog). */
+function alwaysAllowRule(t: ReturnType<typeof useTranslations<"approvals">>, e: AllowListEntry): string {
+  const to = (e.recipients ?? []).join(", ");
+  if (e.tool === "send_email") return t("card.alwaysAllowRule.email", { to });
+  if (e.tool === "send_invoice") return t("card.alwaysAllowRule.invoice", { to, max: String(e.maxAmount ?? "") });
+  return t("card.alwaysAllowRule.mcp", { tool: e.tool });
+}
 
 /**
  * Input/output guard findings (possible leak / injection) recorded when the approval was raised. One component for
@@ -147,7 +156,7 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
     onSuccess: (r, v) => {
       // the step-up was cancelled: nothing was decided
       if (!r) return;
-      toast.success(v.decision === "reject" ? t("card.rejected") : t("card.approved"));
+      toast.success(v.decision === "reject" ? t("card.rejected") : v.alwaysAllow ? t("card.alwaysAllowed") : t("card.approved"));
       setEditing(false);
       setRejecting(false);
       void qc.invalidateQueries({ queryKey: ["approvals"] });
@@ -155,6 +164,8 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
     },
     onError: (e) => toast.error((e as Error).message),
   });
+  // "Always allow" (an allow-list rule for this exact kind of action): never for a tainted run or a flagged payload
+  const always = pending && !readOnly && !ownerOnly ? alwaysAllowEntry(a) : null;
   const simulated = a.task?.dryRun || a.task?.source === "demo";
   const toolLabel = t.has(`tools.${a.toolName}`) ? t(`tools.${a.toolName}`) : a.toolName;
   const summary = resultSummary(a);
@@ -225,6 +236,17 @@ export function ApprovalCard({ a, focused = false, compact = false, readOnly = f
         >
           <ShieldCheck className="size-3.5" /> {ownerOnly ? t("card.approveRelease") : t("card.approve")}
         </Button>
+        {always && (
+          <Button
+            size={size}
+            variant="outline"
+            disabled={decide.isPending}
+            onClick={() => confirm(t("card.alwaysAllowConfirm", { employee: a.employee?.name ?? t("card.thisEmployee"), rule: alwaysAllowRule(t, always) })) && decide.mutate({ decision: "approve", alwaysAllow: true })}
+            className="gap-1"
+          >
+            <ShieldPlus className="size-3.5" /> {t("card.alwaysAllow")}
+          </Button>
+        )}
         {!NOT_EDITABLE.has(a.toolName) && (
           <Button size={size} variant="outline" onClick={() => (setEditing(true), setOpen(true))} className="gap-1">
             <Pencil className="size-3.5" /> {t("card.editAndApprove")}

@@ -79,7 +79,16 @@
     "openInInbox": "Buka di Persetujuan",
     "stripPending": "Perlu persetujuan",
     "waitingForOwner": "Hanya Owner yang bisa memutuskan rilis LIVE, dengan password dan kode autentikator.",
-    "approveRelease": "Setujui rilis LIVE"
+    "approveRelease": "Setujui rilis LIVE",
+    "alwaysAllow": "Selalu izinkan",
+    "alwaysAllowed": "Disetujui, dan diizinkan seterusnya",
+    "thisEmployee": "Karyawan ini",
+    "alwaysAllowConfirm": "Setujui, dan mulai sekarang {employee} boleh melakukan ini tanpa bertanya: {rule}. Hal lain tetap minta approval. Aturannya bisa dihapus kapan saja di daftar izin karyawan.",
+    "alwaysAllowRule": {
+      "email": "kirim email ke {to} (klien yang sama)",
+      "invoice": "kirim invoice ke {to} untuk klien ini, maksimal {max}",
+      "mcp": "memakai {tool}"
+    }
   },
   "bash": {
     "runsWhere": "Menjalankan persis perintah ini di sandbox karyawan (workspace yang sama, tanpa akses ke host, jaringan hanya yang diizinkan, git hooks dinonaktifkan)."

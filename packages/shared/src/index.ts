@@ -545,6 +545,9 @@ export function decideGate(input: GateInput): GateDecision {
   return { kind: "approval", reason: `Irreversible action requires approval (autonomy ${level}).`, rule: "autonomy" };
 }
 
+/** How applyRunSignals's reason for a tainted run starts (such an approval is never offered "always allow"). */
+export const TAINT_REASON_PREFIX = "This run handled untrusted content";
+
 /**
  * Run-level safety signals on top of the configured gate. Once a run is tainted by untrusted
  * content (or the payload looks like it leaks a secret), no irreversible action may run
@@ -553,7 +556,7 @@ export function decideGate(input: GateInput): GateDecision {
 export function applyRunSignals(decision: GateDecision, s: { toolClass: ToolClass; tainted: boolean; highLeak?: boolean }): GateDecision {
   if (decision.kind !== "run" || s.toolClass !== "irreversible") return decision;
   if (s.highLeak) return { kind: "approval", reason: "Output guard found possible secrets/PII in the payload.", rule: "leak" };
-  if (s.tainted) return { kind: "approval", reason: "This run handled untrusted content (external input, a web page or tool output), so irreversible actions need approval.", rule: "taint" };
+  if (s.tainted) return { kind: "approval", reason: `${TAINT_REASON_PREFIX} (external input, a web page or tool output), so irreversible actions need approval.`, rule: "taint" };
   return decision;
 }
 
@@ -716,6 +719,8 @@ export interface MessageMeta {
   chips?: AutoActionChip[];
   /** system messages: the approval this receipt reports on */
   approvalId?: string;
+  /** user messages: a short "ya" / "tidak" that decided the one approval waiting in this chat (not a turn) */
+  approvalReply?: { approvalId: string; decision: "approve" | "reject" };
   /** system notes the UI localises: nobody mentioned in a "mentions" team chat / responder busy (employeeId set) */
   hint?: "no_responder" | "busy";
   /** responders beyond the per-turn cap that were not run (team chat) */
@@ -1283,7 +1288,50 @@ export const approvalDecisionSchema = z.object({
   decision: z.enum(["approve", "edit_approve", "reject"]),
   editedPayload: z.record(z.string(), z.unknown()).optional(),
   feedback: z.string().max(5000).optional(),
+  /** with approve: also let the employee do this again without asking (alwaysAllowEntry), web only */
+  alwaysAllow: z.boolean().optional(),
 });
+
+/**
+ * "Always allow" (after OpenHuman's approval gate): the allow-list entry that lets the employee repeat exactly this
+ * kind of action without a person, or null when it is not offered. Offered only for an email, an invoice (to the
+ * same recipients and client, up to this amount) or one external MCP tool, and only when the approval was asked
+ * because of the employee's autonomy: never for a tainted run or a payload the output guard flagged. Pushes,
+ * previews, releases, skills, PRDs and commands always need a person.
+ */
+export function alwaysAllowEntry(a: { toolName: string; reason: string; payload: Record<string, unknown>; guardFindings?: unknown[] | null }): AllowListEntry | null {
+  if (a.reason.startsWith(TAINT_REASON_PREFIX) || (a.guardFindings?.length ?? 0) > 0) return null;
+  if (a.toolName === "send_email") {
+    const p = emailPayloadSchema.safeParse(a.payload);
+    if (!p.success) return null;
+    const recipients = [...p.data.to, ...p.data.cc].map(parseSingleAddress).filter((x): x is string => !!x);
+    return { tool: "send_email", recipientDomains: [], recipients: [...new Set(recipients)], clientIds: p.data.clientId ? [p.data.clientId] : [], note: "Always allow (approval)" };
+  }
+  if (a.toolName === "send_invoice") {
+    const p = invoicePayloadSchema.safeParse(a.payload);
+    if (!p.success) return null;
+    const recipients = p.data.to.map(parseSingleAddress).filter((x): x is string => !!x);
+    return { tool: "send_invoice", recipientDomains: [], recipients: [...new Set(recipients)], clientIds: [p.data.clientId], maxAmount: invoiceTotal(p.data), note: "Always allow (approval)" };
+  }
+  if (a.toolName.startsWith("mcp__")) {
+    const [, server = "", ...rest] = a.toolName.split("__");
+    const tool = rest.join("__");
+    if (!server || !tool) return null;
+    return { tool: `mcp:${server}:${tool}`, recipientDomains: [], clientIds: [], note: "Always allow (approval)" };
+  }
+  return null;
+}
+
+/**
+ * A chat reply that decides the one approval waiting in that conversation (after OpenHuman's "yes/no in chat"):
+ * a single word or short phrase, nothing else. Anything longer is a normal message.
+ */
+export function approvalReplyDecision(text: string): "approve" | "reject" | null {
+  const t = text.trim().toLowerCase().replace(/[.!]+$/, "").replace(/\s+/g, " ");
+  if (["ya", "iya", "yes", "y", "setuju", "approve", "approved", "ya, lanjut", "lanjut"].includes(t)) return "approve";
+  if (["tidak", "nggak", "gak", "no", "n", "tolak", "reject", "jangan", "batal"].includes(t)) return "reject";
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Payload shapes for irreversible actions (rendered in the Approvals inbox)

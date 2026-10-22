@@ -22,6 +22,7 @@ export const GET = route("VIEWER", async ({ session }) => {
       require2faAdmins: ws!.require2faAdmins,
       defaultLocale: ws!.defaultLocale,
       timezone: ws!.timezone,
+      approvalExpiryHours: ws!.approvalExpiryHours,
     },
     claude: claudeSummary(await claudeCredentialStatus(session.workspaceId)),
   };
@@ -38,6 +39,8 @@ const schema = z.object({
   /** workspace language for the UI default and employee output; null = follow each browser */
   defaultLocale: z.enum(LOCALES).nullable().optional(),
   timezone: z.string().refine(isTimeZone, "an IANA time zone such as Asia/Jakarta").optional(),
+  /** an approval nobody decides expires after this many hours (0 = never; at most 90 days) */
+  approvalExpiryHours: z.number().int().min(0).max(2160).optional(),
 });
 
 export const PUT = route("ADMIN", async ({ session, req }) => {

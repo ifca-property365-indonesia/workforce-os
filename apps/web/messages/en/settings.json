@@ -33,7 +33,9 @@
     "demoModeHint": "Scripted runs with zero tokens and no network calls; same SSE events.",
     "require2fa": "Require two-factor authentication for Owners and Admins",
     "require2faHint": "They must set up an authenticator app before they can use the workspace. Only an Owner can change this.",
-    "require2faDisableConfirm": "Stop requiring two-factor authentication for Owners and Admins?"
+    "require2faDisableConfirm": "Stop requiring two-factor authentication for Owners and Admins?",
+    "approvalExpiry": "Approvals expire after (hours)",
+    "approvalExpiryHint": "An approval nobody decides within this many hours is declined automatically, so a stale action never runs late. 0 = never."
   },
   "claude": {
     "title": "Claude credential",

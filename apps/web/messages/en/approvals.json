@@ -79,7 +79,16 @@
     "openInInbox": "Open in Approvals",
     "stripPending": "Needs your approval",
     "waitingForOwner": "Only the Owner can decide a LIVE release, with password and authenticator code.",
-    "approveRelease": "Approve LIVE release"
+    "approveRelease": "Approve LIVE release",
+    "alwaysAllow": "Always allow",
+    "alwaysAllowed": "Approved, and allowed from now on",
+    "thisEmployee": "This employee",
+    "alwaysAllowConfirm": "Approve, and from now on {employee} may do this without asking: {rule}. Anything else still asks. Remove the rule any time in the employee's allow-list.",
+    "alwaysAllowRule": {
+      "email": "send email to {to} (same client)",
+      "invoice": "send an invoice to {to} for this client, up to {max}",
+      "mcp": "use {tool}"
+    }
   },
   "bash": {
     "runsWhere": "Runs exactly this command in the employee's sandbox (same workspace, no host access, allow-listed network only, git hooks disabled)."

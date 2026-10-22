@@ -34,7 +34,7 @@ import { useMe } from "@/lib/hooks";
 import { settingsTab } from "@/lib/settings-tabs";
 
 interface Settings {
-  workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean; require2faAdmins: boolean; defaultLocale: "id" | "en" | null; timezone: string };
+  workspace: { id: string; name: string; monthlyBudget: number; guardsEnabled: boolean; demoMode: boolean; killSwitch: boolean; notifyEmail: string | null; webhookConfigured: boolean; require2faAdmins: boolean; defaultLocale: "id" | "en" | null; timezone: string; approvalExpiryHours: number };
   claude: { credentialPresent: boolean; source: "workspace" | "instance" | null; type: "oauth" | "api_key" | null };
 }
 
@@ -171,6 +171,7 @@ function General({ s, owner, admin }: { s: Settings; owner: boolean; admin: bool
   const qc = useQueryClient();
   const [name, setName] = useState(s.workspace.name);
   const [budget, setBudget] = useState(s.workspace.monthlyBudget);
+  const [expiry, setExpiry] = useState(s.workspace.approvalExpiryHours);
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.put("/api/settings", body),
     onSuccess: () => {
@@ -268,6 +269,20 @@ function General({ s, owner, admin }: { s: Settings; owner: boolean; admin: bool
               onCheckedChange={(v) => (v || confirm(t("safety.require2faDisableConfirm"))) && save.mutate({ require2faAdmins: v })}
             />
           </label>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <span>
+              <label htmlFor="approval-expiry" className="block text-sm font-medium">
+                {t("safety.approvalExpiry")}
+              </label>
+              <span className="block text-xs text-muted-foreground">{t("safety.approvalExpiryHint")}</span>
+            </span>
+            <span className="flex items-center gap-2">
+              <Input id="approval-expiry" type="number" min={0} max={2160} className="w-24" value={expiry} disabled={!admin} onChange={(e) => setExpiry(Number(e.target.value))} />
+              <Button size="sm" variant="outline" disabled={!admin || save.isPending || expiry === s.workspace.approvalExpiryHours} onClick={() => save.mutate({ approvalExpiryHours: expiry })}>
+                {tc("save")}
+              </Button>
+            </span>
+          </div>
         </CardContent>
       </Card>
       {admin && <ClaudeCredential owner={owner} />}

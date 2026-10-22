@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   AUTONOMY_LEVELS,
   allowListMatches,
+  alwaysAllowEntry,
+  approvalReplyDecision,
+  TAINT_REASON_PREFIX,
   applyRunSignals,
   decideGate,
   emailPayloadSchema,
@@ -206,5 +209,46 @@ describe("work mode (P4)", () => {
     expect(decideGate(input({ workMode: "standard", employeeAutonomy: "CLOSE", allowList: [allow] })).kind).toBe("run");
     // not granted still wins
     expect(decideGate(input({ workMode: "plan", permissions: [] }))).toMatchObject({ kind: "deny", rule: "not_granted" });
+  });
+});
+
+describe("always allow (after OpenHuman's approval gate)", () => {
+  const reason = "Irreversible action requires approval (autonomy QUEUE).";
+  const email = { to: ["Ana <ANA@client.co>", "bo@client.co"], cc: ["bo@client.co"], subject: "s", body: "b", clientId: "c1" };
+
+  it("an email becomes a rule for exactly its recipients and client", () => {
+    expect(alwaysAllowEntry({ toolName: "send_email", reason, payload: email })).toEqual({
+      tool: "send_email",
+      recipientDomains: [],
+      recipients: ["ana@client.co", "bo@client.co"],
+      clientIds: ["c1"],
+      note: "Always allow (approval)",
+    });
+  });
+
+  it("an invoice is capped at its total; an MCP tool gets its exact selector", () => {
+    const inv = { clientId: "c1", invoiceNumber: "INV-1", currency: "IDR", taxPercent: 0, dueDate: "2026-11-30", lines: [{ description: "x", quantity: 2, unitPrice: 50 }], to: ["ap@client.co"] };
+    const e = alwaysAllowEntry({ toolName: "send_invoice", reason, payload: inv });
+    expect(e).toMatchObject({ tool: "send_invoice", recipients: ["ap@client.co"], clientIds: ["c1"], maxAmount: 100 });
+    expect(alwaysAllowEntry({ toolName: "mcp__crm__send_message", reason, payload: {} })).toMatchObject({ tool: "mcp:crm:send_message", clientIds: [] });
+  });
+
+  it("is never offered for a tainted run, a flagged payload, or delivery and release tools", () => {
+    expect(alwaysAllowEntry({ toolName: "send_email", reason: `${TAINT_REASON_PREFIX} (x)`, payload: email })).toBeNull();
+    expect(alwaysAllowEntry({ toolName: "send_email", reason, payload: email, guardFindings: [{ rule: "x" }] })).toBeNull();
+    for (const t of ["git_push", "create_pull_request", "request_preview", "request_release", "install_skill", "handoff_prd", "bash", "post_webhook"]) {
+      expect(alwaysAllowEntry({ toolName: t, reason, payload: {} })).toBeNull();
+    }
+    // the rule matches what it was made from, and nothing wider
+    const e = alwaysAllowEntry({ toolName: "send_email", reason, payload: email })!;
+    expect(allowListMatches(e, { recipients: ["ana@client.co"], clientId: "c1" })).toBe(true);
+    expect(allowListMatches(e, { recipients: ["eve@client.co"], clientId: "c1" })).toBe(false);
+    expect(allowListMatches(e, { recipients: ["ana@client.co"], clientId: "c2" })).toBe(false);
+  });
+
+  it("a short ya / tidak decides; anything longer does not", () => {
+    for (const t of ["ya", "Ya!", " iya ", "yes", "setuju", "approve", "lanjut"]) expect(approvalReplyDecision(t)).toBe("approve");
+    for (const t of ["tidak", "Tolak.", "no", "jangan", "batal"]) expect(approvalReplyDecision(t)).toBe("reject");
+    for (const t of ["ok", "ya tapi ganti subjek", "tidak usah cc bos", "", "?"]) expect(approvalReplyDecision(t)).toBeNull();
   });
 });

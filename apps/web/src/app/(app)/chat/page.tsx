@@ -227,7 +227,8 @@ function ChatView({ conv, focusMessageId }: { conv: Conv; focusMessageId: string
     if (!last) return;
     const lastAt = new Date(last.createdAt).getTime();
     // waiting for the newest user message's reply, or for a regenerated reply newer than everything shown
-    const since = last.role === "user" ? lastAt : regenAt > lastAt ? regenAt : 0;
+    // a "ya" / "tidak" that decided an approval gets no reply (the approval's receipt follows)
+    const since = last.role === "user" && !last.meta?.approvalReply ? lastAt : regenAt > lastAt ? regenAt : 0;
     const age = Math.max(0, Date.now() - since);
     const waiting = since > 0 && age < AWAIT_MS;
     setAwaiting(waiting);

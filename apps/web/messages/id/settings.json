@@ -33,7 +33,9 @@
     "demoModeHint": "Eksekusi berskrip tanpa token dan tanpa panggilan jaringan; event SSE tetap sama.",
     "require2fa": "Wajibkan autentikasi dua faktor untuk Pemilik dan Admin",
     "require2faHint": "Mereka harus menyiapkan aplikasi autentikator sebelum dapat menggunakan workspace. Hanya Pemilik yang dapat mengubah pengaturan ini.",
-    "require2faDisableConfirm": "Berhenti mewajibkan autentikasi dua faktor untuk Pemilik dan Admin?"
+    "require2faDisableConfirm": "Berhenti mewajibkan autentikasi dua faktor untuk Pemilik dan Admin?",
+    "approvalExpiry": "Approval kedaluwarsa setelah (jam)",
+    "approvalExpiryHint": "Approval yang tidak diputuskan dalam sekian jam otomatis dianggap ditolak, jadi aksi basi tidak jalan belakangan. 0 = tidak pernah."
   },
   "claude": {
     "title": "Kredensial Claude",

@@ -1,8 +1,19 @@
 import "server-only";
 import { z } from "zod";
 import { and, eq } from "drizzle-orm";
-import { appEnvironments, appReleases, approvals, audit, db, tasks, teams } from "@wfos/db";
-import { emailPayloadSchema, invoicePayloadSchema, isWithinReleaseWindow, requestReleasePayloadSchema, webhookPayloadSchema, type Role } from "@wfos/shared";
+import { appEnvironments, appReleases, approvals, audit, db, employees, tasks, teams, withEmployeeRevision } from "@wfos/db";
+import {
+  alwaysAllowEntry,
+  effectiveAutonomy,
+  emailPayloadSchema,
+  invoicePayloadSchema,
+  isWithinReleaseWindow,
+  matchToolPermission,
+  requestReleasePayloadSchema,
+  webhookPayloadSchema,
+  type AllowListEntry,
+  type Role,
+} from "@wfos/shared";
 import { nextReleaseWindowOpening } from "@/lib/release-window";
 import { HttpError } from "./auth";
 import { notFound } from "./route";
@@ -29,7 +40,7 @@ export interface DecisionActor {
   email: string;
   workspaceId: string;
   /** where the decision was made (audited) */
-  via: "web" | "telegram";
+  via: "web" | "telegram" | "chat";
   /** the actor's role in the workspace (the caller already checked Admin) */
   role: Role;
   /** web only: confirms a fresh password + 2FA step-up (throws step_up_required) */
@@ -85,6 +96,30 @@ export interface DecisionInput {
   decision: "approve" | "edit_approve" | "reject";
   editedPayload?: Record<string, unknown>;
   feedback?: string;
+  /** with approve on the web: also add alwaysAllowEntry to the employee's allow-list (see addAlwaysAllow) */
+  alwaysAllow?: boolean;
+}
+
+/** two entries that allow the same thing (the note does not count; jsonb does not keep key order) */
+function sameEntry(a: AllowListEntry, b: AllowListEntry): boolean {
+  const key = (e: AllowListEntry) =>
+    JSON.stringify([e.tool, [...e.recipientDomains].sort(), [...(e.recipients ?? [])].sort(), [...e.clientIds].sort(), e.maxAmount ?? null, e.clientContactsOnly ?? false]);
+  return key(a) === key(b);
+}
+
+/**
+ * "Always allow": the entry goes on the employee's allow-list and the tool's autonomy becomes CLOSE (allow-listed
+ * actions run, everything else still asks), recorded as an employee revision by the person. Runs inside the
+ * revision's transaction together with the approval itself.
+ */
+async function addAlwaysAllow(tx: Parameters<Parameters<typeof withEmployeeRevision>[3]>[0], employeeId: string, entry: AllowListEntry) {
+  const [e] = await tx.select({ toolPermissions: employees.toolPermissions, allowList: employees.allowList, autonomyLevel: employees.autonomyLevel }).from(employees).where(eq(employees.id, employeeId));
+  if (!e) return;
+  const allowList = e.allowList.some((x) => sameEntry(x, entry)) ? e.allowList : [...e.allowList, entry];
+  const perm = matchToolPermission(entry.tool, e.toolPermissions);
+  const toolPermissions =
+    perm && effectiveAutonomy(entry.tool, e.autonomyLevel, e.toolPermissions) !== "CLOSE" ? e.toolPermissions.map((p) => (p === perm ? { ...p, autonomy: "CLOSE" as const } : p)) : e.toolPermissions;
+  await tx.update(employees).set({ allowList, toolPermissions, updatedAt: new Date() }).where(eq(employees.id, employeeId));
 }
 
 /**
@@ -113,6 +148,13 @@ export async function decideApproval(actor: DecisionActor, approvalId: string, i
   }
 
   if (a.toolName === "request_release" && input.decision === "approve") await assertReleaseApprovable(a);
+  let always: AllowListEntry | null = null;
+  if (input.alwaysAllow) {
+    if (input.decision !== "approve") throw new HttpError(400, "Always allow goes with a plain approve", { code: "always_allow_approve_only" });
+    if (actor.via !== "web") throw new HttpError(403, "Choose always allow on the web", { code: "always_allow_web_only" });
+    always = a.employeeId ? alwaysAllowEntry(a) : null;
+    if (!always) throw new HttpError(409, "This action cannot be allowed for good; approve it once", { code: "always_allow_not_offered" });
+  }
 
   // the task may have been cancelled or finished since the approval was requested
   if (a.taskId) {
@@ -161,11 +203,21 @@ export async function decideApproval(actor: DecisionActor, approvalId: string, i
     if (!input.editedPayload) throw new HttpError(400, "editedPayload is required for Edit & Approve", { code: "edited_payload_required" });
     edited = validatePayload(a.toolName, input.editedPayload) as Record<string, unknown>;
   }
-  const r = await db
-    .update(approvals)
-    .set({ status: "APPROVED", decidedBy: session.userId, decidedAt: new Date(), editedPayload: edited, feedback: input.feedback ?? null })
-    .where(and(eq(approvals.id, a.id), eq(approvals.status, "PENDING")))
-    .returning({ id: approvals.id });
+  const approve = (database: Pick<typeof db, "update">) =>
+    database
+      .update(approvals)
+      .set({ status: "APPROVED", decidedBy: session.userId, decidedAt: new Date(), editedPayload: edited, feedback: input.feedback ?? null })
+      .where(and(eq(approvals.id, a.id), eq(approvals.status, "PENDING")))
+      .returning({ id: approvals.id });
+  const entry = always;
+  const r = entry
+    ? await withEmployeeRevision(db, a.employeeId!, { workspaceId: session.workspaceId, source: "person", actorUserId: session.userId, actorLabel: session.email, note: `Always allow: ${a.title}` }, async (tx) => {
+        const rows = await approve(tx);
+        // decided concurrently: the allow-list stays as it was (the revision records nothing)
+        if (rows.length) await addAlwaysAllow(tx, a.employeeId!, entry);
+        return rows;
+      })
+    : await approve(db);
   if (!r.length) throw new HttpError(409, "Approval was decided concurrently", { code: "approval_decided_concurrently" });
   await audit({
     workspaceId: session.workspaceId,
@@ -174,8 +226,19 @@ export async function decideApproval(actor: DecisionActor, approvalId: string, i
     action: edited ? "approval.edited_and_approved" : "approval.approved",
     targetType: "approval",
     targetId: a.id,
-    details: { toolName: a.toolName, title: a.title, payload: a.payload, editedPayload: edited, via: actor.via },
+    details: { toolName: a.toolName, title: a.title, payload: a.payload, editedPayload: edited, via: actor.via, ...(entry ? { alwaysAllow: entry } : {}) },
   });
+  if (entry) {
+    await audit({
+      workspaceId: session.workspaceId,
+      actorUserId: session.userId,
+      actorLabel: session.email,
+      action: "employee.allow_list_added",
+      targetType: "employee",
+      targetId: a.employeeId!,
+      details: { entry, fromApproval: a.id },
+    });
+  }
   await publish(session.workspaceId, { type: "approval.updated", approvalId: a.id, status: "APPROVED" });
   await q.action({ kind: "execute_approval", approvalId: a.id, workspaceId: session.workspaceId });
   return { ok: true as const };
